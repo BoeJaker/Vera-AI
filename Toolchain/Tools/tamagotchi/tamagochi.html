@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pixel Tamagotchi Widget</title>
+  <style>
+    /* Container sits bottom-right */
+    #tama-root {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: 160px; /* canvas displayed size */
+      height: 160px;
+      z-index: 99999;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
+    }
+
+    canvas#tama-canvas {
+      width: 160px; /* CSS size */
+      height: 160px;
+      image-rendering: pixelated; /* keep crisp pixels when scaled */
+      background: linear-gradient(180deg, #e0f8ff 0%, #ffffff 100%);
+      border-radius: 12px;
+      border: 2px solid rgba(0,0,0,0.12);
+      box-sizing: border-box;
+      cursor: pointer;
+    }
+
+    /* Small status bubble */
+    #tama-hud {
+      position: absolute;
+      right: 0;
+      bottom: 170px;
+      min-width: 120px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.95);
+      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+      font-size: 12px;
+      display: none; /* toggled by click */
+    }
+
+    #tama-hud b { display:block }
+
+    /* Simple control hint */
+    #tama-hint {
+      position: absolute;
+      right: 4px;
+      bottom: 4px;
+      font-size: 10px;
+      color: rgba(0,0,0,0.5);
+    }
+  </style>
+</head>
+<body>
+  <div id="tama-root" aria-hidden="false">
+    <canvas id="tama-canvas" width="32" height="32" title="Tamagotchi"></canvas>
+    <div id="tama-hud" role="dialog" aria-label="Tamagotchi status">
+      <b id="tama-name">Tama</b>
+      <div>Hunger: <span id="tama-hunger">--</span></div>
+      <div>Mood: <span id="tama-mood">--</span></div>
+      <div>Energy: <span id="tama-energy">--</span></div>
+      <div style="margin-top:6px;text-align:right"><button id="tama-close">Close</button></div>
+    </div>
+    <div id="tama-hint">click for status</div>
+  </div>
+
+<script>
+/*
+  Pixel Tamagotchi Widget
+  - Canvas is 32x32 logical pixels, displayed scaled up to 160x160 via CSS.
+  - Sprite packs are JS objects with: { name, w, h, palette: {char: color}, frames: {action: [frameStr, ...]} }
+    where each frameStr is a string length w*h containing characters that map to palette entries.
+  - Drop-in sprite packs: call Tamagotchi.setSpritePack(pack)
+  - Feed from your app: window.Tamago.feedFromApp({food: 10}) or dispatch 'tama-feed' event
+
+  This is intentionally self-contained so you can paste into your site.
+*/
+
+(function(){
+  // Utility: clamp
+  const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+
+  // Default tiny pixel pet sprite pack (16x16)
+  const defaultPack = {
+    name: 'default-fluffy',
+    w: 16,
+    h: 16,
+    palette: {
+      '.': null, // transparent
+      'A': '#1b1b2f',
+      'B': '#e6b89c',
+      'C': '#ffedc2',
+      'D': '#ff8fa3',
+      'E': '#3b82f6',
+      'F': '#f8f9fb'
+    },
+    frames: {
+      idle: [
+        // simple smiling critter - one frame
+        // 16x16 chars (line breaks for readability)
+        (
+"................"+
+".....AAAAAAA...."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+".AABCCDDDCCBBA.."+
+"..AABCCCCCCBBA.."+
+"...AAABBBBBBAA.."+
+".....AAAAAAA...."+
+"................"+
+"................"
+        )
+      ],
+      walk: [
+        // 2-frame walk cycle (slightly shifted)
+        (
+"................"+
+".....AAAAAAA...."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+".AABCCDDDCCBBA.."+
+"..AABCCCCCCBBA.."+
+"...AAABBBBBBAA.."+
+"....A..AAAAA...."+
+"...A........A..."+
+"................"
+        ),
+        (
+"................"+
+".....AAAAAAA...."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+".AABCCDDDCCBBA.."+
+"..AABCCCCCCBBA.."+
+"...AAABBBBBBAA.."+
+".....AAAAA..A..."+
+"...A........A..."+
+"................"
+        )
+      ],
+      eat: [
+        (
+"................"+
+".....AAAAAAA...."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFDDFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+".AABCCDDDCCBBA.."+
+"..AABCCCCCCBBA.."+
+"...AAABBBBBBAA.."+
+".....AAAAAAA...."+
+".......E........"+
+"................"
+        )
+      ],
+      sleep: [
+        (
+"................"+
+"................"+
+"....AAAAAAA....."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+"..AABCCDDDCCBBA."+
+"...AAABBBBBBAA.."+
+"....AAAAAAA....."+
+"................"+
+".......zZ......."+
+"................"
+        )
+      ],
+      happy: [
+        (
+"................"+
+".....AAAAAAA...."+
+"...AAABBBBBBAA.."+
+"..AABCCCCCCBBA.."+
+".AABCCDDDCCBBA.."+
+".AABCDDFFDDCBA.."+
+".AABCDFFFFDCBA.."+
+".AABC.DFFF.DCBA."+
+".AABCDFFFFDCBA.."+
+".AABCDDFFDDCBA.."+
+".AABCCDDDCCBBA.."+
+"..AABCCCCCCBBA.."+
+"...AAABBBBBBAA.."+
+".....AAAAAAA...."+
+"......DDD......."+
+"................"
+        )
+      ]
+    }
+  };
+
+  // Tamagotchi class
+  class Tamagotchi {
+    constructor(opts={}){
+      this.canvas = document.getElementById('tama-canvas');
+      this.ctx = this.canvas.getContext('2d');
+      this.scale = Math.floor(this.canvas.width / 16) || 2; // default logical size 16 -> fallback to 32->2
+      // We'll use logical resolution from sprite pack (set later)
+
+      // DOM elements for HUD
+      this.hud = document.getElementById('tama-hud');
+      this.hungerEl = document.getElementById('tama-hunger');
+      this.moodEl = document.getElementById('tama-mood');
+      this.energyEl = document.getElementById('tama-energy');
+      this.nameEl = document.getElementById('tama-name');
+      this.closeBtn = document.getElementById('tama-close');
+
+      this.name = opts.name || 'Tama';
+      this.setSpritePack(opts.sprite || defaultPack);
+
+      // state
+      this.state = 'idle'; // idle, walk, eat, sleep, happy
+      this.substate = '';
+      this.frameTimer = 0;
+      this.frameIndex = 0;
+      this.lastTick = performance.now();
+
+      // virtual needs
+      this.hunger = 50; // 0..100  (0 full? we'll use 100 hungry -> decays)
+      this.energy = 80;
+      this.mood = 75; // affect animations
+
+      // position & movement (in CSS coords of root area, center inside canvas)
+      this.pos = { x: 80, y: 80 };
+      this.vx = 0;
+      this.vy = 0;
+      this.speed = 20; // px/sec
+      this.target = null; // {x,y}
+      this.followMouse = true;
+
+      // interactions
+      this.isHudOpen = false;
+      this.isSleeping = false;
+
+      // timers
+      this.hungerTimer = 0; // accumulates seconds
+
+      // input
+      this._bindEvents();
+
+      // Expose a global API for app feeding
+      window.Tamago = window.Tamago || {};
+      window.Tamago.instance = this;
+      window.Tamago.feedFromApp = (data)=> this.feedFromApp(data);
+      // Allow dispatch event
+      window.addEventListener('tama-feed', (e)=> this.feedFromApp(e.detail));
+
+      requestAnimationFrame((t)=> this._loop(t));
+    }
+
+    setSpritePack(pack){
+      // pack: {name,w,h,palette,frames}
+      this.pack = pack;
+      this.w = pack.w || 16;
+      this.h = pack.h || 16;
+      // configure canvas logical resolution to match sprite pack
+      // keep canvas small and scale by CSS; but we must set internal size to pack.w, pack.h
+      this.canvas.width = this.w;
+      this.canvas.height = this.h;
+      // recompute scale for drawing (display size controlled by CSS width/height)
+      const cssW = parseFloat(getComputedStyle(this.canvas).width);
+      this.scale = Math.max(1, Math.floor(cssW / this.w));
+      this.nameEl && (this.nameEl.textContent = this.name);
+    }
+
+    _bindEvents(){
+      // click toggles HUD
+      this.canvas.addEventListener('click', (e)=>{
+        this.isHudOpen = !this.isHudOpen;
+        this.hud.style.display = this.isHudOpen ? 'block' : 'none';
+      });
+      this.closeBtn.addEventListener('click', ()=>{ this.isHudOpen = false; this.hud.style.display='none'; });
+
+      // follow mouse if pointer is near the widget area
+      window.addEventListener('mousemove', (e)=>{
+        // compute relative to viewport
+        const rect = this.canvas.getBoundingClientRect();
+        // remember mouse pos for following
+        this.mouse = { x: e.clientX, y: e.clientY };
+      });
+
+      // simple drag: allow dragging the whole widget by holding down inside canvas
+      let dragging = false, start = null, root = document.getElementById('tama-root');
+      this.canvas.addEventListener('pointerdown', (e)=>{
+        dragging = true;
+        start = { x: e.clientX, y: e.clientY, rootX: root.offsetLeft, rootY: root.offsetTop };
+        this.canvas.setPointerCapture(e.pointerId);
+      });
+      window.addEventListener('pointermove', (e)=>{
+        if(dragging && start){
+          // move root container
+          const dx = e.clientX - start.x;
+          const dy = e.clientY - start.y;
+          // keep inside viewport
+          root.style.right = 'auto';
+          root.style.bottom = 'auto';
+          root.style.left = Math.max(0, start.rootX + dx) + 'px';
+          root.style.top = Math.max(0, start.rootY + dy) + 'px';
+        }
+      });
+      window.addEventListener('pointerup', (e)=>{ dragging=false; start=null; });
+    }
+
+    feedFromApp(data){
+      // data can be number or object {food: N, mood: N}
+      let food = 0;
+      if(typeof data === 'number') food = data;
+      else if(data && typeof data.food === 'number') food = data.food;
+      else food = 20; // default small snack
+
+      this.hunger = clamp(this.hunger - food, 0, 100);
+      this.mood = clamp(this.mood + Math.floor(food/2), 0, 100);
+      this.energy = clamp(this.energy + Math.floor(food/3), 0, 100);
+      this._setState('eat', 3.0);
+      // quick happy pulse
+      this._pulseMood(8);
+    }
+
+    _pulseMood(amount){ this.mood = clamp(this.mood + amount, 0, 100); }
+
+    _setState(state, durationSeconds=0){
+      this.state = state;
+      this.frameIndex = 0;
+      this.frameTimer = 0;
+      if(durationSeconds>0){
+        // schedule revert
+        clearTimeout(this._stateTO);
+        this._stateTO = setTimeout(()=>{ this.state='idle'; }, durationSeconds*1000);
+      }
+    }
+
+    _getFramesForState(state){
+      if(this.pack.frames[state]) return this.pack.frames[state];
+      // fallback
+      return this.pack.frames['idle'] || Object.values(this.pack.frames)[0];
+    }
+
+    _updateNeeds(dt){
+      // hunger increases over time
+      this.hungerTimer += dt;
+      if(this.hungerTimer >= 10){ // every 10s -> +1 hunger
+        const increments = Math.floor(this.hungerTimer / 10);
+        this.hunger = clamp(this.hunger + increments, 0, 100);
+        this.hungerTimer -= increments*10;
+      }
+
+      // energy slowly drains
+      this.energy = clamp(this.energy - dt*0.5, 0, 100);
+
+      // mood influenced by hunger and energy
+      const moodTarget = 100 - this.hunger*0.6 + (this.energy-50)*0.3;
+      this.mood += (moodTarget - this.mood) * clamp(dt*0.1, 0, 1);
+    }
+
+    _chooseBehavior(dt){
+      // If very hungry, try to wander and seek 'food' (in this demo we can't locate food)
+      if(this.hunger > 80 && Math.random()<0.01){
+        this._setState('walk');
+        this._setRandomTarget();
+        return;
+      }
+
+      // Occasionally walk around
+      if(this.state==='idle' && Math.random() < 0.006){
+        this._setState('walk');
+        this._setRandomTarget();
+      }
+
+      // If low energy, sleep
+      if(this.energy < 20 && !this.isSleeping){
+        this.isSleeping = true;
+        this._setState('sleep', 8.0);
+        setTimeout(()=>{ this.isSleeping=false; this.energy = clamp(this.energy+40,0,100); }, 8000);
+      }
+    }
+
+    _setRandomTarget(){
+      // get root bounding area
+      const rootRect = document.getElementById('tama-root').getBoundingClientRect();
+      // choose a point within the root size (so it doesn't leave the small box)
+      const tx = Math.floor(Math.random() * (rootRect.width));
+      const ty = Math.floor(Math.random() * (rootRect.height));
+      this.target = { x: tx, y: ty };
+      // convert to local pos
+      // our pos is in canvas-local coordinates (0..width)
+      // but target chosen on root area: map to 0..canvas.width
+      this.targetLocal = { x: Math.floor(tx / rootRect.width * this.canvas.width), y: Math.floor(ty / rootRect.height * this.canvas.height) };
+    }
+
+    _followMouseIfNear(){
+      if(!this.mouse) return;
+      const rect = this.canvas.getBoundingClientRect();
+      const dx = this.mouse.x - (rect.left + rect.width/2);
+      const dy = this.mouse.y - (rect.top + rect.height/2);
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if(dist < 150) {
+        // look toward cursor and sometimes walk a bit
+        if(Math.random() < 0.02) { this._setState('walk'); this._setRandomTarget(); }
+      }
+    }
+
+    _applyMovement(dt){
+      if(this.state==='walk' && this.targetLocal){
+        const tx = this.targetLocal.x; const ty = this.targetLocal.y;
+        const dx = tx - this.pos.x; const dy = ty - this.pos.y;
+        const dist = Math.sqrt(dx*dx+dy*dy);
+        if(dist < 1){
+          // done
+          this.targetLocal = null;
+          this._setState('idle');
+          this.vx = 0; this.vy = 0;
+        } else {
+          const vx = dx/dist * this.speed * (this.canvas.width/64);
+          const vy = dy/dist * this.speed * (this.canvas.height/64);
+          this.pos.x += vx * dt;
+          this.pos.y += vy * dt;
+          this.vx = vx; this.vy = vy;
+        }
+      } else {
+        // slight floating when idle
+        this.pos.x += Math.sin(performance.now()/1000 + this.pos.y)*0.001;
+      }
+      // clamp
+      this.pos.x = clamp(this.pos.x, 0, this.canvas.width-1);
+      this.pos.y = clamp(this.pos.y, 0, this.canvas.height-1);
+    }
+
+    _loop(t){
+      const now = t;
+      const dt = Math.min(0.1, (now - this.lastTick)/1000);
+      this.lastTick = now;
+
+      // update needs
+      this._updateNeeds(dt);
+
+      // choose behaviors sometimes
+      this._chooseBehavior(dt);
+
+      // mouse behavior
+      this._followMouseIfNear();
+
+      // movement
+      this._applyMovement(dt);
+
+      // animation frame advance (frame duration depends on action)
+      const frames = this._getFramesForState(this.state);
+      const frameDuration = this.state==='walk' ? 0.22 : (this.state==='eat' ? 0.15 : (this.state==='sleep'?0.6:0.35));
+      this.frameTimer += dt;
+      if(this.frameTimer >= frameDuration){
+        this.frameTimer -= frameDuration;
+        this.frameIndex = (this.frameIndex + 1) % frames.length;
+      }
+
+      // draw
+      this._renderCurrentFrame();
+
+      // update HUD values if open
+      if(this.isHudOpen){
+        this.hungerEl.textContent = Math.round(this.hunger);
+        this.moodEl.textContent = Math.round(this.mood);
+        this.energyEl.textContent = Math.round(this.energy);
+      }
+
+      requestAnimationFrame((ts)=> this._loop(ts));
+    }
+
+    _renderCurrentFrame(){
+      // pick frame string
+      const frames = this._getFramesForState(this.state);
+      const frameStr = frames[this.frameIndex % frames.length];
+
+      // clear
+      this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+
+      // draw pixel by pixel using palette
+      const pal = this.pack.palette;
+      const w = this.w; const h = this.h;
+      let i = 0;
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const c = frameStr[i++] || '.';
+          const color = pal[c];
+          if(color){
+            this.ctx.fillStyle = color;
+            this.ctx.fillRect(x, y, 1, 1);
+          }
+        }
+      }
+
+      // draw a little hunger bar overlay at top-left
+      const barW = Math.round((this.hunger/100) * (this.canvas.width));
+      this.ctx.globalAlpha = 0.6;
+      this.ctx.fillStyle = '#ff6b6b';
+      this.ctx.fillRect(0, 0, barW, 2);
+      this.ctx.globalAlpha = 1.0;
+
+      // optional indicator: sleepy Z's
+      if(this.state==='sleep'){
+        // draw a small letter z in palette color
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '5px sans-serif';
+        this.ctx.fillText('Z', this.canvas.width-6, 6);
+      }
+    }
+
+  }
+
+  // initialize default instance
+  const tama = new Tamagotchi({ name: 'Tama', sprite: defaultPack });
+
+  // Helpful global helpers
+  window.Tamago = window.Tamago || {};
+  window.Tamago.instance = tama;
+  window.Tamago.feed = (n)=> tama.feedFromApp(typeof n==='number'?{food:n}:n);
+  window.Tamago.setSpritePack = (pack)=> tama.setSpritePack(pack);
+  window.Tamago.getStatus = ()=> ({ hunger: tama.hunger, mood: tama.mood, energy: tama.energy, state: tama.state });
+
+  // small demo: expose a function to load a sprite pack JSON easily
+  window.Tamago.loadSpritePack = function(pack){
+    // pack must follow format described above
+    try{ tama.setSpritePack(pack); console.info('Sprite pack loaded:', pack.name); }
+    catch(e){ console.error('Bad pack', e); }
+  };
+
+})();
+</script>
+</body>
+</html>

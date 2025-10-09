@@ -1,0 +1,2471 @@
+{
+  "database_statistics": {
+    "nodeCount": 4698,
+    "relCount": 11559,
+    "labels": {
+      "Entity": 4682,
+      "Query": 276,
+      "Session": 183,
+      "Response": 231,
+      "Thought": 192,
+      "Triage": 48,
+      "Project": 2,
+      "Codebase": 1,
+      "Document": 1383,
+      "Plan": 51,
+      "Step": 214,
+      "File": 21,
+      "Command": 10,
+      "Answer": 44,
+      "Web_search": 20,
+      "News_search": 6,
+      "Search_result": 86,
+      "Python": 4,
+      "Conversation": 13,
+      "System": 1,
+      "AI": 1,
+      "ExtractedEntity": 944,
+      "NOUN_CHUNK": 738,
+      "ORG": 51,
+      "CARDINAL": 17,
+      "TIME": 3,
+      "WORK_OF_ART": 9,
+      "GPE": 15,
+      "LOC": 3,
+      "ORDINAL": 4,
+      "PERSON": 38,
+      "DATE": 47,
+      "MONEY": 8,
+      "PRODUCT": 2,
+      "EVENT": 1,
+      "NORP": 3,
+      "FAC": 1,
+      "LANGUAGE": 1,
+      "PERCENT": 3,
+      "Nameserver": 4,
+      "Website": 9,
+      "SecurityReport": 68,
+      "NetworkService": 4,
+      "SSH": 2,
+      "RPCBIND": 2,
+      "NetworkHost": 7,
+      "Host": 7,
+      "WebAsset": 759,
+      "Page": 76,
+      "Img": 93,
+      "Script": 409,
+      "Link": 181,
+      "OrphanRoot": 1
+    },
+    "relTypes": {
+      "REL": 10412,
+      "MENTIONED": 146,
+      "RELATES": 1,
+      "ORPHAN_LINK": 1000
+    }
+  },
+  "orphaned_nodes": [
+    {
+      "labels": [
+        "Entity",
+        "Document"
+      ],
+      "count": 393
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "count": 86
+    },
+    {
+      "labels": [
+        "Entity",
+        "Website"
+      ],
+      "count": 6
+    }
+  ],
+  "high_degree_nodes": [
+    {
+      "labels": [
+        "OrphanRoot"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:6003",
+      "degree": 1000
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5153",
+      "degree": 192
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2036",
+      "degree": 144
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2045",
+      "degree": 144
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2352",
+      "degree": 143
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2355",
+      "degree": 142
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1360",
+      "degree": 131
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1490",
+      "degree": 130
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1495",
+      "degree": 129
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1619",
+      "degree": 128
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2190",
+      "degree": 111
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2312",
+      "degree": 104
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1937",
+      "degree": 102
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2221",
+      "degree": 101
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5082",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5083",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5085",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5086",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5088",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5089",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5090",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5091",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5092",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5093",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5094",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5095",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5096",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5097",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5098",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5099",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5100",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5101",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5113",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5114",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5116",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5117",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5119",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5120",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5130",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5131",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5132",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5133",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5134",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5135",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5136",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5137",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5138",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5139",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5140",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5141",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5142",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5143",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5145",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5146",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5150",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5151",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5152",
+      "degree": 100
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5084",
+      "degree": 99
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5115",
+      "degree": 99
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5118",
+      "degree": 99
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5147",
+      "degree": 97
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5155",
+      "degree": 93
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5381",
+      "degree": 93
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5455",
+      "degree": 93
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5258",
+      "degree": 88
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5434",
+      "degree": 86
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5366",
+      "degree": 81
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5502",
+      "degree": 80
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5289",
+      "degree": 76
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5479",
+      "degree": 75
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5472",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5531",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5533",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5535",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5537",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5539",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5541",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5543",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5545",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5547",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5548",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5550",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5552",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5554",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5556",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5557",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5559",
+      "degree": 71
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5205",
+      "degree": 70
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5302",
+      "degree": 69
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5483",
+      "degree": 68
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5239",
+      "degree": 66
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5342",
+      "degree": 66
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5200",
+      "degree": 65
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5313",
+      "degree": 65
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5330",
+      "degree": 65
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5411",
+      "degree": 65
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5498",
+      "degree": 65
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5269",
+      "degree": 64
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5468",
+      "degree": 64
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5487",
+      "degree": 64
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5495",
+      "degree": 64
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5525",
+      "degree": 64
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5202",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5374",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5394",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5402",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5419",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5427",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5465",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5476",
+      "degree": 63
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5529",
+      "degree": 62
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5321",
+      "degree": 61
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5386",
+      "degree": 61
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5216",
+      "degree": 60
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5491",
+      "degree": 60
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5182",
+      "degree": 58
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5956",
+      "degree": 58
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5451",
+      "degree": 57
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5464",
+      "degree": 57
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:6002",
+      "degree": 57
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2351",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5160",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5167",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5174",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5226",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5506",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5514",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5520",
+      "degree": 56
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:2313",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5209",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5212",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5222",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5224",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5228",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5230",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5453",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5457",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5460",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5462",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5504",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5508",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5510",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5512",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5516",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5518",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5522",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5523",
+      "degree": 55
+    },
+    {
+      "labels": [
+        "Entity",
+        "ExtractedEntity",
+        "GPE"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1496",
+      "degree": 54
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5440",
+      "degree": 53
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5444",
+      "degree": 53
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5497",
+      "degree": 53
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5437",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5439",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5442",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5446",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5467",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5470",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5474",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5478",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5481",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5485",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5489",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5493",
+      "degree": 52
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:5500",
+      "degree": 52
+    }
+  ],
+  "long_properties": [
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 571865,
+      "preview": "```json\n[\n  {\n    \"tool\": \"List Installed Programs...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:157"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "length": 571865,
+      "preview": "```json\n[\n  {\n    \"tool\": \"List Installed Programs...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:160"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 254276,
+      "preview": "```json\n[\n  {\n    \"tool\": \"List Installed Programs...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:246"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 196692,
+      "preview": "```json\n[\n  {\n    \"tool\": \"inspect system source c...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:42"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "length": 196692,
+      "preview": "```json\n[\n  {\n    \"tool\": \"inspect system source c...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:45"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 168367,
+      "preview": "Step 2 - List Python Modules: CythonCython.Compile...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:111"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 64191,
+      "preview": "Step 1 - inspect system source code: # Vera.py - V...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:36"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 62186,
+      "preview": "Step 1 - List Installed Programs: accountsservice\t...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:109"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 62186,
+      "preview": "Step 1 - List Installed Programs: accountsservice\t...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:231"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 62186,
+      "preview": "Step 1 - List Installed Programs: accountsservice\t...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:243"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 62163,
+      "preview": "input: Step 1 - List Installed Programs\noutput: ac...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:59"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 47410,
+      "preview": "Step 9 - Bash Shell: USER         PID %CPU %MEM   ...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:148"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 7987,
+      "preview": "Okay, this is a complex and fascinating challenge!...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:222"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 7987,
+      "preview": "Okay, this is a complex and fascinating challenge!...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:223"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 7093,
+      "preview": "input: using toolchains create a detailed report o...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:103"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 5766,
+      "preview": "```json\n[\n  {\n    \"tool\": \"DuckDuckGo Web Search\",...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:88"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "length": 5766,
+      "preview": "```json\n[\n  {\n    \"tool\": \"DuckDuckGo Web Search\",...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:90"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 4786,
+      "preview": "Okay, you've set a nice tone with \"Babelfish\" - le...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:178"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "length": 4786,
+      "preview": "Okay, you've set a nice tone with \"Babelfish\" - le...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:183"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 3256,
+      "preview": "Step 8 - Bash Shell: Netid State  Recv-Q Send-Q  L...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:141"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 1714,
+      "preview": "input: Step 7 - Query Fast LLM\noutput: Okay, I can...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:101"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 1501,
+      "preview": "I hear you! \n\nPipedream definitely has its appeal ...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:230"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "length": 1425,
+      "preview": "It's great that you're looking for creative names!...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:216"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 1314,
+      "preview": "Step 10 - Search Memory: input: Step 2 - Read File...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:150"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 1125,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:208"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 1125,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:209"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Plan"
+      ],
+      "key": "text",
+      "length": 1092,
+      "preview": "[{\"tool\": \"List Installed Programs\", \"input\": \"\"},...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:106"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 1059,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:187"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 1059,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:188"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 940,
+      "preview": "input: could you write a poem\noutput: Okay, here's...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:107"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 915,
+      "preview": "Step 1 - DuckDuckGo Web Search: 1. TOP | English m...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:65"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 852,
+      "preview": "Step 2 - Bash Shell: Starting Nmap 7.93 ( https://...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:232"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 838,
+      "preview": "As a text-only language model, I don't have access...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:125"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Plan"
+      ],
+      "key": "text",
+      "length": 810,
+      "preview": "[{\"tool\": \"DuckDuckGo Web Search\", \"input\": \"top n...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:61"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Plan"
+      ],
+      "key": "text",
+      "length": 793,
+      "preview": "[{\"tool\": \"inspect system source code\", \"input\": \"...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:31"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 783,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:144"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 750,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:155"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 750,
+      "preview": "```json\n[\n  {\n    \"tool\": \"Query Fast LLM\",\n    \"i...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:156"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "length": 702,
+      "preview": "Step 2 - Bash Shell: Starting Nmap 7.93 ( https://...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:244"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 675,
+      "preview": "[{\"tool\": \"List Installed Programs\", \"input\": \"\"},...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:57"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 623,
+      "preview": "Hello! I am Gemma, an open-weights AI assistant. T...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:117"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 623,
+      "preview": "Hello! I am Gemma, an open-weights AI assistant. T...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:118"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 513,
+      "preview": "[{\"tool\": \"navigate_browser\", \"input\": \"https://ww...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:87"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Plan"
+      ],
+      "key": "text",
+      "length": 488,
+      "preview": "[{\"tool\": \"List Installed Programs\", \"input\": \"\"},...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:241"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 467,
+      "preview": "As a text-only language model, I don't have access...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:123"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 456,
+      "preview": "[{\"tool\": \"List Installed Programs\", \"input\": \"\"},...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:229"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 383,
+      "preview": "simple \n\nI have access to many tools, including Qu...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:121"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 371,
+      "preview": "I have access to the following tools: Query Fast L...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:124"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 280,
+      "preview": "How can i make a polyglot file that is an image fi...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:218"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "length": 261,
+      "preview": "[{\"tool\": \"Query Fast LLM\", \"input\": \"Write a shor...",
+      "node_id": "4:0658720f-ad9e-48e1-a121-81d15220aeb0:182"
+    }
+  ],
+  "data_type_issues": [],
+  "relationship_distribution": [
+    {
+      "relationship_type": "REL",
+      "count": 10412
+    },
+    {
+      "relationship_type": "ORPHAN_LINK",
+      "count": 1000
+    },
+    {
+      "relationship_type": "MENTIONED",
+      "count": 146
+    },
+    {
+      "relationship_type": "RELATES",
+      "count": 1
+    }
+  ],
+  "duplicate_nodes": [
+    {
+      "node_labels": [
+        "File"
+      ],
+      "identifier": "Veritas.MD",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:49",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:81"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "Night",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1249",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1256"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "ThinkPad",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1261",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1264"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "Python",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1268",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1289"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "PostgreSQL",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1269",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1308"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "river",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1271",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1281"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "Docker",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1292",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1309"
+      ]
+    },
+    {
+      "node_labels": [
+        "Entity"
+      ],
+      "identifier": "john.smith@example.com",
+      "duplicate_count": 2,
+      "node_ids": [
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1296",
+        "4:0658720f-ad9e-48e1-a121-81d15220aeb0:1300"
+      ]
+    }
+  ],
+  "isolated_nodes": [
+    {
+      "labels": [
+        "Entity",
+        "Document"
+      ],
+      "isolated_count": 393
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Script"
+      ],
+      "isolated_count": 86
+    },
+    {
+      "labels": [
+        "Entity",
+        "Website"
+      ],
+      "isolated_count": 6
+    }
+  ],
+  "self_relationships": [
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Link"
+      ],
+      "relationship_type": "REL",
+      "count": 25
+    },
+    {
+      "labels": [
+        "Entity",
+        "WebAsset",
+        "Page"
+      ],
+      "relationship_type": "REL",
+      "count": 2
+    }
+  ],
+  "relationship_properties": [],
+  "empty_labels": {
+    "empty_labels": [],
+    "empty_properties": [
+      {
+        "labels": [
+          "Entity",
+          "Answer"
+        ],
+        "key": "text",
+        "count": 42
+      },
+      {
+        "labels": [
+          "Entity",
+          "Query"
+        ],
+        "key": "text",
+        "count": 11
+      },
+      {
+        "labels": [
+          "Entity",
+          "NetworkService",
+          "RPCBIND"
+        ],
+        "key": "cpe",
+        "count": 2
+      },
+      {
+        "labels": [
+          "Entity",
+          "NetworkService",
+          "RPCBIND"
+        ],
+        "key": "product",
+        "count": 2
+      },
+      {
+        "labels": [
+          "Entity",
+          "File"
+        ],
+        "key": "text",
+        "count": 1
+      },
+      {
+        "labels": [
+          "Entity",
+          "Response"
+        ],
+        "key": "text",
+        "count": 1
+      },
+      {
+        "labels": [
+          "Entity"
+        ],
+        "key": "body:",
+        "count": 1
+      }
+    ]
+  },
+  "array_properties": [],
+  "unicode_issues": [
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "tool \nfocus code analysis  \n",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "tool \nfocus code analysis  \n",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "Hello! \ud83d\udc4b\n\nHow can I help you today? \ud83d\ude0a",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Triage"
+      ],
+      "key": "text",
+      "preview": "simple \n\nhello there!  how can I help you today?",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "tool \nfocus code analysis  \n",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "toolchain \nfocus: self-improvement  \n",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "preview": "Step 1 - inspect system source code: # Vera.py - V",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "preview": "```json\n[\n  {\n    \"tool\": \"inspect system source c",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "```json\n[\n  {\n    \"tool\": \"inspect system source c",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "toolchain \nfocus: news briefing  \n",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 1 - List Installed Programs\noutput: ac",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Step"
+      ],
+      "key": "text",
+      "preview": "Step 1 - DuckDuckGo Web Search: 1. TOP | English m",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: whats the capital of the uk?\noutput: The ca",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Query"
+      ],
+      "key": "text",
+      "preview": "```json\n[\n  {\n    \"tool\": \"DuckDuckGo Web Search\",",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 1 - navigate_browser\noutput: ",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Response"
+      ],
+      "key": "text",
+      "preview": "```json\n[\n  {\n    \"tool\": \"DuckDuckGo Web Search\",",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 2 - extract_text\noutput: ",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 3 - navigate_browser\noutput: ",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 4 - extract_text\noutput: ",
+      "issue_type": "Special characters"
+    },
+    {
+      "labels": [
+        "Entity",
+        "Thought"
+      ],
+      "key": "text",
+      "preview": "input: Step 5 - navigate_browser\noutput: ",
+      "issue_type": "Special characters"
+    }
+  ],
+  "circular_references": [],
+  "resolutions": {
+    "ignored_issues": [],
+    "resolved_issues": [
+      {
+        "type": "orphaned_nodes",
+        "key": "orphaned_['Entity', 'Document']",
+        "resolution_method": "auto",
+        "timestamp": "2025-10-09T15:13:47.933095"
+      },
+      {
+        "type": "orphaned_nodes",
+        "key": "orphaned_['Entity', 'WebAsset', 'Script']",
+        "resolution_method": "manual: Run: MATCH (n) WHERE NOT (n)--() DELETE n",
+        "timestamp": "2025-10-09T15:14:56.561842"
+      }
+    ],
+    "custom_fixes": {}
+  }
+}

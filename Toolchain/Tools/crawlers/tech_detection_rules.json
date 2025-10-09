@@ -1,0 +1,46 @@
+[
+  {"name": "jQuery", "pattern": "jquery(\\.min)?\\.js"},
+  {"name": "React", "pattern": "react(-dom)?(\\.production)?\\.js"},
+  {"name": "Vue.js", "pattern": "vue(\\.runtime)?(\\.min)?\\.js"},
+  {"name": "Google Analytics", "pattern": "www\\.google-analytics\\.com/analytics\\.js"},
+  {"name": "Bootstrap", "pattern": "bootstrap(\\.min)?\\.(css|js)"},
+  {"name": "WordPress", "pattern": "wp-content|wp-includes"},
+  {"name": "Angular", "pattern": "angular(\\.min)?\\.js"},
+  {"name": "FontAwesome", "pattern": "fontawesome|fa-(solid|regular|brands)"},
+  {"name": "Google Tag Manager", "pattern": "googletagmanager\\.com/gtm\\.js"},
+  {"name": "Django", "pattern": "csrfmiddlewaretoken"},
+  
+  {"name": "Tailwind CSS", "pattern": "tailwind(\\.min)?\\.css"},
+  {"name": "Next.js", "pattern": "_next/static"},
+  {"name": "Gatsby", "pattern": "gatsby\\.js"},
+  {"name": "Webpack", "pattern": "webpack(-bundle)?\\.js"},
+  {"name": "Moment.js", "pattern": "moment(\\.min)?\\.js"},
+  {"name": "Lodash", "pattern": "lodash(\\.min)?\\.js"},
+  {"name": "Express.js", "pattern": "express"},
+  {"name": "PHP", "pattern": "\\.php"},
+  {"name": "Ruby on Rails", "pattern": "rails"},
+  {"name": "Drupal", "pattern": "sites/all"},
+  {"name": "Shopify", "pattern": "cdn\\.shopify\\.com"},
+  {"name": "Google Fonts", "pattern": "fonts\\.googleapis\\.com"},
+  {"name": "Sentry", "pattern": "sentry\\.io/sdk"},
+  {"name": "Stripe", "pattern": "js\\.stripe\\.com/v3/"},
+  {"name": "Google Maps", "pattern": "maps\\.googleapis\\.com/maps/api/js"},
+  
+  {"name": "Adobe Analytics", "pattern": "omtrdc\\.net"},
+  {"name": "Facebook Pixel", "pattern": "connect\\.facebook\\.net/.*/fbevents\\.js"},
+  {"name": "Hotjar", "pattern": "static\\.hotjar\\.com/c/hotjar-"},
+  
+  {"name": "Svelte", "pattern": "svelte"},
+  {"name": "Alpine.js", "pattern": "alpinejs"},
+  {"name": "Ember.js", "pattern": "ember(\\.min)?\\.js"},
+  {"name": "Backbone.js", "pattern": "backbone(\\.min)?\\.js"},
+  {"name": "Chart.js", "pattern": "chart\\.js"},
+  
+  {"name": "Google Recaptcha", "pattern": "google\\.com/recaptcha/"},
+  {"name": "Firebase", "pattern": "firebaseapp\\.com"},
+  
+  {"name": "Contentful", "pattern": "cdn\\.contentful\\.com"},
+  
+  {"name": "AWS CloudFront", "pattern": "cloudfront\\.net"},
+  {"name": "Azure CDN", "pattern": "azureedge\\.net"}
+]

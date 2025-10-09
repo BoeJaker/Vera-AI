@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: neo4j
+    ports:
+      - "7474:7474"  # Browser
+      - "7687:7687"  # Bolt
+    environment:
+      NEO4J_AUTH: "neo4j/strongpassword"
+    volumes:
+      - neo4j_data:/data
+
+  # chroma:
+  #   image: trychroma/chroma:latest
+  #   container_name: chroma
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     CHROMA_DB_IMPL: sqlite
+  #     CHROMA_SERVER_HOST: 0.0.0.0
+  #   volumes:
+  #     - chroma_data:/chroma/db
+
+  dashboard:
+    image: streamlit/streamlit:latest
+    container_name: dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./dashboard:/app
+    working_dir: /app
+    command: streamlit run dashboard.py
+
+volumes:
+  neo4j_data:
+  chroma_data:

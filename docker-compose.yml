@@ -1,0 +1,26 @@
+services:
+  vera:
+    build: ./
+    container_name: vera
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/London
+      - VERA_URL=http://vera:3480
+    volumes:
+      - /path/to/appdata/config:/config
+    ports:
+      - 8500:8500
+      - 8501:8501
+      - 8502:8502
+    restart: unless-stopped
+    networks:
+      - src-agentic-network
+
+networks:
+  src-agentic-network:
+    external: true
+      
+
+
+

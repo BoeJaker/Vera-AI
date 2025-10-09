@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tamagotchi PNG to Sprite Pack Converter</title>
+<style>
+  body {
+    font-family: monospace, monospace;
+    margin: 0; padding: 0; background: #222; color: #eee;
+    display: flex; flex-direction: column; height: 100vh;
+  }
+  header {
+    background: #111; padding: 0.5em 1em; font-size: 1.25em;
+    text-align: center;
+  }
+  main {
+    flex: 1; display: flex; gap: 1em; padding: 1em;
+    box-sizing: border-box;
+  }
+  #left, #middle, #right {
+    background: #333; border-radius: 6px; padding: 1em;
+    display: flex; flex-direction: column;
+  }
+  #left, #right {
+    flex: 1 1 300px;
+    overflow: auto;
+  }
+  #middle {
+    flex: 0 0 300px;
+  }
+  label {
+    margin-top: 0.75em;
+    font-weight: bold;
+  }
+  input[type=text], input[type=number], textarea {
+    width: 100%;
+    font-family: monospace;
+    font-size: 1em;
+    padding: 0.3em;
+    border-radius: 4px;
+    border: none;
+    margin-top: 0.25em;
+    box-sizing: border-box;
+  }
+  input[type=number] {
+    -moz-appearance:textfield;
+  }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+  }
+  button {
+    margin-top: 1em;
+    padding: 0.7em;
+    font-size: 1em;
+    font-weight: bold;
+    border-radius: 6px;
+    border: none;
+    background: #5a8;
+    color: #112;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.3s ease;
+  }
+  button:hover {
+    background: #7cba7c;
+  }
+  canvas {
+    background: #111;
+    border: 1px solid #555;
+    margin-top: 1em;
+    max-width: 100%;
+    image-rendering: pixelated;
+  }
+  pre {
+    background: #111;
+    padding: 0.5em;
+    border-radius: 6px;
+    max-height: 70vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: all;
+  }
+  #framePreview {
+    margin-top: 1em;
+    text-align: center;
+    color: #ccc;
+  }
+  #error {
+    color: #e66;
+    margin-top: 0.5em;
+    font-weight: bold;
+  }
+  small {
+    color: #aaa;
+  }
+</style>
+</head>
+<body>
+
+<header>Tamagotchi PNG to Sprite Pack Converter</header>
+
+<main>
+  <section id="left">
+    <label for="fileInput">Upload PNG File:</label>
+    <input type="file" id="fileInput" accept="image/png" />
+    
+    <label for="urlInput">Or enter PNG URL:</label>
+    <input type="text" id="urlInput" placeholder="https://example.com/sprite.png" />
+    <button id="loadUrlBtn">Load URL</button>
+    
+    <canvas id="imageCanvas" width="256" height="256"></canvas>
+    <div id="framePreview">No image loaded</div>
+    <div id="error"></div>
+  </section>
+
+  <section id="middle">
+    <label for="frameWidth">Frame Width (px):</label>
+    <input type="number" id="frameWidth" min="1" value="16" />
+    
+    <label for="frameHeight">Frame Height (px):</label>
+    <input type="number" id="frameHeight" min="1" value="16" />
+    
+    <label for="animationInput">Animation frames (name:count per line):</label>
+    <textarea id="animationInput" rows="8" placeholder="idle:4
+walk:6
+eat:3
+sleep:2
+happy:3"></textarea>
+    
+    <button id="generateBtn">Generate Sprite Pack</button>
+  </section>
+
+  <section id="right">
+    <label for="outputArea">Generated Tamagotchi Sprite Pack JS Object:</label>
+    <pre id="outputArea">No output yet.</pre>
+    <button id="downloadBtn" disabled>Download as JS file</button>
+  </section>
+</main>
+
+<script>
+(() => {
+  const fileInput = document.getElementById('fileInput');
+  const urlInput = document.getElementById('urlInput');
+  const loadUrlBtn = document.getElementById('loadUrlBtn');
+  const imageCanvas = document.getElementById('imageCanvas');
+  const ctx = imageCanvas.getContext('2d');
+  const frameWidthInput = document.getElementById('frameWidth');
+  const frameHeightInput = document.getElementById('frameHeight');
+  const animationInput = document.getElementById('animationInput');
+  const generateBtn = document.getElementById('generateBtn');
+  const outputArea = document.getElementById('outputArea');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const errorDiv = document.getElementById('error');
+  const framePreviewDiv = document.getElementById('framePreview');
+
+  let loadedImage = null;
+
+  // Draw image on canvas
+  function drawImage(img) {
+    imageCanvas.width = img.width;
+    imageCanvas.height = img.height;
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0,0,img.width,img.height);
+    ctx.drawImage(img,0,0);
+    framePreviewDiv.textContent = `Loaded image: ${img.width}×${img.height}px`;
+  }
+
+  // Load image from file input
+  fileInput.addEventListener('change', e => {
+    if (!e.target.files.length) return;
+    const file = e.target.files[0];
+    if (!file.type.startsWith('image/png')) {
+      errorDiv.textContent = "Please upload a PNG file.";
+      return;
+    }
+    errorDiv.textContent = "";
+    const img = new Image();
+    img.onload = () => {
+      loadedImage = img;
+      drawImage(img);
+    };
+    img.onerror = () => {
+      errorDiv.textContent = "Failed to load image file.";
+    };
+    img.src = URL.createObjectURL(file);
+  });
+
+  // Load image from URL
+  loadUrlBtn.addEventListener('click', () => {
+    const url = urlInput.value.trim();
+    if (!url) {
+      errorDiv.textContent = "Enter a valid URL.";
+      return;
+    }
+    errorDiv.textContent = "";
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // try to avoid taint
+    img.onload = () => {
+      loadedImage = img;
+      drawImage(img);
+    };
+    img.onerror = () => {
+      errorDiv.textContent = "Failed to load image from URL (CORS or invalid).";
+    };
+    img.src = url;
+  });
+
+  // Convert RGBA color to hex string
+  function rgbaToHex(r,g,b,a) {
+    if(a < 128) return null;
+    return "#" + [r,g,b].map(x => x.toString(16).padStart(2,'0')).join('');
+  }
+
+  // Convert one frame area to palette and frame string
+  function extractFrame(img, x, y, w, h) {
+    const tmpCanvas = document.createElement('canvas');
+    const tmpCtx = tmpCanvas.getContext('2d');
+    tmpCanvas.width = w;
+    tmpCanvas.height = h;
+    tmpCtx.drawImage(img, x, y, w, h, 0, 0, w, h);
+    const data = tmpCtx.getImageData(0,0,w,h).data;
+
+    const palette = {};
+    let paletteIndex = 0;
+    let frameString = "";
+
+    for(let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+      const hex = rgbaToHex(r,g,b,a);
+      let char = Object.keys(palette).find(k => palette[k] === hex);
+      if(!char) {
+        if(paletteIndex >= 26) {
+          throw new Error("Too many colors (>26) in a single frame, not supported.");
+        }
+        char = (hex === null) ? '.' : String.fromCharCode(65 + paletteIndex++);
+        palette[char] = hex;
+      }
+      frameString += char;
+    }
+    return {palette, frameString};
+  }
+
+  // Merge palettes of multiple frames
+  function mergePalettes(palettes) {
+    const merged = {};
+    let paletteIndex = 0;
+
+    // '.' must be transparent and always present
+    merged['.'] = null;
+
+    for(const p of palettes) {
+      for(const [c, hex] of Object.entries(p)) {
+        if(c === '.') continue;
+        if(!Object.values(merged).includes(hex)) {
+          if(paletteIndex >= 25) {
+            throw new Error("Too many total colors (>25) across frames.");
+          }
+          // assign next available char
+          let newChar = String.fromCharCode(65 + paletteIndex++);
+          merged[newChar] = hex;
+        }
+      }
+    }
+    return merged;
+  }
+
+  // Map old palette chars to new palette chars
+  function remapFrameString(frameString, oldPalette, newPalette) {
+    const newCharForOldChar = {};
+    for(const [oldChar, oldHex] of Object.entries(oldPalette)) {
+      if(oldChar === '.') {
+        newCharForOldChar[oldChar] = '.';
+      } else {
+        // find new char for same hex
+        const newChar = Object.entries(newPalette).find(([k,v]) => v === oldHex)[0];
+        newCharForOldChar[oldChar] = newChar;
+      }
+    }
+    return frameString.split('').map(c => newCharForOldChar[c]).join('');
+  }
+
+  // Build final Tamagotchi sprite pack object
+  function buildSpritePack(framesByAnim, w, h) {
+    // Gather all palettes
+    const allPalettes = framesByAnim.flatMap(f => f.palettes);
+    const mergedPalette = mergePalettes(allPalettes);
+
+    const framesObj = {};
+    framesByAnim.forEach(anim => {
+      framesObj[anim.name] = anim.frames.map((frameData, i) => {
+        return remapFrameString(frameData.frameString, frameData.palette, mergedPalette);
+      });
+    });
+
+    return {
+      name: "converted-creature",
+      w,
+      h,
+      palette: mergedPalette,
+      frames: framesObj
+    };
+  }
+
+  // Parse animations textarea input, return array of {name,count}
+  function parseAnimations(input) {
+    const lines = input.trim().split('\n');
+    const arr = [];
+    for(const line of lines) {
+      const m = line.match(/^(\w+)\s*:\s*(\d+)$/);
+      if(!m) throw new Error(`Invalid animation line: "${line}" (use name:count)`);
+      arr.push({name: m[1], count: Number(m[2])});
+    }
+    return arr;
+  }
+
+  // Main generation function
+  function generateSpritePack() {
+    if(!loadedImage) {
+      throw new Error("No image loaded");
+    }
+    const frameW = Number(frameWidthInput.value);
+    const frameH = Number(frameHeightInput.value);
+    if(frameW < 1 || frameH < 1) {
+      throw new Error("Frame width and height must be positive");
+    }
+
+    const imgW = loadedImage.width;
+    const imgH = loadedImage.height;
+
+    if(imgW % frameW !== 0 || imgH % frameH !== 0) {
+      console.warn("Warning: image dimensions are not exact multiples of frame size.");
+    }
+
+    const animDefs = parseAnimations(animation

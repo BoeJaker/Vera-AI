@@ -1,0 +1,18 @@
+{
+  "ignored_issues": [],
+  "resolved_issues": [
+    {
+      "type": "orphaned_nodes",
+      "key": "orphaned_['Entity', 'Document']",
+      "resolution_method": "auto",
+      "timestamp": "2025-10-09T15:13:47.933095"
+    },
+    {
+      "type": "orphaned_nodes",
+      "key": "orphaned_['Entity', 'WebAsset', 'Script']",
+      "resolution_method": "manual: Run: MATCH (n) WHERE NOT (n)--() DELETE n",
+      "timestamp": "2025-10-09T15:14:56.561842"
+    }
+  ],
+  "custom_fixes": {}
+}
