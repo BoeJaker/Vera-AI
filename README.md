@@ -6,13 +6,13 @@
 
 
 
-## What is Vera? 
-**A video and audio introduciton**
+<!-- ## What is Vera? 
+**A video and audio introduciton** -->
 <!-- 
 [![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)   -->
 
 <p align="center">
-  <a href="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
+  <a href="https://youtu.be/a3smyPocYZ8"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
 </p>
 
 📺 Follow the above linkn to view an 8 minute video giving a basic overview of Vera.  
@@ -21,7 +21,7 @@
 
 <!-- 📖 -->
 
-## Introduction
+## Introduction: What is Vera?
 
 At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
@@ -50,19 +50,19 @@ Vera’s architecture distinguishes between **LLMs** and **Agents**, each operat
 #### Large Language Models (LLMs)
 
 LLMs are the foundational language engines performing natural language understanding and generation. Vera uses several LLMs, each specialized by size, speed, and reasoning ability:
-  
-- **Fast LLMs:** Smaller, optimized for quick, straightforward responses.
+
+- **Fast LLMs:** Smaller, generalized text models, optimized for quick straightforward responses.
     
-- **Intermediate LLMs:** Larger models that balance speed and reasoning capacity.
+- **Intermediate LLMs:** Larger generalized text models that balance speed and reasoning capacity.
     
-- **Deep LLMs:** Large, resource-intensive models suited for complex reasoning and extended dialogues.
+- **Deep LLMs:** Large, resource-intensive text models suited for complex reasoning and extended dialogues.
     
-- **Specialized Reasoning LLMs:** Models fine-tuned or architected specifically for heavy logical processing and multi-step deduction.
+- **Specialized Reasoning LLMs:** Models fine-tuned or architected specifically for heavy logical textual processing and multi-step deduction.
     
 
 Each LLM level provides different trade-offs between speed, resource use, and depth of reasoning. Models can be upgraded in-place meaning when a new model is released it is plug-and-play so to speak. The memories will carry over as if nothing changed.
 
-#### How Levels Interact
+##### How Levels Interact
 
 - Lower-level LLMs handle quick, direct responses and routine tasks.
     
@@ -87,14 +87,44 @@ Agents are **LLM instances configured with augmented capabilities**, including m
     
 These LLMs & Agents can communicate via shared memory and coordinate through a dynamic 
 
+
+#### Micro Models
+- **Micro Models:** Tiny models, specialized to complete one task or read a particular dataset. Can be built and trained on a case-by-case basis. Capable of massive parallel reasoning. 
+
+
+
+
+### 2. Memories
+
+Session
+
+Node
+
+Knowledge Base
+
+Ingestor
+
+Enricher
+
+
+### 3. Tools
+
+### 4. Orchestration
+
 ---
 
-### 2. Central Executive Orchestrator
+## Core Components
+
+---
+
+### 1. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**
 
 ---
 
-### 3. Proactive Background Reflection
+### 2. Proactive Background Reflection
+
+[Proactive Background Reflection Documentation](<Vera Assistant Docs/Central Executive Orchestrator.md>)
 
 Vera maintains a **Focus Manager** that continuously evaluates system priorities, context, and pending goals. During idle moments, it generates **proactive thoughts**—such as reminders, hypotheses, or plans—that enhance its understanding and readiness for future interactions.
 
@@ -110,12 +140,12 @@ This ongoing background reflection helps Vera:
     
 ---
 
-### 4. Memory Architecture
+### 3. Memory Architecture
 
 ![Memory UI](images/memory_ui.jpg)
 <i>Above: The memory explorer </i>
 
-[Memory Documentation](<Memory/memory.md>)
+[Memory Documentation](<Memory/memory.md>) ⚠
 
 The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
 
@@ -187,7 +217,7 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 *   **Implementation:** An optional JSONL stream logging sessions, queries, memory creations, and promotion events.
 *   **Content:** Raw, timestamped logs of system activity.
 
-### Layer 5: Knowledge Base
+#### Layer 5: Knowledge Base
 
 *   **Purpose:** External source of truth
 *   **Implementation:** HTTP / API calls to external services, via requests to resolve data from archives like OHLCV, OWSAP, etc
@@ -203,7 +233,7 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 
 This architecture ensures Vera can fluidly operate in the moment while continuously building a structured, retrievable, and intelligent knowledge base, capable of learning from its entire lived experience.
 
-#### **4.1 Advanced Capability: The Macro Buffer**
+#### **3.1 Advanced Capability: The Macro Buffer**
 
 The Macro Buffer is a dynamic, query-time process that constructs a rich context window by leveraging Vera's entire history. It is not a permanent storage layer but a powerful retrieval mechanism.
 
@@ -211,7 +241,7 @@ The Macro Buffer is a dynamic, query-time process that constructs a rich context
 *   **How it Works:** As described in Layer 3's advanced retrieval, it uses Graph-Accelerated Search to efficiently find relevant sessions and perform a targeted, multi-collection vector search.
 *   **Benefit:** It allows Vera to answer complex, cross-sessional questions like, "What were all the challenges we faced when integrating service X?" by pulling together notes from initial research, debugging logs, and the final summary document.
 
-#### **4.2 Memory Explorer**
+#### **3.2 Memory Explorer**
 #in-production
 
 **The Cartographer of Consciousness: Mapping the Labyrinth of Thought**
@@ -230,7 +260,7 @@ By rendering the invisible architecture of memory into explorable visual spaces,
 
 ---
 
-### 5. [[ToolChain Planner]]
+### 4. [[ToolChain Planner]]
 **Automated Multi-Step Tool Orchestration**
 
 [ToolChain Documentation](<Vera Assistant Docs/Toolchain Planner.md>)
@@ -367,24 +397,24 @@ This comprehensive toolset architecture enables Vera to break down high-level go
 Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, which uses deep reasoning to break down complex queries into executable sequences.
 
 ---
-### 6. Babelfish
+### 5. Babelfish
 
 [Babelfih Documentation](<Vera Assistant Docs/Babelfish.md>)
 
-Babelfish is a universal communication toolkit for AI agents and distributed systems.
-It enables your agent to speak any digital protocol — from HTTP and WebSockets, to MQTT, SSH, IRC, LoRa, Matrix, Slack, and even experimental transports like WebRTC and QUIC/HTTP3.
+**a universal communication toolkit for AI agents and distributed systems.** 
+It enables your agent to **speak any digital protocol** — from HTTP and WebSockets, to MQTT, SSH, IRC, LoRa, Matrix, Slack, and even experimental transports like WebRTC and QUIC/HTTP3.
 
-At its core, Babelfish acts like a networking “translator”:
+At its core, Babelfish acts like a **networking “translator”**:
 
-Every protocol looks the same to the agent (open → send → receive → close).
-
-The agent can freely combine multiple carriers into hybrid tunnels (multi-modal VPNs).
-
-Protocols are grouped into layers, similar to a networking stack, for modularity and extensibility.
+- Every protocol looks the same to the agent (`open → send → receive → close`).
+    
+- The agent can freely **combine multiple carriers** into hybrid tunnels (multi-modal VPNs).
+    
+- Protocols are grouped into **layers**, similar to a networking stack, for modularity and extensibility.
 
 ---
 
-### 7. Self-Modifying Code
+### 6. Self-Modifying Code
 
 **Autonomous Evolution Through Continuous Integration**
 
@@ -600,28 +630,16 @@ A system for mapping any corpus, including the internet, within the memory of Ve
 #in-developmet 
 A system for overall background processing management 
 
-## 3. [Optimiser](/Agents/Agent - Optimiser)
+## 3. [Optimiser](<Agents/Agent - Optimiser>)
 A System for optimizing prompts, thought processes and workflows
 
-## 4. [Babelfish](Babelfish)
-#in-developmet 
-**a universal communication toolkit for AI agents and distributed systems.** 
-It enables your agent to **speak any digital protocol** — from HTTP and WebSockets, to MQTT, SSH, IRC, LoRa, Matrix, Slack, and even experimental transports like WebRTC and QUIC/HTTP3.
 
-At its core, Babelfish acts like a **networking “translator”**:
-
-- Every protocol looks the same to the agent (`open → send → receive → close`).
-    
-- The agent can freely **combine multiple carriers** into hybrid tunnels (multi-modal VPNs).
-    
-- Protocols are grouped into **layers**, similar to a networking stack, for modularity and extensibility.
-## 6. Security Analyser
+## 4. Security Analyser
 #in-developmet 
 Dynamic security analysis toolkit
 
 Pulls from knowledge bases and memory to construct the most appropriate test on-the-
-## 7. Memory Explorer
-#in-developmet 
+
 
 ---
 # Requirements
