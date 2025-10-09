@@ -1,5 +1,7 @@
 #python #agentic_ai #llm 
 
+<span align="center">
+
 # **Vera:** Une âme sans corps
 
 ## A Self-Modifying Multi-Agent Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
@@ -13,12 +15,17 @@
 
 <p align="center">
   <a href="https://youtu.be/a3smyPocYZ8" target="_blank"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
+
 </p>
+<span align="center">
 
-📺 Follow the above linkn to view an 8 minute video giving a basic overview of Vera.  
+📺 Follow the above link for an 8 minute video overview of Vera.  
 
-🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
 
+</span>
+
+</span>
 <!-- 📖 -->
 
 ## Introduction: What is Vera?
