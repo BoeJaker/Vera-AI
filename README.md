@@ -6,12 +6,21 @@
 
 
 
-## Introduction Video
+## What is Vera? 
+**A video and audio introduciton**
+<!-- 
+[![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)   -->
 
-[![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)  
-An 8 minute video giving a basic overview of Vera.
+<p align="center">
+  <a href="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
+</p>
+
+📺 Follow the above linkn to view an 8 minute video giving a basic overview of Vera.  
 
 🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.
+
+<!-- 📖 -->
+
 ## Introduction
 
 At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
