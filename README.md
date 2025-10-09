@@ -103,8 +103,6 @@ This ongoing background reflection helps Vera:
     
 - Improve self-awareness and performance over time
     
-Of course. Here is the integrated Memory Architecture section, incorporating the Macro Buffer and Graph-Accelerated Search as a core capability that enhances Layer 3.
-
 ---
 
 ### 4. Memory Architecture
@@ -418,7 +416,6 @@ Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, wh
 ### 7. Self-Modifying Code
 
 Vera can generate, test, and modify its own code modules using built-in program synthesis capabilities. This allows it to extend its functionality autonomously without external intervention, adapting to new challenges or environments.
-Absolutely! Here’s a clean, clear **Requirements** section you can add to your README for Vera, covering Python version, dependencies, and optional system prerequisites:
 
 # Roadmap
 ## 1. [[Corpus Crawler]]
