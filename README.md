@@ -5,6 +5,7 @@
 
 [![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)
 
+
 ## Introduction
 
 At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a sophisticated framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
@@ -107,6 +108,8 @@ Of course. Here is the integrated Memory Architecture section, incorporating the
 ---
 
 ### 4. Memory Architecture
+
+![Memory UI](images/memory_ui.jpg)
 
 The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
 
