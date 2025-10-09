@@ -9,8 +9,9 @@
 ## Introduction Video
 
 [![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)
+An 8 minute video giving a basic overview of Vera.
 
-
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.
 ## Introduction
 
 At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
@@ -82,6 +83,8 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 ### 2. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**
 
+---
+
 ### 3. Proactive Background Reflection
 
 Vera maintains a **Focus Manager** that continuously evaluates system priorities, context, and pending goals. During idle moments, it generates **proactive thoughts**—such as reminders, hypotheses, or plans—that enhance its understanding and readiness for future interactions.
@@ -101,19 +104,21 @@ This ongoing background reflection helps Vera:
 ### 4. Memory Architecture
 
 ![Memory UI](images/memory_ui.jpg)
+The memory explorer
 
 The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
 
 #### **Architecture Overview**
 
-Vera's memory is structured into four distinct layers, each serving a specific purpose in the cognitive process:
+Vera's memory is structured into four distinct layers, excluding Layer 5 each layer contains all the data from the previous, each serving a specific purpose in the cognitive process:
 
 *   **Layer 1: Short-Term Buffer** - The agent's immediate conversational context.
-*   **Layer 2: Working Memory** - Its private scratchpad for a single task or session.
+*   **Layer 2: Working Memory** - Its private scratchpad for a single task, session or memory.
 *   **Layer 3: Long-Term Knowledge** - Its persistent, interconnected library of facts and insights.
 *   **Layer 4: Archive** - A complete, immutable record of activity.
+*   **Layer 5: External Knowledge Bases** - 
 
-A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2 and 3 to enable unified, cross-sessional reasoning.
+A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2, 3 & 5 to enable unified, cross-sessional, highly enriched reasoning.
 
 #### **Layer 1: Short-Term Context Buffer**
 
@@ -123,7 +128,7 @@ A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2 an
 
 #### **Layer 2: Working Memory (Session Context)**
 
-*   **Purpose:** To provide an isolated "scratchpad" for the agent's internal monologue, observations, and findings during a specific task, problem, or session. This allows for exploratory thinking without polluting long-term knowledge.
+*   **Purpose:** To provide an isolated "scratchpad" for the agent's internal monologue, observations, and findings during a specific task, problem, or session or recollection. This allows for exploratory thinking.
 *   **Implementation:**
     *   **Neo4j (Structure):** A `Session` node is created and linked to relevant entities in the main graph (e.g., `(Session)-[:FOCUSED_ON]->(ProjectX)`).
     *   **ChromaDB (Content):** A dedicated Chroma collection (`session_<id>`) is created to store the **full text** of the agent's thoughts, notes, and relevant snippets generated during this session.
@@ -133,13 +138,16 @@ A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2 an
 
 *   **Purpose:** To serve as the agent's persistent, semantically searchable library of validated knowledge. This is the core of its "intelligence," built over time through a careful process of promotion and curation.
 *   **Implementation:**
+    Layers 1 and two are continually promoted into Layer 3 before session end
     *   **ChromaDB (Content & Semantic Search):** The primary `long_term_docs` collection stores the **full text** of all important information: documents, code examples, notes, and promoted "thoughts." Each entry contains metadata that points back to the Neo4j graph.
-    *   **Neo4j (Context & Relationships):** The graph stores all entities (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma.
+    *   **Neo4j (Context & Relationships):** The graph stores all memories, entities & insights (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma.
 *   **How It Works (Basic Retrieval):**
     1.  A semantic query is performed on the `long_term_docs` Chroma collection.
     2.  The search returns the most relevant text passages and their metadata, including a `neo4j_id`.
     3.  This ID is used to fetch the corresponding node and its entire network of relationships from Neo4j.
     4.  The agent receives both the retrieved text *and* its full relational context, enabling deep, multi-hop reasoning.
+
+#### Data Retrieval
 
 *   **How It Works (Advanced Macro Retrieval):** For comprehensive questions, Vera uses a **Graph-Accelerated Search** to power its **Macro Buffer**.
     1.  **Graph-Based Pre-Filtering:** The query is analyzed for key entities. Neo4j finds all `Session` nodes related to these topics.
@@ -152,15 +160,15 @@ A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2 an
     2.  **Targeted Vector Search:** The original query is executed semantically, but only against the `long_term_docs` collection and the specific `session_*` collections identified by the graph.
     3.  **Result:** This provides a unified context window from both long-term knowledge and historically relevant sessions, enabling true associative recall.
 
--  **Concepts**
 
 #### **The Promotion Process: From Thought to Knowledge**
 
 Promotion is the key mechanism for learning. It transforms ephemeral session data into permanent, connected knowledge.
-1.  **Identification:** A "thought" or finding in a session collection (`session_<id>`) is deemed valuable for long-term retention.
-2.  **Curation:** The agent creates a new `Memory` or `Insight` node in the **Neo4j** graph.
-3.  **Linking:** This new node is linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
-4.  **Storage:** The **full text** of the "thought" is inserted into the `long_term_docs` **Chroma** collection. The metadata for this entry includes the ID of the new Neo4j node (`neo4j_id: <memory_node_id>`), permanently binding the text to its contextual graph.
+1.  **Identification:** At the moment all content is promoted to Layer 3
+<!-- A "thought" or finding in a session collection (`session_<id>`) is deemed valuable for long-term retention. -->
+2.  **Curation:** The agent creates a new `Memory`, `Entity` or `Insight` node in the **Neo4j** graph.
+3.  **Linking:** This new node is **parsed with nlp** & linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
+4.  **Storage:** The **full text** of the "thought" is inserted into the sessions **Chroma** collection. The metadata for this entry includes the ID of the new Neo4j node (`neo4j_id: <memory_node_id>`), permanently binding the text to its contextual graph.
 
 #### **Layer 4: Archive & Telemetry Stream**
 
@@ -174,14 +182,6 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 *   **Implementation:** HTTP / API calls to external services, via requests to resolve data from archives like OHLCV, OWSAP, etc
 *   **Content:** Typically json blobs
 
-#### **3.x Advanced Capability: The Macro Buffer**
-
-The Macro Buffer is a dynamic, query-time process that constructs a rich context window by leveraging Vera's entire history. It is not a permanent storage layer but a powerful retrieval mechanism.
-
-*   **Purpose:** To break down the isolation between sessions, allowing Vera to connect ideas, hypotheses, and information that were originally recorded in different contexts. This is the foundation for associative reasoning and holistic problem-solving.
-*   **How it Works:** As described in Layer 3's advanced retrieval, it uses Graph-Accelerated Search to efficiently find relevant sessions and perform a targeted, multi-collection vector search.
-*   **Benefit:** It allows Vera to answer complex, cross-sessional questions like, "What were all the challenges we faced when integrating service X?" by pulling together notes from initial research, debugging logs, and the final summary document.
-
 #### **Summary of Data Flow**
 
 1.  **Conversation happens** -> Stored in Layer 1 (Short-Term Buffer).
@@ -192,55 +192,209 @@ The Macro Buffer is a dynamic, query-time process that constructs a rich context
 
 This architecture ensures Vera can fluidly operate in the moment while continuously building a structured, retrievable, and intelligent knowledge base, capable of learning from its entire lived experience.
 
+#### **3.1 Advanced Capability: The Macro Buffer**
+
+The Macro Buffer is a dynamic, query-time process that constructs a rich context window by leveraging Vera's entire history. It is not a permanent storage layer but a powerful retrieval mechanism.
+
+*   **Purpose:** To break down the isolation between sessions, allowing Vera to connect ideas, hypotheses, and information that were originally recorded in different contexts. This is the foundation for associative reasoning and holistic problem-solving.
+*   **How it Works:** As described in Layer 3's advanced retrieval, it uses Graph-Accelerated Search to efficiently find relevant sessions and perform a targeted, multi-collection vector search.
+*   **Benefit:** It allows Vera to answer complex, cross-sessional questions like, "What were all the challenges we faced when integrating service X?" by pulling together notes from initial research, debugging logs, and the final summary document.
+
+#### **3.2 Memory Explorer**
+#in-production
+
+**The Cartographer of Consciousness: Mapping the Labyrinth of Thought**
+
+The Memory Explorer serves as **the observatory for Vera's cognitive landscape**—a sophisticated visualization system that transforms complex memory structures into interactive, navigable knowledge graphs. It bridges the abstract relationships within Vera's mind with tangible visual representations, making the architecture of intelligence both accessible and explorable.
+
+This system reveals the **living topology of memory**, where Neo4j graph relationships form the structural skeleton and ChromaDB vector stores provide the semantic flesh. Through dynamic visualization, it exposes how concepts connect, how knowledge evolves over time, and how different memory layers interact to form coherent understanding.
+
+The Explorer enables both **macro-scale pattern recognition** and **micro-scale relationship analysis**, allowing researchers to trace idea genealogies across sessions, identify emerging knowledge clusters, and understand how Vera's understanding matures through interaction. It's not merely a debugging tool—it's a window into the cognitive processes that transform isolated facts into interconnected wisdom.
+
+By rendering the invisible architecture of memory into explorable visual spaces, the Memory Explorer provides unprecedented insight into how an AI system organizes, connects, and evolves its understanding of the world—revealing the hidden structures that make autonomous intelligence possible.
+
 ---
-### 5. Tool Integration
 
-Vera is equipped with a **versatile and extensible toolset** that empowers it to interact seamlessly with external systems, environments, and web services. These tools enable Vera to deconstruct complex tasks into discrete actionable steps and execute them effectively.
+The Memory Explorer serves as the primary interface for understanding and interacting with Vera's complex memory architecture, providing both intuitive visualization and powerful analytical capabilities for memory management and optimization.
+```
 
-[[Toolkit]]
 
-#### Core Capabilities
 
-- **Google Calendar and Scheduling APIs**  
-    Vera can create, update, and manage calendar events programmatically, enabling automated scheduling and reminders.
+## 5. Tool Integration
+
+Vera is equipped with a **versatile and extensible toolset** powered by Model Context Protocol (MCP) servers, enabling seamless interaction with external systems, environments, and web services. These tools allow Vera to deconstruct complex tasks into discrete actionable steps and execute them efficiently through standardized, bidirectional communication channels.
+
+### MCP Server Architecture
+
+Vera's toolkit operates through **MCP servers** — lightweight, protocol-compliant services that expose capabilities as resources, tools, and prompts. This architecture provides:
+
+- **Standardized Tool Interface**: All tools follow MCP specifications for consistent invocation and error handling
+- **Extensibility**: New tools can be added by registering additional MCP servers without modifying core logic
+- **Bidirectional Communication**: Tools can stream results, handle long-running operations, and provide progress updates
+- **Resource Discovery**: Vera can dynamically discover available tools and their schemas at runtime
+- **Error Resilience**: MCP's structured error handling ensures graceful degradation when tools fail
+
+---
+
+### Core Capabilities
+
+#### System & Environment
+- **Shell Command Execution**  
+    Execute shell commands and scripts across Unix/Linux, macOS, and Windows platforms. Vera captures output, error codes, and streaming results for real-time feedback.
     
-- **Shell and Python Code Execution**  
-    Dynamic execution of shell commands and Python snippets allows Vera to perform system-level operations or computational tasks on the fly.
+- **Python Code Execution**  
+    Run Python snippets and scripts dynamically within isolated or shared execution contexts. Supports library imports, async operations, and computational tasks on demand.
     
 - **File System Manipulation**  
-    Reading, writing, and managing files lets Vera inspect and modify data stored locally, essential for configuration, logging, or content generation.
+    Read, write, append, and delete files with support for binary and text modes. Includes directory traversal, permission checks, and atomic operations for safe data handling.
     
-- **Web Searching and Scraping**  
-    By integrating web search and scraping capabilities, Vera can retrieve fresh data and insights from the internet as needed.
+- **System Introspection**  
+    Query installed programs, loaded Python modules, environment variables, and system properties across different operating systems. Enables Vera to understand and adapt to host capabilities.
+
+#### Data & Memory
+- **Hybrid Memory Query & Management**  
+    Access long-term graph-based memory (Neo4j) and working memory stores (Chroma vectors). Retrieve, summarize, and dynamically update contextual information with semantic search and graph traversal.
     
-- **Installed Program Enumeration**  
-    Vera can list installed software across different platforms, providing awareness of the host environment for better decision-making.
+- **NLP-Powered Entity Extraction**  
+    Leverage the hybrid memory's NLP pipeline to extract entities, relationships, and contextual metadata from text without requiring explicit schema definition.
+
+#### Scheduling & Calendar Integration
+- **Google Calendar API**  
+    Create, update, delete, and query calendar events. Support for recurring events, attendee management, reminders, and timezone-aware scheduling.
     
-- **Memory Query and Management**  
-    Access to long-term and working memory stores allows Vera to recall, summarize, and update relevant contextual information dynamically.
+- **Project & Task Management**  
+    Retrieve available projects, list tasks, and track progress. Integrates with memory system for context-aware task recommendations.
+
+#### Web & Information Retrieval
+- **Web Searching**  
+    Perform live searches using DuckDuckGo or other search providers. Retrieve top results with metadata, snippets, and relevance scoring.
     
+- **Web Scraping & Content Retrieval**  
+    Fetch and parse web pages, extract structured data, and monitor content changes. Respects robots.txt and rate-limiting policies.
+
+#### Language Model Operations
+- **Fast LLM Queries**  
+    Execute quick, lightweight queries optimized for review, extraction, summarization, and classification tasks. Uses smaller models or prompt-optimized endpoints for speed.
+    
+- **Deep LLM Analysis**  
+    Perform thorough, in-depth language model queries for complex reasoning, synthesis, multi-step analysis, and creative problem-solving. Routes to larger or specialized models.
+
+#### Self-Inspection & Debugging
+- **Source Code Inspection**  
+    Access Vera's own codebase for self-reflection, debugging, and capability auditing. Supports both full-file reads and targeted section extraction.
+    
+- **MCP Server Enumeration**  
+    List all connected MCP servers, their exposed tools, schemas, and current status. Useful for runtime capability discovery and troubleshooting.
 
 ---
 
-#### Key Tools Included
+### MCP Tool Registry
 
-|Tool Name|Description|
-|---|---|
-|Add Google Calendar Event|Programmatically add events to a connected Google Calendar.|
-|List Projects|Retrieve a list of available projects for context or task assignment.|
-|Query Fast LLM|Perform quick, concise language model queries focused on review, extraction, and summarization.|
-|Query Deep LLM|Execute detailed and in-depth language model queries for thorough analysis or summarization.|
-|Bash Shell|Execute shell commands or scripts and capture their output.|
-|Run Python Code|Execute Python code snippets dynamically within the environment.|
-|Read File|Access and read file contents given a valid file path.|
-|Write File|Write specified content to a file, supporting overwrite or append operations.|
-|List Python Modules|Enumerate all currently loaded Python modules to understand runtime dependencies.|
-|List Installed Programs|List installed software packages or applications, supporting Windows, Linux, and macOS.|
-|Review Output|Analyze output relative to a query to provide feedback or improvements.|
-|Search Memory|Query the agent’s memory store to retrieve related information based on similarity.|
-|DuckDuckGo Web Search|Perform live web searches using DuckDuckGo and return top results.|
-|Inspect System Source Code|Access the agent’s own source code to facilitate self-reflection or debugging.|
+#### System & Environment Tools
 
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Execute Shell Command** | `stdio:bash` | `command: string`, `timeout?: number`, `cwd?: string` | `{ stdout: string, stderr: string, exit_code: number }` | Run shell commands and capture output. Supports piping, redirection, and environment variable injection. |
+| **Run Python Code** | `stdio:python` | `code: string`, `timeout?: number`, `context?: object` | `{ result: any, stdout: string, stderr: string }` | Execute Python snippets with access to shared state and libraries. |
+| **Read File** | `stdio:fs` | `path: string`, `encoding?: string` | `{ content: string, size: number, mtime: number }` | Read file contents with encoding support and metadata. |
+| **Write File** | `stdio:fs` | `path: string`, `content: string`, `mode?: "write"\|"append"` | `{ path: string, size: number, success: boolean }` | Write or append data to files atomically. |
+| **List Directory** | `stdio:fs` | `path: string`, `recursive?: boolean` | `{ files: string[], dirs: string[], total: number }` | Enumerate directory contents with optional recursive traversal. |
+| **List Installed Programs** | `stdio:system` | `platform?: "windows"\|"linux"\|"macos"` | `{ programs: {name: string, version: string}[], count: number }` | Discover installed software packages and applications. |
+| **List Python Modules** | `stdio:system` | `filter?: string` | `{ modules: string[], count: number }` | Enumerate loaded Python modules with optional filtering. |
+| **Get System Info** | `stdio:system` | `keys?: string[]` | `{ cpu: string, memory: string, os: string, hostname: string, ... }` | Query system properties like CPU, memory, OS, and network info. |
+
+#### Memory & Knowledge Tools
+
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Search Long-Term Memory** | `stdio:memory` | `query: string`, `limit?: number`, `entity_type?: string` | `{ results: Entity[], relationships: Edge[], clusters: object }` | Perform semantic and graph-based searches across long-term memory. |
+| **Query Session Memory** | `stdio:memory` | `session_id: string`, `query?: string`, `limit?: number` | `{ memories: MemoryItem[], focus_context: any[] }` | Retrieve working memory for a specific session with semantic search. |
+| **Extract & Link Entities** | `stdio:memory` | `session_id: string`, `text: string`, `auto_promote?: boolean` | `{ entities: Entity[], relations: Relation[], clusters: object }` | Run NLP extraction pipeline on text and link results to session graph. |
+| **Promote Memory to Long-Term** | `stdio:memory` | `session_id: string`, `memory_ids: string[]`, `entity_anchor?: string` | `{ promoted: MemoryItem[], linked_to: string }` | Move working memories to persistent long-term storage. |
+| **List Subgraph Seeds** | `stdio:memory` | (none) | `{ entity_ids: string[], entity_types: string[], sessions: string[] }` | Discover available starting points for knowledge graph exploration. |
+| **Extract Subgraph** | `stdio:memory` | `seed_entity_ids: string[]`, `depth?: number` | `{ nodes: Node[], relationships: Edge[], summary: string }` | Extract connected subgraph around seed entities with optional depth limit. |
+
+#### Scheduling & Calendar Tools
+
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Add Calendar Event** | `stdio:google-calendar` | `title: string`, `start_time: string`, `end_time: string`, `attendees?: string[]`, `description?: string` | `{ event_id: string, link: string, success: boolean }` | Create a new event on the connected Google Calendar. |
+| **Update Calendar Event** | `stdio:google-calendar` | `event_id: string`, `updates: object` | `{ event_id: string, updated_fields: string[], success: boolean }` | Modify existing calendar events. |
+| **Delete Calendar Event** | `stdio:google-calendar` | `event_id: string` | `{ event_id: string, success: boolean }` | Remove events from the calendar. |
+| **List Calendar Events** | `stdio:google-calendar` | `start_time?: string`, `end_time?: string`, `limit?: number` | `{ events: CalendarEvent[], count: number }` | Query calendar events within a time range. |
+| **List Projects** | `stdio:project-mgmt` | `filter?: string`, `status?: string` | `{ projects: Project[], count: number }` | Retrieve available projects with metadata. |
+| **Get Project Tasks** | `stdio:project-mgmt` | `project_id: string`, `status?: string` | `{ tasks: Task[], total: number, completed: number }` | Query tasks within a project with status filtering. |
+
+#### Web & Information Tools
+
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Web Search** | `stdio:web-search` | `query: string`, `limit?: number`, `engine?: string` | `{ results: {title: string, url: string, snippet: string}[], total: number }` | Perform live web searches and return top results with snippets. |
+| **Fetch Web Content** | `stdio:web-scrape` | `url: string`, `format?: "html"\|"text"\|"markdown"` | `{ content: string, title: string, metadata: object }` | Retrieve and parse web page content in various formats. |
+| **Monitor URL Changes** | `stdio:web-scrape` | `url: string`, `check_interval?: number` | `{ changed: boolean, diff?: string, last_check: number }` | Track and detect changes to web content over time. |
+
+#### Language Model Tools
+
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Query Fast LLM** | `stdio:llm-fast` | `prompt: string`, `context?: string`, `max_tokens?: number` | `{ response: string, tokens_used: number, model: string }` | Execute quick LLM queries optimized for speed and efficiency. Common uses: extraction, classification, summarization, review. |
+| **Query Deep LLM** | `stdio:llm-deep` | `prompt: string`, `context?: string`, `reasoning_budget?: number` | `{ response: string, reasoning: string, tokens_used: number, model: string }` | Run in-depth LLM queries for complex analysis and multi-step reasoning. |
+| **LLM Batch Process** | `stdio:llm-batch` | `prompts: string[]`, `mode?: "fast"\|"deep"` | `{ responses: string[], total_tokens: number, processing_time: number }` | Process multiple queries efficiently in batch mode. |
+
+#### Self-Inspection & Debugging Tools
+
+| Tool Name | MCP Server | Input Schema | Output | Description |
+|-----------|-----------|--------------|--------|-------------|
+| **Read Source Code** | `stdio:self-inspect` | `file_path?: string`, `section?: string` | `{ content: string, language: string, lines: number }` | Access Vera's own source code for self-reflection and debugging. |
+| **List MCP Servers** | `stdio:mcp-admin` | `include_schemas?: boolean` | `{ servers: {name: string, status: string, tools: string[]}[], total: number }` | Enumerate all connected MCP servers and their capabilities. |
+| **Reload MCP Server** | `stdio:mcp-admin` | `server_name: string` | `{ server_name: string, reloaded: boolean, status: string }` | Restart or reload an MCP server (useful for development). |
+| **MCP Diagnostics** | `stdio:mcp-admin` | `server_name?: string` | `{ diagnostics: object, uptime: number, errors: string[] }` | Query MCP server health, performance metrics, and error logs. |
+
+---
+
+### Tool Usage Patterns
+
+#### Tool Chaining
+Vera chains multiple tools to accomplish complex workflows:
+```
+1. Query Memory → Search for relevant context
+2. Execute Code → Process or analyze the retrieved data
+3. Write File → Save results
+4. Add Calendar → Schedule a follow-up
+5. Query LLM → Generate a summary
+```
+
+#### Conditional Tool Selection
+Vera selects tools based on task complexity:
+- **Fast LLM** for quick reviews, classifications, summaries
+- **Deep LLM** for complex reasoning, synthesis, planning
+- **Shell/Python** for deterministic, computational tasks
+
+#### Error Handling & Fallback
+- Tools that fail are retried with adjusted parameters
+- Alternative tools are selected if primary tool is unavailable
+- MCP server status is continuously monitored for reliability
+
+#### Async & Streaming
+Long-running tools (web scraping, batch LLM queries, file processing) use MCP's streaming capabilities to provide real-time progress and allow cancellation.
+
+---
+
+### Extensibility
+
+Adding new MCP servers:
+
+1. **Implement the MCP Interface**: Create a server that exposes tools, resources, and prompts via the MCP protocol
+2. **Register with Vera**: Add server configuration to Vera's MCP client registry
+3. **Dynamic Discovery**: Vera automatically discovers new tools at runtime
+4. **Version Management**: Track tool versions and breaking changes in the memory system
+
+Example new server types:
+- **Database Query Server**: SQL, NoSQL, graph database operations
+- **Email & Messaging**: Send/receive emails, Slack messages, notifications
+- **API Integration**: Stripe, Twilio, HubSpot, or custom business APIs
+- **Version Control**: Git operations, code review, CI/CD pipeline triggers
+- **Specialized ML Tools**: Custom model inference, data preprocessing pipelines
 ---
 
 #### Playwright Toolset: Web Automation and Interaction
