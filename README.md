@@ -1,18 +1,25 @@
 #python #agentic_ai #llm 
-### A Self-Modifying Multi-Agent Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
 
-**Une âme sans corps**
+# **Vera:** Une âme sans corps
+
+## A Self-Modifying Multi-Agent Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
+
+
+
+## Introduction Video
 
 [![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)
 
 
 ## Introduction
 
-At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a sophisticated framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
+At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
-Vera orchestrates multiple large language models (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve comprehensive outcomes. This distributed agent design enables parallel specialization—some agents focus on rapid query response, others on strategic forward planning—while sharing a unified memory and goal system to maintain coherence across operations.
+Vera **orchestrates multiple large language models** (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve comprehensive outcomes. This distributed agent design enables parallel specialization—some agents focus on rapid query response, others on strategic forward planning—while sharing a unified memory and goal system to maintain coherence across operations.
 
-A hallmark of Vera’s architecture is its capacity for **proactive background processing**. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to orchestrate perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts. The strategic planning layer oversees long-term goals, enabling Vera to anticipate user needs, generate novel insights, and refine internal models on an ongoing basis—resulting in more contextually aware, intelligent, and timely responses.
+A hallmark of Vera’s architecture is its capacity for **proactive background processing**. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to orchestrate perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts allowing it to enrich its own memories and move progress toward long-term goals forward. The strategic planning layer oversees long-term goals, enabling Vera to anticipate user needs, generate novel insights, and refine internal models on an ongoing basis—resulting in more contextually aware, intelligent, and timely responses.
+
+Vera grounds its intelligence in a highly structured, **multi-layered memory system** (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. Furthermore, the Macro Buffer mechanism leverages Graph-Accelerated Search to dynamically retrieve relevant knowledge and historical sessions, effectively breaking down isolation between contexts for comprehensive associative recall
 
 Complementing these capabilities is Vera’s integrated program synthesis and self-modification engine. This subsystem empowers Vera to **review, generate, and iteratively improve its own codebase**, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
 
@@ -874,3 +881,39 @@ Specify your license here.
 For questions, feature requests, or help, open issues on the GitHub repo or contact [[your-email@example.com](mailto:your-email@example.com)].
 
 ---
+
+### Performance Tiers
+
+| Tier | CPU | RAM | Storage | VRAM | Recommended Use |
+|------|-----|-----|---------|------|-----------------|
+| **Basic** | 8 cores | 16GB | 100GB | - | Development & testing |
+| **Standard** | 12+ cores | 32GB | 100GB | - | Production CPU build |
+| **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
+| **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
+
+### Model Compatibility
+
+| Model Type | Example Models | Memory | Use Case | Status |
+|------------|----------------|---------|----------|--------|
+| **Fast LLM** | Mistral 7B, Gemma2 2B | 4-8GB | Triage, quick tasks | ✅ Supported |
+| **Intermediate** | Gemma2 9B, Llama 8B | 8-16GB | Tool execution | ✅ Supported |
+| **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16-32GB | Complex reasoning | ✅ Supported |
+| **Specialized** | CodeLlama, Math models | Varies | Domain-specific | 🔄 Partial |
+
+### Roadmap Timeline
+
+| Quarter | Focus Areas | Key Deliverables |
+|---------|-------------|------------------|
+| **Q2 2024** | Core stabilization | Production memory system, tool chains |
+| **Q3 2024** | Advanced capabilities | Babelfish, Corpus Crawler alpha |
+| **Q4 2024** | Scaling & optimization | Scheduler, Security Analyzer |
+| **Q1 2025** | Enterprise features | Memory Explorer, cluster support |
+
+---
+
+## Known Limitations
+
+- Windows configuration requires manual adaptation
+- TTS pacing issues on slower hardware
+- LLM reasoning not visible in UI for some models
+- Resource-intensive on large knowledge graphs
