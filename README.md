@@ -12,7 +12,7 @@
 [![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)   -->
 
 <p align="center">
-  <a href="https://youtu.be/a3smyPocYZ8"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
+  <a href="https://youtu.be/a3smyPocYZ8" target="_blank"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
 </p>
 
 📺 Follow the above linkn to view an 8 minute video giving a basic overview of Vera.  
