@@ -28,7 +28,7 @@ Together, these components form a flexible, extensible AI platform designed for 
 ---
 ## Core Concepts
 
-### 0. Agents vs LLMs vs Encoders in Vera 
+### 1. Agents vs LLMs vs Encoders in Vera 
 **Multi-Level Hierarchy**
 
 Vera’s architecture distinguishes between **LLMs** and **Agents**, each operating at multiple levels of complexity and capability to handle diverse tasks efficiently.
@@ -52,6 +52,17 @@ LLMs are the foundational language engines performing natural language understan
 
 Each LLM level provides different trade-offs between speed, resource use, and depth of reasoning. Models can be upgraded in-place meaning when a new model is released it is plug-and-play so to speak. The memories will carry over as if nothing changed.
 
+#### How Levels Interact
+
+- Lower-level LLMs handle quick, direct responses and routine tasks.
+    
+- Higher-level LLMs monitor overall goals, manage focus, and coordinate lower-level LLMs activities.
+    
+- LLMs at different levels are selected dynamically depending on task complexity and required depth of reasoning.
+    
+
+This multi-level, hierarchical approach allows Vera to balance responsiveness with deep cognitive abilities, making it a flexible and powerful autonomous AI system.
+
 #### Agents
 
 Agents are **LLM instances configured with augmented capabilities**, including memory management, tool integration, task triage, and autonomous goal setting. Vera’s agents also exist at multiple levels:
@@ -64,34 +75,9 @@ Agents are **LLM instances configured with augmented capabilities**, including m
     
 - **Specialized Agents:** Agents with domain-specific expertise or enhanced reasoning modules, capable of focused tasks like code generation, calendar management, or data analysis.
     
-
-#### How Levels Interact
-
-- Lower-level agents handle quick, direct responses and routine tasks.
-    
-- Higher-level agents monitor overall goals, manage focus, and coordinate lower-level agents’ activities.
-    
-- LLMs at different levels are selected dynamically depending on task complexity and required depth of reasoning.
-    
-
-This multi-level, hierarchical approach allows Vera to balance responsiveness with deep cognitive abilities, making it a flexible and powerful autonomous AI system.
+These LLMs & Agents can communicate via shared memory and coordinate through a dynamic 
 
 ---
-
-### 1. Multi-Agent Framework
-
-Vera consists of multiple AI agents specialized for different types of reasoning:
-
-- **Fast Agent:** Handles straightforward, low-latency queries. Ideal for quick facts or simple instructions.
-    
-- **Intermediate Agent:** Deals with moderately complex tasks requiring some reasoning.
-    
-- **Deep Agent:** Dedicated to long-form reasoning, problem-solving, and complex decision-making.
-    
-- **Reasoning Agent:** Optimized for logic-intensive tasks, such as code analysis or multi-step problem solving.
-    
-
-These agents communicate via shared memory and coordinate through a dynamic **triage system** that assigns priorities and selects the best agent for a given task.
 
 ### 2. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**
