@@ -54,6 +54,25 @@ Complementing these capabilities is Vera’s integrated program synthesis and se
 Together, these components form a flexible, extensible AI platform designed for complex problem solving, adaptive decision making, and seamless interaction across diverse domains.
  
 ---
+
+## Contents:
+
+This readme will cover the following:
+* Core concepts
+* Core components
+* Requirements
+* Installation
+* Configuration
+* Usage
+* Modification
+* Performance optimisation
+* Contribution
+* Known Issue and limitations
+* Safeguarding
+* License
+
+---
+
 ## Core Concepts
 
 ### 1. Agents vs LLMs vs Encoders in Vera 
@@ -860,6 +879,8 @@ This sophisticated self-modification framework transforms Vera from a static AI 
 ### Evaluator
 ### Extractor
 ### Researcher
+### Model Trainer
+### Model Builder
 
 
 
@@ -873,38 +894,38 @@ This sophisticated self-modification framework transforms Vera from a static AI 
     Database Ingestor
     Context ingestor - gathers context from memory layers 0 & 1
 
-# Roadmap
-## 1. [[Corpus Crawler]]
+## Roadmap
+### 1. [[Corpus Crawler]]
 #in-developmet
 
 A system for mapping any corpus, including the internet, within the memory of Vera. Analogous to reading
 
-## 2. [[Scheduler]]
+### 2. [[Scheduler]]
 #in-developmet 
 A system for overall background processing management 
 
-## 3. [Optimiser](<Agents/Agent - Optimiser>)
+### 3. [Optimiser](<Agents/Agent - Optimiser>)
 A System for optimizing prompts, thought processes and workflows
 
 
-## 4. Security Analyser
+### 4. Security Analyser
 #in-developmet 
 Dynamic security analysis toolkit
 
 Pulls from knowledge bases and memory to construct the most appropriate test on-the-
 
-## Multi Modal IO
+### Multi Modal IO
 
-## 5. Whisper TTS
+### 5. Whisper TTS
 
-## 6. OCR 
+### 6. OCR 
 
-## 7. Image Recognition
+### 7. Image Recognition
 
-## 8. STT Worker
+### 8. STT Worker
 
 ---
-# Requirements
+## Requirements
 
 Vera is compatible with Windows; however, detailed configuration instructions are currently provided only for Linux, WSL, and macOS environments due to Windows’ additional setup complexities. Windows users may need to adapt the setup process accordingly.
 ### System Requirements
@@ -918,6 +939,8 @@ Vera is compatible with Windows; however, detailed configuration instructions ar
 
 -  CPU: 12 cores+ (24 hyper-threaded) 3Ghz+
 	
+- GPU: None
+
 - RAM: 16Gb - 32Gb - 150Gb
 	
 - HDD: 100Gb 
@@ -933,11 +956,21 @@ Vera is compatible with Windows; however, detailed configuration instructions ar
 	
 - HDD: 100Gb 
 
+### System Dependencies
+
+[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC/tree/main) - Contains all the below required system dependencies and additional UIs
+
+Neo4j Server
+
+Ollama
+
+ChromaDB
+
+
 ### Python Dependencies
 
 Install required Python packages via `pip`. The main dependencies include, but are not limited to:
 
-- `llama-index` (or the specific LLM library used)
     
 - `chromadb` — for vector-based long-term memory storage
     
@@ -985,7 +1018,7 @@ playwright install
 ```
 
 ---
-# Installation
+## Installation
 
 ```bash
 # Clone this repo
@@ -1045,29 +1078,39 @@ docker compose up
 
 ### Makefile
 
-A makefile is included to expidite common administration tasks
+A makefile is included to expidite common install & tasks
 
-# Configuration
-
-## Vera
-### Models
-
-## Proactive Thought (PAT)
-###
-
-## Toolchain Executor (TCE)
-###
-
-## Tools
-###
-
-## Web UI
-
-## Flags & System Commands
 ---
 
-/\<command> into the chat prompt
---<flag_name> at the command line
+## Configuration
+
+### Vera
+### Models
+
+### Proactive Thought (PAT)
+###
+
+### Toolchain Executor (TCE)
+###
+
+### Tools
+###
+
+### Web UI
+
+---
+
+## Usage
+
+### Flags & System Commands
+---
+Use:
+
+    /\<command> 
+in chat prompts
+    
+    --<flag_name> 
+at the command line
 
 | Flag  /Command  |     | Description                                        |
 | --------------- | --- | -------------------------------------------------- |
@@ -1076,6 +1119,10 @@ A makefile is included to expidite common administration tasks
 | --dumbledore    |     | Wont respond to questions - hes dead harry         |
 | --replay        |     | Replays the last plan                              |
 |                 |     |                                                    |
+
+### Makefile
+
+A makefile is included to expidite common administration tasks
 
 ## Advanced Usage and Features
 
@@ -1101,69 +1148,23 @@ for chunk in vera.stream_llm(vera.deep_llm, "Explain quantum computing."):
     print(chunk, end="")
 ```
 
-# Agents
+## Performance Optimisation
 
-Agents are specialised LLMs
-
-Executive
-Co-ordinates the specialised agents in the background
-
-Planning
-
-Scheduling
-
-Tool Execution
-
-Foucus
-# Performance Optimisation
-
-## Performance Unit Tests
+### Performance Unit Tests
 \<how to use performance unit tests>
-## CPU Pinning
+### CPU Pinning
 \<CPU Pinning best practice>
-## NUMA
+### NUMA
 \<NUMA best practice>
-## hugepages
+### hugepages
 \<hugepages best practice>
-## VM
+### VM
 \<VM best practice>
 
 ---
+## Extending Vera
 
-# Architecture Overview
-
-```
-+------------------------------------------------+
-|                    Vera System                  |
-|------------------------------------------------|
-|  +-------------+   +-------------+   +--------+|
-|  | Fast Agent  |   | Deep Agent  |   |Reasoning||
-|  | (gemma2)    |   | (gemma3-27b)|   |Agent    ||
-|  +-------------+   +-------------+   +--------+|
-|          \               |               /       |
-|           \              |              /        |
-|            \             |             /         |
-|             \            |            /          |
-|           +----------------------------------+   |
-|           |         Memory Management         |  |
-|           |  (Short-Term Buffer + Long-Term)  |  |
-|           +----------------------------------+   |
-|                     |                  |          |
-|           +-------------------------------+       |
-|           |        Tool Chain Planner      |      |
-|           +-------------------------------+       |
-|                      |                   |         |
-|           +-------------------------------+       |
-|           |       Toolset & Browser        |      |
-|           |  (Shell, Calendar, Web, etc.)  |      |
-|           +-------------------------------+       |
-+----------------------------------------------------+
-```
-
----
-# Extending Vera
-
-## Tools
+### Tools
 
 You can add new tools by extending the `load_tools` method with new `Tool` objects, defining their name, function, and description.
 
@@ -1182,108 +1183,23 @@ def load_tools(self):
     return tools
 ```
 
-Advanced Example:
-```python
 
-```
-
-## Agents
+### Agents
 
 You can add new agents by
 ```python
 
 ```
 
+### Ingestors
+
+You can add new agents by
+```python
+
+```
 
 ---
-# [[Central Executive Orchestrator]]
-
-The **Proactive Focus Manager** is a core component designed to help Vera autonomously advance project goals by periodically generating actionable next steps and managing ongoing progress within a defined focus area.
-
-### What It Does
-
-- Maintains a **focus** — a current project or goal guiding all proactive thinking.
-    
-- Tracks progress, next steps, issues, ideas, and actions on a dynamic **focus board**.
-    
-- Periodically (default every 10 minutes) generates **proactive thoughts** based on:
-    
-    - The current focus
-        
-    - Recent conversation context
-        
-    - The evolving focus board content
-        
-- Uses a fast LLM to **evaluate** whether proposed actions are actionable with the tools available.
-    
-- Automatically **executes approved goals** via Vera’s tool chain and logs outcomes.
-    
-- Monitors system CPU and active LLM processes, **pausing proactive thinking** if resource usage is too high, to avoid overload.
-    
-
-### Why It Matters
-
-This manager enables Vera to function more like a **self-driven assistant**, continuously pushing a project forward without waiting for user input. It keeps a running record of progress and obstacles, making the AI’s workflow transparent and actionable.
-
-### How to Use
-
-1. **Initialize** the manager with your agent instance:
-    
-    ```python
-    focus_manager = ProactiveFocusManager(agent)
-    ```
-    
-2. **Set a focus** for the project:
-    
-    ```python
-    focus_manager.set_focus("Build automated network monitoring tool")
-    ```
-    
-3. Optionally, **update the latest conversation context** to inform proactive thoughts:
-    
-    ```python
-    focus_manager.update_latest_conversation(latest_chat_text)
-    ```
-    
-4. **Start** the proactive loop:
-    
-    ```python
-    focus_manager.start()
-    ```
-    
-5. The manager will generate, evaluate, and execute proactive steps autonomously, updating its internal focus board.
-    
-6. Use `add_to_focus_board()` to manually add notes or issues as needed.
-    
-7. **Stop** the manager to pause proactive thinking:
-    
-    ```python
-    focus_manager.stop()
-    ```
-    
-
-### Configuration Options
-
-- `proactive_interval` — time (seconds) between proactive thoughts (default: 600)
-    
-- `cpu_threshold` — maximum CPU usage allowed before pausing proactive thinking
-    
-- `max_ollama_processes` — max concurrent LLM processes before pausing (default: 24)
-    
-- `proactive_callback` — optional callback to handle new proactive thoughts in real time
-    
-
-### Extending the Focus Manager
-
-- Add calendar visibility to align proactive actions with schedules.
-    
-- Integrate external knowledge bases or memories for richer context.
-    
-- Improve resource monitoring or add priority handling on focus board entries.
-	
-
----
-# Contributing
+## Contributing
 
 Vera is designed to be extensible and modular. Here are ways to contribute:
 
@@ -1300,12 +1216,12 @@ Vera is designed to be extensible and modular. Here are ways to contribute:
 
 ---
 
-# Safeguarding & Data Privacy
+## Safeguarding & Data Privacy
 
 
 
 ---
-# FAQ
+## FAQ
 
 **Q: What LLMs does Vera support?**  
 A: Vera is currently built around Ollama models (`gemma2`, `gemma3`, `gpt-oss`), but you can adapt it for any compatible LLM with a Python SDK or API.
@@ -1318,7 +1234,7 @@ A: Self-modification is sandboxed and requires careful review. Vera includes saf
 
 ---
 
-# Known Issues
+## Known Issues
 
 **TTS Pacing** - On slower hardware the TTS engine may talk faster than the LLM can generate
 
@@ -1327,7 +1243,7 @@ A: Self-modification is sandboxed and requires careful review. Vera includes saf
 ---
 ## License
 
-Specify your license here.
+See the LICENSE file in the root directory of tis project.
 
 ---
 
@@ -1337,7 +1253,7 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 
 ---
 
-### Performance Tiers
+## Performance Tiers
 
 | Tier | CPU | RAM | Storage | VRAM | Recommended Use |
 |------|-----|-----|---------|------|-----------------|
@@ -1346,7 +1262,7 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 | **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
 | **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
 
-### Model Compatibility
+## Model Compatibility
 
 | Model Type | Example Models | Memory | Use Case | Status |
 |------------|----------------|---------|----------|--------|
@@ -1355,7 +1271,7 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 | **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16-32GB | Complex reasoning | ✅ Supported |
 | **Specialized** | CodeLlama, Math models | Varies | Domain-specific | 🔄 Partial |
 
-### Roadmap Timeline
+## Roadmap Timeline
 
 | Quarter | Focus Areas | Key Deliverables |
 |---------|-------------|------------------|
@@ -1371,5 +1287,4 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 - Windows configuration requires manual adaptation
 - TTS pacing issues on slower hardware
 - LLM reasoning not visible in UI for some models
-
 - Resource-intensive on large knowledge graphs

@@ -562,3 +562,90 @@ This setup allows you to build **autonomous, distributed workflows** that:
 
 ---
 
+<!-- 
+
+# [[Central Executive Orchestrator]]
+
+The **Proactive Focus Manager** is a core component designed to help Vera autonomously advance project goals by periodically generating actionable next steps and managing ongoing progress within a defined focus area.
+
+### What It Does
+
+- Maintains a **focus** — a current project or goal guiding all proactive thinking.
+    
+- Tracks progress, next steps, issues, ideas, and actions on a dynamic **focus board**.
+    
+- Periodically (default every 10 minutes) generates **proactive thoughts** based on:
+    
+    - The current focus
+        
+    - Recent conversation context
+        
+    - The evolving focus board content
+        
+- Uses a fast LLM to **evaluate** whether proposed actions are actionable with the tools available.
+    
+- Automatically **executes approved goals** via Vera’s tool chain and logs outcomes.
+    
+- Monitors system CPU and active LLM processes, **pausing proactive thinking** if resource usage is too high, to avoid overload.
+    
+
+### Why It Matters
+
+This manager enables Vera to function more like a **self-driven assistant**, continuously pushing a project forward without waiting for user input. It keeps a running record of progress and obstacles, making the AI’s workflow transparent and actionable.
+
+### How to Use
+
+1. **Initialize** the manager with your agent instance:
+    
+    ```python
+    focus_manager = ProactiveFocusManager(agent)
+    ```
+    
+2. **Set a focus** for the project:
+    
+    ```python
+    focus_manager.set_focus("Build automated network monitoring tool")
+    ```
+    
+3. Optionally, **update the latest conversation context** to inform proactive thoughts:
+    
+    ```python
+    focus_manager.update_latest_conversation(latest_chat_text)
+    ```
+    
+4. **Start** the proactive loop:
+    
+    ```python
+    focus_manager.start()
+    ```
+    
+5. The manager will generate, evaluate, and execute proactive steps autonomously, updating its internal focus board.
+    
+6. Use `add_to_focus_board()` to manually add notes or issues as needed.
+    
+7. **Stop** the manager to pause proactive thinking:
+    
+    ```python
+    focus_manager.stop()
+    ```
+    
+
+### Configuration Options
+
+- `proactive_interval` — time (seconds) between proactive thoughts (default: 600)
+    
+- `cpu_threshold` — maximum CPU usage allowed before pausing proactive thinking
+    
+- `max_ollama_processes` — max concurrent LLM processes before pausing (default: 24)
+    
+- `proactive_callback` — optional callback to handle new proactive thoughts in real time
+    
+
+### Extending the Focus Manager
+
+- Add calendar visibility to align proactive actions with schedules.
+    
+- Integrate external knowledge bases or memories for richer context.
+    
+- Improve resource monitoring or add priority handling on focus board entries.
+	 -->
