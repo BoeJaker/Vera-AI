@@ -54,25 +54,49 @@
 </span>
 <!-- 📖 -->
 
-## Introduction: What is Vera?
+## What is Vera?
 
-**Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
+Vera is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
-Vera **orchestrates multiple large language models** (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve **comprehensive outcomes**. This distributed agent design enables parallel specialization - some agents focus on rapid query response, others on strategic forward planning - while sharing a unified memory and goal system to maintain coherence across operations.
+### Use Case
 
-A hallmark of Vera’s architecture is its capacity for **proactive background processing**. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to orchestrate perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts allowing it to **enrich its own memories** and progress toward long-term goals. The strategic planning layer oversees long-term goals, enabling Vera to anticipate user needs, generate novel insights, and refine internal models on an ongoing-basis resulting in more contextually aware, intelligent, and timely responses.
+Vera is designed to help with day-to-day tasks and planning without requiring you to repeat context repeatedly. It excels at:
 
-Vera grounds its intelligence in a highly structured, **multi-layered memory system** (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the **Neo4j Knowledge Graph** stores entities and rich, typed relationships, while **ChromaDB** serves as a **vector database** for the full text content of documents, notes, and code, binding the textual information to its contextual network. Furthermore, the Macro Buffer mechanism leverages **Graph-Accelerated Search** to dynamically retrieve relevant knowledge and historical sessions, effectively breaking down isolation between contexts for comprehensive associative recall
+- **Schedule Coordination:** Managing calendars, meetings, and project timelines
+- **Project Advisory:** Understanding project context across sessions and providing informed guidance
+- **Contextual Continuity:** Maintaining deep understanding of your work across multiple interactions
+- **Proactive Planning:** Generating actionable next steps and identifying dependencies
+- **Task Automation:** Handling routine workflows and multi-step processes autonomously
 
-Complementing these capabilities is Vera’s integrated program synthesis and self-modification engine. This subsystem empowers Vera to **review, generate, and iteratively improve its own codebase**, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
+The key value proposition is **context persistence**. Rather than starting fresh with each interaction, Vera builds and maintains a comprehensive understanding of your goals, projects, and past work. This enables more nuanced advice and more efficient automation over time.
 
-Together, these components form a flexible, extensible AI platform designed for complex problem solving, adaptive decision making, and seamless interaction across diverse domains.
- 
-## What is the use-case of Vera?
-Vera is designed to help in day-to-day tasks and planning. Coordinating my schedule, advising about projects,  without having to provide the same context over and over again. 
+### Why Vera?
 
-## Why have you made Vera?
-Altough many tools like this exist online and developments are manifold i wanted to make something that could be run at home with the right hardware, demonstrating the limits of local compute. Its also an exploration in the art of possible - how far can these models be pushed given the right context and tools?
+While many AI tools exist online, Vera was created to address a specific gap: a self-hosted, locally-running AI system that doesn't require cloud infrastructure or external API dependencies. The motivation has multiple dimensions:
+
+**Self-Sovereignty:** Run everything locally on hardware you control. No data leaves your machine unless you explicitly configure external integrations. This provides privacy and independence from third-party service availability.
+
+**Local Compute Exploration:** Vera is an exploration of how far modern LLMs can be pushed when given proper context, memory systems, and tool integration—all running on local hardware. The architecture demonstrates that sophisticated autonomous behavior doesn't require massive cloud resources; it requires smart architecture.
+
+**Cost Efficiency:** After initial hardware investment, there are no ongoing API costs or subscription fees. For users running intensive workloads, this can represent significant savings compared to cloud-based solutions.
+
+**Customization & Control:** Full source code control allows deep customization for your specific needs. Add custom tools, agents, and memory structures without vendor restrictions. Self-modification capabilities enable the system to evolve autonomously within your environment.
+
+**Research & Experimentation:** Vera serves as a testbed for exploring multi-agent architectures, memory systems, and reasoning patterns. The modular design makes it suitable for academic research and experimental AI development.
+
+**The Art of the Possible:** Ultimately, Vera exists to answer the question: given unrestricted context, persistent memory, proper tool integration, and architectural sophistication—how far can we push local AI systems? The answer is further than many assume.
+
+## How does vera work?
+
+Vera orchestrates multiple large language models (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve comprehensive outcomes.
+
+This distributed agent design enables parallel specialization—some agents focus on rapid query response, others on strategic forward planning—while sharing a unified memory and goal system to maintain coherence across operations.
+
+A hallmark of Vera's architecture is its capacity for proactive background processing. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to orchestrate perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts, enabling it to enrich its own memories and progress toward long-term goals.
+
+Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network.
+
+Complementing these capabilities is Vera's integrated program synthesis and self-modification engine. This subsystem empowers Vera to review, generate, and iteratively improve its own codebase, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
 
 ---
 
@@ -88,13 +112,13 @@ Altough many tools like this exist online and developments are manifold i wanted
 ## Contents:
 
 This readme will cover the following:
+* Requirements
 * Installation
-* Configuration
 * Usage
+* Configuration
 * Core capabilities
 * Core concepts
 * Core components
-* Requirements
 * Modification
 * Performance optimisation
 * Contribution
@@ -136,20 +160,20 @@ This readme will cover the following:
 | **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
 | **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
 
-### Supported LLM Models
+<!-- ### Supported LLM Models
 
 | Model Type | Examples | Memory | Use Case |
 |-----------|----------|--------|----------|
 | **Fast LLM** | Mistral 7B, Gemma2 2B | 4–8GB | Triage, quick tasks |
 | **Intermediate** | Gemma2 9B, Llama 8B | 8–16GB | Tool execution |
 | **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16–32GB | Complex reasoning |
-| **Specialized** | CodeLlama, Math models | Varies | Domain-specific |
+| **Specialized** | CodeLlama, Math models | Varies | Domain-specific | -->
 
 ### Minimum Viable Setup
 
 If you have fewer resources, Vera runs with reduced capability:
-- **8GB RAM + CPU only:** Single fast model, no parallelism
-- **2–4 cores:** Suitable for background processing, not real-time queries
+- **16GB RAM + CPU only:** Single fast model, no parallelism
+- **8+ physical cores:** Suitable for background processing, not real-time queries
 - **Smaller SSD:** Start with one small model (3–7B parameters)
 
 > [!NOTE]
@@ -222,6 +246,7 @@ pip install -r requirements.txt
 ```
 
 Key dependencies:
+- streamlit - Python web UI framework
 - `chromadb` – Vector database for semantic memory
 - `playwright` – Browser automation and web scraping
 - `requests` – HTTP client
@@ -279,7 +304,7 @@ python3 ./vera.py
 
 ```bash
 cd <your/path/to/vera>
-python3 ./ui.py
+streamlit ./ui.py
 # Opens on localhost:8000
 ```
 
@@ -1258,9 +1283,9 @@ At its core, Babelfish acts like a **networking “translator”**:
 
 Vera's self-modification capability represents a paradigm shift in AI architecture—enabling **continuous, autonomous evolution** of its own codebase through a sophisticated CI/CD pipeline that ensures reliability, traceability, and controlled innovation. This isn't mere code generation; it's a complete software development lifecycle managed by the AI itself.
 
-### Autonomous Development Workflow
+#### Autonomous Development Workflow
 
-#### Code Synthesis & Generation
+##### Code Synthesis & Generation
 ```python
 # Vera analyzes its own performance and identifies improvement opportunities
 improvement_plan = vera.analyze_performance_gaps()
@@ -1273,7 +1298,7 @@ new_module = vera.generate_optimized_code(improvement_plan)
 - **Context-Aware Generation**: Creates code that integrates seamlessly with existing architecture and follows established patterns
 - **Multi-LLM Validation**: Uses different LLM specializations for code generation, review, and optimization
 
-#### Testing & Validation Pipeline
+##### Testing & Validation Pipeline
 ```
 1. Unit Test Generation → Auto-creates comprehensive test cases for new code
 2. Integration Testing → Validates compatibility with existing modules
@@ -1297,9 +1322,9 @@ class SelfModificationTestSuite:
         assert no_memory_leaks_detected()
 ```
 
-### Version-Controlled Evolution
+#### Version-Controlled Evolution
 
-#### Git-Integrated Workflow
+##### Git-Integrated Workflow
 Every autonomous code modification follows a structured version control process:
 
 ```bash
@@ -1316,7 +1341,7 @@ git commit -m "feat(memory-optimizer): Vector search optimization v2.1.3
 - **Session Linking**: Code changes reference the session and reasoning that prompted them
 - **Rollback Capability**: Automatic snapshots enable instant reversion if issues detected
 
-#### Change Management
+##### Change Management
 ```python
 # Every modification is logged with full context
 change_record = {
@@ -1339,9 +1364,9 @@ change_record = {
 }
 ```
 
-### Comprehensive Change Logging
+#### Comprehensive Change Logging
 
-#### Archive Integration
+##### Archive Integration
 All self-modification activities are immutably logged to Layer 4 Archive with forensic-level detail:
 
 **Modification Records Include:**
@@ -1378,9 +1403,9 @@ All self-modification activities are immutably logged to Layer 4 Archive with fo
 }
 ```
 
-### Observability & Monitoring
+#### Observability & Monitoring
 
-#### Real-time Modification Dashboard
+##### Real-time Modification Dashboard
 ```
 Self-Modification Monitor 🛠️
 ──────────────────────────────
@@ -1396,7 +1421,7 @@ Recent Changes:
 ✅ 2024-01-14 16:45 - Error handling enhanced
 ```
 
-#### Version-Aware Telemetry
+##### Version-Aware Telemetry
 Every workflow execution includes version metadata for precise performance tracking:
 
 ```python
@@ -1416,16 +1441,16 @@ execution_context = {
 }
 ```
 
-### Safety & Control Mechanisms
+#### Safety & Control Mechanisms
 
-#### Multi-Layer Approval Process
+##### Multi-Layer Approval Process
 1. **Automated Validation**: Comprehensive test suites must pass
 2. **Performance Gates**: New code must meet or exceed performance thresholds
 3. **Security Scanning**: Static analysis and vulnerability detection
 4. **Human-in-the-Loop** (Optional): Critical changes can require human approval
 5. **Gradual Rollout**: Can deploy to staging environment first
 
-#### Emergency Rollback Protocols
+##### Emergency Rollback Protocols
 ```python
 def emergency_rollback(detected_issue):
     """Automated rollback if issues detected post-deployment"""
@@ -1435,7 +1460,7 @@ def emergency_rollback(detected_issue):
         trigger_analysis_for_fix()
 ```
 
-### Adaptive Learning Cycle
+#### Adaptive Learning Cycle
 
 The self-modification system creates a **virtuous cycle of improvement**:
 
@@ -1458,6 +1483,33 @@ Performance Monitoring
 This sophisticated self-modification framework transforms Vera from a static AI system into a **continuously evolving intelligence** that can adapt to new challenges, optimize its own performance, and maintain robust reliability through rigorous version control and comprehensive change tracking—all while providing complete observability into its evolutionary journey.
 
 ---
+
+### 8. Perceptron Forge (PF)
+
+**Status:** 🔴 In Development
+
+**Purpose:** Allow Vera to build new models from fundamental building blocks—enabling specialized micro-models for specific tasks.
+
+**Concept:** Rather than only using pre-existing models, Vera can create custom models optimized for specific domains or tasks.
+
+**Planned capabilities:**
+- Automatic model architecture search
+- Fine-tuning on domain-specific data
+- Quantization and optimization
+- Deployment as specialized agents
+
+### 9. Edit Pipeline (EP)
+
+**Status:** 🔴 In Development
+
+**Purpose:** Version control for all edits Vera makes to files, settings, and configurations.
+
+**Planned capabilities:**
+- Track all file modifications with timestamps and reasoning
+- Enable rollback to previous file states
+- Audit trail for compliance
+- Collaborative merging if multiple agents edit same files
+
 
 ## Agents
 
