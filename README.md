@@ -1,4 +1,6 @@
-> 🚀 **Help Wanted!**
+
+> [IMPORTANT] 
+>🚀 **Help Wanted!**
 >
 > I'm looking for contributors to help with **Vera**.  
 > 
@@ -9,7 +11,16 @@
 >
 > Any help is appreciated — thank you!
 
-#python #agentic_ai #llm #in-development
+
+<p align="center">
+<a href="#-features"><img src="https://img.shields.io/badge/✨-Features-44FFAA?style=for-the-badge"></a>
+<a href="#-installation"><img src="https://img.shields.io/badge/⚡-Installation-44FFAA?style=for-the-badge"></a>
+<a href="#-usage"><img src="https://img.shields.io/badge/💡-Usage-44FFAA?style=for-the-badge"></a>
+<a href="#-contributing"><img src="https://img.shields.io/badge/🤝-Contributing-44FFAA?style=for-the-badge"></a>
+<a href="#License"><img src="https://img.shields.io/badge/📜-License-44FFAA?style=for-the-badge"></a>
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
+
+</p>
 
 <span align="center">
 
@@ -82,7 +93,7 @@ Vera’s architecture distinguishes between **LLMs** and **Agents**, each operat
 
 #### Encoders
 
-- Encoders: Extremely light models used to encode memories 
+- Encoders: Extremely light models specialized to encode text. Parses all data sent the vectorstore. 
 
 #### Large Language Models (LLMs)
 
@@ -128,6 +139,11 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 #### Micro Models
 - **Micro Models:** Tiny models, specialized to complete one task or read a particular dataset. Can be built and trained on a case-by-case basis. Capable of massive parallel reasoning. 
 
+#### Model Overlays
+#in-development
+
+Allows you to overlay additional training onto existing models
+
 <!-- 
 ### 2. Memories
 
@@ -163,6 +179,15 @@ Defined in a json file, this is a collection of other memories and pointers rela
 
 #### Session
 A string of interactions (inputs & outputs) connected in sequence. Found in the knowledge graph and vector store
+
+#### Session (Node)
+The first node of all sessions, contains information about the dependency versions, codebase versions, available tools, session level errors, resource availability.
+
+#### Memory
+
+#### Entity
+
+#### Insight
 
 #### Collection
 A collection of texts relating to a session, entity or insight. Found in the vector store
@@ -206,28 +231,36 @@ A processing task to be completed by the pool -->
 All top level components are designed to run stand-alone or togehter as a complete framework.
 
 **CEO - Central Executive Orchestrator**  
+#in-development #poc-working
 Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
 
 **PBT- Proactive Background Cognition**  
+#in-development #poc-working
 Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
 
 **TCE - Toolchain Executor**  
+#in-development #poc-working
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
 **KGM - Knowledge Graph Memory**  
+#in-development #poc-working
 Stores memories and their relationships in vector and graph stores. 
 Systematically enriches information stored within the graph
 
 **BFT - Babelfish Translator**  
+#production #poc-working
 A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
 
 **IAS  - Integration API Shim**  
+#production #poc-working
 Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface with Veras systems.
 
 **SME - Self Modification Engine**  
+#in-development
 A full CI/CD pipeline for Ver to review and edit its own code.
 
 **PF - Perceptron Forge**  
+#in-development
 Allows Vera to build new models from the fundamental building blocks of all AI models - perceptrons.
 
 #### User Interfaces
@@ -583,6 +616,10 @@ This class forms the core of an intelligent, multi-tool orchestration framework 
 |`report_history()`|Produces a summarization report of all tool chains executed so far, highlighting queries, plans, results, and patterns.|
 
 ---
+
+>[WARNING]
+>**Vera has unrestricted access to Bash & Python execution out of the box**
+>Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
 
 #### How It Works
 
