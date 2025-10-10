@@ -32,7 +32,7 @@
 
 📺 Follow the above link for an 8 minute video overview of Vera.  
 
-🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1NaJC4ayEM2Vmf_ncW_MSEHf498yvRNhL/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
 
 </span>
 
@@ -112,25 +112,49 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 
 ### 2. Memories
 
+#### Project
+Defined in a json file, this is a collection of other memories and pointers relating to a real-world goal
+
 #### Session
+A string of interactions (inputs & outputs) connected in sequence. Found in the knowledge graph and vector store
+
+#### Collection
+A collection of texts relating to a session, entity or insight. Found in the vector store
 
 #### Node
+A single entity on the knowledge graph
+
+#### Edge
+A relationship between two nodes
 
 #### Knowledge Base
+A dynamic external data source like live web documentation or an api
 
 #### Ingestor
+Parses external datasets into the memory system i.e. network scans, 
 
 #### Enricher
+Enriches the knowledge graph 
 
 
 ### 3. Tools
 
+#### Internal
+These tools can interact with internal apis and services like the memory system
 
+#### Management
+Capable of managing the host system
+
+
+
+####
 
 
 ### 4. Orchestration
 
 #### Worker
+
+#### ClusterWorker
 
 #### Pool
 
@@ -139,6 +163,29 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 ---
 
 ## Core Components
+
+Top level components:
+
+CEO - Central Executive Orchestrator
+Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
+
+PBT- Proactive Background Cognition
+Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
+
+TCE - Toolchain Executor
+Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
+
+KGM - Knowledge Graph Memory
+Stores memories and their relationships in vector and graph stores
+
+BFT - Babelfish Translator
+A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
+
+IAS  - Integration API Shim
+Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface with Veras systems.
+
+SME - Self Modification Engine
+A full CI/CD pipeline for Ver to review and edit its own code.
 
 ---
 
@@ -192,6 +239,7 @@ It is designed to integrate seamlessly with local, remote, and Proxmox-based wor
 <i>Above: The memory explorer </i>
 
 [Memory Documentation](<Memory/memory.md>) ⚠
+[Memory Schema](<Memory/schema.md>)
 
 The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
 
@@ -803,6 +851,27 @@ Performance Monitoring
 
 This sophisticated self-modification framework transforms Vera from a static AI system into a **continuously evolving intelligence** that can adapt to new challenges, optimize its own performance, and maintain robust reliability through rigorous version control and comprehensive change tracking—all while providing complete observability into its evolutionary journey.
 
+## Agents
+
+### Triage
+### Planner
+### Sheduler
+### Optimiser
+### Evaluator
+### Extractor
+### Researcher
+
+
+
+### Security Analyser
+
+## Ingestors 
+    Ingestors work at micro level
+
+    Corpus Crawler
+    Network Ingestor
+    Database Ingestor
+    Context ingestor - gathers context from memory layers 0 & 1
 
 # Roadmap
 ## 1. [[Corpus Crawler]]
@@ -824,6 +893,15 @@ Dynamic security analysis toolkit
 
 Pulls from knowledge bases and memory to construct the most appropriate test on-the-
 
+## Multi Modal IO
+
+## 5. Whisper TTS
+
+## 6. OCR 
+
+## 7. Image Recognition
+
+## 8. STT Worker
 
 ---
 # Requirements
@@ -923,21 +1001,23 @@ pip install -r requirements.txt
 ---
 ## Quick Start Guide
 
-## Terminal
+### Standalone Apps
+
+#### Terminal
 ```bash
 cd <your/path/to/vera>
 
 python3 ./vera.py
 ```
-## Web Server
+#### Web Server
 ```bash
 cd <your/path/to/vera>
 
-python3 ./ui.py
+streamlit ./ui.py
 
 chrome-browser localhost:8000
 ```
-## Python Module
+#### Python Module
 
 ```python
 from vera import Vera
@@ -955,27 +1035,34 @@ result = vera.execute_tool_chain(complex_query)
 print(result)
 ```
 
+### Docker Stack
+
+```bash
+cd <your/path/to/vera>
+
+docker compose up
+```
+
+### Makefile
+
+A makefile is included to expidite common administration tasks
 
 # Configuration
 
 ## Vera
+### Models
+
 ## Proactive Thought (PAT)
+###
 
 ## Toolchain Executor (TCE)
+###
 
 ## Tools
+###
 
 ## Web UI
-# Usage
 
-## Terminal UI
-\<images of the terminal UI>
-## Web UI
-\<images of the web UI>
-## Web Server
-\<images of the Webserver Manager UI>
-## Python Module
-\<more example python useage>
 ## Flags & System Commands
 ---
 
