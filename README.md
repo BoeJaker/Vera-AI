@@ -4,12 +4,16 @@
 >
 > I'm looking for contributors to help with **Vera**.  
 > 
-> Please:
+> **Please:**
 > - Clone the repo  
 > - Make improvements or fixes  
 > - Push them back by opening a Pull Request (PR)  
 >
-> Any help is appreciated — thank you!
+> **Any help is appreciated — thank you!**
+>
+> **Vera is still very-much in development** any issues running or using the code please post an issue, I will get back to you asap. Please don't be surprised if something doesn't work or is unfinished.
+>
+
 
 
 <p align="center">
@@ -64,6 +68,12 @@ Complementing these capabilities is Vera’s integrated program synthesis and se
 
 Together, these components form a flexible, extensible AI platform designed for complex problem solving, adaptive decision making, and seamless interaction across diverse domains.
  
+## What is the use-case of Vera?
+Vera is designed to help in day-to-day tasks and planning. Coordinating my schedule, advising about projects,  without having to provide the same context over and over again. 
+
+## Why have you made Vera?
+Altough many tools like this exist online and developments are manifold i wanted to make something that could be run at home with the right hardware, demonstrating the limits of local compute. Its also an exploration in the art of possible - how far can these models be pushed given the right context and tools?
+
 ---
 
 >[!WARNING]
@@ -75,16 +85,16 @@ Together, these components form a flexible, extensible AI platform designed for 
 >**Vera utilises the Agentic-Stack-POC**  
 > To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
 
-
 ## Contents:
 
 This readme will cover the following:
-* Core concepts
-* Core components
-* Requirements
 * Installation
 * Configuration
 * Usage
+* Core capabilities
+* Core concepts
+* Core components
+* Requirements
 * Modification
 * Performance optimisation
 * Contribution
@@ -94,10 +104,297 @@ This readme will cover the following:
 
 ---
 
+## System Requirements
+
+### Minimum Recommended Hardware
+
+**CPU Build (Linux)**
+- CPU: 12+ cores (24 hyperthreaded) @ 3GHz+
+- RAM: 16GB–32GB (or up to 150GB for large deployments)
+- HDD: 100GB
+- GPU: None
+
+**GPU Build (Linux)**
+- CPU: Varies by workload
+- RAM: 8GB system + 14–150GB VRAM
+- HDD: 100GB
+- GPU: 14–150GB VRAM (NVIDIA recommended)
+
+### Understanding the Requirements
+
+- **RAM:** Determines how many models can run simultaneously. 16GB minimum runs single models; 32GB+ enables parallel agent execution.
+- **CPU cores:** Each agent requires ~1–2 cores. More cores allow higher parallelism. Hyperthreading counts as 0.5 cores each for planning purposes.
+- **VRAM:** GPU builds allow running larger models (20B–70B parameters). CPU-only builds use quantized models (3B–13B).
+- **Storage:** Accommodates Neo4j database, ChromaDB vector store, and model weights.
+
+### Model Tier Recommendations
+
+| Tier | CPU | RAM | Storage | VRAM | Use Case |
+|------|-----|-----|---------|------|----------|
+| **Basic** | 8 cores | 16GB | 100GB | — | Development & testing |
+| **Standard** | 12+ cores | 32GB | 100GB | — | Production (CPU-only) |
+| **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
+| **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
+
+### Supported LLM Models
+
+| Model Type | Examples | Memory | Use Case |
+|-----------|----------|--------|----------|
+| **Fast LLM** | Mistral 7B, Gemma2 2B | 4–8GB | Triage, quick tasks |
+| **Intermediate** | Gemma2 9B, Llama 8B | 8–16GB | Tool execution |
+| **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16–32GB | Complex reasoning |
+| **Specialized** | CodeLlama, Math models | Varies | Domain-specific |
+
+### Minimum Viable Setup
+
+If you have fewer resources, Vera runs with reduced capability:
+- **8GB RAM + CPU only:** Single fast model, no parallelism
+- **2–4 cores:** Suitable for background processing, not real-time queries
+- **Smaller SSD:** Start with one small model (3–7B parameters)
+
+> [!NOTE]
+> Vera is compatible with Windows; however, detailed configuration instructions are provided only for Linux, WSL, and macOS. Windows users may need to adapt the setup process accordingly.
+
+---
+
+## Installation
+
+### System Dependencies
+
+Vera requires several external services. You have two options:
+
+**Option A: Automated Setup (Recommended)**
+
+Use the companion [Agentic Stack POC](https://github.com/BoeJaker/AgenticStack-POC) to bootstrap all services via Docker:
+
+```bash
+git clone https://github.com/BoeJaker/AgenticStack-POC
+cd AgenticStack-POC
+docker compose up
+```
+
+This starts:
+- Neo4j server (port 7687)
+- Ollama with pre-configured models (port 11434)
+- ChromaDB (port 8000)
+- Supporting UIs
+
+**Option B: Manual Setup**
+
+Install required services individually:
+
+```bash
+# Install Ollama
+curl https://ollama.ai/install.sh | sh
+
+# Start Ollama and pull models
+ollama serve &
+ollama pull gemma2
+ollama pull mistral:7b
+ollama pull gpt-oss:20b
+
+# Install Neo4j (see: https://neo4j.com/download)
+# Installation varies by OS
+
+# ChromaDB installs via pip (see below)
+```
+
+### Python Installation
+
+1. **Clone the repository**
+
+```bash
+git clone https://github.com/BoeJaker/Vera-AI
+cd Vera-AI
+```
+
+2. **Create virtual environment**
+
+```bash
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. **Install dependencies**
+
+```bash
+pip install -r requirements.txt
+```
+
+Key dependencies:
+- `chromadb` – Vector database for semantic memory
+- `playwright` – Browser automation and web scraping
+- `requests` – HTTP client
+- `tqdm`, `rich` – Terminal UI enhancements
+- `python-dotenv` – Environment configuration
+- `llama-index` – LLM framework
+
+4. **Install browser drivers**
+
+```bash
+playwright install
+```
+
+5. **Configure environment variables**
+
+```bash
+cp .env.example .env
+# Edit .env with your settings:
+# - Neo4j connection URL and credentials
+# - Ollama API endpoint
+# - API keys for external services (optional)
+```
+
+6. **Verify installation**
+
+```bash
+python3 -c "from vera import Vera; print('✓ Vera imported successfully')"
+```
+
+If you see the checkmark, installation succeeded. If you get an error, check that all system services are running:
+
+```bash
+# Check Neo4j
+curl http://localhost:7474
+
+# Check Ollama
+curl http://localhost:11434/api/tags
+
+# Check ChromaDB
+curl http://localhost:8000/api/v1/heartbeat
+```
+
+---
+
+## Quick Start
+
+### Terminal Interface
+
+```bash
+cd <your/path/to/vera>
+python3 ./vera.py
+```
+
+### Web Interface
+
+```bash
+cd <your/path/to/vera>
+python3 ./ui.py
+# Opens on localhost:8000
+```
+
+### Python API
+
+```python
+from vera import Vera
+
+# Initialize Vera agent system
+vera = Vera(chroma_path="./vera_agent_memory")
+
+# Query Vera with a simple prompt
+for chunk in vera.stream_llm(vera.fast_llm, "What is the capital of France?"):
+    print(chunk, end="")
+
+# Use toolchain execution for complex queries
+complex_query = "Schedule a meeting tomorrow and send me the list of projects."
+result = vera.execute_tool_chain(complex_query)
+print(result)
+```
+
+### Docker Stack
+
+```bash
+docker compose up
+```
+
+---
+
+## Usage: Commands & Flags
+
+### System Flags
+
+Use these flags at the command line when starting Vera:
+
+| Flag | Description |
+|------|-------------|
+| `--triage-memory` | Enable triage agent memory of past interactions |
+| `--forgetful` | No memories will be saved or recalled this session |
+| `--dumbledore` | Won't respond to questions (Easter egg) |
+| `--replay` | Replays the last plan |
+
+### In-Chat Commands
+
+Use these commands with `/` prefix in chat:
+
+| Command | Purpose |
+|---------|---------|
+| `/help` | Display available commands |
+| `/status` | Show system status and resource usage |
+| `/memory-stats` | Display memory layer statistics |
+| `/agents-list` | List active agents and their status |
+| `/tools-list` | Show available tools |
+| `/config` | Display current configuration |
+
+---
+
+## Configuration
+
+Vera's configuration is controlled via environment variables in `.env`:
+
+**LLM Configuration**
+```
+FAST_LLM_MODEL=mistral:7b
+INTERMEDIATE_LLM_MODEL=gemma2
+DEEP_LLM_MODEL=gpt-oss:20b
+OLLAMA_API_BASE=http://localhost:11434
+```
+
+**Memory Configuration**
+```
+NEO4J_URL=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_password
+CHROMA_PATH=./vera_agent_memory
+```
+
+**Performance Configuration**
+```
+MAX_PARALLEL_TASKS=4
+CPU_PINNING=false
+NUMA_ENABLED=false
+```
+---
+## Core Capabilities
+
+Vera can perform the following tasks through coordinated agent action:
+
+**Autonomous Work**
+- Report generation and data synthesis
+- Research and trend discovery
+- Media creation and podcast generation
+- Programming and debugging
+- Documentation generation
+- Codebase monitoring
+- Network security monitoring and vulnerability discovery
+
+**System Management**
+- Infrastructure monitoring and maintenance
+- Disaster recovery
+- System maintenance and troubleshooting
+- Platform administration
+
+**Integration & Planning**
+- Project delivery and orchestration
+- Customer service automation
+- Personal assistant functions
+- Guided human-oriented planning
+
+---
+
 ## Core Concepts
 
 ### 1. Agents vs LLMs vs Encoders in Vera 
-**Multi-Level Hierarchy**
+**A Multi-Level Hierarchy**
 
 Vera’s architecture distinguishes between **LLMs** and **Agents**, each operating at multiple levels of complexity and capability to handle diverse tasks efficiently.
 
@@ -246,7 +543,7 @@ All top level components are designed to run stand-alone or togehter as a comple
 #in-development #poc-working  
 Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
 
-**PBT- Proactive Background Cognition**  
+**PBC- Proactive Background Cognition**  
 #in-development #poc-working  
 Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
 
@@ -254,8 +551,8 @@ Responsible for co-ordinating long term goals, short term focus and delivering a
 #in-development #poc-working  
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
-**KGM - Knowledge Graph Memory**  
-#in-development #poc-working
+**CKG - Composite Knowledge Graph**  
+#in-development #poc-working  
 Stores memories and their relationships in vector and graph stores. 
 Systematically enriches information stored within the graph
 
@@ -264,7 +561,7 @@ Systematically enriches information stored within the graph
 A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
 
 **IAS  - Integration API Shim**  
-#production #poc-working
+#production #poc-working  
 Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface with Veras systems.
 
 **SME - Self Modification Engine**  
@@ -274,6 +571,11 @@ A full CI/CD pipeline for Ver to review and edit its own code.
 **PF - Perceptron Forge**  
 #in-development  
 Allows Vera to build new models from the fundamental building blocks of all AI models - perceptrons.
+
+**EP - Edit Pipeline**
+#in-development  
+Version control for edits the AI makes to files, settings etc
+
 
 #### User Interfaces
 
@@ -292,72 +594,95 @@ A web UI enabling broad or targeted traversal of the knowledge graph
 
 ---
 
+## Component Deep Dive
+
 ### 1. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**  
 
 <a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
 
 
-The Heart of vera, it collects performance data and queues user input then allocates or creates resources either locally or in a remote worker pool.
+**Purpose:** Heart of Vera. Collects performance data, queues user input, and allocates or creates resources locally or in remote worker pools.
 
-The Orchestrator can identify where steps and tasks can be completed in parallel and will schedule them as such if the resource is available.
+**Capabilities:**
+- Identifies tasks and steps that can execute in parallel
+- Schedules execution when resources available
+- Manages local and remote worker pools
+- Queues requests when resources exhausted
+- Provides real-time performance metrics and resource utilization
 
-Query recieved
-Query Triaged
-Handed to the toolchain executor
-Toolchain Executor requests resource for a network scanner and light-llm 
-Orchestrator identifies that all light-llms are busy and queues the request.
-The resources become free
-Orchestrator identifies there is resource available for the network scan and allocates it
-The network scan runs - in this time a light llm becomes free
-Orchestrator dequeues the task and provides the resources
-ToolCahin executor returns the results of the step.
+**Example workflow:**
 
+```
+1. Query received: "Scan network and analyze results"
+2. Query triaged to Toolchain Executor
+3. TCE requests: network scanner + analysis LLM
+4. CEO: network scanner available → allocate
+5. CEO: all analysis LLMs busy → queue request
+6. Network scan runs
+7. Analysis LLM becomes free
+8. CEO dequeues and provides resources
+9. TCE receives scan results for analysis
+```
+
+**Configuration:**
+```python
+ceo = CEOOrchestrator(
+    max_parallel_tasks=4,
+    max_queue_depth=20,
+    resource_polling_interval=0.5  # seconds
+)
+```
 ---
 
-### 2. Proactive Background Reflection
+### 2. Proactive Background Cognition
 
 <a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
 
-
-[Proactive Background Reflection Documentation](<Vera Assistant Docs/Central Executive Orchestrator.md>)
+[Proactive Background Cognition Documentation](<Vera Assistant Docs/Central Executive Orchestrator.md>)
 
 Vera maintains a **Proactive Focus Manager** that continuously evaluates system priorities, context, and pending goals. During idle moments, it generates **proactive thoughts**—such as reminders, hypotheses, or plans—that enhance its understanding and readiness for future interactions.
 
 <!-- **Proactive Focus Manager** is an autonomous background cognition engine that runs on top of `PriorityWorkerPool`. It continuously monitors project context, generates actionable tasks via LLMs, validates them, and executes them through your toolchain while logging progress to a focus board. -->
 
-This ongoing background reflection helps Vera:
 
+**Purpose:** Autonomous background thinking engine generating actionable tasks during idle moments.
+
+**Capabilities:**
+- Continuously monitors project context and pending goals
+- Generates proactive thoughts (reminders, hypotheses, plans)
+- Validates proposed actions using fast LLM
+- Executes validated actions through toolchain
+- Maintains focus board tracking progress, ideas, actions, issues
+- Non-blocking scheduling with configurable intervals
 - Detect inconsistencies or gaps in knowledge
-    
 - Anticipate user needs
-    
 - Prepare for complex multi-step operations
-    
 - Improve self-awareness and performance over time
 
-
-It is designed to integrate seamlessly with local, remote, and Proxmox-based worker nodes, providing a distributed, scalable, and high-throughput execution environment.
-
-#### Features
-
-- **Context-aware task generation:** Pulls context from multiple providers (`ConversationProvider`, `FocusBoardProvider`, or custom providers)
-    
-- **LLM-driven reasoning:** Uses a deep LLM to generate actionable next steps
-    
-- **Action validation:** Uses a fast LLM to check if proposed actions are executable
-    
-- **Distributed execution:** Integrates with local pools, remote HTTP workers, and Proxmox-hosted nodes
-    
-- **Focus tracking:** Maintains a focus board with progress, next steps, ideas, actions, and issues
-    
+**Features:**
+- **Context-aware task generation:** Pulls context from multiple providers (conversation history, focus board, custom sources)
+- **LLM-driven reasoning:** Uses deep LLM to generate actionable next steps
+- **Action validation:** Fast LLM validates executability before acting
+- **Distributed execution:** Integrates with local pools, remote HTTP workers, and Proxmox nodes
+- **Focus tracking:** Maintains board showing progress, next steps, ideas, actions, issues
 - **Non-blocking scheduling:** Periodic autonomous ticks with configurable intervals
     
+It is designed to integrate seamlessly with local, remote, and Proxmox-based worker nodes, providing a distributed, scalable, and high-throughput execution environment.
 
+**Configuration:**
+```python
+pbt = ProactiveBackgroundThinking(
+    tick_interval=60,  # Check every 60 seconds
+    context_providers=[ConversationProvider(), FocusBoardProvider()],
+    max_parallel_thoughts=3,
+    action_validation_threshold=0.8
+)
+```
 
 ---
 
-### 3. Memory Architecture
+### 3. Composite Knowledge Graph
 
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
@@ -611,6 +936,99 @@ Temporal Scale
 
 <a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
 
+<!-- 
+**Purpose:** Breaks down complex tasks into achievable steps and executes plans using integrated tools.
+
+> [!WARNING]
+> **Vera has unrestricted Bash and Python execution by default.** Be very careful with queries. There's nothing stopping Vera from running `rm -rf /`. Disable these tools if untrusted users have access.
+
+**Capabilities:**
+- Generates structured JSON execution plans
+- Supports multiple planning strategies: Batch, Step, and Hybrid
+- Multiple execution strategies: Sequential, Parallel, Speculative
+- Error handling with automatic replanning
+- Result validation against original goal
+- Full execution history logging
+
+**How it works:**
+
+1. **Planning Phase:** Constructs a prompt describing available tools and user query, requesting the LLM to generate a JSON array outlining the sequence of tool calls
+2. **Execution Phase:** Invokes each tool in order, resolving references to prior outputs (e.g., `{step_1}`, `{prev}`)
+3. **Error Recovery:** Tool failures trigger automatic replanning and retry
+4. **Validation:** Prompts LLM to verify if final output meets the original goal; retries if not
+5. **Memory:** All intermediate results saved for transparency and to aid future planning
+
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `plan_tool_chain(query, history_context="")` | Generates JSON-formatted plan of tool calls |
+| `execute_tool_chain(query)` | Executes planned steps, manages errors, ensures goal met |
+| `save_to_memory(user_msg, ai_msg="")` | Records interactions to agent memory |
+| `report_history()` | Produces summary of all executed toolchains |
+
+**Planning Strategies:**
+
+**Batch Planning:** Generate entire plan upfront
+```json
+[
+  { "tool": "WebSearch", "input": "latest AI trends 2024" },
+  { "tool": "WebSearch", "input": "generative AI applications" },
+  { "tool": "SummarizerLLM", "input": "{step_1}\n{step_2}" }
+]
+```
+
+**Step Planning:** Generate next step based on prior results
+```json
+[
+  { "tool": "WebSearch", "input": "authenticate with OAuth2" }
+]
+// After step 1 completes, generate next step
+```
+
+**Hybrid Planning:** Mix of upfront and adaptive planning
+
+**Execution Strategies:**
+
+**Sequential:** Execute steps one at a time (safe, traceable)
+**Parallel:** Execute independent steps concurrently (faster)
+**Speculative:** Run multiple possible next steps, then prune based on validation (advanced)
+
+**Example usage:**
+
+```python
+planner = ToolChainPlanner(agent, agent.tools)
+
+# Execute a multi-tool workflow
+query = "Retrieve latest weather for New York and generate a report"
+final_output = planner.execute_tool_chain(query)
+print("Result:", final_output)
+
+# Generate execution history report
+history = planner.report_history()
+print(history)
+```
+
+**Plan format expected from LLM:**
+
+```json
+[
+  { "tool": "SearchAPI", "input": "latest weather New York" },
+  { "tool": "SummarizerLLM", "input": "{step_1}" }
+]
+```
+
+Placeholders like `{step_1}` or `{prev}` are replaced with actual outputs during execution.
+
+**Integration Notes:**
+
+Expects an `agent` object with:
+- `deep_llm`: LLM instance with `invoke(prompt: str) -> str` method
+- `tools`: List of callable tool objects
+- `buffer_memory`: Object managing chat history
+- `save_to_memory(user_msg, ai_msg)`: Method to record steps
+
+Tools can be any callable (LLM-based, APIs, custom functions) taking string input and returning string output. -->
 
 >[!WARNING]  
 >**Vera has unrestricted access to Bash & Python execution out of the box**  
@@ -782,6 +1200,35 @@ Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, wh
 
 
 A compatability layer and API endpoint for Vera. Allows vera to take the pace of other LLM APIs like OpenAIs Chat GPT or Anthropics Claude. It also allows these APIs to interface with the Vera framework 
+
+**Status:** 🟢 Production
+
+**Purpose:** Compatibility layer allowing Vera to mimic other LLM APIs (OpenAI, Anthropic) and allowing those APIs to interface with Vera systems.
+
+**Capabilities:**
+- Vera responds as if it were ChatGPT, Claude, or other LLM APIs
+- Drop-in replacement for OpenAI's Chat Completions API
+- Stream and batch inference
+- Token counting
+- Embedding generation
+
+**Use case:** Use existing OpenAI client libraries with Vera running locally:
+
+```python
+# This code thinks it's talking to OpenAI, but it's using local Vera
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000", api_key="vera")
+
+response = client.chat.completions.create(
+    model="vera-default",
+    messages=[{"role": "user", "content": "Explain quantum entanglement"}]
+)
+
+print(response.choices[0].message.content)
+```
+
+The IAS means you can use Vera with any tool expecting an OpenAI-compatible API.
 
 ---
 
@@ -1010,263 +1457,53 @@ Performance Monitoring
 
 This sophisticated self-modification framework transforms Vera from a static AI system into a **continuously evolving intelligence** that can adapt to new challenges, optimize its own performance, and maintain robust reliability through rigorous version control and comprehensive change tracking—all while providing complete observability into its evolutionary journey.
 
+---
+
 ## Agents
 
-### Triage
-### Planner
-### Sheduler
-### Optimiser
-### Evaluator
-### Extractor
-### Researcher
-### Model Trainer
-### Model Builder
+Vera's agent roster includes specialized sub-agents, each with defined responsibilities:
 
+**Triage Agent** – Routes incoming tasks, prioritizes requests, delegates to appropriate agents or tools.
 
+**Planner Agent** – Decomposes complex goals into actionable steps, generates execution plans.
 
-### Security Analyser
+**Scheduler Agent** – Manages task scheduling, handles dependencies, optimizes execution order.
 
-## Ingestors 
-    Ingestors work at micro level
+**Optimizer Agent** – Refines workflows, improves performance, tunes parameters.
 
-    Corpus Crawler
-    Network Ingestor
-    Database Ingestor
-    Context ingestor - gathers context from memory layers 0 & 1
+**Evaluator Agent** – Validates outputs, checks goal attainment, triggers refinement if needed.
 
-## Roadmap
-### 1. [[Corpus Crawler]]
-#in-developmet
+**Extractor Agent** – Pulls structured information from unstructured text (documents, web pages, etc.).
 
-A system for mapping any corpus, including the internet, within the memory of Vera. Analogous to reading
+**Researcher Agent** – Conducts information gathering, synthesizes findings, identifies trends.
 
-### 2. [[Scheduler]]
-#in-developmet 
-A system for overall background processing management 
+**Summarizer Agent** – Condenses large texts into concise summaries at various detail levels.
 
-### 3. [Optimiser](<Agents/Agent - Optimiser>)
-A System for optimizing prompts, thought processes and workflows
+**Editor Agent** – Refines writing, checks grammar, improves clarity and tone.
 
+**Model Trainer Agent** – Fine-tunes models on domain-specific data (in development).
 
-### 4. Security Analyser
-#in-developmet 
-Dynamic security analysis toolkit
+**Model Builder Agent** – Creates new model architectures from scratch (in development).
 
-Pulls from knowledge bases and memory to construct the most appropriate test on-the-
-
-### Multi Modal IO
-
-### 5. Whisper TTS
-
-### 6. OCR 
-
-### 7. Image Recognition
-
-### 8. STT Worker
-
----
-## Requirements
-
-Vera is compatible with Windows; however, detailed configuration instructions are currently provided only for Linux, WSL, and macOS environments due to Windows’ additional setup complexities. Windows users may need to adapt the setup process accordingly.
-### System Requirements
-
-- **Operating System:** Linux, macOS, or Windows (with WSL)
-    
-- **Python:** Version 3.9 or higher
-	
-
-**CPU Build** ( Linux )
-
--  CPU: 12 cores+ (24 hyper-threaded) 3Ghz+
-	
-- GPU: None
-
-- RAM: 16Gb - 32Gb - 150Gb
-	
-- HDD: 100Gb 
-    
-
-**GPU Build** ( Linux )
-
--  CPU: Unknown
-	
-- VRAM: 14 - 150Gb
-	
-- RAM 8Gb 
-	
-- HDD: 100Gb 
-
-### System Dependencies
-
-[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC/tree/main) - Contains all the below required system dependencies and additional UIs
-
-Neo4j Server
-
-Ollama
-
-ChromaDB
-
-
-### Python Dependencies
-
-Install required Python packages via `pip`. The main dependencies include, but are not limited to:
-
-    
-- `chromadb` — for vector-based long-term memory storage
-    
-- `playwright` — for browser automation and web scraping
-    
-- `requests` — for HTTP requests to external APIs
-    
-- `tqdm` — for progress bars during streaming
-    
-- `rich` — for improved terminal output formatting
-    
-- `pydantic` — for data validation (if used)
-    
-- `python-dotenv` — for environment variable management (if used)
-    
-
-You can install all required dependencies with:
-
-```bash
-pip install -r requirements.txt
-```
-
-### External Services and Tools
-
-- **Ollama LLM models**: Ensure you have access to the required local or remote LLM models supported by Vera.
-	
-``` bash
-apt install ollama
-
-ollama run gpt-oss:20b
-
-ollama run gemma2
-
-ollama run mistral:7b
-```
-    
-- **ChromaDB**: Running locally or remotely for semantic vector memory support (python will handle this).
-    
-- **Google APIs**: API keys/configuration for calendar and other Google services (if using integrated tools).
-    
-- **Playwright browser drivers**: Install necessary browser engines for Playwright:
-    
-```bash
-playwright install
-```
-
----
-## Installation
-
-```bash
-# Clone this repo
-git clone https://github.com/yourusername/verra-agent.git
-cd verra-agent
-
-# Install required dependencies
-pip install -r requirements.txt
-```
-
-> Note: This project depends on the Ollama Python SDK and ChromaDB, among others. Ensure you have access to the required LLM models and local services.
-
----
-## Quick Start Guide
-
-### Standalone Apps
-
-#### Terminal
-```bash
-cd <your/path/to/vera>
-
-python3 ./vera.py
-```
-#### Web Server
-```bash
-cd <your/path/to/vera>
-
-streamlit ./ui.py
-
-chrome-browser localhost:8000
-```
-#### Python Module
-
-```python
-from vera import Vera
-
-# Initialize Vera agent system
-vera = Vera(chroma_path="./vera_agent_memory")
-
-# Query Vera with a simple prompt
-response = vera.stream_llm(vera.fast_llm, "What is the capital of France?")
-print(response)
-
-# Use toolchain execution for complex queries
-complex_query = "Schedule a meeting tomorrow and send me the list of projects."
-result = vera.execute_tool_chain(complex_query)
-print(result)
-```
-
-### Docker Stack
-
-```bash
-cd <your/path/to/vera>
-
-docker compose up
-```
-
-### Makefile
-
-A makefile is included to expidite common install & tasks
+**Security Analyzer Agent** – Dynamic security analysis, penetration testing, vulnerability detection.
 
 ---
 
-## Configuration
+## Ingestors
 
-### Vera
-### Models
+Ingestors work at the micro level, pulling data into Vera's memory systems:
 
-### Proactive Thought (PAT)
-###
+**Corpus Crawler** – Maps corpuses (internet, local files, APIs) into memory structure. Analogous to "reading."
 
-### Toolchain Executor (TCE)
-###
+**Network Ingestor** – Scans networks, ingests topology and service information into memory.
 
-### Tools
-###
+**Database Ingestor** – Extracts schema and data from databases into Neo4j.
 
-### Web UI
+**Context Ingestor** – Gathers context from Layer 0 & 1 (short-term buffers) for enrichment.
 
 ---
-
-## Usage
-
-### Flags & System Commands
----
-Use:
-
-    /\<command> 
-in chat prompts
-    
-    --<flag_name> 
-at the command line
-
-| Flag  /Command  |     | Description                                        |
-| --------------- | --- | -------------------------------------------------- |
-| --triage_memory |     | Does triage have memory of past interactions y/n?  |
-| --forgetful     |     | No memories will be saved or recalled this session |
-| --dumbledore    |     | Wont respond to questions - hes dead harry         |
-| --replay        |     | Replays the last plan                              |
-|                 |     |                                                    |
-
-### Makefile
-
-A makefile is included to expidite common administration tasks
 
 ## Advanced Usage and Features
-
-### Memory
 
 ### Proactive Focus Management
 
@@ -1288,7 +1525,7 @@ for chunk in vera.stream_llm(vera.deep_llm, "Explain quantum computing."):
     print(chunk, end="")
 ```
 
-## Performance Optimisation
+<!-- ## Performance Optimisation
 
 ### Performance Unit Tests
 \<how to use performance unit tests>
@@ -1299,7 +1536,7 @@ for chunk in vera.stream_llm(vera.deep_llm, "Explain quantum computing."):
 ### hugepages
 \<hugepages best practice>
 ### VM
-\<VM best practice>
+\<VM best practice> -->
 
 ---
 ## Extending Vera
@@ -1310,33 +1547,64 @@ You can add new tools by extending the `load_tools` method with new `Tool` objec
 
 Simple Example:
 
+### Adding Custom Tools
+
+You can extend Vera's capabilities by adding new tools:
+
 ```python
 def load_tools(self):
     tools = super().load_tools()
+    
     tools.append(
         Tool(
-            name="New Custom Tool",
-            func=lambda q: custom_function(q),
-            description="Description of the new tool."
+            name="WeatherAPI",
+            func=lambda location: fetch_weather(location),
+            description="Fetches current weather for a given location."
         )
     )
+    
     return tools
 ```
 
+### Adding Custom Agents
 
-### Agents
+Create specialized agents for your domain:
 
-You can add new agents by
 ```python
+class DomainExpertAgent(Agent):
+    """An agent specialized in your domain"""
+    
+    def __init__(self, name, llm, memory):
+        super().__init__(name, llm, memory)
+        self.expertise = "domain-specific-knowledge"
+    
+    def process_query(self, query):
+        # Custom reasoning logic
+        return self.llm.invoke(f"As a {self.expertise} expert: {query}")
 
+# Register with Vera
+vera.register_agent(DomainExpertAgent("expert", vera.deep_llm, vera.memory))
 ```
 
-### Ingestors
+### Adding Custom Ingestors
 
-You can add new agents by
+Create ingestors to pull data into Vera's memory:
+
 ```python
+class CustomIngestor(Ingestor):
+    def ingest(self, source):
+        """Extract data from source and insert into memory"""
+        data = self.fetch_from_source(source)
+        entities = self.parse_entities(data)
+        relationships = self.extract_relationships(data)
+        
+        self.memory.bulk_insert_nodes(entities)
+        self.memory.bulk_insert_relationships(relationships)
 
+# Use it
+vera.ingestors.append(CustomIngestor(vera.memory))
 ```
+
 
 ---
 ## Contributing
@@ -1358,6 +1626,28 @@ Vera is designed to be extensible and modular. Here are ways to contribute:
 
 ## Safeguarding & Data Privacy
 
+Vera runs entirely locally by default—no data is sent to external servers unless you explicitly configure external tools (APIs, web scraping, etc.).
+
+**Local Security Considerations:**
+
+- Vera has unrestricted Bash/Python execution. Only allow trusted users access.
+- Memory databases (Neo4j, ChromaDB) should be behind authentication in multi-user deployments.
+- Disable external tool access if processing sensitive data.
+- Regularly audit the Neo4j audit logs.
+
+**External Tool Integration:**
+
+If using external APIs:
+- Secure API keys in `.env` files
+- Use read-only API tokens where possible
+- Monitor API call logs for unusual patterns
+- Consider VPN/proxy for outbound connections
+
+**Data Retention:**
+
+- Layer 4 (Archive) stores everything permanently. Consider retention policies.
+- Use `/memory-clear` to purge all long-term memories (irreversible).
+- Export and backup Neo4j regularly: `neo4j-admin dump --database=neo4j --to=/backup/vera-backup.dump`
 
 
 ---
@@ -1373,34 +1663,11 @@ A: Yes. Vera is designed for command-line and backend automation, but can be int
 A: Self-modification is sandboxed and requires careful review. Vera includes safeguards, but users should always review generated code before production use.
 
 ---
-
-## Known Issues
-
-**TTS Pacing** - On slower hardware the TTS engine may talk faster than the LLM can generate
-
-**LLM Reasoning not Visible** - If an LLM has reasoning built in ( i.e. deepseek, gpt-oss) it will not display the reasoning in the web or terminal UI leading to a large gap between a query being accepted and answer being given.
-
----
 ## License
 
 See the LICENSE file in the root directory of tis project.
 
 ---
-
-## Contact & Support
-
-For questions, feature requests, or help, open issues on the GitHub repo or contact [[your-email@example.com](mailto:your-email@example.com)].
-
----
-
-## Performance Tiers
-
-| Tier | CPU | RAM | Storage | VRAM | Recommended Use |
-|------|-----|-----|---------|------|-----------------|
-| **Basic** | 8 cores | 16GB | 100GB | - | Development & testing |
-| **Standard** | 12+ cores | 32GB | 100GB | - | Production CPU build |
-| **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
-| **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
 
 ## Model Compatibility
 
@@ -1411,20 +1678,49 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 | **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16-32GB | Complex reasoning | ✅ Supported |
 | **Specialized** | CodeLlama, Math models | Varies | Domain-specific | 🔄 Partial |
 
-## Roadmap Timeline
 
-| Quarter | Focus Areas | Key Deliverables |
-|---------|-------------|------------------|
-| **Q2 2024** | Core stabilization | Production memory system, tool chains |
-| **Q3 2024** | Advanced capabilities | Babelfish, Corpus Crawler alpha |
-| **Q4 2024** | Scaling & optimization | Scheduler, Security Analyzer |
-| **Q1 2025** | Enterprise features | Memory Explorer, cluster support |
+## Known Issues
 
----
+**TTS Pacing** - On slower hardware the TTS engine may talk faster than the LLM can generate
 
-## Known Limitations
+**LLM Reasoning not Visible** - If an LLM has reasoning built in ( i.e. deepseek, gpt-oss) it will not display the reasoning in the web or terminal UI leading to a large gap between a query being accepted and answer being given.
 
 - Windows configuration requires manual adaptation
 - TTS pacing issues on slower hardware
 - LLM reasoning not visible in UI for some models
 - Resource-intensive on large knowledge graphs
+
+
+## Contact & Support
+
+For questions, feature requests, or help:
+
+- **GitHub Issues:** [https://github.com/BoeJaker/Vera-AI/issues](https://github.com/BoeJaker/Vera-AI/issues)
+- **GitHub Discussions:** [https://github.com/BoeJaker/Vera-AI/discussions](https://github.com/BoeJaker/Vera-AI/discussions)
+- **Agentic Stack POC:** [https://github.com/BoeJaker/AgenticStack-POC](https://github.com/BoeJaker/AgenticStack-POC)
+
+---
+
+## Roadmap
+
+**Planned Features:**
+
+- [x] Multi-agent orchestration (POC complete)
+- [x] Persistent memory system (POC complete)
+- [x] Tool integration and planning (POC complete)
+- [ ] Selective memory promotion (in development)
+- [ ] Memory lifecycle management (planned)
+- [ ] Micro models for specialized tasks (in development)
+- [ ] Model overlay training system (in development)
+- [ ] Self-modification engine (in development)
+- [ ] Security analyzer agent (in development)
+- [ ] Multi-modal I/O (whisper TTS, OCR, image recognition) (planned)
+- [ ] Windows native support (planned)
+- [ ] Distributed deployment (Kubernetes) (planned)
+
+For detailed tracking, see the [GitHub Projects](https://github.com/BoeJaker/Vera-AI/projects) board.
+
+---
+
+**Last Updated:** January 2025  
+**Version:** 1.0.0 (POC)
