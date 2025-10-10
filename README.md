@@ -71,7 +71,8 @@ Together, these components form a flexible, extensible AI platform designed for 
 > Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
 >Please check the requirements section for more info
 
->[!INFORMATION]
+
+>[!INFORMATION]  
 >**Vera utilises the Agentic-Stack-POC**  
 > To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
 
