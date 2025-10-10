@@ -1,0 +1,5 @@
+{"timestamp": "2025-09-28T19:07:06.327378", "type": "entity_create", "entity": {"id": "project_alpha", "type": "project", "labels": ["Project"], "properties": {"status": "active", "priority": "high"}}}
+{"timestamp": "2025-09-28T19:07:06.448725", "type": "entity_create", "entity": {"id": "ai_system", "type": "system", "labels": ["System", "AI"], "properties": {"version": "1.0", "type": "llm"}}}
+{"timestamp": "2025-09-28T19:07:06.541268", "type": "entity_link", "edge": {"src": "project_alpha", "dst": "ai_system", "rel": "USES", "properties": {}}}
+{"timestamp": "2025-09-28T19:07:06.596438", "type": "session_start", "session": {"id": "sess_1759086426542", "started_at": "2025-09-28T19:07:06.542518", "ended_at": null, "metadata": {"user": "developer", "task": "debugging"}}}
+{"timestamp": "2025-09-28T19:07:06.677744", "type": "session_end", "session_id": "sess_1759086426542"}
