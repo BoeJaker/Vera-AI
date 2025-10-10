@@ -593,26 +593,35 @@ Temporal Scale
 ### 4. ToolChain Planner/Executor
 **Automated Multi-Step Tool Orchestration**
 
+>[!WARNING]  
+>**Vera has unrestricted access to Bash & Python execution out of the box**  
+>Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
+
 [ToolChain Documentation](<Vera Assistant Docs/Toolchain Planner.md>)
 
 The `ToolChain` orchestrates the planning and execution of complex workflows by chaining together multiple tools available to the agent. It leverages a deep language model (LLM) to dynamically generate, execute, and verify a sequence of tool calls tailored to solving a user query.
 
-<!-- Parallel Execution
+This forms the core of an intelligent, multi-tool orchestration framework that empowers the agent to decompose complex queries into manageable actions, execute them with error handling, and iteratively improve results through self-reflection.
 
-Speculative Execution
+The ToolChain can utilise various planning formats, best suited to the problem:
 
 Batch Planning
 
 Step Planning
 
-Hybrid Planning -->
+Hybrid Planning 
 
-This forms the core of an intelligent, multi-tool orchestration framework that empowers the agent to decompose complex queries into manageable actions, execute them with error handling, and iteratively improve results through self-reflection.
+The ToolChain can execute plans using various execution formats:
 
+Sequential Execution
+
+Parallel Execution
+
+Speculative Execution
 
 #### Overview
 
-- **Planning:** Generates a structured multi-step plan in JSON format, specifying which tools to call and what inputs to provide, based on the query and historical context.
+- **Planning:** Generates a structured plan in JSON format, specifying which tools to call and what inputs to provide, based on the query and historical context.
     
 - **Execution:** Runs each tool in sequence, supports referencing outputs from previous steps (`{prev}`, `{step_n}`), and handles errors with automatic replanning.
     
@@ -637,14 +646,10 @@ This forms the core of an intelligent, multi-tool orchestration framework that e
 
 ---
 
->[!WARNING]  
->**Vera has unrestricted access to Bash & Python execution out of the box**  
->Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
-
 #### How It Works
 
 1. **Planning Phase:**  
-    The class constructs a prompt describing available tools and the user query, requesting the LLM to generate a JSON array that outlines the sequence of tool calls and their inputs.
+    It decides the best style of plan for the problem, then constructs a prompt describing available tools and the user query, requesting the LLM to generate a JSON array that outlines the sequence of tool calls and their inputs.
     
 2. **Execution Phase:**  
     Each tool is invoked in order. Inputs referencing outputs from prior steps (e.g., `{step_1}`, `{prev}`) are resolved to the actual results. Errors in execution trigger automatic recovery plans via replanning.
@@ -661,7 +666,7 @@ This forms the core of an intelligent, multi-tool orchestration framework that e
 #### Benefits
 
 - **Dynamic, Context-Aware Planning:**  
-    Plans tool usage tailored to the problem, reusing historical outputs intelligently.
+    Selects the type of plan & plans tool usage tailored to the problem, reusing historical outputs intelligently.
     
 - **Error Resilience:**  
     Automatically detects and recovers from tool failures or incomplete results.
@@ -693,6 +698,16 @@ print("Final Output:", final_output)
 history_report = planner.report_history()
 print("Execution History Report:\n", history_report)
 ```
+
+---
+
+#### Tools
+
+Internal Tools
+
+Local Tools
+
+MCP Tools
 
 ---
 
