@@ -128,7 +128,7 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 #### Micro Models
 - **Micro Models:** Tiny models, specialized to complete one task or read a particular dataset. Can be built and trained on a case-by-case basis. Capable of massive parallel reasoning. 
 
-
+<!-- 
 ### 2. Memories
 
 #### Node
@@ -146,16 +146,16 @@ Parses external datasets into the memory system i.e. network scans,
 #### Enricher
 Enriches the knowledge graph 
 
-<!-- #### Micro Buffer
+#### Micro Buffer
 Memory buffer for immediate context
 
-<!-- ### Meso buffer -->
+### Meso buffer
 
 #### Macro Buffer
 Memory buffer for cross sessional context
 
 #### Meta Buffer
-Memory buffer for memory system context -->
+Memory buffer for memory system context
 
 
 #### Project
@@ -195,61 +195,62 @@ The combined pool of workers both local and remote
 The remote pool of workers
 
 #### Task
-A processing task to be completed by the pool
+A processing task to be completed by the pool -->
 
 ---
 
 ## Core Components
 
-Top level components:
+#### Top level components:
 
 All top level components are designed to run stand-alone or togehter as a complete framework.
 
-CEO - Central Executive Orchestrator
+**CEO - Central Executive Orchestrator**  
 Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
 
-PBT- Proactive Background Cognition
+**PBT- Proactive Background Cognition**  
 Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
 
-TCE - Toolchain Executor
+**TCE - Toolchain Executor**  
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
-KGM - Knowledge Graph Memory
+**KGM - Knowledge Graph Memory**  
 Stores memories and their relationships in vector and graph stores. 
 Systematically enriches information stored within the graph
 
-BFT - Babelfish Translator
+**BFT - Babelfish Translator**  
 A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
 
-IAS  - Integration API Shim
+**IAS  - Integration API Shim**  
 Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface with Veras systems.
 
-SME - Self Modification Engine
+**SME - Self Modification Engine**  
 A full CI/CD pipeline for Ver to review and edit its own code.
 
-PF - Perceptron Forge
+**PF - Perceptron Forge**  
 Allows Vera to build new models from the fundamental building blocks of all AI models - perceptrons.
 
-User Interfaces
+#### User Interfaces
 
-CUI - Chat UI
+**CUI - Chat UI**  
 A web UI with full duplex speech synthesis
 
-OUI - Orchestrator UI
+**OUI - Orchestrator UI**  
 A web UI for management of the orchestrator
 
-TCEUI - ToolChain Executor UI 
+**TCEUI - ToolChain Executor UI**  
 A standalone UI for managing the ToolChain Executor
 
-MX - Memory Explorer
+**MX - Memory Explorer**  
 A web UI enabling broad or targeted traversal of the knowledge graph
 
 
 ---
 
 ### 1. Central Executive Orchestrator
-**Task scheduler & worker orchestrator**
-The Heart of vera, it collects performance data and user input then allocates or creates resources either locally or in a remote worker pool.
+**Task scheduler & worker orchestrator**  
+
+The Heart of vera, it collects performance data and queues user input then allocates or creates resources either locally or in a remote worker pool.
 
 The Orchestrator can identify where steps and tasks can be completed in parallel and will schedule them as such if the resource is available.
 
