@@ -43,7 +43,7 @@
 
 📺 Follow the above link for an 8 minute video overview of Vera.  
 
-🎧 [Listen to the Podcast](https://drive.google.com/file/d/1NaJC4ayEM2Vmf_ncW_MSEHf498yvRNhL/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1NaJC4ayEM2Vmf_ncW_MSEHf498yvRNhL/view?usp=sharing) - A 50 minute deep-dive podcast discussing the architecture of Vera.  
 
 </span>
 
@@ -68,8 +68,13 @@ Together, these components form a flexible, extensible AI platform designed for 
 
 >[!WARNING]
 >**Vera has high system requirements**  
-> Atleast 16gb of system RAM and 12 real cores  (24 hyperthreaded) running at 3ghz+ is the minimum recommended.  
+> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
 >Please check the requirements section for more info
+
+>[!INFORMATION]
+>**Vera utilises the Agentic-Stack-POC**  
+> To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
+
 
 ## Contents:
 
@@ -142,10 +147,12 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 
 
 #### Micro Models
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
+
 - **Micro Models:** Tiny models, specialized to complete one task or read a particular dataset. Can be built and trained on a case-by-case basis. Capable of massive parallel reasoning. 
 
 #### Model Overlays
-#in-development
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 Allows you to overlay additional training onto existing models
 
@@ -288,6 +295,9 @@ A web UI enabling broad or targeted traversal of the knowledge graph
 ### 1. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**  
 
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
+
+
 The Heart of vera, it collects performance data and queues user input then allocates or creates resources either locally or in a remote worker pool.
 
 The Orchestrator can identify where steps and tasks can be completed in parallel and will schedule them as such if the resource is available.
@@ -306,6 +316,9 @@ ToolCahin executor returns the results of the step.
 ---
 
 ### 2. Proactive Background Reflection
+
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
+
 
 [Proactive Background Reflection Documentation](<Vera Assistant Docs/Central Executive Orchestrator.md>)
 
@@ -345,6 +358,8 @@ It is designed to integrate seamlessly with local, remote, and Proxmox-based wor
 ---
 
 ### 3. Memory Architecture
+
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 ![Memory UI](images/memory_ui.jpg)
 <i>Above: The memory explorer </i>
@@ -429,7 +444,7 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 This architecture ensures Vera can fluidly operate in the moment while continuously building a structured, retrievable, and intelligent knowledge base, capable of learning from its entire lived experience.
 
 #### **3.1 Memory Buffer Hierarchy: Micro, Macro, and Meta**
-#in-development
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 Vera employs a sophisticated three-tier memory buffer system that operates at different scales of retrieval and reasoning, enabling seamless cognitive processing across temporal and conceptual dimensions.
 
@@ -560,16 +575,17 @@ This creates a coherent hierarchy where:
 Each buffer operates at a different temporal and conceptual scale while working together to enable sophisticated, multi-layered cognitive processing.
 
 #### **3.1 Advanced Capability: Memory Lifecycle**
-#in-development
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 Discovery - Promotion - Recall - Enrinchment - Continuous Evaluation - Decay - Archiving
 
 Planned feature
 
 #### **3.2 Memory Explorer**
-#in-production
 
 **The Cartographer of Consciousness: Mapping the Labyrinth of Thought**
+
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
 
 [Memory Explorer Documentation](<Memory/dashboard/dashboard.md>)
 [Knowledge Graph Documentation](<Vera Assistant Docs/Knowledge Graph.md>)
@@ -592,6 +608,9 @@ Temporal Scale
 
 ### 4. ToolChain Planner/Executor
 **Automated Multi-Step Tool Orchestration**
+
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
+
 
 >[!WARNING]  
 >**Vera has unrestricted access to Bash & Python execution out of the box**  
@@ -759,6 +778,9 @@ Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, wh
 
 ### 5. API Integration Shim
 
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
+
+
 A compatability layer and API endpoint for Vera. Allows vera to take the pace of other LLM APIs like OpenAIs Chat GPT or Anthropics Claude. It also allows these APIs to interface with the Vera framework 
 
 ---
@@ -766,6 +788,9 @@ A compatability layer and API endpoint for Vera. Allows vera to take the pace of
 ### 6. Babelfish
 
 [Babelfih Documentation](<Vera Assistant Docs/Babelfish.md>)
+
+<a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
+
 
 **a universal communication toolkit for AI agents and distributed systems.** 
 It enables your agent to **speak any digital protocol** — from HTTP and WebSockets, to MQTT, SSH, IRC, LoRa, Matrix, Slack, and even experimental transports like WebRTC and QUIC/HTTP3.
