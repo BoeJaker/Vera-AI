@@ -67,8 +67,8 @@ Together, these components form a flexible, extensible AI platform designed for 
 ---
 
 >[!WARNING]
->**Vera has high system requirements**
-> Ateast 16gb of system RAM and 12 real cores  (24 hyperthreaded) running at 3ghz+ is the minimum recommended.
+>**Vera has high system requirements**  
+> Atleast 16gb of system RAM and 12 real cores  (24 hyperthreaded) running at 3ghz+ is the minimum recommended.  
 >Please check the requirements section for more info
 
 ## Contents:
@@ -623,7 +623,7 @@ This class forms the core of an intelligent, multi-tool orchestration framework 
 ---
 
 >[!WARNING]
->**Vera has unrestricted access to Bash & Python execution out of the box**
+>**Vera has unrestricted access to Bash & Python execution out of the box**  
 >Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
 
 #### How It Works
