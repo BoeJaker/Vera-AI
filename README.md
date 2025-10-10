@@ -88,13 +88,13 @@ While many AI tools exist online, Vera was created to address a specific gap: a 
 
 ## How does vera work?
 
-Vera orchestrates multiple large language models (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve comprehensive outcomes.
+Vera orchestrates multiple large language models (LLMs), specialized AI sub-agents and tools synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve comprehensive outcomes.
 
 This distributed agent design enables parallel specialization—some agents focus on rapid query response, others on strategic forward planning—while sharing a unified memory and goal system to maintain coherence across operations.
 
-A hallmark of Vera's architecture is its capacity for proactive background processing. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to orchestrate perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts, enabling it to enrich its own memories and progress toward long-term goals.
+A hallmark of Vera's architecture is its capacity for proactive background processing. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to process perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts, enabling it to enrich its own memories and progress toward long-term goals. 
 
-Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network.
+Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. All the while postgres is keeping an immutable, versioned record of everything.
 
 Complementing these capabilities is Vera's integrated program synthesis and self-modification engine. This subsystem empowers Vera to review, generate, and iteratively improve its own codebase, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
 
@@ -111,7 +111,6 @@ Complementing these capabilities is Vera's integrated program synthesis and self
 
 ## Contents:
 
-
 ### Getting Started
 - [What is Vera?](#what-is-vera)
 - [Key Features](#key-features)
@@ -126,29 +125,36 @@ Complementing these capabilities is Vera's integrated program synthesis and self
 
 ### Architecture & Deep Dives
 - [Architecture Overview](#architecture-overview)
+- [Core Capabilities](#core-capabilities)
 - [Core Concepts](#core-concepts)
-- [Component Status Guide](#component-status-guide)
-- [Components](#components)
-  - [Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator-ceo)
-  - [Proactive Background Cognition (PBT)](#2-proactive-background-cognition-pbt)
-  - [Memory Architecture (KGM)](#memory-architecture)
-  - [ToolChain Executor (TCE)](#3-toolchain-executor-tce)
-  - [Babelfish Translator (BFT)](#5-babelfish-translator-bft)
-  - [Integration API Shim (IAS)](#6-integration-api-shim-ias)
-  - [Self-Modification Engine (SME)](#7-self-modification-engine-sme)
+<!-- - [Component Status Guide](#component-status-guide) -->
+- [Core Components](#core-components)
+- [Component Deep Dive](#Component-Deep-Dive)
+  - [Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator)
+  - [Proactive Background Cognition (PBT)](#2-proactive-background-cognition)
+  - [Composite Knowledge Graph (CKG)](#3-composite-knowledge-graph)
+  - [ToolChain Engine (TCE)](#4-toolchain-engine)
+  - [API Integration Shim](#5-api-integration-shim)
+  - [Babelfish Translator (BFT)](#6-babelfish)
+  - [Integration API Shim (IAS)](#6-integration-api-shim)
+  - [Self-Modification Engine (SME)](#7-self-modification-engine)
   - [User Interfaces](#user-interfaces)
-- [Agents & Ingestors](#agents--ingestors)
+- [Agents](#agents)
+- [Ingestors](#ingestors)
 
 ### Extension & Contribution
+- [Advanced Usage and Features](#advanced-usage-and-features)
 - [Extending Vera](#extending-vera)
 - [Contributing](#contributing)
 - [Performance Optimization](#performance-optimization)
 
 ### Reference
+- [Safeguarding & Data Privacy](#safeguarding--data-privacy)
 - [FAQ & Troubleshooting](#faq--troubleshooting)
 - [Known Issues](#known-issues)
-- [Roadmap](#roadmap)
-- [License & Support](#license--support)
+- [License](#license)
+- [Contact](Contact--Support)
+- [Roadmap](roadmap)
 
 
 ---
@@ -248,30 +254,50 @@ ollama pull gpt-oss:20b
 # ChromaDB installs via pip (see below)
 ```
 
-### Python Installation
+## Installation
+
+### Quick Installation (Recommended)
+
+```bash
+# Clone the repository
+git clone https://github.com/BoeJaker/Vera-AI
+cd Vera-AI
+
+# Use Makefile for automated installation
+make install-system    # Install system dependencies
+make install-python    # Create virtual environment
+make install-deps      # Install Python dependencies
+make install-browsers  # Install browser drivers
+make setup-env         # Create environment configuration
+make verify-install    # Verify installation
+```
+
+### Or use the single-command installation:
+```bash
+make full-install      # Complete installation process
+```
+
+### Manual Installation (Alternative)
 
 1. **Clone the repository**
-
 ```bash
 git clone https://github.com/BoeJaker/Vera-AI
 cd Vera-AI
 ```
 
 2. **Create virtual environment**
-
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 3. **Install dependencies**
-
 ```bash
 pip install -r requirements.txt
 ```
 
 Key dependencies:
-- streamlit - Python web UI framework
+- `streamlit` - Python web UI framework
 - `chromadb` – Vector database for semantic memory
 - `playwright` – Browser automation and web scraping
 - `requests` – HTTP client
@@ -280,13 +306,11 @@ Key dependencies:
 - `llama-index` – LLM framework
 
 4. **Install browser drivers**
-
 ```bash
 playwright install
 ```
 
 5. **Configure environment variables**
-
 ```bash
 cp .env.example .env
 # Edit .env with your settings:
@@ -295,8 +319,75 @@ cp .env.example .env
 # - API keys for external services (optional)
 ```
 
-6. **Verify installation**
+### Makefile Installation Commands
 
+**Complete Installation:**
+```bash
+make full-install                    # One-command full installation
+```
+
+**Step-by-Step Installation:**
+```bash
+make install-system                  # Install system dependencies
+make install-python                  # Setup Python virtual environment  
+make install-deps                    # Install Python packages
+make install-browsers               # Install Playwright browsers
+make setup-env                      # Create environment file
+make verify-install                 # Validate installation
+```
+
+**Development Installation:**
+```bash
+make dev-install                    # Includes development dependencies
+```
+
+**Verification & Troubleshooting:**
+```bash
+make verify-install                 # Check all components
+make check-services                # Verify required services
+make install-fix-permissions       # Fix file permissions if needed
+```
+
+### Environment Configuration
+
+After installation, configure your environment:
+
+```bash
+# Copy and edit environment template
+make setup-env
+
+# Edit the generated .env file
+nano .env
+```
+
+Required environment variables:
+```bash
+# Neo4j Database
+NEO4J_URL=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_password
+
+# Ollama LLM Service
+OLLAMA_BASE_URL=http://localhost:11434
+
+# ChromaDB Vector Database
+CHROMADB_HOST=localhost
+CHROMADB_PORT=8000
+```
+
+### Verification
+
+**Verify installation:**
+```bash
+make verify-install
+```
+
+**Check individual services:**
+```bash
+make check-services
+```
+
+**Test imports:**
 ```bash
 python3 -c "from vera import Vera; print('✓ Vera imported successfully')"
 ```
@@ -307,11 +398,36 @@ If you see the checkmark, installation succeeded. If you get an error, check tha
 # Check Neo4j
 curl http://localhost:7474
 
-# Check Ollama
+# Check Ollama  
 curl http://localhost:11434/api/tags
 
 # Check ChromaDB
 curl http://localhost:8000/api/v1/heartbeat
+```
+
+### Troubleshooting
+
+**Common issues:**
+```bash
+# Permission errors
+make install-fix-permissions
+
+# Missing dependencies
+make install-system
+
+# Browser installation issues
+make install-browsers-force
+
+# Environment setup
+make setup-env-reset
+```
+
+**Service health checks:**
+```bash
+make check-health                  # Comprehensive health check
+make check-neo4j                  # Check Neo4j connection
+make check-ollama                 # Check Ollama service
+make check-chromadb              # Check ChromaDB status
 ```
 
 ---
@@ -920,7 +1036,7 @@ ORDER BY importance DESC
 
 ---
 
-### **Buffer Interaction Dynamics**
+#### **Buffer Interaction Dynamics**
 
 The three buffers work in concert to create a seamless cognitive experience:
 
@@ -981,7 +1097,7 @@ Temporal Scale
 
 ---
 
-### 4. ToolChain Planner/Executor
+### 4. ToolChain Engine
 **Automated Multi-Step Tool Orchestration**
 
 <a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
@@ -1090,22 +1206,6 @@ The `ToolChain` orchestrates the planning and execution of complex workflows by 
 
 This forms the core of an intelligent, multi-tool orchestration framework that empowers the agent to decompose complex queries into manageable actions, execute them with error handling, and iteratively improve results through self-reflection.
 
-The ToolChain can utilise various planning formats, best suited to the problem:
-
-Batch Planning
-
-Step Planning
-
-Hybrid Planning 
-
-The ToolChain can execute plans using various execution formats:
-
-Sequential Execution
-
-Parallel Execution
-
-Speculative Execution
-
 #### Overview
 
 - **Planning:** Generates a structured plan in JSON format, specifying which tools to call and what inputs to provide, based on the query and historical context.
@@ -1164,6 +1264,81 @@ Speculative Execution
 - **Traceability:**  
     Detailed logging and memory save steps ensure all decisions and outputs are recorded.
     
+
+**Purpose:** Breaks down complex tasks into achievable steps and executes plans using integrated tools.
+
+
+**Capabilities:**
+- Generates structured JSON execution plans
+- Supports multiple planning strategies: Batch, Step, and Hybrid
+- Multiple execution strategies: Sequential, Parallel, Speculative
+- Error handling with automatic replanning
+- Result validation against original goal
+- Full execution history logging
+
+**Planning Strategies:**
+
+**Batch Planning:** Generate entire plan upfront
+```json
+[
+  { "tool": "WebSearch", "input": "latest AI trends 2024" },
+  { "tool": "WebSearch", "input": "generative AI applications" },
+  { "tool": "SummarizerLLM", "input": "{step_1}\n{step_2}" }
+]
+```
+
+**Step Planning:** Generate next step based on prior results
+```json
+[
+  { "tool": "WebSearch", "input": "authenticate with OAuth2" }
+]
+// After step 1 completes, generate next step
+```
+
+**Hybrid Planning:** Mix of upfront and adaptive planning
+
+**Execution Strategies:**
+
+**Sequential:** Execute steps one at a time (safe, traceable)
+**Parallel:** Execute independent steps concurrently (faster)
+**Speculative:** Run multiple possible next steps, then prune based on validation (advanced)
+
+**Example usage:**
+
+```python
+planner = ToolChainPlanner(agent, agent.tools)
+
+# Execute a multi-tool workflow
+query = "Retrieve latest weather for New York and generate a report"
+final_output = planner.execute_tool_chain(query)
+print("Result:", final_output)
+
+# Generate execution history report
+history = planner.report_history()
+print(history)
+```
+
+**Plan format expected from LLM:**
+
+```json
+[
+  { "tool": "SearchAPI", "input": "latest weather New York" },
+  { "tool": "SummarizerLLM", "input": "{step_1}" }
+]
+```
+
+Placeholders like `{step_1}` or `{prev}` are replaced with actual outputs during execution.
+
+<!-- **Integration Notes:**
+
+Expects an `agent` object with:
+- `deep_llm`: LLM instance with `invoke(prompt: str) -> str` method
+- `tools`: List of callable tool objects
+- `buffer_memory`: Object managing chat history
+- `save_to_memory(user_msg, ai_msg)`: Method to record steps
+
+Tools can be any callable (LLM-based, APIs, custom functions) taking string input and returning string output. -->
+
 
 ---
 
