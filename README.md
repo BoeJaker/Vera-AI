@@ -72,7 +72,7 @@ Together, these components form a flexible, extensible AI platform designed for 
 >Please check the requirements section for more info
 
 
->[!INFORMATION]  
+>[!NOTE]  
 >**Vera utilises the Agentic-Stack-POC**  
 > To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
 
