@@ -583,16 +583,31 @@ The Explorer enables both **macro-scale pattern recognition** and **micro-scale 
 
 By rendering the invisible architecture of memory into explorable visual spaces, the Memory Explorer provides unprecedented insight into how an AI system organizes, connects, and evolves its understanding of the world—revealing the hidden structures that make autonomous intelligence possible.
 
+<!-- 
+Meta scale
+Temporal Scale 
+-->
+
 ---
 
-### 4. [[ToolChain Planner]]
+### 4. ToolChain Planner/Executor
 **Automated Multi-Step Tool Orchestration**
 
 [ToolChain Documentation](<Vera Assistant Docs/Toolchain Planner.md>)
 
-The `ToolChainPlanner` class orchestrates the planning and execution of complex workflows by chaining together multiple tools available to the agent. It leverages a deep language model (LLM) to dynamically generate, execute, and verify a sequence of tool calls tailored to solving a user query.
+The `ToolChain` orchestrates the planning and execution of complex workflows by chaining together multiple tools available to the agent. It leverages a deep language model (LLM) to dynamically generate, execute, and verify a sequence of tool calls tailored to solving a user query.
 
-This class forms the core of an intelligent, multi-tool orchestration framework that empowers the agent to decompose complex queries into manageable actions, execute them with error handling, and iteratively improve results through self-reflection.
+<!-- Parallel Execution
+
+Speculative Execution
+
+Batch Planning
+
+Step Planning
+
+Hybrid Planning -->
+
+This forms the core of an intelligent, multi-tool orchestration framework that empowers the agent to decompose complex queries into manageable actions, execute them with error handling, and iteratively improve results through self-reflection.
 
 
 #### Overview
@@ -622,7 +637,7 @@ This class forms the core of an intelligent, multi-tool orchestration framework 
 
 ---
 
->[!WARNING]
+>[!WARNING]  
 >**Vera has unrestricted access to Bash & Python execution out of the box**  
 >Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
 
@@ -750,7 +765,7 @@ At its core, Babelfish acts like a **networking “translator”**:
 
 ---
 
-### 7. Self-Modifying Code
+### 7. Self-Modification Engine
 
 **Autonomous Evolution Through Continuous Integration**
 
