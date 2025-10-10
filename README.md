@@ -71,7 +71,6 @@ Together, these components form a flexible, extensible AI platform designed for 
 > Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
 >Please check the requirements section for more info
 
-
 >[!NOTE]  
 >**Vera utilises the Agentic-Stack-POC**  
 > To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
@@ -244,15 +243,15 @@ A processing task to be completed by the pool -->
 All top level components are designed to run stand-alone or togehter as a complete framework.
 
 **CEO - Central Executive Orchestrator**  
-#in-development #poc-working
+#in-development #poc-working  
 Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
 
 **PBT- Proactive Background Cognition**  
-#in-development #poc-working
+#in-development #poc-working  
 Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
 
 **TCE - Toolchain Executor**  
-#in-development #poc-working
+#in-development #poc-working  
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
 **KGM - Knowledge Graph Memory**  
@@ -261,7 +260,7 @@ Stores memories and their relationships in vector and graph stores.
 Systematically enriches information stored within the graph
 
 **BFT - Babelfish Translator**  
-#production #poc-working
+#production #poc-working  
 A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
 
 **IAS  - Integration API Shim**  
@@ -269,11 +268,11 @@ A protocol agnostic communication tool with encryption. Facilitates arbitrary we
 Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface with Veras systems.
 
 **SME - Self Modification Engine**  
-#in-development
+#in-development  
 A full CI/CD pipeline for Ver to review and edit its own code.
 
 **PF - Perceptron Forge**  
-#in-development
+#in-development  
 Allows Vera to build new models from the fundamental building blocks of all AI models - perceptrons.
 
 #### User Interfaces
