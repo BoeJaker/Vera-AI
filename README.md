@@ -1,5 +1,5 @@
 
-> [IMPORTANT] 
+> [!IMPORTANT]  
 >🚀 **Help Wanted!**
 >
 > I'm looking for contributors to help with **Vera**.  
@@ -65,6 +65,11 @@ Complementing these capabilities is Vera’s integrated program synthesis and se
 Together, these components form a flexible, extensible AI platform designed for complex problem solving, adaptive decision making, and seamless interaction across diverse domains.
  
 ---
+
+>[!WARNING]
+>**Vera has high system requirements**
+> Ateast 16gb of system RAM and 12 real cores  (24 hyperthreaded) running at 3ghz+ is the minimum recommended.
+>Please check the requirements section for more info
 
 ## Contents:
 
@@ -304,7 +309,9 @@ ToolCahin executor returns the results of the step.
 
 [Proactive Background Reflection Documentation](<Vera Assistant Docs/Central Executive Orchestrator.md>)
 
-Vera maintains a **Focus Manager** that continuously evaluates system priorities, context, and pending goals. During idle moments, it generates **proactive thoughts**—such as reminders, hypotheses, or plans—that enhance its understanding and readiness for future interactions.
+Vera maintains a **Proactive Focus Manager** that continuously evaluates system priorities, context, and pending goals. During idle moments, it generates **proactive thoughts**—such as reminders, hypotheses, or plans—that enhance its understanding and readiness for future interactions.
+
+<!-- **Proactive Focus Manager** is an autonomous background cognition engine that runs on top of `PriorityWorkerPool`. It continuously monitors project context, generates actionable tasks via LLMs, validates them, and executes them through your toolchain while logging progress to a focus board. -->
 
 This ongoing background reflection helps Vera:
 
@@ -316,8 +323,6 @@ This ongoing background reflection helps Vera:
     
 - Improve self-awareness and performance over time
 
-
-**ProactiveFocusManager** is an autonomous background cognition engine that runs on top of `PriorityWorkerPool`. It continuously monitors project context, generates actionable tasks via LLMs, validates them, and executes them through your toolchain while logging progress to a focus board.
 
 It is designed to integrate seamlessly with local, remote, and Proxmox-based worker nodes, providing a distributed, scalable, and high-throughput execution environment.
 
@@ -617,7 +622,7 @@ This class forms the core of an intelligent, multi-tool orchestration framework 
 
 ---
 
->[WARNING]
+>[!WARNING]
 >**Vera has unrestricted access to Bash & Python execution out of the box**
 >Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
 
