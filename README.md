@@ -131,15 +131,6 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 
 ### 2. Memories
 
-#### Project
-Defined in a json file, this is a collection of other memories and pointers relating to a real-world goal
-
-#### Session
-A string of interactions (inputs & outputs) connected in sequence. Found in the knowledge graph and vector store
-
-#### Collection
-A collection of texts relating to a session, entity or insight. Found in the vector store
-
 #### Node
 A single entity on the knowledge graph
 
@@ -155,6 +146,26 @@ Parses external datasets into the memory system i.e. network scans,
 #### Enricher
 Enriches the knowledge graph 
 
+<!-- #### Micro Buffer
+Memory buffer for immediate context
+
+<!-- ### Meso buffer -->
+
+#### Macro Buffer
+Memory buffer for cross sessional context
+
+#### Meta Buffer
+Memory buffer for memory system context -->
+
+
+#### Project
+Defined in a json file, this is a collection of other memories and pointers relating to a real-world goal
+
+#### Session
+A string of interactions (inputs & outputs) connected in sequence. Found in the knowledge graph and vector store
+
+#### Collection
+A collection of texts relating to a session, entity or insight. Found in the vector store
 
 ### 3. Tools
 
@@ -172,18 +183,27 @@ Capable of managing the host system
 ### 4. Orchestration
 
 #### Worker
+A local task processor, used for quick low effort tasks
 
 #### ClusterWorker
+A remote task processor, computationally seperate from the host, used for sustained or high-effort tasks
 
 #### Pool
+The combined pool of workers both local and remote
+
+#### ClusterPool
+The remote pool of workers
 
 #### Task
+A processing task to be completed by the pool
 
 ---
 
 ## Core Components
 
 Top level components:
+
+All top level components are designed to run stand-alone or togehter as a complete framework.
 
 CEO - Central Executive Orchestrator
 Responsible for routing requests to the correct agent and creating, destroying & allocating system resources via workers.
@@ -195,7 +215,8 @@ TCE - Toolchain Executor
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
 KGM - Knowledge Graph Memory
-Stores memories and their relationships in vector and graph stores
+Stores memories and their relationships in vector and graph stores. 
+Systematically enriches information stored within the graph
 
 BFT - Babelfish Translator
 A protocol agnostic communication tool with encryption. Facilitates arbitrary webserver creation, ad-hoc network protocol comms. And VPN construction.
@@ -206,10 +227,42 @@ Allows Vera to mimic other LLM APIs. Also allows those same APIs to interface wi
 SME - Self Modification Engine
 A full CI/CD pipeline for Ver to review and edit its own code.
 
+PF - Perceptron Forge
+Allows Vera to build new models from the fundamental building blocks of all AI models - perceptrons.
+
+User Interfaces
+
+CUI - Chat UI
+A web UI with full duplex speech synthesis
+
+OUI - Orchestrator UI
+A web UI for management of the orchestrator
+
+TCEUI - ToolChain Executor UI 
+A standalone UI for managing the ToolChain Executor
+
+MX - Memory Explorer
+A web UI enabling broad or targeted traversal of the knowledge graph
+
+
 ---
 
 ### 1. Central Executive Orchestrator
 **Task scheduler & worker orchestrator**
+The Heart of vera, it collects performance data and user input then allocates or creates resources either locally or in a remote worker pool.
+
+The Orchestrator can identify where steps and tasks can be completed in parallel and will schedule them as such if the resource is available.
+
+Query recieved
+Query Triaged
+Handed to the toolchain executor
+Toolchain Executor requests resource for a network scanner and light-llm 
+Orchestrator identifies that all light-llms are busy and queues the request.
+The resources become free
+Orchestrator identifies there is resource available for the network scan and allocates it
+The network scan runs - in this time a light llm becomes free
+Orchestrator dequeues the task and provides the resources
+ToolCahin executor returns the results of the step.
 
 ---
 
@@ -260,17 +313,17 @@ It is designed to integrate seamlessly with local, remote, and Proxmox-based wor
 [Memory Documentation](<Memory/memory.md>) ⚠
 [Memory Schema](<Memory/schema.md>)
 
-The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
+The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB** vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
 
 #### **Architecture Overview**
 
 Vera's memory is structured into four distinct storage layers, excluding Layer 5 each layer contains or is derived from data in the previous layer, each serving a specific purpose in the cognitive process:
 
 *   **Layer 1: Short-Term Buffer** - The agent's immediate conversational context.
-*   **Layer 2: Working Memory** - Its private scratchpad for a single task, session or memory.
-*   **Layer 3: Long-Term Knowledge** - Its persistent, interconnected library of facts and insights.
-*   **Layer 4: Archive** - A complete, immutable record of activity.
-*   **Layer 5: External Knowledge Bases** - 
+*   **Layer 2: Working Memory** - Its private scratchpad for a single task, session or memory. Gives vera a place to think, make notes, plan.
+*   **Layer 3: Long-Term Knowledge** - A persistent snapshot of Veras entire mind, an interconnected library of interactions, facts and insights. This is how Vera can quickly derive insights from large datasets.
+*   **Layer 4: Temporal Archive** - A complete, immutable record of activity logs, metrics, codebase changes, graph changes. Allowing you to 'scroll' back through the entire history of Vera.
+*   **Layer 5: External Knowledge Bases** - Dynamic networked data stores. Web documentation, APIs, Git repos. Allows Vera to extend its graph beyond its own boundaries.
 
 A key advanced capability, the **Memory Buffer**, can dynamically bridge Layers to enable unified, cross-sessional, highly enriched reasoning.
 
@@ -295,25 +348,14 @@ It will contain systenm prompts, user input, the last <i>n</i> chat history entr
 *   **Implementation:**
     Layers 1 and two are continually promoted into Layer 3 before session end
     *   **Vector Database - ChromaDB (Content & Semantic Search):** The primary `long_term_docs` collection stores the **full text** of all important information: documents, code examples, notes, and promoted "thoughts." Each entry contains metadata that points back to the Neo4j graph.
-    *   **Knowledge Graph - Neo4j (Context & Relationships):** The graph stores all memories, entities & insights (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma.
+    *   **Knowledge Graph - Neo4j (Context & Relationships):** The graph stores all memories, entities & insights (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma. 
+    See [Memory Schema](<Memory/schema.md>) for more information on types.
+
 *   **How It Works (Basic Retrieval):**
     1.  A semantic query is performed on the `long_term_docs` Chroma collection.
     2.  The search returns the most relevant text passages and their metadata, including a `neo4j_id`.
     3.  This ID is used to fetch the corresponding node and its entire network of relationships from Neo4j.
     4.  The agent receives both the retrieved text *and* its full relational context, enabling deep, multi-hop reasoning.
-
-#### Data Retrieval
-
-*   **How It Works (Advanced Macro Retrieval):** For comprehensive questions, Vera uses a **Graph-Accelerated Search** to power its **Macro Buffer**.
-    1.  **Graph-Based Pre-Filtering:** The query is analyzed for key entities. Neo4j finds all `Session` nodes related to these topics.
-        **Example Cypher Query:**
-        ```cypher
-        MATCH (s:Session)-[:FOCUSED_ON|:HAS_TOPIC]->(e)
-        WHERE e.name = "Project Phoenix" OR e.name =~ "(?i).*authentication.*"
-        RETURN s.session_id
-        ```
-    2.  **Targeted Vector Search:** The original query is executed semantically, but only against the `long_term_docs` collection and the specific `session_*` collections identified by the graph.
-    3.  **Result:** This provides a unified context window from both long-term knowledge and historically relevant sessions, enabling true associative recall.
 
 
 #### **The Promotion Process: From Thought to Knowledge**
@@ -325,9 +367,9 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 3.  **Linking:** This new node is **parsed with nlp** & linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
 4.  **Storage:** The **full text** of the "thought" is inserted into the sessions **Chroma** collection. The metadata for this entry includes the ID of the new Neo4j node (`neo4j_id: <memory_node_id>`), permanently binding the text to its contextual graph.
 
-#### **Layer 4: Archive & Telemetry Stream**
+#### **Layer 4: Temporal Archive & Telemetry Stream**
 
-*   **Purpose:** To provide an immutable, historical record of all agent interactions for auditing, debugging, and future model training.
+*   **Purpose:** To provide an immutable, historical record of all agent interactions for auditing, debugging, and future model training. It also allows the system to 'scroll back in time' for the entire graph, just a particular subgraph, section or node.
 *   **Implementation:** An optional JSONL stream logging sessions, queries, memory creations, and promotion events.
 *   **Content:** Raw, timestamped logs of system activity.
 
@@ -368,8 +410,8 @@ The Micro Buffer is always active and serves as **the real-time cognitive worksp
     - **Cognitive Load Management**: Limits active context to 7±2 chunks to prevent overload (Miller's Law implementation)
     - **Real-time Pruning**: Drops low-relevance information and promotes high-value context as tasks evolve
     - **Focus Tracking**: Maintains attention on the most salient entities and relationships during complex reasoning
-    - **NLP Processing**: Extracts key information and meaning from text and stores them as relationships in the knowledge graph
-
+    - **NLP Processing**: Extracts key information and meaning from text and stores them as relationships in the knowledge graph. i.e. triplets, URLs, filepaths, references, entities like person, technology. It can also parse code into relational trees.   
+ 
 *   **Technical Implementation:**
 ```cypher
 // Micro Buffer maintains focus stack during reasoning
