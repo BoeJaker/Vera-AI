@@ -1,4 +1,15 @@
-#python #agentic_ai #llm 
+> 🚀 **Help Wanted!**
+>
+> I'm looking for contributors to help with **Vera**.  
+> 
+> Please:
+> - Clone the repo  
+> - Make improvements or fixes  
+> - Push them back by opening a Pull Request (PR)  
+>
+> Any help is appreciated — thank you!
+
+#python #agentic_ai #llm #in-development
 
 <span align="center">
 
@@ -99,24 +110,31 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 - **Micro Models:** Tiny models, specialized to complete one task or read a particular dataset. Can be built and trained on a case-by-case basis. Capable of massive parallel reasoning. 
 
 
-
-
 ### 2. Memories
 
-Session
+#### Session
 
-Node
+#### Node
 
-Knowledge Base
+#### Knowledge Base
 
-Ingestor
+#### Ingestor
 
-Enricher
+#### Enricher
 
 
 ### 3. Tools
 
+
+
+
 ### 4. Orchestration
+
+#### Worker
+
+#### Pool
+
+#### Task
 
 ---
 
@@ -144,7 +162,28 @@ This ongoing background reflection helps Vera:
 - Prepare for complex multi-step operations
     
 - Improve self-awareness and performance over time
+
+
+**ProactiveFocusManager** is an autonomous background cognition engine that runs on top of `PriorityWorkerPool`. It continuously monitors project context, generates actionable tasks via LLMs, validates them, and executes them through your toolchain while logging progress to a focus board.
+
+It is designed to integrate seamlessly with local, remote, and Proxmox-based worker nodes, providing a distributed, scalable, and high-throughput execution environment.
+
+#### Features
+
+- **Context-aware task generation:** Pulls context from multiple providers (`ConversationProvider`, `FocusBoardProvider`, or custom providers)
     
+- **LLM-driven reasoning:** Uses a deep LLM to generate actionable next steps
+    
+- **Action validation:** Uses a fast LLM to check if proposed actions are executable
+    
+- **Distributed execution:** Integrates with local pools, remote HTTP workers, and Proxmox-hosted nodes
+    
+- **Focus tracking:** Maintains a focus board with progress, next steps, ideas, actions, and issues
+    
+- **Non-blocking scheduling:** Periodic autonomous ticks with configurable intervals
+    
+
+
 ---
 
 ### 3. Memory Architecture
@@ -158,7 +197,7 @@ The Vera agent is powered by a sophisticated, multi-layered memory system design
 
 #### **Architecture Overview**
 
-Vera's memory is structured into four distinct layers, excluding Layer 5 each layer contains all the data from the previous, each serving a specific purpose in the cognitive process:
+Vera's memory is structured into four distinct storage layers, excluding Layer 5 each layer contains or is derived from data in the previous layer, each serving a specific purpose in the cognitive process:
 
 *   **Layer 1: Short-Term Buffer** - The agent's immediate conversational context.
 *   **Layer 2: Working Memory** - Its private scratchpad for a single task, session or memory.
@@ -166,17 +205,18 @@ Vera's memory is structured into four distinct layers, excluding Layer 5 each la
 *   **Layer 4: Archive** - A complete, immutable record of activity.
 *   **Layer 5: External Knowledge Bases** - 
 
-A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2, 3 & 5 to enable unified, cross-sessional, highly enriched reasoning.
+A key advanced capability, the **Memory Buffer**, can dynamically bridge Layers to enable unified, cross-sessional, highly enriched reasoning.
 
 #### **Layer 1: Short-Term Context Buffer**
 
 *   **Purpose:** To maintain the immediate context of the active conversation, ensuring smooth and coherent multi-turn dialogue. This is a volatile, rolling window of recent events.
+It will contain systenm prompts, user input, the last <i>n</i> chat history entries, vector store matches & nlp data.
 *   **Implementation:** A simple in-memory buffer (e.g., a list of the last 10-20 message exchanges). This data is transient and is not persisted to any database.
 *   **Content:** Raw chat history between the user and the agent.
 
 #### **Layer 2: Working Memory (Session Context)**
 
-*   **Purpose:** To provide an isolated "scratchpad" for the agent's internal monologue, observations, and findings during a specific task, problem, or session or recollection. This allows for exploratory thinking.
+*   **Purpose:** To provide an isolated "scratchpad" for the agent's internal monologue, observations, and findings during a specific task, problem, or session or recollection. This allows for exploratory thinking. 
 *   **Implementation:**
     *   **Neo4j (Structure):** A `Session` node is created and linked to relevant entities in the main graph (e.g., `(Session)-[:FOCUSED_ON]->(ProjectX)`).
     *   **ChromaDB (Content):** A dedicated Chroma collection (`session_<id>`) is created to store the **full text** of the agent's thoughts, notes, and relevant snippets generated during this session.
@@ -187,8 +227,8 @@ A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2, 3
 *   **Purpose:** To serve as the agent's persistent, semantically searchable library of validated knowledge. This is the core of its "intelligence," built over time through a careful process of promotion and curation.
 *   **Implementation:**
     Layers 1 and two are continually promoted into Layer 3 before session end
-    *   **ChromaDB (Content & Semantic Search):** The primary `long_term_docs` collection stores the **full text** of all important information: documents, code examples, notes, and promoted "thoughts." Each entry contains metadata that points back to the Neo4j graph.
-    *   **Neo4j (Context & Relationships):** The graph stores all memories, entities & insights (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma.
+    *   **Vector Database - ChromaDB (Content & Semantic Search):** The primary `long_term_docs` collection stores the **full text** of all important information: documents, code examples, notes, and promoted "thoughts." Each entry contains metadata that points back to the Neo4j graph.
+    *   **Knowledge Graph - Neo4j (Context & Relationships):** The graph stores all memories, entities & insights (e.g., `Project`, `Document`, `Person`, `Feature`, `Memory`) and the rich, typed relationships between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`). It does not store large text bodies, only pointers to them in Chroma.
 *   **How It Works (Basic Retrieval):**
     1.  A semantic query is performed on the `long_term_docs` Chroma collection.
     2.  The search returns the most relevant text passages and their metadata, including a `neo4j_id`.
@@ -212,7 +252,7 @@ A key advanced capability, the **Macro Buffer**, dynamically bridges Layers 2, 3
 #### **The Promotion Process: From Thought to Knowledge**
 
 Promotion is the key mechanism for learning. It transforms ephemeral session data into permanent, connected knowledge.
-1.  **Identification:** At the moment all content is promoted to Layer 3
+1.  **Identification:** At the moment all content is promoted to Layer 3, selective promotion is on the roadmap
 <!-- A "thought" or finding in a session collection (`session_<id>`) is deemed valuable for long-term retention. -->
 2.  **Curation:** The agent creates a new `Memory`, `Entity` or `Insight` node in the **Neo4j** graph.
 3.  **Linking:** This new node is **parsed with nlp** & linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
@@ -224,10 +264,10 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 *   **Implementation:** An optional JSONL stream logging sessions, queries, memory creations, and promotion events.
 *   **Content:** Raw, timestamped logs of system activity.
 
-#### Layer 5: Knowledge Base
+#### Layer 5: Knowledge Basees
 
 *   **Purpose:** External source of truth
-*   **Implementation:** HTTP / API calls to external services, via requests to resolve data from archives like OHLCV, OWSAP, etc
+*   **Implementation:** HTTP / API calls to external services, via requests to resolve data from archives like Wikipedia, DNS Records, OHLCV Data, OWSAP, etc
 *   **Content:** Typically json blobs
 
 #### **Summary of Data Flow**
@@ -240,13 +280,143 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 
 This architecture ensures Vera can fluidly operate in the moment while continuously building a structured, retrievable, and intelligent knowledge base, capable of learning from its entire lived experience.
 
-#### **3.1 Advanced Capability: The Macro Buffer**
+#### **3.1 Memory Buffer Hierarchy: Micro, Macro, and Meta**
+#in-development
 
-The Macro Buffer is a dynamic, query-time process that constructs a rich context window by leveraging Vera's entire history. It is not a permanent storage layer but a powerful retrieval mechanism.
+Vera employs a sophisticated three-tier memory buffer system that operates at different scales of retrieval and reasoning, enabling seamless cognitive processing across temporal and conceptual dimensions.
+
+Think of them as three zoom lenses focusing memory retrieval and processing to the required scale
+
+---
+
+#### **Micro Buffer: The Working Context Engine**
+
+#in-development
+
+The Micro Buffer is always active and serves as **the real-time cognitive workspace**—managing the immediate context and attention span during active reasoning and task execution.
+
+*   **Purpose:** To maintain optimal cognitive load by dynamically managing the active working set of information. It filters, prioritizes, and sequences relevant memories for the current task moment-by-moment.
+*   **How it Works:** 
+    - **Attention Scoring**: Continuously scores available memories based on recency, relevance to current task, and relationship strength
+    - **Cognitive Load Management**: Limits active context to 7±2 chunks to prevent overload (Miller's Law implementation)
+    - **Real-time Pruning**: Drops low-relevance information and promotes high-value context as tasks evolve
+    - **Focus Tracking**: Maintains attention on the most salient entities and relationships during complex reasoning
+    - **NLP Processing**: Extracts key information and meaning from text and stores them as relationships in the knowledge graph
+
+*   **Technical Implementation:**
+```cypher
+// Micro Buffer maintains focus stack during reasoning
+MATCH (current:Task {id: $task_id})
+MATCH (current)-[:HAS_FOCUS]->(focus_entity)
+WITH focus_entity
+MATCH (focus_entity)-[r*1..2]-(related)
+WHERE r.relevance_score > 0.7
+RETURN related 
+ORDER BY r.relevance_score DESC 
+LIMIT 15  // Working memory constraint
+```
+
+*   **Example Usage:** When debugging code, the Micro Buffer automatically maintains focus on the current function, related variables, and recent stack traces while filtering out unrelated project documentation.
+
+---
+
+#### **Macro Buffer: The Cross-Sessional Associative Engine**
+
+#in-development
+
+The Macro Buffer serves as **the connective tissue between cognitive sessions**—enabling holistic reasoning across time and context boundaries.
 
 *   **Purpose:** To break down the isolation between sessions, allowing Vera to connect ideas, hypotheses, and information that were originally recorded in different contexts. This is the foundation for associative reasoning and holistic problem-solving.
-*   **How it Works:** As described in Layer 3's advanced retrieval, it uses Graph-Accelerated Search to efficiently find relevant sessions and perform a targeted, multi-collection vector search.
+*   **How it Works:** 
+    - **Graph-Accelerated Search**: Uses Neo4j to efficiently find relevant sessions and entities across time
+    - **Multi-Collection Vector Search**: Performs targeted semantic search across relevant session collections
+    - **Temporal Pattern Recognition**: Identifies sequences and evolution of ideas across sessions
+    - **Context Bridging**: Creates conceptual bridges between seemingly disconnected sessions
+
+*   **Technical Implementation:**
+```cypher
+// Macro Buffer: Cross-sessional associative retrieval
+MATCH (s:Session)-[:HAS_TOPIC|FOCUSED_ON]->(topic)
+WHERE topic.name =~ "(?i).*authentication.*"
+WITH collect(DISTINCT s.session_id) as relevant_sessions
+MATCH (idea:Concept)-[r:EVOLVED_FROM|RELATED_TO*1..3]-(connected)
+WHERE idea.session_id IN relevant_sessions
+RETURN idea, connected, r
+ORDER BY r.temporal_weight DESC
+```
+
 *   **Benefit:** It allows Vera to answer complex, cross-sessional questions like, "What were all the challenges we faced when integrating service X?" by pulling together notes from initial research, debugging logs, and the final summary document.
+
+---
+
+#### **Meta Buffer: The Strategic Reasoning Layer**
+
+#in-development
+
+The Meta Buffer operates as **the executive control system**—managing higher-order reasoning about reasoning itself, strategic planning, and self-modeling.
+
+*   **Purpose:** To enable Vera to reason about its own cognitive processes, identify knowledge gaps, and strategically plan learning and problem-solving approaches.
+*   **How it Works:**
+    - **Cognitive Pattern Recognition**: Identifies recurring reasoning patterns, successful strategies, and common failure modes
+    - **Knowledge Gap Analysis**: Detects missing information, contradictory knowledge, and underspecified concepts
+    - **Strategic Planning**: Generates learning agendas, research plans, and problem-solving roadmaps
+    - **Self-Modeling**: Maintains and updates Vera's understanding of its own capabilities and limitations
+
+*   **Technical Implementation:**
+```cypher
+// Meta Buffer: Strategic reasoning and gap analysis
+MATCH (capability:Capability {name: $current_task})
+MATCH (capability)-[r:REQUIRES|BENEFITS_FROM]->(required_knowledge)
+OPTIONAL MATCH (vera:SelfModel)-[has:HAS_KNOWLEDGE]->(required_knowledge)
+WITH required_knowledge, 
+     CASE WHEN has IS NULL THEN 1 ELSE 0 END as knowledge_gap,
+     r.importance as importance
+WHERE knowledge_gap = 1
+RETURN required_knowledge.name as gap, 
+       importance,
+       "Learning priority: " + toString(importance) as recommendation
+ORDER BY importance DESC
+```
+
+*   **Example Usage:** When faced with a novel problem, the Meta Buffer might identify that Vera lacks understanding of quantum computing concepts, then generate and execute a learning plan that includes reading research papers, running simulations, and seeking expert knowledge.
+
+---
+
+### **Buffer Interaction Dynamics**
+
+The three buffers work in concert to create a seamless cognitive experience:
+
+
+Micro Buffer (Tactical) → Manages immediate working context
+    ↑ ↓
+Macro Buffer (Operational) → Connects cross-sessional knowledge  
+    ↑ ↓
+Meta Buffer (Strategic) → Guides long-term learning and reasoning
+
+
+**Real-world Example: Complex Problem-Solving**
+1. **Meta Buffer** identifies Vera needs to learn about blockchain for a new project
+2. **Macro Buffer** retrieves all past sessions mentioning cryptography, distributed systems, and related concepts
+3. **Micro Buffer** manages the immediate context while Vera reads documentation, runs code examples, and tests understanding
+4. **Meta Buffer** updates Vera's knowledge base with new blockchain capabilities
+5. **Macro Buffer** connects this new knowledge to existing financial and security concepts
+6. **Micro Buffer** applies the integrated knowledge to solve the original problem
+
+This hierarchical buffer system enables Vera to operate simultaneously at tactical, operational, and strategic levels—maintaining focus while building comprehensive understanding and planning for future challenges.
+
+This creates a coherent hierarchy where:
+- **Micro** = Immediate working memory and attention
+- **Macro** = Cross-sessional associative memory  
+- **Meta** = Strategic reasoning and self-modeling
+
+Each buffer operates at a different temporal and conceptual scale while working together to enable sophisticated, multi-layered cognitive processing.
+
+#### **3.1 Advanced Capability: Memory Lifecycle**
+#in-development
+
+Discovery - Promotion - Recall - Enrinchment - Continuous Evaluation - Decay - Archiving
+
+Planned feature
 
 #### **3.2 Memory Explorer**
 #in-production
@@ -404,7 +574,14 @@ This comprehensive toolset architecture enables Vera to break down high-level go
 Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, which uses deep reasoning to break down complex queries into executable sequences.
 
 ---
-### 5. Babelfish
+
+### 5. API Integration Shim
+
+A compatability layer and API endpoint for Vera. Allows vera to take the pace of other LLM APIs like OpenAIs Chat GPT or Anthropics Claude. It also allows these APIs to interface with the Vera framework 
+
+---
+
+### 6. Babelfish
 
 [Babelfih Documentation](<Vera Assistant Docs/Babelfish.md>)
 
@@ -421,7 +598,7 @@ At its core, Babelfish acts like a **networking “translator”**:
 
 ---
 
-### 6. Self-Modifying Code
+### 7. Self-Modifying Code
 
 **Autonomous Evolution Through Continuous Integration**
 
