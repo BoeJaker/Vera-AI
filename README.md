@@ -111,20 +111,45 @@ Complementing these capabilities is Vera's integrated program synthesis and self
 
 ## Contents:
 
-This readme will cover the following:
-* Requirements
-* Installation
-* Usage
-* Configuration
-* Core capabilities
-* Core concepts
-* Core components
-* Modification
-* Performance optimisation
-* Contribution
-* Known Issue and limitations
-* Safeguarding
-* License
+
+### Getting Started
+- [What is Vera?](#what-is-vera)
+- [Key Features](#key-features)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+
+### Usage & Configuration
+- [Usage: Commands & Flags](#usage--commands--flags)
+- [Configuration](#configuration)
+- [Advanced Usage](#advanced-usage)
+
+### Architecture & Deep Dives
+- [Architecture Overview](#architecture-overview)
+- [Core Concepts](#core-concepts)
+- [Component Status Guide](#component-status-guide)
+- [Components](#components)
+  - [Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator-ceo)
+  - [Proactive Background Cognition (PBT)](#2-proactive-background-cognition-pbt)
+  - [Memory Architecture (KGM)](#memory-architecture)
+  - [ToolChain Executor (TCE)](#3-toolchain-executor-tce)
+  - [Babelfish Translator (BFT)](#5-babelfish-translator-bft)
+  - [Integration API Shim (IAS)](#6-integration-api-shim-ias)
+  - [Self-Modification Engine (SME)](#7-self-modification-engine-sme)
+  - [User Interfaces](#user-interfaces)
+- [Agents & Ingestors](#agents--ingestors)
+
+### Extension & Contribution
+- [Extending Vera](#extending-vera)
+- [Contributing](#contributing)
+- [Performance Optimization](#performance-optimization)
+
+### Reference
+- [FAQ & Troubleshooting](#faq--troubleshooting)
+- [Known Issues](#known-issues)
+- [Roadmap](#roadmap)
+- [License & Support](#license--support)
+
 
 ---
 
