@@ -19,6 +19,7 @@
 **/*.sqlite
 **/*.db
 **/*.log
+**/*.jsonl
 
 **/.security_cache/
 **/.obsidian/
