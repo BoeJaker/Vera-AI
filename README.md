@@ -1371,4 +1371,5 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 - Windows configuration requires manual adaptation
 - TTS pacing issues on slower hardware
 - LLM reasoning not visible in UI for some models
+
 - Resource-intensive on large knowledge graphs

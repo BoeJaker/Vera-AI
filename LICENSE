@@ -1,0 +1,62 @@
+Contributor License Agreement with Fork Restriction (CLA-FR) v1.0
+
+Copyright (c) <year> <copyright holder>
+
+All rights reserved.
+
+PLEASE READ THIS LICENSE CAREFULLY BEFORE DOWNLOADING, COPYING, VIEWING, OR USING THE SOFTWARE. BY DOWNLOADING, COPYING, VIEWING, OR USING THE SOFTWARE, YOU ("YOU" OR "CONTRIBUTOR") AGREE TO BE BOUND BY THE TERMS OF THIS LICENSE. IF YOU DO NOT AGREE TO THESE TERMS, YOU ARE NOT PERMITTED TO USE THE SOFTWARE IN ANY WAY AND MUST DELETE ALL COPIES OF IT.
+
+1. DEFINITIONS
+
+   "Software" means the source code, executable form, documentation, and any other files provided by the copyright holder in the primary repository located at <URL of your main repo>.
+
+   "You" (or "Your") means an individual or entity exercising permissions granted by this license.
+
+   "Use" means to load, execute, display, run, or otherwise interact with the Software for Your own private, non-commercial purposes.
+
+   "Fork" means a copy of the Software's source code maintained in a separate version control repository.
+
+   "Pull Request" or "Merge Request" means a mechanism for proposing changes from a Fork back to the primary repository.
+
+2. GRANT OF LICENSE
+
+   The copyright holder grants You a worldwide, royalty-free, non-exclusive, non-transferable, non-sublicensable license to:
+
+   a) View and read the Source Code.
+   b) Use the Software for Your own private, non-commercial purposes.
+   c) Fork the Software for the SOLE AND EXCLUSIVE PURPOSE of creating a derivative work to contribute changes back to the primary repository via a Pull Request.
+
+3. RESTRICTIONS ON FORKS AND DERIVATIVE WORKS
+
+   The right to create a Fork in Section 2(c) is granted under the following STRICT CONDITIONS:
+
+   a) The Fork must be created on the same code-hosting platform as the primary repository (e.g., GitHub, GitLab) to facilitate the Pull Request mechanism.
+   b) The Fork must be DESTROYED (i.e., the repository must be deleted) upon the earliest of:
+        i) The rejection or closure of the associated Pull Request without merger.
+        ii) The successful merger of the Pull Request into the primary repository.
+        iii) Six (6) months after the creation of the Fork, if no Pull Request has been submitted.
+   c) You are EXPRESSLY PROHIBITED from:
+        i) Using the Fork or any code within it for any purpose other than developing a contribution for the primary repository.
+        ii) Distributing, publishing, sublicensing, selling, or otherwise transferring the Fork or any code from it.
+        iii) Using the Fork or any code from it for any commercial purpose.
+        iv) Maintaining the Fork as a public, long-term derivative work. The Fork is a temporary, private workspace for contribution.
+
+4. CONTRIBUTION AND ASSIGNMENT
+
+   By submitting a Pull Request, You agree that any changes contained within are hereby assigned to the copyright holder of the primary repository. The copyright holder may, at their sole discretion, choose to accept or reject the contribution. If the contribution is accepted and merged, it becomes part of the Software and is licensed under the same terms.
+
+5. TERMINATION
+
+   This license is effective until terminated. Your rights under this license, including the right to maintain a Fork, will terminate automatically without notice if You fail to comply with any of its terms. Upon termination, You must cease all use of the Software and destroy all copies, full or partial, of the Software and any Forks.
+
+6. DISCLAIMER OF WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+7. LIMITATION OF LIABILITY
+
+   IN NO EVENT WILL THE COPYRIGHT HOLDER BE LIABLE TO YOU FOR ANY DIRECT, INDIRECT, SPECIAL, INCIDENTAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES ARISING OUT OF OR IN CONNECTION WITH THIS LICENSE OR YOUR USE OF THE SOFTWARE.
+
+8. GOVERNING LAW
+
+   This license shall be governed by and construed in accordance with the laws of [Your Jurisdiction], without regard to its conflict of law provisions.
