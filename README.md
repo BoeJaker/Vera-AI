@@ -32,7 +32,7 @@
 
 📺 Follow the above link for an 8 minute video overview of Vera.  
 
-🎧 [Listen to the Podcast](https://drive.google.com/file/d/1SlxvcZeQEKwKhdWiqwNpCIj9w-nHlBGK/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1NaJC4ayEM2Vmf_ncW_MSEHf498yvRNhL/view?usp=sharing) - A 50 minute deep-dive podcast into the architecture of Vera.  
 
 </span>
 
@@ -1284,4 +1284,5 @@ For questions, feature requests, or help, open issues on the GitHub repo or cont
 - Windows configuration requires manual adaptation
 - TTS pacing issues on slower hardware
 - LLM reasoning not visible in UI for some models
+
 - Resource-intensive on large knowledge graphs
