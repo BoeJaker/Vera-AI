@@ -52,7 +52,7 @@
 
 ## Introduction: What is Vera?
 
-At its core, **Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
+**Vera** is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
 Vera **orchestrates multiple large language models** (LLMs) and specialized AI sub-agents synchronously to tackle complex, high-level user requests. It decomposes broad tasks into discrete, manageable steps, then dynamically plans and executes these steps through various external and internal tools to achieve **comprehensive outcomes**. This distributed agent design enables parallel specialization - some agents focus on rapid query response, others on strategic forward planning - while sharing a unified memory and goal system to maintain coherence across operations.
 
