@@ -23,7 +23,7 @@
 <a href="#-contributing"><img src="https://img.shields.io/badge/🤝-Contributing-44FFAA?style=for-the-badge"></a>
 <a href="#License"><img src="https://img.shields.io/badge/📜-License-44FFAA?style=for-the-badge"></a>
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
-<a><img src="https://img.shields.io/badge/days%20in%20development-123-blue?style=for-the-badge&logoColor=white"></a>
+<a><img src="https://img.shields.io/badge/days%20in%20development-41-blue?style=for-the-badge&logoColor=white"></a>
 
 </p>
 
