@@ -57,12 +57,12 @@
 
 >[!WARNING]
 >**Vera has high system requirements**  
-> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+.  
->Please check the requirements section for more info
+> At least 16Gb of idle system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+.  
+>Please check the **[System Requirements](#system-requirements)** section for more info
 
 >[!NOTE]  
->**Vera utilises the Agentic-Stack-POC**  
-> To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
+>**Vera utilises the [Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC) repository**  
+> To bootstrap the various services required for vera we have built an AI development framework called **[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC)** its not required but recommended
 
 ## Contents:
 
@@ -91,12 +91,6 @@
   - **[Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator)**
   - **[Proactive Background Cognition (PBC)](#2-proactive-background-cognition)**
   - **[Composite Knowledge Graph (CKG)](#3-composite-knowledge-graph)**
-    <!-- - [Architecture Overview](#architecture-overview) -->
-    <!-- - [Layer 1: Short-Term Context Buffer](#layer-1--short-term-context-buffer)
-    - [](#)
-    - [](#)
-    - [](#)
-    - [](#) -->
     - **[Memory Buffer Hierarchy: Micro, Macro, and Meta](#memory-buffer-hierarchy-micro-macro-and-meta)**
     - **[Memory Explorer UI](#memory-explorer-ui)**
   - **[ToolChain Engine (TCE)](#4-toolchain-engine)**
@@ -104,7 +98,9 @@
   - **[Babelfish Translator (BFT)](#6-babelfish)**
   - **[Integration API Shim (IAS)](#6-integration-api-shim)**
   - **[Self-Modification Engine (SME)](#7-self-modification-engine)**
-  - **[User Interfaces](#user-interfaces)**
+  - **[Perceptron Forge (PF)](#7-self-modification-engine)**
+  - **[Edit Pipeline (EP)](#7-self-modification-engine)**
+  <!-- - **[User Interfaces](#user-interfaces)** -->
 - **[Agents](#agents)**
 <!-- - **[Tools](#tools)** -->
 - **[Ingestors](#ingestors)**
@@ -1583,8 +1579,6 @@ Tools can be chained together dynamically by Vera’s **Tool Chain Planner**, wh
 
 A compatability layer and API endpoint for Vera. Allows vera to take the pace of other LLM APIs like OpenAIs Chat GPT or Anthropics Claude. It also allows these APIs to interface with the Vera framework 
 
-**Status:** 🟢 Production
-
 **Purpose:** Compatibility layer allowing Vera to mimic other LLM APIs (OpenAI, Anthropic) and allowing those APIs to interface with Vera systems.
 
 **Capabilities:**
@@ -1635,6 +1629,8 @@ At its core, Babelfish acts like a **networking “translator”**:
 ---
 
 ### 7. Self-Modification Engine
+
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 **Autonomous Evolution Through Continuous Integration**
 
@@ -1843,7 +1839,7 @@ This sophisticated self-modification framework transforms Vera from a static AI 
 
 ### 8. Perceptron Forge (PF)
 
-**Status:** 🔴 In Development
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 **Purpose:** Allow Vera to build new models from fundamental building blocks—enabling specialized micro-models for specific tasks.
 
@@ -1857,7 +1853,7 @@ This sophisticated self-modification framework transforms Vera from a static AI 
 
 ### 9. Edit Pipeline (EP)
 
-**Status:** 🔴 In Development
+<a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 **Purpose:** Version control for all edits Vera makes to files, settings, and configurations.
 
