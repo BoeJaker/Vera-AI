@@ -56,7 +56,7 @@
 
 >[!WARNING]
 >**Vera has high system requirements**  
-> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
+> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+.  
 >Please check the requirements section for more info
 
 >[!NOTE]  
@@ -601,7 +601,7 @@ Use these flags at the command line when starting Vera:
 |------|-------------|
 | `--triage-memory` | Enable triage agent memory of past interactions |
 | `--forgetful` | No memories will be saved or recalled this session |
-| `--dumbledore` | Won't respond to questions (Easter egg) |
+| `--dumbledore` | Won't respond to questions. <!-- Hes dead harry --> |
 | `--replay` | Replays the last plan |
 
 ### In-Chat Commands
@@ -616,6 +616,7 @@ Use these commands with `/` prefix in chat:
 | `/agents-list` | List active agents and their status |
 | `/tools-list` | Show available tools |
 | `/config` | Display current configuration |
+
 
 ---
 
