@@ -14,6 +14,8 @@
 > **Vera is still very-much in development** any issues running or using the code please post an issue, I will get back to you asap. Please don't be surprised if something doesn't work or is unfinished.
 >
 
+---
+
 <p align="center">
 <a href="#-features"><img src="https://img.shields.io/badge/✨-Features-44FFAA?style=for-the-badge"></a>
 <a href="#-installation"><img src="https://img.shields.io/badge/⚡-Installation-44FFAA?style=for-the-badge"></a>
@@ -31,6 +33,8 @@
 ## A Distributed Multi-Agent Architecture for Autonomous Orchestration and Complex Execution
 <!-- A Self-Modifying, Multi-Agent, Orchestratration & Cognitition Architecture with Proactive Background Reflection and  Execution Enigine (SMMAC-PBR-XE) -->
 
+Core Mechanisms: Self-Modification Engine, Multi Agent Congnition, Proactive Reflection, and Execution Engine (SMMAC-PBR-XE)
+
 
 <p align="center">
   <a href="https://youtu.be/a3smyPocYZ8" target="_blank"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
@@ -46,6 +50,7 @@
 
 </span>
 
+---
 
 >[!WARNING]
 >**Vera has high system requirements**  
@@ -55,6 +60,8 @@
 >[!NOTE]  
 >**Vera utilises the [Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC) repository**  
 > To bootstrap the various services required for vera we have built an AI development framework called **[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC)** its not required but recommended
+
+---
 
 ## Contents:
 
@@ -111,6 +118,8 @@
 - **[Contact](Contact--Support)**
 - **[Roadmap](roadmap)**
 
+---
+
 ## What is Vera?
 
 Vera is an advanced, model-agnostic, multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term, long-term, and archival memory, token prediction, task triage, reasoning, proactive background cognition, self-modification, and modular tool execution to deliver flexible, intelligent automation.
@@ -150,9 +159,6 @@ All task execution, whether internal or external, is orchestrated by the ToolCha
 Complementing Vera's cognitive capabilities is a comprehensive suite for autonomous evolution, which ensures the system transcends static programming and continuously improves itself. This suite is anchored by the Self Modification Engine (SME), which acts as a full CI/CD pipeline enabling program synthesis, empowering Vera to autonomously review, generate, and iteratively improve its own codebase, thereby extending its functionality without requiring manual reprogramming. 
 
 Further augmenting self-improvement are advanced tools like the Perceptron Forge (PF), which allows Vera to build new models from the fundamental building blocks of all AI models (perceptrons), alongside Model Overlays (currently in development) that provide the capability to overlay additional training onto existing models. By integrating these tools for code evolution and model synthesis, Vera achieves self-reflection and continuous evolution, maintaining adaptability and resilience across rapidly changing task demands and environments.
-
----
-
 
 ### Use Cases:
 
@@ -365,8 +371,6 @@ ollama pull gpt-oss:20b
 
 # ChromaDB installs via pip (see below)
 ```
-
-## Installation
 
 ### Quick Installation (Recommended)
 
