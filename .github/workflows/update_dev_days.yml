@@ -2,18 +2,26 @@ name: Update Days in Development Badge
 
 on:
   schedule:
-    - cron: "0 0 * * *"  # runs every day at midnight UTC
+    - cron: "0 0 * * *" # run daily at midnight UTC
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main   # <-- change if your branch is 'master' or something else
+          persist-credentials: true
 
       - name: Calculate days and update badge JSON
         run: |
-          START_DATE="2024-10-01" # change to your real start date
+          START_DATE="2024-10-01"
           TODAY=$(date +%s)
           START=$(date -d "$START_DATE" +%s)
           DAYS=$(( (TODAY - START) / 86400 ))
@@ -31,8 +39,12 @@ jobs:
 
       - name: Commit and push badge update
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add days.json
-          git commit -m "update days badge to $DAYS days" || echo "No changes to commit"
-          git push
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+
+          git commit -m "update days badge to $DAYS days"
+          git pull --rebase origin main || true
+          git push origin main
