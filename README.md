@@ -30,7 +30,7 @@
 
 # **Vera:** Une âme sans corps
 
-## A Self-Modifying Multi-Agent Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
+## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
 
 
 
