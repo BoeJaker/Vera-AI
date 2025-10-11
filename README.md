@@ -95,8 +95,9 @@
     - [](#)
     - [](#)
     - [](#)
-    - [](#)
     - [](#) -->
+    - **[Memory Buffer Hierarchy: Micro, Macro, and Meta](#memory-buffer-hierarchy-micro-macro-and-meta)**
+    - **[Memory Explorer UI](#memory-explorer-ui)**
   - **[ToolChain Engine (TCE)](#4-toolchain-engine)**
   - **[API Integration Shim](#5-api-integration-shim)**
   - **[Babelfish Translator (BFT)](#6-babelfish)**
@@ -153,7 +154,13 @@ A hallmark of Vera's architecture is its capacity for proactive background proce
 
 Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. All the while postgres is keeping an immutable, versioned record of everything.
 
-Complementing these capabilities is Vera's integrated program synthesis and self-modification engine. This subsystem empowers Vera to review, generate, and iteratively improve its own codebase, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
+Vera is fundamentally designed for extensibility and seamless interaction with external systems, achieved through the Integration API Shim (IAS) and the Babelfish Translator (BFT), complemented by the ToolChain Executor (TCE). The IAS serves as a compatibility layer and API endpoint that allows Vera to mimic other LLM APIs (such as those provided by OpenAI's ChatGPT or Anthropic's Claude), enabling Vera to effectively take their place in existing workflows. Crucially, the IAS also allows those external LLM APIs to interface with Vera’s systems, which means Vera can effectively share and pull in context from the external models while simultaneously allowing them access to Vera’s own structured memory and context.
+
+All task execution, whether internal or external, is orchestrated by the ToolChain Executor (TCE), which dynamically plans and executes sequences using available tools. Complementing this execution framework is Babelfish, a universal communication toolkit that is protocol agnostic, enabling the agent to speak any digital protocol—from HTTP and WebSockets, to IRC, MQTT, and more—and to combine multiple carriers into hybrid tunnels. This robust tooling architecture ensures that Vera can operate within virtually any digital environment, providing flexibility for external service integration while preserving comprehensive context and system coherence.
+
+Complementing Vera's cognitive capabilities is a comprehensive suite for autonomous evolution, which ensures the system transcends static programming and continuously improves itself. This suite is anchored by the Self Modification Engine (SME), which acts as a full CI/CD pipeline enabling program synthesis, empowering Vera to autonomously review, generate, and iteratively improve its own codebase, thereby extending its functionality without requiring manual reprogramming. 
+
+Further augmenting self-improvement are advanced tools like the Perceptron Forge (PF), which allows Vera to build new models from the fundamental building blocks of all AI models (perceptrons), alongside Model Overlays (currently in development) that provide the capability to overlay additional training onto existing models. By integrating these tools for code evolution and model synthesis, Vera achieves self-reflection and continuous evolution, maintaining adaptability and resilience across rapidly changing task demands and environments.
 
 ---
 
@@ -867,7 +874,7 @@ A web UI for management of the orchestrator
 A standalone UI for managing the ToolChain Engine
 
 **MX - Memory Explorer**  
-A web UI enabling broad or targeted traversal of the knowledge graph
+A web UI enabling broad or targeted traversal of the knowledge graph. The Graph contains more than just memories, its a networks of relationships. for example if vera has interacted with a network, a map of the network will be navigable in the explorer. If vera has navigated a website, it and all its resources will be mapped into the graph. This allows you to navigate these systems ina  visually appealing and data rich form.
 
 **GUI - Graph UI**
 A web compponent for monitoring graph events of any scale
@@ -972,7 +979,7 @@ pbt = ProactiveBackgroundThinking(
 [Memory Documentation](<Memory/memory.md>) ⚠  
 [Memory Schema](<Memory/schema.md>)
 
-The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB** vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
+The Vera agent is powered by a sophisticated, multi-layered memory system known as the **Composite Knowledge Graph**. Designed to mirror human cognition, this architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB vectorstores** hold the raw textual content, the **Neo4j graph maps** the relationships and context between them, while the **Postgres database** stotes an imutable ledger of changes over time, system logs and telemetry records.**
 
 #### **Architecture Overview**
 
@@ -1020,8 +1027,8 @@ It will contain systenm prompts, user input, the last <i>n</i> chat history entr
 #### **Layer 4: Temporal Archive & Telemetry Stream**
 
 *   **Purpose:** To provide an immutable, historical record of all agent interactions for auditing, debugging, and future model training. It also allows the system to 'scroll back in time' for the entire graph, just a particular subgraph, section or node.
-*   **Implementation:** An optional JSONL stream logging sessions, queries, memory creations, and promotion events.
-*   **Content:** Raw, timestamped logs of system activity.
+*   **Implementation:** Postgres captures and archives all data and changes flowing through the system.sessions, Queries, memory creations, links, unlinks, deletions, promotion events and more. An optional JSONL stream can act as a backup log. 
+*   **Content:** Raw, timestamped logs of **all** system activity.
 
 #### Layer 5: Knowledge Basees
 
@@ -1047,7 +1054,7 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 
 This architecture ensures Vera can fluidly operate in the moment while continuously building a structured, retrievable, and intelligent knowledge base, capable of learning from its entire lived experience.
 
-#### **3.1 Memory Buffer Hierarchy: Micro, Macro, and Meta**
+#### **Memory Buffer Hierarchy: Micro, Macro, and Meta**
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 Vera employs a sophisticated three-tier memory buffer system that operates at different scales of retrieval and reasoning, enabling seamless cognitive processing across temporal and conceptual dimensions.
@@ -1151,7 +1158,7 @@ ORDER BY importance DESC
 
 #### **Buffer Interaction Dynamics**
 
-The three buffers work in concert to create a seamless cognitive experience:
+The three buffers work in concert to create a balanced & comprehensive cognitive experience:
 
 
 Micro Buffer (Tactical) → Manages immediate working context
@@ -1178,14 +1185,14 @@ This creates a coherent hierarchy where:
 
 Each buffer operates at a different temporal and conceptual scale while working together to enable sophisticated, multi-layered cognitive processing.
 
-#### **3.1 Advanced Capability: Memory Lifecycle**
+#### **Advanced Capability: Memory Lifecycle**
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 
 Discovery - Promotion - Recall - Enrinchment - Continuous Evaluation - Decay - Archiving
 
 Planned feature
 
-#### **3.2 Memory Explorer**
+#### **Memory Explorer UI**
 
 **The Cartographer of Consciousness: Mapping the Labyrinth of Thought**
 
@@ -1195,13 +1202,49 @@ Planned feature
 [Knowledge Graph Documentation](<Vera Assistant Docs/Knowledge Graph.md>)  
 [Knowledge Bases Documentation](<Vera Assistant Docs/Knowledge Bases.md>)  
 
-The Memory Explorer serves as **the observatory for Vera's cognitive landscape**—a sophisticated visualization system that transforms complex memory structures into interactive, navigable knowledge graphs. It bridges the abstract relationships within Vera's mind with tangible visual representations, making the architecture of intelligence both accessible and explorable.
 
-This system reveals the **living topology of memory**, where Neo4j graph relationships form the structural skeleton and ChromaDB vector stores provide the semantic flesh. Through dynamic visualization, it exposes how concepts connect, how knowledge evolves over time, and how different memory layers interact to form coherent understanding.
+<!-- Web UI for traversing the knowledge graph:
+- Interactive graph visualization (Neo4j)
+- Temporal navigation (scroll through memory history)
+- Entity search and filtering
+- Relationship analysis
+- Session history timeline -->
 
-The Explorer enables both **macro-scale pattern recognition** and **micro-scale relationship analysis**, allowing researchers to trace idea genealogies across sessions, identify emerging knowledge clusters, and understand how Vera's understanding matures through interaction. It's not merely a debugging tool—it's a window into the cognitive processes that transform isolated facts into interconnected wisdom.
+**Start with:**
+```bash
+python3 memory_explorer.py
+```
 
-By rendering the invisible architecture of memory into explorable visual spaces, the Memory Explorer provides unprecedented insight into how an AI system organizes, connects, and evolves its understanding of the world—revealing the hidden structures that make autonomous intelligence possible.
+**Web UI for traversing the knowledge graph:**  
+
+The Memory Explorer (MX) is an operational **web UI enabling broad or targeted traversal of the knowledge graph**. It is a powerful administrative and analytical tool that serves as **the observatory for Vera's cognitive landscape**. The graph contains far more than internal memories; it maps the **living topology of networks of relationships** extracted from all data Vera processes—including networks, databases, codebases, and external websites. By visualizing this deep structure, the Explorer provides users with **unprecedented serviceability and observability** over the ingested data, enabling the **direct derivation of complex insights** and auditing of Vera's operational history.
+
+**Purpose:** To transform complex, multi-layered memory structures into interactive, navigable knowledge graphs. It bridges the abstract relationships within Vera's mind with tangible visual representations, making the architecture of intelligence both accessible and explorable.
+
+**Capabilities (Serviceability and Administration):**
+
+*   **Enabling LLM Questioning and Deep Reasoning:**   
+The Explorer visually maps the full relational context retrieved from the Neo4j graph, allowing users to understand and audit the scope of knowledge available for an LLM query. This ensures the agent is enabled to perform **deep, multi-hop reasoning**.
+*   **Insight Derivation:**   
+Facilitates both **macro-scale pattern recognition** and **micro-scale relationship analysis**. Users can trace **idea genealogies across sessions** and identify **emerging knowledge clusters**.
+*   **Cognitive Observability and Auditing:**   
+Reveals the **living topology of memory**, exposing how concepts connect, how knowledge evolves over time, and how different memory layers interact. It also provides a window into **Version-Aware Telemetry**, allowing monitoring of performance metrics (e.g., vector search latency, memory usage) tagged with code versions.
+*   **Cross-Sessional Exploration:**   
+Supports the retrieval of relevant knowledge and historical sessions via **Graph-Accelerated Search**, effectively breaking down isolation between contexts for comprehensive associative recall.
+
+**Features (Interactive Mapping of Ingested Data):**
+
+*   **Website and API Mapping:**   
+Visualizing Layer 5 External Knowledge Bases, which include dynamic networked data stores like **Web documentation, APIs, and Git repos**. This allows users to navigate the resources and relationships Vera has extracted from external websites and APIs.
+*   **Code and Data Structure Graphing:**   
+Rendering relational trees parsed from code, where the Micro Buffer's NLP processing extracts key relationships (like triplets, URLs, filepaths, references, entities) and stores them in the graph.
+*   **Database and Schema Exploration:**   
+Visualizing relationships between entities and insights stored within the **Neo4j Knowledge Graph**. The graph stores entities (`Project`, `Document`, `Person`, `Feature`) and the **rich, typed relationships** between them (e.g., `USES`, `AUTHORED_BY`, `CONTAINS`).
+*   **Historical Timeline Review:**   
+Displaying the contents of the **Layer 4 Temporal Archive**, which is an immutable record of activity logs, metrics, codebase changes, and graph changes. This allows users to 'scroll back in time' through the entire history of Vera.
+*   **Self-Modification Traceability:**   
+Visualizing the rationale and impact of autonomous changes, including change records, test results, and performance impact managed by the **Self Modification Engine (SME)**.
+
 
 <!-- 
 Meta scale
