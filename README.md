@@ -461,7 +461,7 @@ vera = Vera(chroma_path="./vera_agent_memory")
 for chunk in vera.stream_llm(vera.fast_llm, "What is the capital of France?"):
     print(chunk, end="")
 
-# Use toolchain execution for complex queries
+# Use toolchain engine for complex queries
 complex_query = "Schedule a meeting tomorrow and send me the list of projects."
 result = vera.execute_tool_chain(complex_query)
 print(result)
@@ -619,6 +619,23 @@ These LLMs & Agents can communicate via shared memory and coordinate through a d
 
 Allows you to overlay additional training onto existing models
 
+### LLM Flexibility and Seamless Integration
+
+For users running models locally, Vera is built for seamless integration with **Ollama**, which is required as a system dependency.
+
+#### Key Advantages of Local Model Management:
+
+*   **Plug-and-Play Architecture:** Vera features a plug-and-play design, meaning that models can be **upgraded in-place**. When a new LLM is released (such as a newer version of `gemma2` or `gpt-oss`), it can be swapped in without system downtime.
+*   **Memory Continuity:** Crucially, when an underlying LLM is swapped or upgraded, the system’s deep knowledge base remains intact. The framework ensures that **memories will carry over as if nothing changed**. This is managed by Vera's highly structured, multi-layered memory system (Layers 1-4) that uses Neo4j for contextual relationships and ChromaDB as a vector database for full text content.
+
+#### External API Integration and History Retention
+
+Vera provides comprehensive compatibility with external LLM services, enabling users to employ their existing API keys or favourite third-party models, such as OpenAI's ChatGPT or Anthropic's Claude.
+
+This capability is facilitated by the **Integration API Shim (IAS)**. The IAS is a compatibility layer and API endpoint that serves two critical functions for external integration:
+
+*   **Working In-Place of External APIs:** The IAS allows Vera to **mimic other LLM APIs**. This means Vera can effectively **take the place** of services like ChatGPT or Claude in existing workflows, routing requests through the Vera framework while providing the expected API response format.
+*   **Handover and Chat History Retention:** The IAS also permits these **external LLM APIs to interface with Vera’s systems**. This allows you to hand over all LLM tasks to an external service while ensuring that the external model retains access to the vast, structured knowledge base and persistent chat history managed by the Vera framework (Knowledge Graph Memory and vector stores). This prevents the loss of complex, cross-sessional context, enabling deep reasoning regardless of the model or api currently in use.
 <!-- 
 ### 2. Memories
 
@@ -713,7 +730,7 @@ Responsible for routing requests to the correct agent and creating, destroying &
 #in-development #poc-working  
 Responsible for co-ordinating long term goals, short term focus and delivering actionables during downtime
 
-**TCE - Toolchain Executor**  
+**TCE - Toolchain Engine**  
 #in-development #poc-working  
 Breaks down complex tasks into achievable steps then executes the plan using tools, built in or called via an MCP server.
 
@@ -746,17 +763,22 @@ Version control for edits the AI makes to files, settings etc
 #### User Interfaces
 
 **CUI - Chat UI**  
-A web UI with full duplex speech synthesis
+A web UI to chat with the triage agent. With full duplex speech synthesis and chat logs
+
+**SUI - Schedule UI**
+A web UI for the scheduling agent. view & manage your calendar, veras calendar, chat with the scheduling agent
 
 **OUI - Orchestrator UI**  
 A web UI for management of the orchestrator
 
-**TCEUI - ToolChain Executor UI**  
-A standalone UI for managing the ToolChain Executor
+**TCEUI - ToolChain Engine UI**  
+A standalone UI for managing the ToolChain Engine
 
 **MX - Memory Explorer**  
 A web UI enabling broad or targeted traversal of the knowledge graph
 
+**GUI - Graph UI**
+A web compponent for monitoring graph events of any scale
 
 ---
 
@@ -781,7 +803,7 @@ A web UI enabling broad or targeted traversal of the knowledge graph
 
 ```
 1. Query received: "Scan network and analyze results"
-2. Query triaged to Toolchain Executor
+2. Query triaged to Toolchain Engine
 3. TCE requests: network scanner + analysis LLM
 4. CEO: network scanner available → allocate
 5. CEO: all analysis LLMs busy → queue request
@@ -855,7 +877,7 @@ pbt = ProactiveBackgroundThinking(
 ![Memory UI](images/memory_ui.jpg)
 <i>Above: The memory explorer </i>
 
-[Memory Documentation](<Memory/memory.md>) ⚠
+[Memory Documentation](<Memory/memory.md>) ⚠  
 [Memory Schema](<Memory/schema.md>)
 
 The Vera agent is powered by a sophisticated, multi-layered memory system designed to mirror human cognition. This architecture separates volatile context from persistent knowledge, enabling both coherent real-time dialogue and deep, relational reasoning over a vast, self-curated knowledge base. The system is built on a core principle: **ChromaDB** vectorstores hold the raw textual content, while the Neo4j graph maps the relationships and context between them.**
@@ -1078,9 +1100,9 @@ Planned feature
 
 <a><img src="https://img.shields.io/badge/in_production--33bf63?style=for-the-badge&logoColor=white"></a>
 
-[Memory Explorer Documentation](<Memory/dashboard/dashboard.md>)
-[Knowledge Graph Documentation](<Vera Assistant Docs/Knowledge Graph.md>)
-[Knowledge Bases Documentation](<Vera Assistant Docs/Knowledge Bases.md>)
+[Memory Explorer Documentation](<Memory/dashboard/dashboard.md>)  
+[Knowledge Graph Documentation](<Vera Assistant Docs/Knowledge Graph.md>)  
+[Knowledge Bases Documentation](<Vera Assistant Docs/Knowledge Bases.md>)  
 
 The Memory Explorer serves as **the observatory for Vera's cognitive landscape**—a sophisticated visualization system that transforms complex memory structures into interactive, navigable knowledge graphs. It bridges the abstract relationships within Vera's mind with tangible visual representations, making the architecture of intelligence both accessible and explorable.
 
@@ -1200,7 +1222,7 @@ Tools can be any callable (LLM-based, APIs, custom functions) taking string inpu
 >**Vera has unrestricted access to Bash & Python execution out of the box**  
 >Please be very careful with what you ask for. There is nothing stopping it from running `rm -rf /`. Or Disable these two tools.
 
-[ToolChain Documentation](<Vera Assistant Docs/Toolchain Planner.md>)
+[ToolChain Engine Documentation](<Vera Assistant Docs/Toolchain Planner.md>)
 
 The `ToolChain` orchestrates the planning and execution of complex workflows by chaining together multiple tools available to the agent. It leverages a deep language model (LLM) to dynamically generate, execute, and verify a sequence of tool calls tailored to solving a user query.
 
