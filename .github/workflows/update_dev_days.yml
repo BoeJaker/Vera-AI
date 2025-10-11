@@ -1,0 +1,38 @@
+name: Update Days in Development Badge
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # runs every day at midnight UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Calculate days and update badge JSON
+        run: |
+          START_DATE="2024-10-01" # change to your real start date
+          TODAY=$(date +%s)
+          START=$(date -d "$START_DATE" +%s)
+          DAYS=$(( (TODAY - START) / 86400 ))
+
+          echo "Updating badge to $DAYS days"
+
+          cat <<EOF > days.json
+          {
+            "schemaVersion": 1,
+            "label": "days in development",
+            "message": "$DAYS",
+            "color": "blue"
+          }
+          EOF
+
+      - name: Commit and push badge update
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add days.json
+          git commit -m "update days badge to $DAYS days" || echo "No changes to commit"
+          git push
