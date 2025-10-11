@@ -23,6 +23,7 @@
 <a href="#-contributing"><img src="https://img.shields.io/badge/🤝-Contributing-44FFAA?style=for-the-badge"></a>
 <a href="#License"><img src="https://img.shields.io/badge/📜-License-44FFAA?style=for-the-badge"></a>
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
+<a><img src="https://img.shields.io/badge/days%20in%20development-123-blue?style=for-the-badge&logoColor=white"></a>
 
 </p>
 
@@ -30,7 +31,7 @@
 
 # **Vera:** Une âme sans corps
 
-## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Cognition (SMMAC-PBC)
+## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
 
 
 
@@ -208,7 +209,7 @@ You can rely on Vera to monitor long-term goals and offer guidance or interventi
 
 ##### Receive Context-Aware Alerts
 - **Long-Term Goal Tracking**: Set long-term goals and trust Vera to track them in the background
-- **Proactive Background Reflection (PBR)**: Generates proactive thoughts (reminders, hypotheses, or plans) when critical deadlines approach or inconsistencies are detected
+- **Proactive Background Cognition (PBC)**: Generates proactive thoughts (reminders, hypotheses, or plans) when critical deadlines approach or inconsistencies are detected
 - **Timely Intervention**: Delivers alerts without requiring user prompting, ensuring proactive support
 
 ##### Witness System Learning
@@ -1918,7 +1919,7 @@ Ingestors work at the micro level, pulling data into Vera's memory systems:
 Vera can be configured to trigger **background thinking cycles** during idle time:
 
 ```python
-# Trigger proactive background reflection
+# Trigger proactive background cognition
 vera.focus_manager.run_proactive_cycle()
 ```
 
