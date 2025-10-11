@@ -30,7 +30,7 @@
 
 # **Vera:** Une âme sans corps
 
-## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
+## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Cognition (SMMAC-PBC)
 
 
 
@@ -88,7 +88,7 @@
 - **[Core Components](#core-components)**
 - **[Component Deep Dive](#Component-Deep-Dive)**
   - **[Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator)**
-  - **[Proactive Background Cognition (PBT)](#2-proactive-background-cognition)**
+  - **[Proactive Background Cognition (PBC)](#2-proactive-background-cognition)**
   - **[Composite Knowledge Graph (CKG)](#3-composite-knowledge-graph)**
     <!-- - [Architecture Overview](#architecture-overview) -->
     <!-- - [Layer 1: Short-Term Context Buffer](#layer-1--short-term-context-buffer)
@@ -124,7 +124,7 @@
 
 ## What is Vera?
 
-Vera is an advanced multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term and long-term memory, token prediction, task triage, reasoning, proactive focus management, self-modification, and modular tool execution to deliver flexible, intelligent automation.
+Vera is an advanced, model-agnostic, multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term, long-term, and archival memory, token prediction, task triage, reasoning, proactive background cognition, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
 Vera is designed to tackle complex, high-level user requests by orchestrating multiple large language models (LLMs) and specialized AI sub-agents synchronously. This capability ensures that you rarely need to repeat context, as Vera maintains a deep, multi-layered memory of your goals and past interactions.
 
@@ -959,7 +959,7 @@ It is designed to integrate seamlessly with local, remote, and Proxmox-based wor
 
 **Configuration:**
 ```python
-pbt = ProactiveBackgroundThinking(
+pbc = ProactiveBackgroundCognition(
     tick_interval=60,  # Check every 60 seconds
     context_providers=[ConversationProvider(), FocusBoardProvider()],
     max_parallel_thoughts=3,
