@@ -28,7 +28,7 @@
 
 <span align="center">
 
-# **Vera:** Une âme sans corps
+# **Vera:** Intelligence sans Frontières
 
 ## A Distributed Multi-Agent Architecture for Autonomous Orchestration and Complex Execution
 <!-- A Self-Modifying, Multi-Agent, Orchestratration & Cognitition Architecture with Proactive Background Reflection and  Execution Enigine (SMMAC-PBR-XE) -->
