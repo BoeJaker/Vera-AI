@@ -52,7 +52,69 @@
 </span>
 
 </span>
-<!-- 📖 -->
+
+
+>[!WARNING]
+>**Vera has high system requirements**  
+> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
+>Please check the requirements section for more info
+
+>[!NOTE]  
+>**Vera utilises the Agentic-Stack-POC**  
+> To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
+
+## Contents:
+
+### Getting Started
+- [What is Vera?](#what-is-vera)
+- [Key Features](#key-features)
+- [System Requirements](#system-requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+
+### Usage & Configuration
+- [Usage: Commands & Flags](#usage--commands--flags)
+- [Configuration](#configuration)
+- [Advanced Usage](#advanced-usage)
+
+### Architecture & Deep Dives
+- [Core Capabilities](#core-capabilities)
+- [Core Concepts](#core-concepts)
+<!-- - [Component Status Guide](#component-status-guide) -->
+- [Core Components](#core-components)
+- [Component Deep Dive](#Component-Deep-Dive)
+  - [Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator)
+  - [Proactive Background Cognition (PBT)](#2-proactive-background-cognition)
+  - [Composite Knowledge Graph (CKG)](#3-composite-knowledge-graph)
+    <!-- - [Architecture Overview](#architecture-overview) -->
+    <!-- - [Layer 1: Short-Term Context Buffer](#layer-1--short-term-context-buffer)
+    - [](#)
+    - [](#)
+    - [](#)
+    - [](#)
+    - [](#) -->
+  - [ToolChain Engine (TCE)](#4-toolchain-engine)
+  - [API Integration Shim](#5-api-integration-shim)
+  - [Babelfish Translator (BFT)](#6-babelfish)
+  - [Integration API Shim (IAS)](#6-integration-api-shim)
+  - [Self-Modification Engine (SME)](#7-self-modification-engine)
+  - [User Interfaces](#user-interfaces)
+- [Agents](#agents)
+- [Ingestors](#ingestors)
+
+### Extension & Contribution
+- [Advanced Usage and Features](#advanced-usage-and-features)
+- [Extending Vera](#extending-vera)
+- [Contributing](#contributing)
+- [Performance Optimization](#performance-optimization)
+
+### Reference
+- [Safeguarding & Data Privacy](#safeguarding--data-privacy)
+- [FAQ & Troubleshooting](#faq--troubleshooting)
+- [Known Issues](#known-issues)
+- [License](#license)
+- [Contact](Contact--Support)
+- [Roadmap](roadmap)
 
 ## What is Vera?
 
@@ -97,65 +159,6 @@ A hallmark of Vera's architecture is its capacity for proactive background proce
 Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. All the while postgres is keeping an immutable, versioned record of everything.
 
 Complementing these capabilities is Vera's integrated program synthesis and self-modification engine. This subsystem empowers Vera to review, generate, and iteratively improve its own codebase, extending its functionality autonomously without requiring manual reprogramming. By enabling self-reflection and continuous evolution, Vera maintains adaptability and resilience across rapidly changing task demands and environments.
-
----
-
->[!WARNING]
->**Vera has high system requirements**  
-> Atleast 16Gb of system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+ is the minimum recommended.  
->Please check the requirements section for more info
-
->[!NOTE]  
->**Vera utilises the Agentic-Stack-POC**  
-> To bootstrap the various services required for vera we have built an AI develpoment framework called `Agentic Stack POC` its not required but reccomended.
-
-## Contents:
-
-### Getting Started
-- [What is Vera?](#what-is-vera)
-- [Key Features](#key-features)
-- [System Requirements](#system-requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-
-### Usage & Configuration
-- [Usage: Commands & Flags](#usage--commands--flags)
-- [Configuration](#configuration)
-- [Advanced Usage](#advanced-usage)
-
-### Architecture & Deep Dives
-- [Architecture Overview](#architecture-overview)
-- [Core Capabilities](#core-capabilities)
-- [Core Concepts](#core-concepts)
-<!-- - [Component Status Guide](#component-status-guide) -->
-- [Core Components](#core-components)
-- [Component Deep Dive](#Component-Deep-Dive)
-  - [Central Executive Orchestrator (CEO)](#1-central-executive-orchestrator)
-  - [Proactive Background Cognition (PBT)](#2-proactive-background-cognition)
-  - [Composite Knowledge Graph (CKG)](#3-composite-knowledge-graph)
-  - [ToolChain Engine (TCE)](#4-toolchain-engine)
-  - [API Integration Shim](#5-api-integration-shim)
-  - [Babelfish Translator (BFT)](#6-babelfish)
-  - [Integration API Shim (IAS)](#6-integration-api-shim)
-  - [Self-Modification Engine (SME)](#7-self-modification-engine)
-  - [User Interfaces](#user-interfaces)
-- [Agents](#agents)
-- [Ingestors](#ingestors)
-
-### Extension & Contribution
-- [Advanced Usage and Features](#advanced-usage-and-features)
-- [Extending Vera](#extending-vera)
-- [Contributing](#contributing)
-- [Performance Optimization](#performance-optimization)
-
-### Reference
-- [Safeguarding & Data Privacy](#safeguarding--data-privacy)
-- [FAQ & Troubleshooting](#faq--troubleshooting)
-- [Known Issues](#known-issues)
-- [License](#license)
-- [Contact](Contact--Support)
-- [Roadmap](roadmap)
-
 
 ---
 
@@ -925,15 +928,6 @@ It will contain systenm prompts, user input, the last <i>n</i> chat history entr
     4.  The agent receives both the retrieved text *and* its full relational context, enabling deep, multi-hop reasoning.
 
 
-#### **The Promotion Process: From Thought to Knowledge**
-
-Promotion is the key mechanism for learning. It transforms ephemeral session data into permanent, connected knowledge.
-1.  **Identification:** At the moment all content is promoted to Layer 3, selective promotion is on the roadmap
-<!-- A "thought" or finding in a session collection (`session_<id>`) is deemed valuable for long-term retention. -->
-2.  **Curation:** The agent creates a new `Memory`, `Entity` or `Insight` node in the **Neo4j** graph.
-3.  **Linking:** This new node is **parsed with nlp** & linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
-4.  **Storage:** The **full text** of the "thought" is inserted into the sessions **Chroma** collection. The metadata for this entry includes the ID of the new Neo4j node (`neo4j_id: <memory_node_id>`), permanently binding the text to its contextual graph.
-
 #### **Layer 4: Temporal Archive & Telemetry Stream**
 
 *   **Purpose:** To provide an immutable, historical record of all agent interactions for auditing, debugging, and future model training. It also allows the system to 'scroll back in time' for the entire graph, just a particular subgraph, section or node.
@@ -945,6 +939,14 @@ Promotion is the key mechanism for learning. It transforms ephemeral session dat
 *   **Purpose:** External source of truth
 *   **Implementation:** HTTP / API calls to external services, via requests to resolve data from archives like Wikipedia, DNS Records, OHLCV Data, OWSAP, etc
 *   **Content:** Typically json blobs
+#### **The Promotion Process: From Thought to Knowledge**
+
+Promotion is the key mechanism for learning. It transforms ephemeral session data into permanent, connected knowledge.
+1.  **Identification:** At the moment all content is promoted to Layer 3, selective promotion is on the roadmap
+<!-- A "thought" or finding in a session collection (`session_<id>`) is deemed valuable for long-term retention. -->
+2.  **Curation:** The agent creates a new `Memory`, `Entity` or `Insight` node in the **Neo4j** graph.
+3.  **Linking:** This new node is **parsed with nlp** & linked via relationships to all relevant entities (e.g., `(Insight)-[:ABOUT]->(Project), (Insight)-[:DERIVED_FROM]->(Document)`).
+4.  **Storage:** The **full text** of the "thought" is inserted into the sessions **Chroma** collection. The metadata for this entry includes the ID of the new Neo4j node (`neo4j_id: <memory_node_id>`), permanently binding the text to its contextual graph.
 
 #### **Summary of Data Flow**
 
