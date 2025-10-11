@@ -14,8 +14,6 @@
 > **Vera is still very-much in development** any issues running or using the code please post an issue, I will get back to you asap. Please don't be surprised if something doesn't work or is unfinished.
 >
 
-
-
 <p align="center">
 <a href="#-features"><img src="https://img.shields.io/badge/✨-Features-44FFAA?style=for-the-badge"></a>
 <a href="#-installation"><img src="https://img.shields.io/badge/⚡-Installation-44FFAA?style=for-the-badge"></a>
@@ -24,21 +22,15 @@
 <a href="#License"><img src="https://img.shields.io/badge/📜-License-44FFAA?style=for-the-badge"></a>
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 <a><img src="https://img.shields.io/badge/days%20in%20development-41-blue?style=for-the-badge&logoColor=white"></a>
-
 </p>
 
 <span align="center">
 
 # **Vera:** Une âme sans corps
 
-## A Self-Modifying, Multi-Agent, Cognitition Architecture with Proactive Background Reflection (SMMAC-PBR)
+## A Distributed Multi-Agent Architecture for Autonomous Orchestration and Complex Execution
+<!-- A Self-Modifying, Multi-Agent, Orchestratration & Cognitition Architecture with Proactive Background Reflection and  Execution Enigine (SMMAC-PBR-XE) -->
 
-
-
-<!-- ## What is Vera? 
-**A video and audio introduciton** -->
-<!-- 
-[![Watch the video](https://img.youtube.com/vi/a3smyPocYZ8/0.jpg)](https://youtu.be/a3smyPocYZ8)   -->
 
 <p align="center">
   <a href="https://youtu.be/a3smyPocYZ8" target="_blank"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
