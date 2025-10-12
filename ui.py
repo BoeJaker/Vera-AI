@@ -70,6 +70,7 @@ import io
 import base64
 from typing import List, Dict, Any
 from urllib.parse import urlparse
+from conversation_memory_graph import ConversationGraphPanel
 
 # Optional TTS dependency
 try:
@@ -984,6 +985,51 @@ class ChatUI:
         self.display_history()
 
         st.divider()
+        if 'current_session_id' not in st.session_state:
+            st.session_state.current_session_id = self.vera.sess.id
+
+        st.title("Conversation Graph Panel Demo")
+
+        # --- Session Info UI ---
+        with st.container():
+            st.markdown("#### 🧩 Session Information")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.text_input(
+                    "Current Session ID",
+                    value=st.session_state.current_session_id,
+                    disabled=True,
+                )
+            with col2:
+                if st.button("🔄 Refresh Session"):
+                    st.session_state.current_session_id = self.vera.sess.id
+                    st.success("Session ID reloaded")
+
+        # # --- Graph Controls ---
+        # graph_panel = ConversationGraphPanel(
+        #     st.session_state.current_session_id,
+        #     memory_system=self.vera.mem
+        # )
+
+        # auto_refresh = st.toggle("Auto-refresh", value=False)
+
+        # if auto_refresh:
+        #     st.info("Graph will auto-refresh every 10 seconds.")
+        #     graph_panel.auto_update(interval=10, height=500)
+        # else:
+        #     graph_panel.render(height=500)
+
+        # st.set_page_config(page_title="Dynamic Graph Panel", layout="wide")
+
+        st.header("Conversation Memory Visualization")
+
+        # Example: you already have a session selector in your UI
+        session_id = self.vera.sess.id
+
+        if session_id:
+            # Create and render the graph component
+            panel = ConversationGraphPanel(session_id, memory_system=self.vera.mem, refresh_interval=5)
+            panel.render()
 
         # Bottom controls: STT button (if available), audio upload fallback, and chat_input
         col1, col2 = st.columns([0.8, 0.2])

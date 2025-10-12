@@ -2,15 +2,25 @@
 **client_secrets.json
 **service.json
 
-**/chroma_store/
+**/chroma_store/**/
 **/chroma_db/
-**/archive/
+**/archive/**/
 **/vera_agent_memory/**/
 **/vera_memory/
 
 **/Deprecated
 **/deprecated/
 **/lib/
+
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.sqlite
+**/*.db
+**/*.log
+**/*.jsonl
+**/*.sqlite3
 
 **/.security_cache/
 **/.obsidian/

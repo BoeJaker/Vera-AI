@@ -467,7 +467,329 @@ class Vera:
                 return "\n".join(output) if output else "No news articles found."
         except Exception as e:
             return f"[DuckDuckGo News Search Error] {e}"
-        
+    
+    def web_search_report(self, input_data: str, max_results: int = 5) -> str:
+        """
+        Search the web and scrape content from result pages using Playwright, or process existing search results.
+        Accepts either a search query string or raw search results from duckduckgo_search.
+        Returns a comprehensive report with titles, URLs, descriptions, and scraped content.
+        """
+        from urllib.parse import quote_plus
+        from duckduckgo_search import DDGS
+        import re
+        import asyncio
+
+        async def scrape_url_with_playwright(url: str) -> str:
+            """Scrape a single URL using Playwright and return cleaned text content."""
+            try:
+                from playwright.async_api import async_playwright
+                
+                async with async_playwright() as p:
+                    browser = await p.chromium.launch(headless=True)
+                    context = await browser.new_context()
+                    
+                    # Set a realistic user agent
+                    await context.set_extra_http_headers({
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    })
+                    
+                    page = await context.new_page()
+                    
+                    # Try to handle cookie consent dialogs automatically
+                    page.on("dialog", lambda dialog: dialog.accept())
+                    
+                    await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                    
+                    # Wait a bit for page to settle
+                    await page.wait_for_timeout(3000)
+                    
+                    # Try to handle common cookie consent buttons
+                    consent_selectors = [
+                        'button:has-text("Accept")',
+                        'button:has-text("Accept All")',
+                        'button:has-text("Agree")',
+                        'button:has-text("I Agree")',
+                        '[aria-label*="accept"]',
+                        '[aria-label*="agree"]',
+                        '.accept-cookies',
+                        '#accept-cookies',
+                        'button[data-testid*="accept"]'
+                    ]
+                    
+                    for selector in consent_selectors:
+                        try:
+                            button = await page.query_selector(selector)
+                            if button:
+                                await button.click()
+                                await page.wait_for_timeout(1000)
+                                break
+                        except:
+                            continue
+                    
+                    # Wait for main content to load - look for article, main, or content sections
+                    content_selectors = [
+                        'article',
+                        'main',
+                        '[role="main"]',
+                        '.article',
+                        '.story',
+                        '.content',
+                        '.post',
+                        '.entry-content',
+                        '#content',
+                        '#main',
+                        'body'
+                    ]
+                    
+                    # Wait for any of these content elements to appear
+                    for selector in content_selectors:
+                        try:
+                            await page.wait_for_selector(selector, timeout=5000)
+                            break
+                        except:
+                            continue
+                    
+                    # Try multiple content extraction strategies
+                    content_text = ""
+                    
+                    # Strategy 1: Try to get article content first
+                    article_selectors = [
+                        'article',
+                        '.article',
+                        '.story',
+                        '.post',
+                        '.entry-content',
+                        '[class*="article"]',
+                        '[class*="content"]',
+                        '[class*="story"]'
+                    ]
+                    
+                    for selector in article_selectors:
+                        try:
+                            element = await page.query_selector(selector)
+                            if element:
+                                text = await element.inner_text()
+                                if len(text) > 100:  # Only use if we got substantial content
+                                    content_text = text
+                                    break
+                        except:
+                            continue
+                    
+                    # Strategy 2: If no article content, try main content areas
+                    if len(content_text) < 100:
+                        for selector in ['main', '[role="main"]', '.content', '#content', 'body']:
+                            try:
+                                element = await page.query_selector(selector)
+                                if element:
+                                    text = await element.inner_text()
+                                    if len(text) > len(content_text):
+                                        content_text = text
+                            except:
+                                continue
+                    
+                    # Strategy 3: Look for text-heavy elements
+                    if len(content_text) < 200:
+                        # Get all paragraph text
+                        paragraphs = await page.query_selector_all('p')
+                        paragraph_texts = []
+                        for p in paragraphs:
+                            try:
+                                text = await p.inner_text()
+                                if len(text) > 50:  # Only substantial paragraphs
+                                    paragraph_texts.append(text)
+                            except:
+                                continue
+                        
+                        if paragraph_texts:
+                            content_text = '\n\n'.join(paragraph_texts)
+                    
+                    await browser.close()
+                    
+                    if not content_text:
+                        return "[No substantial content found - site may require JavaScript or have paywall]"
+                    
+                    # Clean up the text
+                    lines = (line.strip() for line in content_text.splitlines())
+                    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                    cleaned_text = ' '.join(chunk for chunk in chunks if chunk)
+                    
+                    # Remove common cookie/privacy text patterns
+                    privacy_patterns = [
+                        r'cookie policy.*?privacy policy',
+                        r'privacy policy.*?cookie policy',
+                        r'accept all.*?reject all',
+                        r'we use cookies.*?accept',
+                        r'yahoo family of brands',
+                        r'aol is part of',
+                        r'continue reading$'
+                    ]
+                    
+                    for pattern in privacy_patterns:
+                        cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.IGNORECASE | re.DOTALL)
+                    
+                    # Limit the length to avoid overly long responses
+                    if len(cleaned_text) > 2500:
+                        cleaned_text = cleaned_text[:2500] + "... [content truncated]"
+                    
+                    # Final cleanup - remove extra whitespace
+                    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+                    
+                    if len(cleaned_text) < 50:
+                        return "[Content too short after cleaning - site may have paywall or require login]"
+                        
+                    return cleaned_text
+                    
+            except Exception as e:
+                try:
+                    await browser.close()
+                except:
+                    pass
+                return f"[Scraping Error: {str(e)[:100]}]"
+
+        def parse_search_results_from_text(search_text: str) -> list:
+            """Parse search results from the string output of duckduckgo_search."""
+            results = []
+            lines = search_text.split('\n')
+            i = 0
+            
+            while i < len(lines):
+                line = lines[i].strip()
+                # Look for numbered results (e.g., "1. Title")
+                if re.match(r'^\d+\.\s+.+', line):
+                    title = line.split('. ', 1)[1] if '. ' in line else line
+                    url = ""
+                    body = ""
+                    
+                    # Get URL from next line if it looks like a URL
+                    if i + 1 < len(lines) and lines[i + 1].startswith('http'):
+                        url = lines[i + 1].strip()
+                        i += 1
+                    
+                    # Get description from next line if it exists
+                    if i + 1 < len(lines) and lines[i + 1].strip() and not lines[i + 1].startswith('http'):
+                        body = lines[i + 1].strip()
+                        i += 1
+                    
+                    if url:  # Only add if we found a URL
+                        results.append({
+                            "title": title,
+                            "href": url,
+                            "body": body
+                        })
+                i += 1
+            
+            return results
+
+        try:
+            results = []
+            search_query = ""
+            
+            # Determine input type and get results
+            if re.search(r'^\d+\.\s+.+', input_data) and ('http' in input_data):
+                print("Parsing existing search results...")
+                results = parse_search_results_from_text(input_data)
+                search_query = "parsed_from_existing_results"
+            else:
+                # It's a search query - perform new search
+                print(f"Performing new search for: {input_data}")
+                search_query = input_data
+                
+                with DDGS() as ddgs:
+                    search_results = ddgs.text(input_data, region="us-en", max_results=max_results)
+                    results = list(search_results)
+
+            # Limit results
+            results = results[:max_results]
+            
+            if not results:
+                return "No results found to process."
+
+            # Create search memory entry
+            search = self.mem.add_session_memory(
+                self.sess.id, search_query, "web_search_report", 
+                metadata={
+                    "author": "web search report", 
+                    "max_results": max_results,
+                    "input_type": "search_query" if search_query != "parsed_from_existing_results" else "existing_results"
+                }
+            )
+            
+            output = []
+            scraped_data = []
+            
+            # Create event loop for this thread
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            for idx, r in enumerate(results, 1):
+                title = r.get("title", "")
+                href = r.get("href", "")
+                body = r.get("body", "")
+                
+                if not href:
+                    continue
+                    
+                # Store search result
+                search_result = self.mem.upsert_entity(
+                    href, "search_result",
+                    properties={"title": title, "body": body},
+                    labels=["Search_result"]
+                )
+                self.mem.link(search.id, search_result.id, "RESULT")
+                
+                # Scrape the page content using async Playwright
+                output.append(f"\n{'='*80}")
+                output.append(f"RESULT {idx}: {title}")
+                output.append(f"URL: {href}")
+                output.append(f"Description: {body}")
+                output.append(f"{'-'*40}")
+                
+                print(f"Scraping {idx}/{len(results)}: {href}")
+                scraped_content = loop.run_until_complete(scrape_url_with_playwright(href))
+                
+                # Store scraped content
+                scraped_entity = self.mem.upsert_entity(
+                    f"{href}_content", "scraped_content",
+                    properties={
+                        "title": title,
+                        "url": href,
+                        "content": scraped_content[:500] + "..." if len(scraped_content) > 500 else scraped_content
+                    },
+                    labels=["Scraped_content"]
+                )
+                self.mem.link(search_result.id, scraped_entity.id, "HAS_CONTENT")
+                
+                output.append(f"Scraped Content:\n{scraped_content}")
+                output.append(f"{'='*80}")
+                
+                scraped_data.append({
+                    "title": title,
+                    "url": href,
+                    "description": body,
+                    "content": scraped_content
+                })
+            
+            # Add summary to memory
+            summary_entity = self.mem.upsert_entity(
+                f"report_{search.id}", "search_report",
+                properties={
+                    "query": search_query,
+                    "total_results": len(scraped_data),
+                    "summary": f"Web search report processed {len(scraped_data)} results"
+                },
+                labels=["Search_Report"]
+            )
+            self.mem.link(search.id, summary_entity.id, "GENERATED_REPORT")
+            
+            final_output = "\n".join(output) if output else "No results found."
+            return final_output
+            
+        except Exception as e:
+            return f"[Web Search Report Error] {e}"
+
     def load_tools(self):
         return [
             Tool( 
@@ -533,12 +855,17 @@ class Vera:
             Tool(
                 name="DuckDuckGo Web Search",
                 func=self.duckduckgo_search,
-                description="Search the web using DuckDuckGo and return the top results."
+                description="Search the web for relevant websites using DuckDuckGo."
             ),
             Tool(
                 name="DuckDuckGo News Search",
                 func=self.duckduckgo_search_news,
                 description="Searches the web for news using DuckDuckGo."
+            ),
+             Tool(
+                name="Web Search Report", 
+                func=self.web_search_report,
+                description="Comprehensive web search with page scraping using Playwright. Accepts search queries or existing search results. Returns detailed reports with full page content. Use when you need in-depth information from web pages."
             ),
             Tool(
                 name="inspect system source code",
@@ -734,11 +1061,7 @@ class Vera:
             except Exception as e:
                 tool_outputs[tool_name] = f"Error executing {tool_name}: {e}"
                 prev_output = None
-                print(tool_outputs)
-            
-            
-        
-                
+                print(tool_outputs) 
 
         # Merge results into a final answer
         merge_prompt = f"""
@@ -1083,13 +1406,17 @@ class ToolChainPlanner:
         self.agent.mem.add_session_memory(self.agent.sess.id, f"{json.dumps(tool_plan)}", "Plan", {"topic": "plan"}, promote=True)
         yield tool_plan
 
-    def execute_tool_chain(self, query: str) -> str:
+    def execute_tool_chain(self, query: str, plan=None ) -> str:
         """Execute a tool chain, allowing reference to any step output."""
         try:
-            gen = self.plan_tool_chain(query)
-            for r in gen:
-                yield r
-                tool_plan = r
+            if plan == None:
+                gen = self.plan_tool_chain(query)
+                for r in gen:
+                    yield r
+                    tool_plan = r
+            else:
+                tool_plan = plan
+
         except StopIteration as e:
             print(f"[ Toolchain Agent ]\nTool Plan: {json.dumps(e.value, indent=2)}")
             tool_plan = e.value
@@ -1201,7 +1528,7 @@ class ToolChainPlanner:
             Does the final result meet the goal? 
             Answer only 'yes' or 'no' and explain briefly.
         """
-        review = self.deep_llm.invoke(review_prompt)
+        review = self.agent.fast_llm.invoke(review_prompt)
         if "no" in review.lower():
             print("[ Toolchain Agent ] Goal not achieved, replanning...")
             yield("[ Toolchain Agent ] Goal not achieved, replanning...")
@@ -1499,8 +1826,11 @@ if __name__ == "__main__":
         if user_query.lower() == "/run":
             print("Running a test query...")
             print(vera.run("What is the weather like today?"))
-        # if user_query.lower() == "/replay":
-        # if user_query.lower() == "/search":
+        if user_query.lower() == "/replay":
+            print("Replaying last tool plan...")
+            with open("./Configuration/last_tool_plan.json", "r", encoding="utf-8") as f:
+                last_plan = f.read()
+            print(ToolChainPlanner.execute_tool_chain(vera, "Replaying last plan", plan=json.loads(last_plan)))
         # if user_query.lower() == "/history":
         # if user_query.lower() == "/model": 
         # if user_query.lower() == "/focus":

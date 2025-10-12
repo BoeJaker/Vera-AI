@@ -1,42 +1,10 @@
 [
   {
-    "tool": "List Installed Programs",
-    "input": ""
+    "tool": "DuckDuckGo News Search",
+    "input": "today's financial news"
   },
   {
-    "tool": "List Python Modules",
-    "input": ""
-  },
-  {
-    "tool": "Bash Shell",
-    "input": "whoami"
-  },
-  {
-    "tool": "Bash Shell",
-    "input": "uname -a"
-  },
-  {
-    "tool": "Bash Shell",
-    "input": "ls -l /etc/passwd"
-  },
-  {
-    "tool": "Bash Shell",
-    "input": "netstat -tulnp"
-  },
-  {
-    "tool": "Bash Shell",
-    "input": "ps aux"
-  },
-  {
-    "tool": "DuckDuckGo Web Search",
-    "input": "common vulnerabilities for system architecture {step_1}"
-  },
-  {
-    "tool": "DuckDuckGo Web Search",
-    "input": "common vulnerabilities for installed python modules {step_2}"
-  },
-  {
-    "tool": "Query Fast LLM",
-    "input": "Compile a comprehensive security report based on the following information: {step_1}, {step_2}, {step_3}, {step_4}, {step_5}, {step_6}, {step_7}, {step_8}, {step_9}. Include sections on potential vulnerabilities, system configuration, running processes, network connections, and installed software. Prioritize potential risks and suggest mitigation strategies (without implementing them)."
+    "tool": "Web Search Report",
+    "input": "{prev}"
   }
 ]
