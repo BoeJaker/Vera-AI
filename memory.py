@@ -573,7 +573,7 @@ class HybridMemory:
         collection = f"session_{session_id}"
         self.vec.add_texts(collection, [item.id], [item.text], [item.metadata])
         
-        node = Node(id=item.id, type=node_type, labels=labels, properties={"text": item.text, **item.metadata})
+        node = Node(id=item.id, type=node_type, labels=labels, properties={"text": item.text, "created_at": datetime.now().isoformat(), "session_id": session_id, **item.metadata})
         self.graph.upsert_entity(node)
        
         if self.previous_memory and self.previous_session_id == session_id:
@@ -760,11 +760,11 @@ class HybridMemory:
         """Upsert an entity node in the long-term graph."""
         print(f"[MEMORY] Upserting entity {entity_id} of type {etype}")
         # Add "created_at" property if not already present
+        if properties is None:
+            properties = {}
         if "created_at" not in (properties or {}):
-            if properties is None:
-                properties = {}
             properties["created_at"] = datetime.utcnow().isoformat()
-
+        # properties["session_id"]: session_id
         if "source_process" not in (properties or {}):
             if properties is None:
                 properties = {}
