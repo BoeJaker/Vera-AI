@@ -20,6 +20,7 @@
 **/*.db
 **/*.log
 **/*.jsonl
+**/*.sqlite3
 
 **/.security_cache/
 **/.obsidian/
