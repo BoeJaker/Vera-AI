@@ -110,6 +110,8 @@
         buildNodesData: function() {
             try {
                 const nodes = network.body.data.nodes.get();
+                console.log('RAW NETWORK NODES:', nodes); // Add this
+                console.log('Sample node:', nodes[0]); // And this
                 this.nodesData = {};
                 
                 if (!nodes || nodes.length === 0) {
@@ -121,12 +123,22 @@
                     let properties = {};
                     let labels = [];
                     
+                    // Extract label from node.label (not node.title)
+                    if (node.label) {
+                        labels = [node.label]; // Wrap single label in array
+                    }
+                    
+                    // Try to parse title for additional properties
                     if (node.title) {
                         try {
                             const parsed = JSON.parse(node.title);
-                            properties = parsed.properties || parsed;
-                            labels = parsed.labels || [];
+                            properties = parsed.properties || {};
+                            // Only override labels if parsed data has them
+                            if (parsed.labels && Array.isArray(parsed.labels)) {
+                                labels = parsed.labels;
+                            }
                         } catch (e) {
+                            // If title is not JSON, just store it as a property
                             const titleStr = String(node.title);
                             properties = { raw_title: titleStr };
                         }

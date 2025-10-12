@@ -1110,7 +1110,6 @@ class Vera:
                         - 'focus'      → Change the focus of background thought.
                         - 'proactive'  → Trigger proactive thinking.
                         - 'simple'     → Simple textual response.
-                        - 'tool'       → Requires execution of a single tool.
                         - 'toolchain'  → Requires a series of tools or step-by-step planning and execution.
                         - 'reasoning'  → Requires deep reasoning.
                         - 'complex'    → Complex written response with high-quality output.
@@ -1130,6 +1129,7 @@ class Vera:
                     - If setting a 'focus', also specify the focus term to set (e.g., "focus project management").
                     - Do NOT provide reasoning in your output nor formatting not mentioned in this prompt.
                     """
+#                   - 'tool'       → Requires execution of a single tool.
         )
         for r in self.stream_llm(self.fast_llm, triage_prompt):
             fast_response += r
@@ -1352,13 +1352,14 @@ class ToolChainPlanner:
     def plan_tool_chain(self, query: str, history_context: str = "") -> List[Dict[str, str]]:
         """Generate a plan from the LLM."""
         planning_prompt = f"""
-            You are a planning assistant.
+            You are a rigorous expert planning assistant.
             Available tools: {[(tool.name, tool.description) for tool in self.tools]}.
             The query is: {query}
 
             Previous attempts and their outputs:\n{history_context if history_context else ""}
 
-            Plan a sequence of tool calls to solve the request.
+            Plan a comprehensive sequence of tool calls to solve the request.
+
 
             Rules for planning:
             - You can reference ANY previous step output using {{step_1}}, {{step_2}}, etc.
@@ -1518,12 +1519,12 @@ class ToolChainPlanner:
                 history_context=json.dumps(tool_outputs, indent=2)
             )
             tool_plan.extend(recovery_plan)
-            return self.execute_tool_chain(query)  # re-run with recovery
+            return self.execute_tool_chain(query, plan=recovery_plan)  # re-run with recovery
 
         # Final goal check
         review_prompt = f"""
             The query was: {query}
-            Execution results: {json.dumps(tool_outputs, indent=2)}
+            Execution results: {json.dumps(tool_outputs.get(f"step_{step_num}", ""), indent=2)}
 
             Does the final result meet the goal? 
             Answer only 'yes' or 'no' and explain briefly.
@@ -1537,6 +1538,16 @@ class ToolChainPlanner:
                 history_context=json.dumps(tool_outputs, indent=2)
             )
             return self.execute_tool_chain(query)
+
+        # # Merge results into a final answer
+        # merge_prompt = f"""
+        #     The query was: {query}
+        #     The following tools were executed with their outputs:
+        #     {tool_outputs}
+
+        #     Create a final answer that combines all the results.
+        #     """
+        # final_answer = self.deep_llm.invoke(merge_prompt)
 
         return tool_outputs.get(f"step_{step_num}", "")
 
@@ -1830,7 +1841,8 @@ if __name__ == "__main__":
             print("Replaying last tool plan...")
             with open("./Configuration/last_tool_plan.json", "r", encoding="utf-8") as f:
                 last_plan = f.read()
-            print(ToolChainPlanner.execute_tool_chain(vera, "Replaying last plan", plan=json.loads(last_plan)))
+            tcp = ToolChainPlanner(vera, vera.tools)
+            print(tcp.execute_tool_chain(vera, "Replaying last plan", plan=json.loads(last_plan)))
         # if user_query.lower() == "/history":
         # if user_query.lower() == "/model": 
         # if user_query.lower() == "/focus":
