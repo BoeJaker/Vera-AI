@@ -37,14 +37,14 @@ Core Mechanisms: Self-Modification Engine, Multi Agent Congnition, Proactive Ref
 
 
 <p align="center">
-  <a href="https://youtu.be/a3smyPocYZ8" target="_blank"><img src="https://img.youtube.com/vi/a3smyPocYZ8/0.jpg"></a>
+  <a href="https://youtu.be/OZ_wl_s68Ho" target="_blank"><img src="https://img.youtube.com/vi/OZ_wl_s68Ho/0.jpg"></a>
 
 </p>
 <span align="center">
 
 📺 Follow the above link for an 8 minute video overview of Vera.  
 
-🎧 [Listen to the Podcast](https://drive.google.com/file/d/1NaJC4ayEM2Vmf_ncW_MSEHf498yvRNhL/view?usp=sharing) - A 50 minute deep-dive podcast discussing the architecture of Vera.  
+🎧 [Listen to the Podcast](https://drive.google.com/file/d/1ATDbvlXLcZzK2E6FDir5GP_R54NE07MP/view?usp=sharing) - A 40 minute deep-dive podcast discussing the architecture of Vera.  
 
 </span>
 

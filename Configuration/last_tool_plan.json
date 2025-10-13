@@ -1,10 +1,14 @@
 [
   {
     "tool": "DuckDuckGo News Search",
-    "input": "today's financial news"
+    "input": "top crypto headlines today"
   },
   {
     "tool": "Web Search Report",
     "input": "{prev}"
+  },
+  {
+    "tool": "Query Deep LLM",
+    "input": "Create a concise briefing (around 200-300 words) summarizing the top crypto headlines from the following web search report: {prev}. Focus on the most significant events and potential market impact. Include sources."
   }
 ]

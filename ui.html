@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
     
-    <style>
+    <<style>
         * {
             margin: 0;
             padding: 0;
@@ -118,13 +118,6 @@
         }
         
         /* Property Panel - Dark Theme */
-        /* #property-panel {
-            position: fixed; right: 0; top: 0; width: 350px; height: 100%;
-            background: #1a1f2e; border-left: 2px solid #2d3748; box-shadow: -2px 0 20px rgba(0,0,0,0.5);
-            /* overflow-y: auto; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; */
-            /* z-index: 9000; transform: translateX(100%); transition: transform 0.3s ease; */
-            color: #e2e8f0;
-        } */
         #property-panel.open { transform: translateX(0); }
         #property-panel h3 { margin-top:0; border-bottom:2px solid #3b82f6; padding-bottom:10px; color:#3b82f6; }
         #property-panel .section { margin:15px 0; }
@@ -794,7 +787,7 @@
     <div id="property-panel" style="position: fixed; right: 0; top: 0; width: 350px; height: 100%; background: #1a1f2e; border-left: 2px solid #2d3748; box-shadow: -2px 0 20px rgba(0,0,0,0.5); overflow-y: auto; padding: 20px; z-index: 1000; color: #e2e8f0; display: none; flex-direction: column; overflow-y: auto;">
         <button id="close-panel-btn" style="position:absolute; top:10px; right:10px; background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; transition:all 0.2s;">✕</button>
         <h3 style="margin-top:0; border-bottom:2px solid #3b82f6; padding-bottom:10px; color:#3b82f6;">Node Properties</h3>
-        <div id="panel-content" style="text-align:center; color:#999;">
+        <div id="panel-content" style="Scolor:#999;">
             <p>Click a node to view details</p>
         </div>
     </div>
@@ -914,7 +907,8 @@
                         label: n.label,
                         title: n.title,
                         color: n.color || '#3b82f6',
-                        size: n.size || 25
+                        size: n.size || 25,
+                        labels: n.labels || [] 
                     }));
                     
                     this.networkData.edges = data.edges.map(e => ({
@@ -940,14 +934,6 @@
                     console.error('Graph load error:', error);
                 }
             }
-            
-            showNodeDetails(nodeId) {
-                const node = this.networkData.nodes.find(n => n.id === nodeId);
-                if (node) {
-                    this.addSystemMessage(`Node: ${node.label}\n${node.title || 'No details'}`);
-                }
-            }
-            
             async sendMessage() {
                 const input = document.getElementById('messageInput');
                 const message = input.value.trim();
@@ -974,10 +960,33 @@
                     
                     const data = await response.json();
                     
-                    this.addMessage('assistant', data.response);
+                    // Handle both string and object responses
+                    let responseText = data.response;
+                    
+                    // If it's a string that looks like a dictionary, parse it
+                    if (typeof responseText === 'string') {
+                        try {
+                            // Try to parse as JSON
+                            const parsed = JSON.parse(responseText);
+                            if (typeof parsed === 'object' && parsed !== null) {
+                                responseText = Object.values(parsed)
+                                    .filter(v => typeof v === 'string')
+                                    .join('\n');
+                            }
+                        } catch (e) {
+                            // Not JSON, use as-is
+                        }
+                    } else if (typeof responseText === 'object' && responseText !== null) {
+                        // If it's already an object, extract strings
+                        responseText = Object.values(responseText)
+                            .filter(v => typeof v === 'string')
+                            .join('\n');
+                    }
+                    
+                    this.addMessage('assistant', responseText);
                     
                     if (this.getSetting('ttsEnabled')) {
-                        this.enqueueTTS(data.response, this.getSetting('ttsLanguage'));
+                        this.enqueueTTS(responseText, this.getSetting('ttsLanguage'));
                     }
                     
                     await this.loadGraph();
@@ -991,37 +1000,222 @@
                 input.disabled = false;
                 input.focus();
             }
-            
-            addMessage(role, content, id = null) {
-                const messageId = id || `msg-${Date.now()}`;
-                const message = { id: messageId, role, content, timestamp: new Date() };
-                this.messages.push(message);
-                this.renderMessage(message);
-            }
-            
-            renderMessage(message) {
-                const container = document.getElementById('chatMessages');
-                const messageEl = document.createElement('div');
-                messageEl.id = message.id;
-                messageEl.className = `message ${message.role}`;
-                
-                const avatar = document.createElement('div');
-                avatar.className = 'message-avatar';
-                avatar.textContent = message.role === 'user' ? 'You' : message.role === 'system' ? 'ℹ️' : 'V';
-                
-                const content = document.createElement('div');
-                content.className = 'message-content';
-                content.textContent = message.content;
-                
-                if (message.role !== 'system') {
-                    messageEl.appendChild(avatar);
+        addMessage(role, content, id = null) {
+            const messageId = id || `msg-${Date.now()}`;
+            const message = { id: messageId, role, content, timestamp: new Date() };
+            this.messages.push(message);
+            this.renderMessage(message);
+        }
+        
+        escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+        parseMessageContent(content) {
+            // Handle object input by extracting all string values
+            if (typeof content === 'object' && content !== null) {
+                if (Array.isArray(content)) {
+                    content = content
+                        .filter(item => typeof item === 'string')
+                        .join('\n');
+                } else {
+                    content = Object.values(content)
+                        .filter(value => typeof value === 'string')
+                        .join('\n');
                 }
-                messageEl.appendChild(content);
-                
-                container.appendChild(messageEl);
-                container.scrollTop = container.scrollHeight;
             }
             
+            // Ensure content is a string
+            content = String(content);
+            
+            // Try to parse as JSON/dict first
+            let parsedStructure = this.tryParseStructure(content);
+            
+            if (parsedStructure !== null && typeof parsedStructure === 'object') {
+                // It's a structured object - format it nicely
+                return this.formatStructuredContent(parsedStructure);
+            }
+            
+            // Otherwise, parse as plain text with markdown
+            return this.formatPlainText(content);
+        }
+
+        tryParseStructure(content) {
+            content = content.trim();
+            
+            // Try JSON parsing first
+            try {
+                const json = JSON.parse(content);
+                if (typeof json === 'object' && json !== null) {
+                    return json;
+                }
+            } catch (e) {
+                // Not valid JSON, continue
+            }
+            
+            // Try Python dict-like syntax (e.g., {'key': 'value'})
+            try {
+                // Replace single quotes with double quotes for JSON compatibility
+                const jsonLike = content
+                    .replace(/'/g, '"')
+                    .replace(/True/g, 'true')
+                    .replace(/False/g, 'false')
+                    .replace(/None/g, 'null');
+                
+                const parsed = JSON.parse(jsonLike);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    return parsed;
+                }
+            } catch (e) {
+                // Not valid dict syntax, continue
+            }
+            
+            return null;
+        }
+
+        formatStructuredContent(obj) {
+            let html = '<div style="display: grid; gap: 12px;">';
+            
+            for (const [key, value] of Object.entries(obj)) {
+                const formattedKey = this.escapeHtml(String(key));
+                const formattedValue = this.formatValue(value);
+                
+                html += `
+                    <div style="background: #0f172a; border-left: 3px solid #3b82f6; border-radius: 4px; padding: 10px;">
+                        <div style="font-weight: bold; color: #60a5fa; margin-bottom: 6px; font-size: 13px;">${formattedKey}</div>
+                        <div style="color: #cbd5e1; font-size: 13px; line-height: 1.5;">${formattedValue}</div>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+
+        formatValue(value) {
+            // Handle null/undefined
+            if (value === null || value === undefined) {
+                return '<span style="color: #94a3b8; font-style: italic;">null</span>';
+            }
+            
+            // Handle booleans
+            if (typeof value === 'boolean') {
+                return `<span style="color: #a78bfa;">${value}</span>`;
+            }
+            
+            // Handle numbers
+            if (typeof value === 'number') {
+                return `<span style="color: #fbbf24;">${value}</span>`;
+            }
+            
+            // Handle nested objects/dicts
+            if (typeof value === 'object' && !Array.isArray(value)) {
+                return this.formatNestedObject(value);
+            }
+            
+            // Handle arrays
+            if (Array.isArray(value)) {
+                return this.formatArray(value);
+            }
+            
+            // Handle strings - parse for markdown, newlines, etc
+            return this.formatPlainText(String(value));
+        }
+
+        formatNestedObject(obj) {
+            let html = '<div style="background: #1e293b; border-radius: 3px; padding: 8px; margin-top: 4px; font-size: 12px;">';
+            
+            for (const [k, v] of Object.entries(obj)) {
+                const key = this.escapeHtml(String(k));
+                const val = this.formatValue(v);
+                html += `<div style="margin: 4px 0;"><span style="color: #60a5fa;">${key}:</span> ${val}</div>`;
+            }
+            
+            html += '</div>';
+            return html;
+        }
+
+        formatArray(arr) {
+            let html = '<div style="background: #1e293b; border-radius: 3px; padding: 8px; margin-top: 4px;">';
+            
+            arr.forEach((item, idx) => {
+                const formatted = this.formatValue(item);
+                html += `<div style="margin: 4px 0; font-size: 12px;"><span style="color: #f87171;">[${idx}]</span> ${formatted}</div>`;
+            });
+            
+            html += '</div>';
+            return html;
+        }
+
+        formatPlainText(content) {
+            content = String(content);
+            
+            // Convert literal \n strings to actual newlines
+            content = content.replace(/\\n/g, '\n');
+            
+            let html = content;
+            
+            // Handle code blocks with language specification (before escaping)
+            html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                const language = lang || 'code';
+                const escapedCode = this.escapeHtml(code.trim());
+                return `<code-block style="display: block; background: #0f172a; border-radius: 4px; padding: 10px; margin: 8px 0; overflow-x: auto;"><code-block-lang style="display: block; color: #94a3b8; font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">${language}</code-block-lang><code style="color: #e2e8f0; font-family: monospace; font-size: 12px;">${escapedCode}</code></code-block>`;
+            });
+            
+            // Handle inline code backticks (before escaping)
+            html = html.replace(/`([^`]+)`/g, (match, code) => {
+                return `<inline-code style="background: #0f172a; padding: 2px 6px; border-radius: 3px; color: #a78bfa; font-family: monospace; font-size: 12px;">${this.escapeHtml(code)}</inline-code>`;
+            });
+            
+            // Handle links (before escaping)
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+                return `<a href="${this.escapeHtml(url)}" target="_blank" style="color: #3b82f6; text-decoration: underline;">${this.escapeHtml(text)}</a>`;
+            });
+            
+            // Now escape the remaining content
+            html = this.escapeHtml(html);
+            
+            // Handle bold (**text** or __text__)
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+            
+            // Handle italic (*text* or _text_)
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+            
+            // Handle line breaks (AFTER all other processing)
+            html = html.replace(/\n/g, '<br>');
+            
+            return html;
+        }
+        renderMessage(message) {
+            const container = document.getElementById('chatMessages');
+            const messageEl = document.createElement('div');
+            messageEl.id = message.id;
+            messageEl.className = `message ${message.role}`;
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = message.role === 'user' ? 'You' : message.role === 'system' ? 'ℹ️' : 'V';
+            
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            
+            // Process content with markdown parsing instead of plain text
+            content.innerHTML = this.parseMessageContent(message.content);
+            
+            if (message.role !== 'system') {
+                messageEl.appendChild(avatar);
+            }
+            messageEl.appendChild(content);
+            
+            container.appendChild(messageEl);
+            container.scrollTop = container.scrollHeight;
+            }
             addSystemMessage(content) {
                 this.addMessage('system', content);
             }
