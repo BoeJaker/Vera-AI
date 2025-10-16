@@ -129,27 +129,29 @@
                     }
                     
                     // Try to parse title for additional properties
-                    if (node.title) {
-                        try {
-                            const parsed = JSON.parse(node.title);
-                            properties = parsed.properties || {};
-                            // Only override labels if parsed data has them
-                            if (parsed.labels && Array.isArray(parsed.labels)) {
-                                labels = parsed.labels;
-                            }
-                        } catch (e) {
-                            // If title is not JSON, just store it as a property
-                            const titleStr = String(node.title);
-                            properties = { raw_title: titleStr };
+                    // if (node.title) {
+                    try {
+                        const parsed = node.properties;
+                        properties = node.properties;
+                        console.log(node.properties)
+                        // Only override labels if parsed data has them
+                        if ([node.type] && Array.isArray(node.type)) {
+                            labels = node.rtpe;
                         }
+                    } catch (e) {
+                        // If title is not JSON, just store it as a property
+                        console.log(e)
+                        const titleStr = String(node.title);
+                        // properties = { raw_title: titleStr };
                     }
+                    // }
                     
                     const safeProperties = this.sanitizeProperties(properties);
-                    
+                    // titleStr.split(":")[0] is a bit of a hacky fix, this whole function needs reworking to match the MX implementation
                     this.nodesData[node.id] = {
                         id: node.id,
-                        labels: labels,
-                        properties: safeProperties,
+                        labels: labels, //node.title.split(':')[0] || labels[0] || '',
+                        properties: properties,
                         display_name: node.label || String(node.id),
                         color: node.color
                     };
@@ -239,18 +241,18 @@
             }
             
             let html = '<div style="max-width:350px;">';
-            html += `<div style="font-weight:bold; color:#000000; margin-bottom:8px; font-size:14px; border-bottom:1px solid #334155; padding-bottom:6px;">${this.escapeHtml(title)}</div>`;
+            html += `<div style="font-weight:bold; color:#ffffff; margin-bottom:8px; font-size:14px; border-bottom:1px solid #000000; padding-bottom:6px;">${this.escapeHtml(title)}</div>`;
             
             if (labels.length > 0) {
                 html += '<div style="margin-bottom:8px;">';
                 labels.slice(0, 3).forEach(label => {
-                    html += `<span style="display:inline-block; background:#000000; color:white; padding:2px 8px; border-radius:4px; margin:2px; font-size:11px;">${this.escapeHtml(String(label))}</span>`;
+                    html += `<span style="display:inline-block; background:#ffffff; color:black; padding:2px 8px; border-radius:4px; margin:2px; font-size:11px;">${this.escapeHtml(String(label))}</span>`;
                 });
                 html += '</div>';
             }
             
             if (bodyText) {
-                html += `<div style="margin-top:8px; color:#000000; font-size:12px; line-height:1.5;">${this.escapeHtml(bodyText)}</div>`;
+                html += `<div style="margin-top:8px; color:#ffffff; font-size:12px; line-height:1.5;">${this.escapeHtml(bodyText)}</div>`;
             }
             
             html += '</div>';
@@ -1134,7 +1136,7 @@
                         const nodeColor = node.color;
                         updateData.shape = 'box';
                         updateData.font = {
-                            color: '#000000',
+                            color: '#ffffffff',
                             size: 14,
                             face: 'arial'
                         };

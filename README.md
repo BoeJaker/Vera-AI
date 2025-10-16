@@ -54,7 +54,7 @@ Core Mechanisms: Self-Modification Engine, Multi Agent Congnition, Proactive Ref
 
 >[!WARNING]
 >**Vera has high system requirements**  
-> At least 16Gb of idle system RAM, and 12 real cores (24 hyperthreaded) running at 3Ghz+.  
+> At least 16Gb of idle system RAM, or A GPU with 12Gb+ VRAM and 12 real cores (24 hyperthreaded) running at 3Ghz+.
 >Please check the **[System Requirements](#system-requirements)** section for more info
 
 >[!NOTE]  
@@ -189,7 +189,7 @@ You can query Vera for knowledge that requires bridging information across month
 - **Contextual Understanding**: Goes beyond simple text matches to provide comprehensive relational insights
 
 ##### Explore Cognitive History
-- **Memory Explorer (MX)**: Visually traverse Vera's entire knowledge graph to audit or explore relationships between entities, concepts, and projects
+- **Memory Explorer (MX)**: Visually traverse Vera's entire knowledge graph to audit or explore relationships between entities, concepts, and projects. Visualise entire systems as dynamic relational graphs, from ip ranges to codebases, you can break down the architecture and properties of any digital system vera has interacted with.
 - **Relationship Mapping**: Enables broad or targeted traversal of the knowledge graph for comprehensive understanding
 - **Visual Knowledge Navigation**: Provides intuitive exploration of complex information relationships
 
@@ -593,7 +593,8 @@ docker compose up
 
 ## Usage: Commands & Flags
 
-### System Flags
+
+### `vera.py` System Flags
 
 Use these flags at the command line when starting Vera:
 

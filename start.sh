@@ -1,9 +1,11 @@
 cd /home/boejaker/langchain
+
 source ./bin/activate
+
 cd ./app/Vera
 
 # CLI Vera
-python3 Vera.py
+python3 vera.py
 
 # Web Vera
 streamlit run ./ui.py 
@@ -12,4 +14,4 @@ streamlit run ./ui.py
 streamlit run ./pbt_ui.py
 
 # Memory Dashboard
-streaamlit run ./Memory/dashboad/dashboard.py
+streamlit run ./Memory/dashboard/dashboard.py
