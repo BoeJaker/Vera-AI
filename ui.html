@@ -90,7 +90,7 @@
         .context-menu-divider {
             height: 1px; background: #334155; margin: 4px 0;
         }
-        
+/*         
         /* Enhanced Tooltip */
         .vis-tooltip {
             background: #1a1f2e !important;
@@ -109,13 +109,13 @@
             font-size: 14px; border-bottom: 1px solid #334155; padding-bottom: 6px;
         }
         .tooltip-label {
-            display: inline-block; background: #3b82f6; color: white;
+            display: inline-block; background: #ffffff; color: black;
             padding: 2px 8px; border-radius: 4px; margin: 2px;
             font-size: 11px;
         }
         .tooltip-text {
-            margin-top: 8px; color: #cbd5e1; font-size: 12px;
-        }
+            margin-top: 8px; color: #ffffff; font-size: 12px;
+        } */
         
         /* Property Panel - Dark Theme */
         #property-panel.open { transform: translateX(0); }
@@ -859,13 +859,21 @@
                             enabled: true,
                             type: 'dynamic'
                         },
-                        arrows: {
-                            to: { enabled: true }
+                        font: {
+                            size: 16,
+                            color: '#ffffff',
+                            strokeWidth: 0,
+                            strokeColor: '#ffffff',
+                            background: 'none',
+                            align: 'top'
                         },
                         color: {
-                            color: '#64748b',
-                            highlight: '#3b82f6'
-                        }
+                            color: '#00aaff',
+                            highlight: '#ffaa00',
+                            hover: '#ffaa00'
+                        },
+                        width: 2,
+                        arrows: { to: { enabled: true, scaleFactor: 1.0 } }
                     },
                     nodes: {
                         color: {
@@ -901,11 +909,12 @@
                 try {
                     const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
                     const data = await response.json();
-                    
+                    console.log(data.nodes)
                     this.networkData.nodes = data.nodes.map(n => ({
                         id: n.id,
                         label: n.label,
                         title: n.title,
+                        properties: n.properties,
                         color: n.color || '#3b82f6',
                         size: n.size || 25,
                         labels: n.labels || [] 

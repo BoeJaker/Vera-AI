@@ -1,42 +1,36 @@
 #!/usr/bin/env python3
-# Vera.py - Vera - Sans corps - Sine corpore - без тела - 体なしで 
+# Vera.py - Vera
 
 """
 Vera - AI System
-Toolchain, multi-agent system with proactive focus management and tool execution.
-
-
-TODO
-    CPU pinning pools
-    Memory
-    Agents
-    Tools
-
-    Add
-    Clean up tools and make them dynamically loaded
+Multi-agent system with proactive focus management and tool execution.
 """
  
 # --- Imports ---
-import sys
-import os
+import sys, os, io
 import subprocess
 import json
-from typing import List, Dict, Any, Type
-from typing import Optional, Callable
+from typing import List, Dict, Any, Type, Optional, Callable
 import threading
 import time
-# import asyncio
 import inspect
 import psutil
 import re
 from pydantic import BaseModel, Field
-import io
+import traceback
 import traceback
 import ollama
-# import types
+import requests
 from collections.abc import Iterator
 from urllib.parse import quote_plus, quote
-
+import asyncio
+import requests
+from typing import Iterator, Union
+from langchain_core.outputs import GenerationChunk
+from typing import Optional, Dict, List, Any
+from langchain.llms.base import LLM
+from typing import Optional, Dict, List, Any
+from playwright.async_api import async_playwright
 from duckduckgo_search import DDGS
 from langchain_core.tools import tool
 from langchain_community.llms import Ollama
@@ -50,10 +44,14 @@ from langchain_community.tools.playwright.utils import (
     create_async_playwright_browser,
 )
 from langchain.tools import BaseTool
+from langchain.llms.base import LLM
+
 # --- Local Imports ---
 from executive_0_9 import executive
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Memory'))
 from memory import *
+
+CONFIG_FILE = "vera_models.json"
 
 # sys.path.append(os.path.join(os.path.dirname(__file__), 'Toolchain'))
 # from toolchain import ToolChainPlanner
@@ -101,13 +99,298 @@ class UnrestrictedPythonTool(BaseTool):
     def _arun(self, code: str):
         raise NotImplementedError("Async execution not supported.")
 
-CONFIG_FILE = "vera_models.json"
+# --- Ollama Connection Manager ---
+class OllamaConnectionManager:
+    """Manages connection to Ollama API with local fallback"""
+    
+    def __init__(self, api_url: Optional[str] = None):
+        self.api_url = api_url or os.getenv("OLLAMA_API_URL", "http://localhost:11434")
+        self.use_local = False
+        self.connection_tested = False
+        
+    def test_connection(self) -> bool:
+        """Test if Ollama API is accessible"""
+        try:
+            response = requests.get(f"{self.api_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                print(f"[Ollama] Connected to API at {self.api_url}")
+                self.use_local = False
+                self.connection_tested = True
+                return True
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            print(f"[Ollama] API connection failed: {e}")
+        
+        # Fallback to local
+        print("[Ollama] Falling back to local Ollama process")
+        self.use_local = True
+        self.connection_tested = True
+        return False
+    
+    def list_models(self) -> List[Dict]:
+        """List available models from API or local"""
+        if not self.connection_tested:
+            self.test_connection()
+        
+        if not self.use_local:
+            try:
+                response = requests.get(f"{self.api_url}/api/tags", timeout=5)
+                if response.status_code == 200:
+                    models_data = response.json().get("models", [])
+                    # API returns models in a different format, normalize it
+                    return [{"model": m.get("name", m.get("model", ""))} for m in models_data]
+            except Exception as e:
+                print(f"[Ollama] API list failed, trying local: {e}")
+                self.use_local = True
+        
+        # Use local ollama import
+        try:
+            return ollama.list()["models"]
+        except Exception as e:
+            raise RuntimeError(f"[Ollama] Both API and local connection failed: {e}")
+    
+    def pull_model(self, model_name: str) -> bool:
+        """Pull/download a model from API or local"""
+        if not self.connection_tested:
+            self.test_connection()
+        
+        if not self.use_local:
+            try:
+                print(f"[Ollama] Pulling model {model_name} via API...")
+                response = requests.post(
+                    f"{self.api_url}/api/pull",
+                    json={"name": model_name, "stream": False},
+                    timeout=300
+                )
+                return response.status_code == 200
+            except Exception as e:
+                print(f"[Ollama] API pull failed, trying local: {e}")
+                self.use_local = True
+        
+        # Use local ollama import
+        try:
+            ollama.pull(model_name)
+            return True
+        except Exception as e:
+            print(f"[Ollama] Failed to pull model: {e}")
+            return False
+    
+    def create_llm(self, model: str, temperature: float = 0.7, **kwargs):
+        """Create an Ollama LLM instance with API or local configuration"""
+        if not self.connection_tested:
+            self.test_connection()
+        
+        if not self.use_local:
+            # Use API mode
+            print(f"[Ollama] Using API mode for model {model}")
+            return OllamaAPIWrapper(
+                model=model,
+                temperature=temperature,
+                api_url=self.api_url,
+                **kwargs
+            )
+        else:
+            # Use local Ollama
+            print(f"[Ollama] Using local Ollama for model {model}")
+            return Ollama(
+                model=model,
+                temperature=temperature,
+                **kwargs
+            )
+    
+    def create_embeddings(self, model: str, **kwargs):
+        """Create an Ollama embeddings instance with API or local configuration"""
+        if not self.connection_tested:
+            self.test_connection()
+        
+        if not self.use_local:
+            # Use API mode
+            return OllamaEmbeddings(
+                model=model,
+                base_url=self.api_url,
+                **kwargs
+            )
+        else:
+            # Use local Ollama
+            return OllamaEmbeddings(
+                model=model,
+                **kwargs
+            )
 
-def choose_models_from_installed():
+# --- Ollama API Wrapper ---
+class OllamaAPIWrapper(LLM):
+    """Wrapper for Ollama API calls with fallback to local"""
+    
+    model: str
+    temperature: float = 0.7
+    api_url: str = "http://localhost:11434"
+    
+    @property
+    def _llm_type(self) -> str:
+        return "ollama_api"
+    
+    def _call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
+        """Call Ollama API, fallback to local if it fails"""
+        try:
+            # Filter out non-serializable kwargs
+            api_kwargs = {k: v for k, v in kwargs.items() 
+                         if k not in ['run_manager', 'callbacks'] and 
+                         isinstance(v, (str, int, float, bool, list, dict, type(None)))}
+            
+            # Try API call
+            response = requests.post(
+                f"{self.api_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "temperature": self.temperature,
+                    "stream": False,
+                    **api_kwargs
+                },
+                timeout=240
+            )
+            
+            if response.status_code == 200:
+                return response.json().get("response", "")
+            else:
+                print(f"[Ollama API] Request failed with status {response.status_code}, falling back to local")
+                return self._fallback_call(prompt, stop, run_manager, **kwargs)
+                
+        except Exception as e:
+            print(f"[Ollama API] Error: {e}, falling back to local")
+            return self._fallback_call(prompt, stop, run_manager, **kwargs)
+    
+    def _stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> Iterator[GenerationChunk]:
+        """Stream responses from Ollama API, fallback to local if it fails"""
+        try:
+            # Filter out non-serializable kwargs
+            api_kwargs = {k: v for k, v in kwargs.items() 
+                         if k not in ['run_manager', 'callbacks'] and 
+                         isinstance(v, (str, int, float, bool, list, dict, type(None)))}
+            
+            # Try API streaming call
+            print(f"[Ollama API] Starting stream request to {self.api_url}")
+            response = requests.post(
+                f"{self.api_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "temperature": self.temperature,
+                    "stream": True,
+                    **api_kwargs
+                },
+                stream=True,
+                timeout=240
+            )
+            
+            if response.status_code == 200:
+                print(f"[Ollama API] Stream connected, receiving data...")
+                chunk_count = 0
+                for line in response.iter_lines():
+                    if line:
+                        # print(f"[DEBUG] Line: {line.decode('utf-8')}", flush=True)
+                        try:
+                            json_response = json.loads(line)
+                            if "response" in json_response:
+                                chunk_text = json_response["response"]
+                                if chunk_text:  # Only yield non-empty chunks
+                                    chunk_count += 1
+                                    # print(f"[DEBUG] Chunk {chunk_count}: '{chunk_text}'", flush=True)
+                                    # Create a GenerationChunk object like LangChain expects
+                                    chunk = GenerationChunk(text=chunk_text)
+                                    if run_manager:
+                                        run_manager.on_llm_new_token(chunk_text)
+                                    yield chunk
+                        except json.JSONDecodeError as e:
+                            print(f"[Ollama API] JSON decode error: {e}")
+                            continue
+                print(f"[Ollama API] Stream completed, yielded {chunk_count} chunks")
+            else:
+                print(f"[Ollama API] Stream failed with status {response.status_code}, falling back to local")
+                yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
+                
+        except Exception as e:
+            print(f"[Ollama API] Stream error: {e}, falling back to local")
+            traceback.print_exc()
+            yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
+    
+    def _fallback_call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
+        """Fallback to local Ollama"""
+        fallback_llm = Ollama(model=self.model, temperature=self.temperature)
+        print(f"[Ollama API] Using local fallback for model {self.model}")
+        
+        # Pass run_manager if available
+        call_kwargs = kwargs.copy()
+        if run_manager:
+            call_kwargs['run_manager'] = run_manager
+        
+        return fallback_llm.invoke(prompt, stop=stop, **call_kwargs)
+    
+    def _fallback_stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs):
+        """Fallback streaming to local Ollama"""
+        fallback_llm = Ollama(model=self.model, temperature=self.temperature)
+        print(f"[Ollama API] Using local streaming fallback for model {self.model}")
+        print(f"[Ollama API] Starting local stream...")
+        chunk_count = 0
+        
+        # Pass run_manager to the fallback if available
+        stream_kwargs = kwargs.copy()
+        if run_manager:
+            stream_kwargs['run_manager'] = run_manager
+        
+        for chunk in fallback_llm.stream(prompt, stop=stop, **stream_kwargs):
+            chunk_count += 1
+            # LangChain's stream should return GenerationChunk objects
+            # But handle both cases
+            if isinstance(chunk, str):
+                yield GenerationChunk(text=chunk)
+            elif hasattr(chunk, 'text'):
+                yield chunk
+            elif hasattr(chunk, 'content'):
+                yield GenerationChunk(text=chunk.content)
+            else:
+                yield GenerationChunk(text=str(chunk))
+        print(f"\n[Ollama API] Local stream completed, yielded {chunk_count} chunks")
+    
+    async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
+        """Async call - falls back to sync for now"""
+        return self._call(prompt, stop, **kwargs)
+
+
+# --- Model Selection ---
+def choose_models_from_installed(ollama_manager: OllamaConnectionManager, config_file: str = "vera_models.json"):
+    """Choose models with support for API or local Ollama"""
+    
     # Get list of installed Ollama models
-    available_models = [m["model"] for m in ollama.list()["models"]]
+    try:
+        models_list = ollama_manager.list_models()
+        available_models = [m["model"] for m in models_list]
+    except Exception as e:
+        print(f"[Vera Model Loader] Error listing models: {e}")
+        available_models = []
+    
     if not available_models:
-        raise RuntimeError("[Vera Model Loader] No Ollama models found! Please install some models first.")
+        print("[Vera Model Loader] No Ollama models found!")
+        print("Would you like to pull some default models? (y/n): ", end="")
+        response = input().strip().lower()
+        
+        if response == 'y':
+            default_to_pull = ["gemma2", "mistral:7b"]
+            for model in default_to_pull:
+                print(f"[Vera Model Loader] Pulling {model}...")
+                if ollama_manager.pull_model(model):
+                    print(f"[Vera Model Loader] Successfully pulled {model}")
+                else:
+                    print(f"[Vera Model Loader] Failed to pull {model}")
+            
+            # Refresh model list
+            try:
+                models_list = ollama_manager.list_models()
+                available_models = [m["model"] for m in models_list]
+            except Exception as e:
+                print(f"[Vera Model Loader] Error refreshing model list: {e}")
+        
+        if not available_models:
+            raise RuntimeError("[Vera Model Loader] No Ollama models available! Please install models manually.")
 
     # Default models (used if config file doesn't exist)
     default_models = {
@@ -120,9 +403,9 @@ def choose_models_from_installed():
     }
 
     # Load last used models if available
-    if os.path.exists(CONFIG_FILE):
+    if os.path.exists(config_file):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(config_file, "r") as f:
                 saved_models = json.load(f)
                 default_models.update(saved_models)
         except Exception:
@@ -131,9 +414,16 @@ def choose_models_from_installed():
     chosen_models = {}
     print("\n[Vera Model Loader] Select a model for each category:")
     for key, default in default_models.items():
+        # Check if default model is available, otherwise use first available
+        if default not in available_models and available_models:
+            default = available_models[0]
+            print(f"[Vera Model Loader] Default model '{default_models[key]}' not found, using '{default}'")
+        
         print(f"\nSelect model for {key.replace('_', ' ').title()} (default: {default})")
         for idx, model in enumerate(available_models, 1):
-            print(f"{idx}. {model}")
+            marker = " ← current default" if model == default else ""
+            print(f"{idx}. {model}{marker}")
+        
         choice = input(f"Enter choice (1-{len(available_models)}) or press Enter for default: ").strip()
 
         if choice.isdigit() and 1 <= int(choice) <= len(available_models):
@@ -143,31 +433,54 @@ def choose_models_from_installed():
 
     # Save chosen models for next run
     try:
-        with open(CONFIG_FILE, "w") as f:
+        with open(config_file, "w") as f:
             json.dump(chosen_models, f, indent=2)
+        print(f"[Vera Model Loader] Configuration saved to {config_file}")
     except Exception as e:
         print(f"[Vera Model Loader] Warning: could not save config: {e}")
 
     print("\n[Vera Model Loader] Selected Models:")
     for key, model in chosen_models.items():
-        print(f"{key}: {model}")
+        print(f"  {key}: {model}")
     print()
 
     return chosen_models
+
 
 # --- Agent Class ---
 class Vera:
     """Vera class that manages multiple LLMs and tools for complex tasks.
     Started off as a triple agent, but now it has grown into a multi-agent system."""
 
-    def __init__(self, chroma_path="./Memory/vera_agent_memory"):
-        self.selected_models = choose_models_from_installed()
-        self.embedding_llm = model=self.selected_models["embedding_model"]
-        self.fast_llm = Ollama(model=self.selected_models["fast_llm"], temperature=0.2)
-        self.intermediate_llm = Ollama(model=self.selected_models["intermediate_llm"], temperature=0.4)
-        self.deep_llm = Ollama(model=self.selected_models["deep_llm"], temperature=0.6)
-        self.reasoning_llm = Ollama(model=self.selected_models["reasoning_llm"], temperature=0.7)
-        self.tool_llm = Ollama(model=self.selected_models["tool_llm"], temperature=0)
+    def __init__(self, chroma_path="./Memory/vera_agent_memory", ollama_api_url: Optional[str] = None):
+        # Initialize Ollama connection manager
+        self.ollama_manager = OllamaConnectionManager(api_url=ollama_api_url)
+        
+        # Select models
+        self.selected_models = choose_models_from_installed(self.ollama_manager)
+        
+        # Initialize LLMs using the manager (automatically handles API/local)
+        self.embedding_llm = self.selected_models["embedding_model"]
+        self.fast_llm = self.ollama_manager.create_llm(
+            model=self.selected_models["fast_llm"], 
+            temperature=0.6
+        )
+        self.intermediate_llm = self.ollama_manager.create_llm(
+            model=self.selected_models["intermediate_llm"], 
+            temperature=0.4
+        )
+        self.deep_llm = self.ollama_manager.create_llm(
+            model=self.selected_models["deep_llm"], 
+            temperature=0.6
+        )
+        self.reasoning_llm = self.ollama_manager.create_llm(
+            model=self.selected_models["reasoning_llm"], 
+            temperature=0.7
+        )
+        self.tool_llm = self.ollama_manager.create_llm(
+            model=self.selected_models["tool_llm"], 
+            temperature=0
+        )
         
         # --- Setup Memory ---
         NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -182,19 +495,15 @@ class Vera:
             neo4j_password=NEO4J_PASSWORD,
             chroma_dir=CHROMA_DIR,
             archive_jsonl=ARCHIVE_PATH,
-    )
+        )
+        
         # Start a session (Tier 2)
         print("Starting a session...")
         self.sess = self.mem.start_session(metadata={"agent": "vera"})
         self.mem.add_session_memory(self.sess.id, "Session", "Session", metadata={"topic": "conversation"})
-        # mem.link_session_focus(sess.id, ["proj_alpha"])  # Session focuses on the project
-        # Add session thoughts and optionally promote one
-        # print("Adding session thoughts...")
-        # t1 = mem.add_session_memory(sess.id, "Investigate API rate limits for upstream service.", {"topic": "risk"})
-        # t2 = mem.add_session_memory(sess.id, "Decision: use exponential backoff with jitter.", {"topic": "decision"}, promote=True)
 
-        # --- Shared ChromaDB Memory ---
-        embeddings = OllamaEmbeddings(model=self.embedding_llm)
+        # --- Shared ChromaDB Memory Tier 1---
+        embeddings = self.ollama_manager.create_embeddings(model=self.embedding_llm)
         self.vectorstore = Chroma(
             persist_directory=chroma_path,
             embedding_function=embeddings
@@ -207,16 +516,18 @@ class Vera:
 
         # Short-term conversation memory (buffer)
         self.buffer_memory = ConversationBufferMemory(
-            memory_key="chat_history",  # Where chat history is stored
-            input_key="input",     # Explicitly say which is the actual input
+            memory_key="chat_history",
+            input_key="input",
             return_messages=True
         )
+        
         # Plan memory (short-term, for storing plans in buffer)
         self.plan_memory = ConversationBufferMemory(
             memory_key="plan_history",
             input_key="input",
             return_messages=True
         )
+        
         # Plan long-term memory (vector store for plans)
         self.plan_vectorstore = Chroma(
             persist_directory=os.path.join(chroma_path, "plans"),
@@ -225,33 +536,26 @@ class Vera:
         self.plan_vector_memory = VectorStoreRetrieverMemory(
             retriever=self.plan_vectorstore.as_retriever(search_kwargs={"k": 5})
         )
+        
         # --- Proactive Focus Manager ---
         self.focus_manager = ProactiveFocusManager(agent=self)
         self.triage_memory = False
+        
         # Combined memory = short-term + long-term
         self.memory = CombinedMemory(memories=[self.buffer_memory, self.vector_memory])
-        # --- Fast Agent (small Gemma for quick replies) ---
-        self.fast_llm = Ollama(model="gemma2", temperature=0.2)
-        # --- Intermediate Agent (medium Gemma for more complex tasks) ---
-        self.intermediate_llm = Ollama(model="gemma3:12b", temperature=0.4)
-        # --- Deep Agent (larger Gemma for reasoning) ---
-        self.deep_llm = Ollama(model="gemma3:27b", temperature=0.6)
-        # --- Reasoning Agent --- (Reasoning-heavy tasks)
-        self.reasoning_llm = Ollama(model="gpt-oss:20b", temperature=0.7)
-        # --- Tool Executor ---
-        self.tool_llm = Ollama(model="gemma2", temperature=0)
         
         # Playwright browser setup
         self.sync_browser = create_sync_playwright_browser()
         self.toolkit = PlayWrightBrowserToolkit.from_browser(sync_browser=self.sync_browser)
         self.playwright_tools = self.toolkit.get_tools()
-        print(f"[Vera] Loaded {self.playwright_tools} Playwright tools.")
+        print(f"[Vera] Loaded {len(self.playwright_tools)} Playwright tools.")
         
         self.executive_instance = executive(vera_instance=self)
 
         # Tool setup
         self.tools = self.load_tools() + self.playwright_tools
-        print(f"[Vera] Loaded {self.tools} tools.")
+        print(f"[Vera] Loaded {len(self.tools)} tools.")
+        
         # Fast Agent that can handle simple tool queries
         self.light_agent = initialize_agent(
             self.tools,
@@ -260,6 +564,7 @@ class Vera:
             memory=self.memory,
             verbose=True
         )
+        
         # Deep Agent that can call tools itself
         self.deep_agent = initialize_agent(
             self.tools,
@@ -268,17 +573,17 @@ class Vera:
             memory=self.memory,
             verbose=True
         )
+        
         self.toolchain = ToolChainPlanner(self, self.tools)
                 
         # Define callback to handle proactive thoughts:
         def handle_proactive(thought):
             print(f"Proactive Thought: {thought}")
             # Here, you could also feed it to fast_llm or notify the user interface
-            # e.g., self.fast_llm.predict(thought) or queue message
 
         # Set callback
         self.focus_manager.proactive_callback = handle_proactive
-
+    
     # @tool
     def review_output(self, query, response):
         """ Review output for correctness """
@@ -474,15 +779,10 @@ class Vera:
         Accepts either a search query string or raw search results from duckduckgo_search.
         Returns a comprehensive report with titles, URLs, descriptions, and scraped content.
         """
-        from urllib.parse import quote_plus
-        from duckduckgo_search import DDGS
-        import re
-        import asyncio
-
+                
         async def scrape_url_with_playwright(url: str) -> str:
             """Scrape a single URL using Playwright and return cleaned text content."""
             try:
-                from playwright.async_api import async_playwright
                 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
@@ -793,42 +1093,42 @@ class Vera:
     def load_tools(self):
         return [
             Tool( 
-            name="Query Fast LLM",
-            func=self.fast_llm_func,
-            description="capable of creative writing, reviewing text, summarizing, combining text, improving text. Fast but can be inaccurate"
-            #"Given a query and context, reviews or summarizes the response for clarity and brevity. Acts as a quick reviewer, extractor, transformer or summarizer, not a solution provider."
+                name="Query Fast LLM",
+                func=self.fast_llm_func,
+                description="capable of creative writing, reviewing text, summarizing, combining text, improving text. Fast but can be inaccurate"
+                #"Given a query and context, reviews or summarizes the response for clarity and brevity. Acts as a quick reviewer, extractor, transformer or summarizer, not a solution provider."
            ),
             Tool( 
-            name="Query Deep LLM",
-            func=self.deep_llm_func,
-            description="capable of creative writing, reviewing text, summarizing, combining text, improving text. slow and accurate"
-            #"Given a query and context, reviews, improves or summarizes the response. Acts as a detailed reviewer, extractor, transformer  or summarizer, not a solution provider."
+                name="Query Deep LLM",
+                func=self.deep_llm_func,
+                description="capable of creative writing, reviewing text, summarizing, combining text, improving text. slow and accurate"
+                #"Given a query and context, reviews, improves or summarizes the response. Acts as a detailed reviewer, extractor, transformer  or summarizer, not a solution provider."
             ),
             Tool(
-            name="Bash Shell",
-            func=lambda q: subprocess.check_output(q, shell=True, text=True, stderr=__import__('subprocess').STDOUT), # REMOVE inline import
-            # func=self.run_command_stream,
-            description="Execute a bash shell command or script, and return its output."
+                name="Bash Shell",
+                func=lambda q: subprocess.check_output(q, shell=True, text=True, stderr=__import__('subprocess').STDOUT), # REMOVE inline import
+                # func=self.run_command_stream,
+                description="Execute a bash shell command or script, and return its output."
             ),
             Tool(
-            name="Run Python Code",
-            func=self.run_python,
-            description="Execute a Python code snippet."
+                name="Run Python Code",
+                func=self.run_python,
+                description="Execute a Python code snippet."
             ),
             Tool(
-            name="Read File",
-            func=self.read_file_tool,
-            description="Read the contents of a file. Provide the full path to the file."
+                name="Read File",
+                func=self.read_file_tool,
+                description="Read the contents of a file. Provide the full path to the file."
             ),
             Tool(
-            name="Write File",
-            func=self.write_file_tool,
-            description="Given a filepath and content, saves content to a file. Input format: filepath, followed by '|||' delimiter, then the file content. Example input: /path/to/file.txt|||This is the file content. Do NOT use newlines as delimiter."
+                name="Write File",
+                func=self.write_file_tool,
+                description="Given a filepath and content, saves content to a file. Input format: filepath, followed by '|||' delimiter, then the file content. Example input: /path/to/file.txt|||This is the file content. Do NOT use newlines as delimiter."
             ),
             Tool(
-            name="List Python Modules",
-            func=lambda q: sorted(list(sys.modules.keys())),
-            description="List all currently loaded Python modules."
+                name="List Python Modules",
+                func=lambda q: sorted(list(sys.modules.keys())),
+                description="List all currently loaded Python modules."
             ),
             Tool(
                 name="List Installed Programs",
@@ -893,8 +1193,6 @@ class Vera:
             yield(chunk)
         print()  # final newline
         return "".join(output)
-    
-    import requests
 
     def stream_ollama_raw(model, prompt):
         url = "http://localhost:11434/api/generate"

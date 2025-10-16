@@ -77,6 +77,7 @@ class GraphNode(BaseModel):
     label: str
     title: str
     color: str = "#3b82f6"
+    properties: Dict[str, Any]
     size: int = 25
 
 
@@ -326,6 +327,7 @@ async def get_session_graph(session_id: str):
                         seen_nodes.add(node_id)
                         
                         properties = dict(node)
+                        print(properties)
                         text = properties.get("text", properties.get("name", node_id))
                         node_type = properties.get("type", "node")
                         
@@ -345,6 +347,7 @@ async def get_session_graph(session_id: str):
                             label=text[:20] + "..." if len(text) > 20 else text,
                             title=f"{node_type}: {text}",
                             color=color,
+                            properties=properties,
                             size=min(properties.get("importance", 20), 40)
                         ))
                 
@@ -372,6 +375,7 @@ async def get_session_graph(session_id: str):
                 id=actual_session_id,
                 label=f"Session {actual_session_id[-8:]}",
                 title=f"Session: {actual_session_id}",
+                properties={},
                 color="#8b5cf6",
                 size=30
             )],
@@ -420,6 +424,7 @@ def _process_relationships(connections, seen_edges, edges, seen_nodes, nodes):
                                 id=end_id,
                                 label=target_text[:20] + "..." if len(target_text) > 20 else target_text,
                                 title=f"{target_type}: {target_text}",
+                                properties=target_props.get("properties",{}),
                                 color=color,
                                 size=min(target_props.get("importance", 20), 40)
                             ))
