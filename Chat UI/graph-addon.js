@@ -152,7 +152,7 @@
                         id: node.id,
                         labels: labels, //node.title.split(':')[0] || labels[0] || '',
                         properties: properties,
-                        display_name: node.label || String(node.id),
+                        display_name: String(node.title) || String(node.id),
                         color: node.color
                     };
                 });
