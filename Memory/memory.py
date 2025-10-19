@@ -42,6 +42,15 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
 import inspect
 import sys
+
+from Memory.nlp import NLPExtractor  # Assume this is a custom module for NLP extraction
+import hashlib
+import time
+from typing import Dict, Any, List
+import logging
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 # -----------------------------
 # Data models
 # -----------------------------
@@ -87,178 +96,6 @@ class ExtractedRelation(BaseModel):
     context: str = ""  # Sentence context
 
 # -----------------------------
-# NLP Extraction Engine
-# -----------------------------
-
-class NLPExtractor:
-    """Schema-less entity and relationship extraction using spaCy and Transformers"""
-    
-    def __init__(self, spacy_model: str = "en_core_web_sm", embedding_model: str = "all-MiniLM-L6-v2"):
-        # Load spaCy for preprocessing
-        try:
-            self.nlp = spacy.load(spacy_model)
-        except OSError:
-            print(f"Downloading spaCy model {spacy_model}...")
-            os.system(f"python -m spacy download {spacy_model}")
-            self.nlp = spacy.load(spacy_model)
-        
-        # Load sentence transformer for embeddings
-        self.embedding_model = SentenceTransformer(embedding_model)
-        
-        # Entity cache for deduplication
-        self.entity_cache: Dict[str, ExtractedEntity] = {}
-        
-    def extract_entities(self, text: str, custom_patterns: Optional[List[str]] = None) -> List[ExtractedEntity]:
-        """
-        Extract entities using spaCy NER + noun chunks.
-        Returns dynamic entities without fixed schema.
-        """
-        doc = self.nlp(text)
-        entities = []
-        seen_spans = set()
-        
-        # 1. Named entities from spaCy
-        for ent in doc.ents:
-            if ent.text.strip() and ent.start_char not in seen_spans:
-                entities.append(ExtractedEntity(
-                    text=ent.text,
-                    label=ent.label_,
-                    span=(ent.start_char, ent.end_char),
-                    confidence=1.0
-                ))
-                seen_spans.add(ent.start_char)
-        
-        # 2. Noun chunks as candidate entities (catch what NER misses)
-        for chunk in doc.noun_chunks:
-            if chunk.text.strip() and chunk.start_char not in seen_spans:
-                # Filter out very common/stop words
-                if len(chunk.text.split()) > 1 or chunk.root.pos_ in ["PROPN", "NOUN"]:
-                    entities.append(ExtractedEntity(
-                        text=chunk.text,
-                        label="NOUN_CHUNK",
-                        span=(chunk.start_char, chunk.end_char),
-                        confidence=0.7  # Lower confidence for chunks
-                    ))
-                    seen_spans.add(chunk.start_char)
-        
-        # 3. Add embeddings for clustering
-        if entities:
-            texts = [e.text for e in entities]
-            embeddings = self.embedding_model.encode(texts)
-            for i, emb in enumerate(embeddings):
-                entities[i].embedding = emb.tolist()
-        
-        return entities
-    
-    def extract_relations(self, text: str, entities: List[ExtractedEntity]) -> List[ExtractedRelation]:
-        """
-        Extract relationships using dependency parsing.
-        Generates candidate relations between entity pairs.
-        """
-        doc = self.nlp(text)
-        relations = []
-        
-        # Create entity span map
-        entity_spans = {(e.span[0], e.span[1]): e.text for e in entities}
-        
-        # Extract relations from dependency parse
-        for sent in doc.sents:
-            # Find entities in this sentence
-            sent_entities = []
-            for token in sent:
-                for (start, end), text in entity_spans.items():
-                    if start >= sent.start_char and end <= sent.end_char:
-                        if token.idx >= start and token.idx < end:
-                            sent_entities.append(text)
-                            break
-            
-            sent_entities = list(set(sent_entities))
-            
-            # Generate candidate pairs
-            for i, head in enumerate(sent_entities):
-                for tail in sent_entities[i+1:]:
-                    # Find connecting path in dependency tree
-                    relation = self._find_relation_path(sent, head, tail)
-                    if relation:
-                        relations.append(ExtractedRelation(
-                            head=head,
-                            tail=tail,
-                            relation=relation,
-                            confidence=0.8,
-                            context=sent.text
-                        ))
-        
-        return relations
-    
-    def _find_relation_path(self, sent, head_text: str, tail_text: str) -> Optional[str]:
-        """Find connecting verb/prep path between entities"""
-        # Simple heuristic: find verb between entities
-        head_token = None
-        tail_token = None
-        
-        for token in sent:
-            if head_text.lower() in token.text.lower():
-                head_token = token
-            if tail_text.lower() in token.text.lower():
-                tail_token = token
-        
-        if not head_token or not tail_token:
-            return None
-        
-        # Find connecting verb or preposition
-        for token in sent:
-            if token.pos_ in ["VERB", "AUX"]:
-                # Check if verb connects the entities
-                if self._is_between(token.i, head_token.i, tail_token.i):
-                    return token.lemma_.upper()
-        
-        # Fallback: use dependency label
-        if head_token.dep_ and tail_token.dep_:
-            return f"{head_token.dep_}_TO_{tail_token.dep_}".upper()
-        
-        return "RELATED_TO"
-    
-    def _is_between(self, token_idx: int, start_idx: int, end_idx: int) -> bool:
-        """Check if token is between two other tokens"""
-        return min(start_idx, end_idx) < token_idx < max(start_idx, end_idx)
-    
-    def cluster_entities(self, entities: List[ExtractedEntity], eps: float = 0.3) -> Dict[str, List[ExtractedEntity]]:
-        """
-        Cluster entities by embedding similarity to find duplicates/variants.
-        Returns clusters of similar entities.
-        """
-        if not entities or not any(e.embedding for e in entities):
-            return {"cluster_0": entities}
-        
-        # Filter entities with embeddings
-        entities_with_emb = [e for e in entities if e.embedding]
-        if not entities_with_emb:
-            return {"cluster_0": entities}
-        
-        # Create embedding matrix
-        embeddings = np.array([e.embedding for e in entities_with_emb])
-        
-        # DBSCAN clustering
-        clustering = DBSCAN(eps=eps, min_samples=1, metric='cosine').fit(embeddings)
-        
-        # Group by cluster
-        clusters = defaultdict(list)
-        for idx, label in enumerate(clustering.labels_):
-            clusters[f"cluster_{label}"].append(entities_with_emb[idx])
-        
-        return dict(clusters)
-    
-    def normalize_entity(self, entity: ExtractedEntity, cluster: List[ExtractedEntity]) -> str:
-        """
-        Normalize entity text from a cluster.
-        Pick the most canonical form.
-        """
-        # Pick longest or most confident
-        candidates = sorted(cluster, key=lambda e: (e.confidence, len(e.text)), reverse=True)
-        return candidates[0].text
-
-
-# -----------------------------
 # Graph (Neo4j) client
 # -----------------------------
 
@@ -281,6 +118,11 @@ class GraphClient:
                 sess.run(stmt)
 
     def upsert_entity(self, node: Node):
+        logger.debug(f"[GraphClient] Upserting entity: {node.id} of type {node.type}")
+        if node.properties is None:
+            node.properties = {}
+        if "created_at" not in (node.properties or {}):
+            node.properties["created_at"] = datetime.utcnow().isoformat()
         labels = ":".join(["Entity"] + node.labels)
         cypher = f"""
         MERGE (n:{labels} {{id: $id}})
@@ -296,6 +138,7 @@ class GraphClient:
             })
 
     def upsert_session(self, session: Session):
+        logger.debug(f"[GraphClient] Upserting session: {session.id}")
         cypher = """
         MERGE (s:Session {id: $id})
         ON CREATE SET s.started_at = $started_at, s.metadata = $metadata
@@ -319,6 +162,7 @@ class GraphClient:
             sess.run(cypher, {"id": session_id, "ended_at": datetime.utcnow().isoformat()})
 
     def upsert_edge(self, edge: Edge):
+        logger.debug(f"[GraphClient] Upserting edge: {edge.src} -[{edge.rel}]-> {edge.dst}")
         cypher = """
         MATCH (a:Entity {id: $src})
         MATCH (b:Entity {id: $dst})
@@ -330,6 +174,7 @@ class GraphClient:
             sess.run(cypher, edge.model_dump())
 
     def link_session_to_entity(self, session_id: str, entity_id: str, rel: str = "FOCUSES_ON"):
+        logger.debug(f"[GraphClient] Linking session {session_id} to entity {entity_id} with relation {rel}")
         cypher = """
         MATCH (s:Session {id: $sid})
         MATCH (e:Entity {id: $eid})
@@ -423,6 +268,7 @@ class VectorClient:
         return self._client.get_or_create_collection(name=name, embedding_function=self._ef)
 
     def add_texts(self, collection: str, ids: List[str], texts: List[str], metadatas: Optional[List[Dict[str, Any]]] = None):
+        logger.debug(f"[VectorClient] Adding {len(texts)} texts to collection '{collection}'")
         col = self.get_collection(collection)
         col.add(ids=ids, documents=texts, metadatas=metadatas)
 
@@ -449,6 +295,7 @@ class Archive:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
 
     def write(self, record: Dict[str, Any]):
+        logger.debug(f"[Archive] Writing record to archive: {record.get('type', 'unknown')}")
         if not self.path:
             return
         record = {"ts": datetime.utcnow().isoformat(), **record}
@@ -569,7 +416,7 @@ class HybridMemory:
         mem_id = f"mem_{int(time.time()*1000)}"
         
         item = MemoryItem(id=mem_id, text=text, metadata=metadata or {}, tier="session")
-        
+        logger.debug(f"[HybridMemory] Adding session memory {item.id} to session {session_id}")
         collection = f"session_{session_id}"
         self.vec.add_texts(collection, [item.id], [item.text], [item.metadata])
         
@@ -587,130 +434,329 @@ class HybridMemory:
             extraction = self.extract_and_link(session_id, text, auto_promote=False)
             # Link extracted entities to this memory node
             for entity in extraction.get('entities', []):
+                logger.debug(entity)
                 self.link(item.id, entity['id'], "MENTIONS_ENTITY")
+            for relation in extraction.get('relations', []):
+                logger.debug(relation)
+                self.link( relation['head_id'], relation['tail_id'], relation['relation'])
 
         if promote:
             self.promote_session_memory_to_long_term(item)
         
         self.archive.write({"type": "session_memory", "session_id": session_id, "memory": item.model_dump()})
         return item
-
-    def extract_and_link(self, session_id: str, text: str, auto_promote: bool = False) -> Dict[str, Any]:
+   
+    def extract_and_link(self, session_id: str, text: str, source_node_id: Optional[str] = None, 
+                    auto_promote: bool = False) -> Dict[str, Any]:
         """
-        NEW: Extract entities and relationships from text, link to session graph.
+        Extract entities and relationships from text, link to session graph.
+        OPTIMIZED: Uses entity IDs directly from extraction, no text-based lookup needed.
         
         Args:
             session_id: Current session ID
             text: Text to analyze
+            source_node_id: ID of source node (message, document) that entities came from
             auto_promote: If True, promote high-confidence extractions to long-term
             
         Returns:
             Dict with extracted entities and relationships
         """
-        # Extract entities
-        entities = self.nlp.extract_entities(text)
-        
-        # Optional LLM normalization
-        if self.enable_llm_enrichment and self.llm_enrichment:
-            entity_map = self.llm_enrichment.normalize_entities(entities)
-        else:
-            entity_map = {e.text: e.text for e in entities}
-        
-        # Cluster entities
-        clusters = self.nlp.cluster_entities(entities)
-        
-        # Create entity nodes
-        created_entities = []
-        for cluster_id, cluster in clusters.items():
-            canonical = self.nlp.normalize_entity(cluster[0], cluster)
-            entity_id = f"entity_{hashlib.md5(canonical.encode()).hexdigest()[:8]}"
+        logger.debug(f"[HybridMemory] Extracting and linking entities/relations for session {session_id}")
+        try:
+            # Extract entities and relations (now with IDs!)
+            logger.debug(f"Extracting from text: {text[:100]}...")
+            entities, relations = self.nlp.extract_all(text)
+            logger.info(f"Extracted {len(entities)} entities and {len(relations)} relations")
+            # logger.info(f"Sample entities: {[(e.entity_id, e.text, e.label) for e in entities[:3]]}")
             
-            # Create or update entity node
-            node = Node(
-                id=entity_id,
-                type="extracted_entity",
-                labels=["ExtractedEntity", cluster[0].label],
-                properties={
-                    "text": canonical,
-                    "confidence": cluster[0].confidence,
-                    "extracted_from_session": session_id,
-                    "variants": [e.text for e in cluster]
+            # Safety check
+            if not entities:
+                logger.warning("No entities extracted from text")
+                return {"entities": [], "relations": [], "clusters": {}}
+            
+            # Ensure all entities have IDs
+            for entity in entities:
+                if not hasattr(entity, 'entity_id') or not entity.entity_id:
+                    entity.entity_id = entity.get_stable_id()
+            
+            # Optional LLM normalization (but don't apply to CODE_BLOCK or unique IDs)
+            if self.enable_llm_enrichment and self.llm_enrichment:
+                try:
+                    natural_entities = [e for e in entities if e.label not in [
+                        'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM'
+                    ]]
+                    if natural_entities:
+                        entity_map = self.llm_enrichment.normalize_entities(natural_entities)
+                    else:
+                        entity_map = {}
+                except Exception as e:
+                    logger.warning(f"LLM normalization failed: {e}, using fallback")
+                    entity_map = {}
+            else:
+                entity_map = {}
+            
+            # Cluster entities (but don't cluster code artifacts)
+            try:
+                non_clusterable_labels = {
+                    'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM',
+                    'URL', 'EMAIL', 'UUID', 'HASH_MD5', 'HASH_SHA1', 'HASH_SHA256',
+                    'TERMINAL_COMMAND', 'FILE_PATH', 'IPV4', 'IPV6'
                 }
-            )
-            self.graph.upsert_entity(node)
+                
+                clusterable = [e for e in entities if e.label not in non_clusterable_labels]
+                non_clusterable = [e for e in entities if e.label in non_clusterable_labels]
+                
+                if clusterable and any(e.embedding for e in clusterable):
+                    clustered = self.nlp.cluster_entities(clusterable)
+                else:
+                    clustered = {f"cluster_{i}": [e] for i, e in enumerate(clusterable)}
+                
+                clusters = clustered.copy()
+                for i, entity in enumerate(non_clusterable):
+                    clusters[f"non_clusterable_{i}"] = [entity]
+                
+                logger.debug(f"Created {len(clusters)} clusters ({len(non_clusterable)} non-clusterable)")
+                
+            except Exception as e:
+                logger.warning(f"Clustering failed: {e}, using individual entities")
+                clusters = {f"cluster_{i}": [e] for i, e in enumerate(entities)}
             
-            # Link to session
-            self.graph.link_session_to_entity(session_id, entity_id, "EXTRACTED_IN")
+            # Create entity nodes - NO LOOKUP NEEDED, use entity.entity_id directly!
+            created_entities = []
+            entity_id_to_object = {}  # For quick lookups if needed
             
-            created_entities.append({"id": entity_id, "text": canonical, "label": cluster[0].label})
-        
-        # Extract relationships
-        relations = self.nlp.extract_relations(text, entities)
-        
-        # Optional LLM expansion
-        if self.enable_llm_enrichment and self.llm_enrichment:
-            relations = self.llm_enrichment.expand_relationships(relations, text)
-        
-        # Create relationship edges
-        created_relations = []
-        for rel in relations:
-            head_id = f"entity_{hashlib.md5(rel.head.encode()).hexdigest()[:8]}"
-            tail_id = f"entity_{hashlib.md5(rel.tail.encode()).hexdigest()[:8]}"
-            
-            # Only create if both entities exist
-            if any(e["id"] == head_id for e in created_entities) and any(e["id"] == tail_id for e in created_entities):
-                edge = Edge(
-                    src=head_id,
-                    dst=tail_id,
-                    rel=rel.relation,
-                    properties={
-                        "confidence": rel.confidence,
-                        "context": rel.context,
-                        "extracted_from_session": session_id
+            for cluster_id, cluster in clusters.items():
+                if not cluster:
+                    continue
+                
+                try:
+                    entity = cluster[0]
+                    
+                    # Use normalized text for natural entities, original for code
+                    if entity.label in ['CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM']:
+                        canonical = entity.text
+                    else:
+                        canonical = entity_map.get(entity.text, entity.text)
+                        if not canonical:
+                            canonical = self.nlp.normalize_entity(entity, cluster)
+                    
+                    if not canonical or not canonical.strip():
+                        continue
+                    
+                    # Use the entity_id that was assigned during extraction
+                    graph_entity_id = f"entity_{entity.entity_id}"
+                    
+                    # Store for later reference
+                    entity_id_to_object[entity.entity_id] = entity
+                    entity_id_to_object[graph_entity_id] = entity
+                    
+                    label = entity.label if hasattr(entity, 'label') else "UNKNOWN"
+                    confidence = entity.confidence if hasattr(entity, 'confidence') else 0.5
+                    
+                    # Prepare metadata
+                    metadata = {
+                        "text": canonical,
+                        "original_text": entity.text,
+                        "confidence": confidence,
+                        "extracted_from_session": session_id,
+                        "variants": list(set([e.text for e in cluster if e.text])),
+                        "cluster_id": cluster_id,
+                        "span": entity.span,
+                        "extraction_id": entity.entity_id  # Store original ID
                     }
-                )
-                self.graph.upsert_edge(edge)
-                created_relations.append({
-                    "head": rel.head,
-                    "tail": rel.tail,
-                    "relation": rel.relation
+                    
+                    if source_node_id:
+                        metadata["source_node_id"] = source_node_id
+                    
+                    if hasattr(entity, 'metadata') and entity.metadata:
+                        metadata.update({
+                            k: v for k, v in entity.metadata.items()
+                            if k not in metadata and isinstance(v, (str, int, float, bool, list, dict))
+                        })
+                    
+                    # Create node
+                    node = Node(
+                        id=graph_entity_id,
+                        type="extracted_entity",
+                        labels=["ExtractedEntity", label],
+                        properties=metadata
+                    )
+                    self.graph.upsert_entity(node)
+                    
+                    # Link to session
+                    self.graph.link_session_to_entity(session_id, graph_entity_id, "EXTRACTED_IN")
+                    
+                    # Link to source node if provided
+                    if source_node_id:
+                        source_edge = Edge(
+                            src=graph_entity_id,
+                            dst=source_node_id,
+                            rel="EXTRACTED_FROM",
+                            properties={
+                                "extraction_type": label,
+                                "confidence": confidence,
+                                "span": entity.span
+                            }
+                        )
+                        self.graph.upsert_edge(source_edge)
+                    
+                    created_entities.append({
+                        "id": graph_entity_id,
+                        "extraction_id": entity.entity_id,
+                        "text": canonical,
+                        "label": label,
+                        "confidence": confidence,
+                        "span": entity.span
+                    })
+                    
+                    logger.debug(f"Created entity: {graph_entity_id} = {canonical} ({label})")
+                    
+                except Exception as e:
+                    logger.error(f"Error creating entity from cluster {cluster_id}: {e}", exc_info=True)
+                    continue
+            
+            logger.info(f"Created {len(created_entities)} entity nodes")
+            
+            # Optional LLM expansion
+            if self.enable_llm_enrichment and self.llm_enrichment:
+                try:
+                    relations = self.llm_enrichment.expand_relationships(relations, text)
+                except Exception as e:
+                    logger.warning(f"LLM relation expansion failed: {e}")
+            
+            # Create relationship edges - USE IDs DIRECTLY!
+            created_relations = []
+            skipped_relations = []
+            
+            for idx, rel in enumerate(relations):
+                try:
+                    if not rel.head or not rel.tail:
+                        skipped_relations.append(("empty_head_tail", rel.head, rel.tail))
+                        continue
+                    
+                    # CRITICAL: Use the IDs that were set during extraction
+                    if hasattr(rel, 'head_id') and rel.head_id:
+                        head_id = f"entity_{rel.head_id}"
+                    else:
+                        # Fallback: find entity by text (should rarely happen now)
+                        logger.warning(f"Relation missing head_id, falling back to text lookup: {rel.head}")
+                        matching = [e for e in created_entities if e["text"] == rel.head or e.get("original_text") == rel.head]
+                        if matching:
+                            head_id = matching[0]["id"]
+                        else:
+                            skipped_relations.append(("missing_head_id", rel.head, rel.tail))
+                            continue
+                    
+                    if hasattr(rel, 'tail_id') and rel.tail_id:
+                        tail_id = f"entity_{rel.tail_id}"
+                    else:
+                        logger.warning(f"Relation missing tail_id, falling back to text lookup: {rel.tail}")
+                        matching = [e for e in created_entities if e["text"] == rel.tail or e.get("original_text") == rel.tail]
+                        if matching:
+                            tail_id = matching[0]["id"]
+                        else:
+                            skipped_relations.append(("missing_tail_id", rel.head, rel.tail))
+                            continue
+                    
+                    logger.debug(f"Relation #{idx}: {head_id} --[{rel.relation}]--> {tail_id}")
+                    
+                    # Create edge
+                    confidence = rel.confidence if hasattr(rel, 'confidence') else 0.5
+                    context = rel.context if hasattr(rel, 'context') else ""
+                    relation_type = rel.relation if hasattr(rel, 'relation') else "RELATED_TO"
+                    
+                    edge = Edge(
+                        src=head_id,
+                        dst=tail_id,
+                        rel=relation_type,
+                        properties={
+                            "confidence": confidence,
+                            "context": context[:500] if context else "",
+                            "extracted_from_session": session_id,
+                            "head_text": rel.head,
+                            "tail_text": rel.tail,
+                            "metadata": rel.metadata if hasattr(rel, 'metadata') else {}
+                        }
+                    )
+                    self.link(tail_id, head_id, relation_type, edge.properties)
+                    # self.graph.upsert_edge(edge)
+                    
+                    created_relations.append({
+                        "head": rel.head,
+                        "tail": rel.tail,
+                        "relation": relation_type,
+                        "confidence": confidence,
+                        "head_id": head_id,
+                        "tail_id": tail_id
+                    })
+                    
+                    logger.debug(f"✓ Created relation: {rel.head} --[{relation_type}]--> {rel.tail}")
+                    
+                except Exception as e:
+                    logger.error(f"Error creating relation: {e}", exc_info=True)
+                    skipped_relations.append(("error", rel.head, rel.tail))
+                    continue
+            
+            logger.info(f"Created {len(created_relations)} relationship edges")
+            if skipped_relations:
+                logger.info(f"Skipped {len(skipped_relations)} relations:")
+                for reason, head, tail in skipped_relations[:10]:
+                    logger.info(f"  {reason}: {head} -> {tail}")
+            
+            # Optional promotion
+            if auto_promote:
+                try:
+                    high_conf_entities = [e for e in entities if hasattr(e, 'confidence') and e.confidence > 0.8]
+                    for entity in high_conf_entities:
+                        if not entity.text or not entity.text.strip():
+                            continue
+                        
+                        graph_entity_id = f"entity_{entity.entity_id}"
+                        label = entity.label if hasattr(entity, 'label') else "UNKNOWN"
+                        
+                        self.vec.add_texts(
+                            "long_term_docs",
+                            [graph_entity_id],
+                            [entity.text],
+                            [{"type": "promoted_entity", "label": label}]
+                        )
+                    
+                    logger.info(f"Promoted {len(high_conf_entities)} high-confidence entities")
+                except Exception as e:
+                    logger.error(f"Error during promotion: {e}", exc_info=True)
+            
+            # Build result
+            result = {
+                "entities": created_entities,
+                "relations": created_relations,
+                "clusters": {k: [e.text for e in v if e.text] for k, v in clusters.items()},
+                "skipped_relations": len(skipped_relations),
+                "source_node_id": source_node_id
+            }
+            
+            # Archive
+            try:
+                self.archive.write({
+                    "type": "nlp_extraction",
+                    "session_id": session_id,
+                    "source_node_id": source_node_id,
+                    "timestamp": time.time(),
+                    "extraction": result,
+                    "text_length": len(text)
                 })
-        
-        # Store extraction in vector store
-        extraction_id = f"extraction_{int(time.time()*1000)}"
-        self.vec.add_texts(
-            f"session_{session_id}",
-            [extraction_id],
-            [text],
-            [{"type": "nlp_extraction", "n_entities": len(created_entities), "n_relations": len(created_relations)}]
-        )
-        
-        # Optional promotion
-        if auto_promote:
-            high_conf_entities = [e for e in entities if e.confidence > 0.8]
-            for entity in high_conf_entities:
-                entity_id = f"entity_{hashlib.md5(entity.text.encode()).hexdigest()[:8]}"
-                # Move to long-term collection
-                self.vec.add_texts(
-                    "long_term_docs",
-                    [entity_id],
-                    [entity.text],
-                    [{"type": "promoted_entity", "label": entity.label}]
-                )
-        
-        result = {
-            "entities": created_entities,
-            "relations": created_relations,
-            "clusters": {k: [e.text for e in v] for k, v in clusters.items()}
-        }
-        
-        self.archive.write({
-            "type": "nlp_extraction",
-            "session_id": session_id,
-            "extraction": result
-        })
-        
-        return result
+            except Exception as e:
+                logger.error(f"Error archiving extraction: {e}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Fatal error in extract_and_link: {e}", exc_info=True)
+            return {
+                "entities": [],
+                "relations": [],
+                "clusters": {},
+                "error": str(e)
+            }
 
     def link_to_session(self, session_id: str, entity_id: str, rel: str = "HAS_MEMORY"):
         self.graph.link_session_to_entity(session_id, entity_id, rel)
@@ -758,13 +804,6 @@ class HybridMemory:
     # -------- Long-term (Tier 1) --------
     def upsert_entity(self, entity_id: str, etype: str, labels: Optional[List[str]] = None, properties: Optional[Dict[str, Any]] = None):
         """Upsert an entity node in the long-term graph."""
-        print(f"[MEMORY] Upserting entity {entity_id} of type {etype}")
-        # Add "created_at" property if not already present
-        if properties is None:
-            properties = {}
-        if "created_at" not in (properties or {}):
-            properties["created_at"] = datetime.utcnow().isoformat()
-        # properties["session_id"]: session_id
         if "source_process" not in (properties or {}):
             if properties is None:
                 properties = {}
@@ -777,7 +816,7 @@ class HybridMemory:
         return node
     
     def link(self, src: str, dst: str, rel: str, properties: Optional[Dict[str, Any]] = None):
-        print(f"[MEMORY] Linking {src} -[{rel}]-> {dst}")
+        # logger.info(f"[MEMORY] Linking {src} -[{rel}]-> {dst}")
         edge = Edge(src=src, dst=dst, rel=rel, properties=properties or {})
         self.graph.upsert_edge(edge)
         self.archive.write({"type": "edge_upsert", "edge": edge.model_dump()})
@@ -794,7 +833,7 @@ class HybridMemory:
             rel: Relationship type.
             properties: Additional properties for the relationship.
         """
-        print(f"[MEMORY] Linking nodes where {src_property}={src_value} -[{rel}]-> {dst_property}={dst_value}")
+        logger.info(f"[MEMORY] Linking nodes where {src_property}={src_value} -[{rel}]-> {dst_property}={dst_value}")
         cypher = f"""
         MATCH (src {{ {src_property}: $src_value }})
         MATCH (dst {{ {dst_property}: $dst_value }})
@@ -821,7 +860,7 @@ class HybridMemory:
 
     def attach_document(self, entity_id: str, doc_id: str, text: str, metadata: Optional[Dict[str, Any]] = None):
         """Add unstructured content to Chroma and link it in the graph as a Document node."""
-        print(f"[MEMORY] Attaching document {doc_id} to entity {entity_id}")
+        logger.info(f"[MEMORY] Attaching document {doc_id} to entity {entity_id}")
         meta = {"entity_id": entity_id, **(metadata or {})}
         self.vec.add_texts(collection="long_term_docs", ids=[doc_id], texts=[text], metadatas=[meta])
         doc_node = Node(id=doc_id, type="document", labels=["Document"], properties=meta)

@@ -16,7 +16,7 @@ import logging
 
 # Import your existing modules
 from vera import Vera
-from memory import HybridMemory
+from Memory.memory import HybridMemory
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -223,10 +223,14 @@ async def chat(request: ChatRequest):
         logger.error(f"Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+import asyncio
+from queue import Queue
+from threading import Thread
+from datetime import datetime
 
 @app.websocket("/ws/chat/{session_id}")
 async def websocket_chat(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for streaming chat."""
+    """WebSocket endpoint for streaming chat - works with sync generators."""
     await websocket.accept()
     
     if session_id not in sessions:
@@ -243,36 +247,98 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
             message = message_data.get("message", "")
             
             if not message:
-                await websocket.send_json({"error": "Empty message"})
+                await websocket.send_json({"type": "error", "error": "Empty message"})
                 continue
             
             # Process and stream response
             try:
-                # Check if Vera has streaming capability
-                if hasattr(vera, 'stream_run'):
-                    async for chunk in vera.stream_run(message):
+                if hasattr(vera, 'async_run') and callable(getattr(vera, 'async_run')):
+                    logger.info("Using vera.async_run() for streaming")
+                    
+                    # Create a queue to pass chunks from sync thread to async handler
+                    chunk_queue = Queue()
+                    error_occurred = [False]  # Mutable container for error flag
+                    
+                    def run_in_thread():
+                        """Run the synchronous generator in a separate thread."""
+                        try:
+                            for chunk in vera.async_run(message):
+                                chunk_queue.put(("chunk", chunk))
+                            chunk_queue.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"Error in vera.async_run: {e}", exc_info=True)
+                            chunk_queue.put(("error", str(e)))
+                            error_occurred[0] = True
+                    
+                    # Start the generator in a background thread
+                    thread = Thread(target=run_in_thread, daemon=True)
+                    thread.start()
+                    
+                    # Read from queue and send to websocket
+                    while True:
+                        # Non-blocking check for queue items
+                        try:
+                            # Wait briefly for queue item (allows cancellation)
+                            item_type, item_data = await asyncio.get_event_loop().run_in_executor(
+                                None, chunk_queue.get, True, 0.1  # timeout=0.1s
+                            )
+                            
+                            if item_type == "chunk":
+                                await websocket.send_json({
+                                    "type": "chunk",
+                                    "content": str(item_data),
+                                    "timestamp": datetime.utcnow().isoformat()
+                                })
+                            elif item_type == "done":
+                                break
+                            elif item_type == "error":
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "error": item_data
+                                })
+                                break
+                                
+                        except Exception as e:
+                            # Queue timeout - check if thread is still alive
+                            if not thread.is_alive() and chunk_queue.empty():
+                                break
+                            continue
+                    
+                    # Wait for thread to finish
+                    thread.join(timeout=1.0)
+                    
+                    if not error_occurred[0]:
                         await websocket.send_json({
-                            "type": "chunk",
-                            "content": str(chunk),
+                            "type": "complete",
                             "timestamp": datetime.utcnow().isoformat()
                         })
+                
                 else:
-                    # Fallback to regular run
-                    result = vera.run(message)
-                    response = result.get("output", str(result)) if isinstance(result, dict) else str(result)
+                    # Fallback to regular run()
+                    logger.info("Falling back to vera.run() - no streaming")
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None, vera.run, message
+                    )
+                    
+                    # Extract response text
+                    if isinstance(result, dict):
+                        response = result.get("deep") or result.get("fast") or result.get("output", str(result))
+                    else:
+                        response = str(result)
                     
                     await websocket.send_json({
                         "type": "chunk",
                         "content": response,
                         "timestamp": datetime.utcnow().isoformat()
                     })
-                
-                await websocket.send_json({
-                    "type": "complete",
-                    "timestamp": datetime.utcnow().isoformat()
-                })
+                    
+                    await websocket.send_json({
+                        "type": "complete",
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
                 
             except Exception as e:
+                logger.error(f"Error processing message: {str(e)}", exc_info=True)
                 await websocket.send_json({
                     "type": "error",
                     "error": str(e)
@@ -281,9 +347,15 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected: {session_id}")
     except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}")
-
-
+        logger.error(f"WebSocket error: {str(e)}", exc_info=True)
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "error": f"WebSocket error: {str(e)}"
+            })
+        except:
+            pass
+        
 # ============================================================
 # Graph Endpoints
 # ============================================================
@@ -303,65 +375,115 @@ async def get_session_graph(session_id: str):
         driver = vera.mem.graph._driver
         
         with driver.session() as db_sess:
-            # Get all nodes matching session_id and any connected nodes
+            # Get all nodes matching session_id and connected nodes within 3 hops
             result = db_sess.run("""
-                MATCH (n {session_id: $session_id})
-                OPTIONAL MATCH (n)-[r]-(connected)
-                
-                RETURN n, 
-                       collect(DISTINCT {rel: r, target: connected}) AS connections
+                MATCH (n)
+                WHERE n.session_id = $session_id OR n.extracted_from_session = $session_id
+                OPTIONAL MATCH path = (n)-[r*0..3]-(connected)
+                WITH collect(DISTINCT connected) + collect(DISTINCT n) AS nodes,
+                     collect(DISTINCT relationships(path)) AS rels
+                UNWIND rels AS rel_list
+                UNWIND rel_list AS rel
+                RETURN DISTINCT nodes, collect(DISTINCT rel) AS relationships
             """, {"session_id": actual_session_id})
             
-            nodes = []
+            nodes_list = []
             edges = []
             seen_nodes = set()
             seen_edges = set()
             
             # Process the query results
             for record in result:
-                # Get the main node (matching session_id)
-                node = record["n"]
-                if node and node.get("id"):
-                    node_id = node.get("id", "")
-                    if node_id and node_id not in seen_nodes:
-                        seen_nodes.add(node_id)
-                        
-                        properties = dict(node)
-                        print(properties)
-                        text = properties.get("text", properties.get("name", node_id))
-                        node_type = properties.get("type", "node")
-                        
-                        # Determine color based on type
-                        color = "#3b82f6"  # Default blue
-                        if node_type in ["thought", "memory", "Thought"]:
-                            color = "#f59e0b"  # Orange
-                        elif node_type in ["decision", "Decision"]:
-                            color = "#ef4444"  # Red
-                        elif node_type == "concept":
-                            color = "#06b6d4"  # Cyan
-                        elif "Entity" in properties.get("labels", []):
-                            color = "#10b981"  # Green
-                        
-                        nodes.append(GraphNode(
-                            id=node_id,
-                            label=text[:20] + "..." if len(text) > 20 else text,
-                            title=f"{node_type}: {text}",
-                            color=color,
-                            properties=properties,
-                            size=min(properties.get("importance", 20), 40)
-                        ))
+                # Process all nodes
+                all_nodes = record.get("nodes", [])
+                for node in all_nodes:
+                    if node and node.get("id"):
+                        node_id = node.get("id", "")
+                        if node_id and node_id not in seen_nodes:
+                            seen_nodes.add(node_id)
+                            
+                            properties = dict(node)
+                            logger.debug(properties)
+                            text = properties.get("text", properties.get("name", node_id))
+                            node_type = properties.get("type", "node")
+                            
+                            # Determine color based on type
+                            color = "#3b82f6"  # Default blue
+                            if node_type in ["thought", "memory", "Thought","Memory"]:
+                                color = "#f59e0b"  # Orange
+                            elif node_type in ["decision", "Decision"]:
+                                color = "#ef4444"  # Red
+                            elif node_type in ["class", "Class"]:
+                                color = "#2d8cf0"  # Blue
+                            elif node_type in ["Action", "action"]:
+                                color = "#8b5cf6"  # Purple
+                            elif node_type in ["Tool", "tool"]:
+                                color = "#f97316"  # Deep Orange  
+                            elif node_type in ["Process", "process"]:
+                                color = "#e879f9"  # Pink
+                            elif node_type in ["File", "file"]:
+                                color = "#f43f5e"  # Rose
+                            elif node_type in ["Webpage", "webpage"]:
+                                color = "#60a5fa"  # Light Blue
+                            elif node_type in ["Document", "document"]:
+                                color = "#34d399"  # Emerald
+                            elif node_type in ["Query", "query"]:
+                                color = "#32B39D"  # Turquoise
+                            elif node_type == "extracted_entity":
+                                color = "#07c3e4"  # Cyan
+                            elif node_type == "session":
+                                color = "#3f1b92"  # Purple
+                            elif "Entity" in properties.get("labels", []):
+                                color = "#10b93a"  # Green
+
+                            
+                            nodes_list.append(GraphNode(
+                                id=node_id,
+                                label=node_type,
+                                title=f"{node_type}: {text}",
+                                color=node.get("color",color),
+                                properties=properties,
+                                size=min(properties.get("importance", 20), 40)
+                            ))
                 
-                # Process all connections (regardless of relationship type or connected node's session_id)
-                connections = record.get("connections", [])
-                _process_relationships(connections, seen_edges, edges, seen_nodes, nodes)
+                # Process all relationships
+                all_relationships = record.get("relationships", [])
+                for rel in all_relationships:
+                    if rel:
+                        try:
+                            # Get source and target nodes
+                            start_node = rel.start_node
+                            end_node = rel.end_node
+                            
+                            start_id = start_node.get("id", "") if start_node else ""
+                            end_id = end_node.get("id", "") if end_node else ""
+                            
+                            if start_id and end_id:
+                                # Get relationship label
+                                rel_props = dict(rel) if hasattr(rel, 'items') else {}
+                                rel_label = rel_props.get("rel", getattr(rel, "type", "RELATED"))
+                                
+                                edge_key = f"{start_id}-{rel_label}->{end_id}"
+                                if edge_key not in seen_edges:
+                                    seen_edges.add(edge_key)
+                                    edges.append(GraphEdge(
+                                        **{
+                                            "from": start_id,
+                                            "to": end_id,
+                                            "label": str(rel_label)
+                                        }
+                                    ))
+                        except Exception as e:
+                            logger.debug(f"Error processing relationship: {e}")
+                            continue
             
-            logger.info(f"Returning {len(nodes)} nodes and {len(edges)} edges for session {actual_session_id}")
+            logger.info(f"Returning {len(nodes_list)} nodes and {len(edges)} edges for session {actual_session_id}")
             
             return GraphResponse(
-                nodes=nodes,
+                nodes=nodes_list,
                 edges=edges,
                 stats={
-                    "node_count": len(nodes),
+                    "node_count": len(nodes_list),
                     "edge_count": len(edges),
                     "session_id": actual_session_id
                 }
@@ -382,70 +504,7 @@ async def get_session_graph(session_id: str):
             edges=[],
             stats={"node_count": 1, "edge_count": 0, "session_id": actual_session_id}
         )
-
-def _process_relationships(connections, seen_edges, edges, seen_nodes, nodes):
-    """Helper method to process relationships and add connected nodes."""
-    for conn_info in connections:
-        if conn_info and conn_info.get("rel"):
-            rel = conn_info["rel"]
-            target = conn_info["target"]
-            
-            if rel and target:
-                try:
-                    # Get source and target nodes
-                    start_node = rel.start_node
-                    end_node = rel.end_node
-                    
-                    start_id = start_node.get("id", "") if start_node else ""
-                    end_id = end_node.get("id", "") if end_node else ""
-                    
-                    if start_id and end_id:
-                        # Add connected node if not already present
-                        if end_id not in seen_nodes:
-                            seen_nodes.add(end_id)
-                            # Create node for connected target
-                            target_props = dict(end_node)
-                            target_text = target_props.get("text", target_props.get("name", end_id))
-                            target_type = target_props.get("type", "node")
-                            
-                            # Determine color for connected node
-                            color = "#3b82f6"  # Default blue
-                            if target_type in ["thought", "memory", "Thought"]:
-                                color = "#f59e0b"  # Orange
-                            elif target_type in ["decision", "Decision"]:
-                                color = "#ef4444"  # Red
-                            elif target_type == "concept":
-                                color = "#06b6d4"  # Cyan
-                            elif "Entity" in target_props.get("labels", []):
-                                color = "#10b981"  # Green
-                            
-                            # Append to nodes list
-                            nodes.append(GraphNode(
-                                id=end_id,
-                                label=target_text[:20] + "..." if len(target_text) > 20 else target_text,
-                                title=f"{target_type}: {target_text}",
-                                properties=target_props.get("properties",{}),
-                                color=color,
-                                size=min(target_props.get("importance", 20), 40)
-                            ))
-                        
-                        # Get relationship label (accepts any relationship type)
-                        rel_props = dict(rel) if hasattr(rel, 'items') else {}
-                        rel_label = rel_props.get("rel", getattr(rel, "type", "RELATED"))
-                        
-                        edge_key = f"{start_id}-{rel_label}->{end_id}"
-                        if edge_key not in seen_edges:
-                            seen_edges.add(edge_key)
-                            edges.append(GraphEdge(
-                                **{
-                                    "from": start_id,
-                                    "to": end_id,
-                                    "label": str(rel_label)
-                                }
-                            ))
-                except Exception as e:
-                    logger.debug(f"Error processing relationship: {e}")
-                    continue
+    
 # ============================================================
 # Text-to-Speech Endpoints
 # ============================================================

@@ -17,10 +17,10 @@
 ---
 
 <p align="center">
-<a href="#-features"><img src="https://img.shields.io/badge/✨-Features-44FFAA?style=for-the-badge"></a>
-<a href="#-installation"><img src="https://img.shields.io/badge/⚡-Installation-44FFAA?style=for-the-badge"></a>
-<a href="#-usage"><img src="https://img.shields.io/badge/💡-Usage-44FFAA?style=for-the-badge"></a>
-<a href="#-contributing"><img src="https://img.shields.io/badge/🤝-Contributing-44FFAA?style=for-the-badge"></a>
+<a href="#Features"><img src="https://img.shields.io/badge/✨-Features-44FFAA?style=for-the-badge"></a>
+<a href="#Installation"><img src="https://img.shields.io/badge/⚡-Installation-44FFAA?style=for-the-badge"></a>
+<a href="#Usage"><img src="https://img.shields.io/badge/💡-Usage-44FFAA?style=for-the-badge"></a>
+<a href="#Contributing"><img src="https://img.shields.io/badge/🤝-Contributing-44FFAA?style=for-the-badge"></a>
 <a href="#License"><img src="https://img.shields.io/badge/📜-License-44FFAA?style=for-the-badge"></a>
 <a><img src="https://img.shields.io/badge/in_development--FF9933?style=for-the-badge&logoColor=white"></a>
 <a><img src="https://img.shields.io/badge/days%20in%20development-41-blue?style=for-the-badge&logoColor=white"></a>
@@ -124,7 +124,7 @@ Core Mechanisms: Self-Modification Engine, Multi Agent Congnition, Proactive Ref
 
 Vera is an advanced, model-agnostic, multi-agent AI architecture inspired by principles from cognitive science and agent-based systems. It integrates a framework combining short-term, long-term, and archival memory, token prediction, task triage, reasoning, proactive background cognition, self-modification, and modular tool execution to deliver flexible, intelligent automation.
 
-Vera is designed to tackle complex, high-level user requests by orchestrating multiple large language models (LLMs) and specialized AI sub-agents synchronously. This capability ensures that you rarely need to repeat context, as Vera maintains a deep, multi-layered memory of your goals and past interactions.
+<!-- Vera is designed to tackle complex, high-level user requests by orchestrating multiple large language models (LLMs) and specialized AI sub-agents synchronously. This capability ensures that you rarely need to repeat context, as Vera maintains a deep, multi-layered memory of your goals and past interactions. -->
 
 ### Why Vera?
 

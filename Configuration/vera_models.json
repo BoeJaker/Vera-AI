@@ -1,6 +1,6 @@
 {
   "embedding_model": "mistral:7b",
-  "fast_llm": "gpt-oss:latest",
+  "fast_llm": "gemma2:latest",
   "intermediate_llm": "gemma3:12b",
   "deep_llm": "gemma3:27b",
   "reasoning_llm": "gpt-oss:20b",
