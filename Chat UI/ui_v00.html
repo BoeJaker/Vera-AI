@@ -1,0 +1,1755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vera Chat - Knowledge Graph Explorer</title>
+    
+    <!-- vis.js for graph visualization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+    
+    <<style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: linear-gradient(135deg, #0f1419 0%, #1a1f2e 100%);
+            color: #e2e8f0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Search Bar */
+        .search-container {
+            position: fixed; bottom: 20px; left: 10px; z-index: 2000;
+            background: #1a1f2e; border: 2px solid #3b82f6; border-radius: 8px;
+            padding: 8px 12px; box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+            display: flex; flex-direction: column; gap: 8px; max-width: 300px;
+        }
+        .search-input-row {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .search-results {
+            max-height: 300px; overflow-y: auto; display: none;
+            background: #0f172a; border-radius: 6px; padding: 4px;
+        }
+        .search-result-item {
+            padding: 8px; margin: 2px 0; background: #1e293b; border-radius: 4px;
+            cursor: pointer; transition: all 0.2s; font-size: 12px; color: #e2e8f0;
+            border-left: 3px solid #3b82f6;
+        }
+        .search-result-item:hover {
+            background: #334155; transform: translateX(2px);
+        }
+        .search-result-name {
+            font-weight: bold; color: #60a5fa; margin-bottom: 2px;
+        }
+        .search-result-labels {
+            font-size: 10px; color: #94a3b8;
+        }
+        .search-container input {
+            background: #0f172a; border: 1px solid #334155; color: #e2e8f0;
+            padding: 6px 12px; border-radius: 6px; font-size: 13px; width: 200px;
+            outline: none; flex: 1;
+        }
+        .search-container input:focus {
+            border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+        .search-container button {
+            background: #3b82f6; color: white; border: none; padding: 6px 12px;
+            border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+            transition: all 0.2s;
+        }
+        .search-container button:hover {
+            background: #2563eb; transform: translateY(-1px);
+        }
+        
+        /* Context Menu */
+        .context-menu {
+            position: fixed; background: #1a1f2e; border: 2px solid #3b82f6;
+            border-radius: 8px; padding: 8px 0; min-width: 200px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 3000;
+            display: none; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .context-menu-item {
+            padding: 10px 16px; color: #e2e8f0; cursor: pointer;
+            transition: all 0.2s; font-size: 13px; display: flex;
+            align-items: center; gap: 10px;
+        }
+        .context-menu-item:hover {
+            background: #334155; color: #3b82f6;
+        }
+        .context-menu-item .icon {
+            font-size: 16px; width: 20px; text-align: center;
+        }
+        .context-menu-divider {
+            height: 1px; background: #334155; margin: 4px 0;
+        }
+/*         
+        /* Enhanced Tooltip */
+        .vis-tooltip {
+            background: #1a1f2e !important;
+            border: 2px solid #3b82f6 !important;
+            border-radius: 8px !important;
+            padding: 12px !important;
+            color: #e2e8f0 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+            font-size: 13px !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(59,130,246,0.2) !important;
+            max-width: 350px !important;
+            line-height: 1.5 !important;
+        }
+        .tooltip-title {
+            font-weight: bold; color: #60a5fa; margin-bottom: 8px;
+            font-size: 14px; border-bottom: 1px solid #334155; padding-bottom: 6px;
+        }
+        .tooltip-label {
+            display: inline-block; background: #ffffff; color: black;
+            padding: 2px 8px; border-radius: 4px; margin: 2px;
+            font-size: 11px;
+        }
+        .tooltip-text {
+            margin-top: 8px; color: #ffffff; font-size: 12px;
+        } */
+        
+        /* Property Panel - Dark Theme */
+        #property-panel.open { transform: translateX(0); }
+        #property-panel h3 { margin-top:0; border-bottom:2px solid #3b82f6; padding-bottom:10px; color:#3b82f6; }
+        #property-panel .section { margin:15px 0; }
+        #property-panel .section-title { font-weight:bold; color:#94a3b8; margin-bottom:5px; font-size:13px; text-transform:uppercase; }
+        #property-panel .property { background:#0f172a; padding:8px; margin:4px 0; border-radius:6px; font-size:13px; word-wrap:break-word; border:1px solid #334155; }
+        #property-panel .property-key { font-weight:bold; color:#60a5fa; }
+        #property-panel .label-badge { display:inline-block; background:#3b82f6; color:white; padding:3px 8px; border-radius:4px; margin:2px; font-size:11px; box-shadow:0 2px 4px rgba(59,130,246,0.3); }
+        #property-panel .close-btn { position:absolute; top:10px; right:10px; background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; transition:all 0.2s; }
+        #property-panel .close-btn:hover { background:#dc2626; box-shadow:0 4px 8px rgba(239,68,68,0.4); }
+        #property-panel .vector-item { background:#0f172a; padding:8px; margin:6px 0; border-left:3px solid #10b981; border-radius:4px; }
+        #property-panel .vector-type { font-size:10px; color:#94a3b8; text-transform:uppercase; margin-bottom:4px; }
+        #property-panel .timestamp { color:#94a3b8; font-size:12px; font-style:italic; }
+        #property-panel .neighbor-item { 
+            background:#1e293b; padding:10px; margin:6px 0; border-radius:6px; 
+            cursor:pointer; transition:all 0.2s; border-left: 4px solid;
+            position: relative;
+        }
+        #property-panel .neighbor-item:hover { background:#334155; transform:translateX(-2px); }
+        #property-panel .neighbor-name { font-weight:bold; color:#60a5fa; font-size: 13px; }
+        #property-panel .neighbor-relationship { 
+            font-size:11px; color:#94a3b8; margin-top:4px;
+            background: #0f172a; padding: 4px 8px; border-radius: 4px;
+            display: inline-block; margin-top: 6px;
+        }
+        #property-panel code { background:#0f172a; padding:2px 6px; border-radius:3px; color:#a78bfa; font-size:12px; }
+
+        /* Settings Panel - Dark Theme */
+        .settings-panel {
+            position: fixed; left:0; top:0; width:280px; height:100%; background:#1a1f2e; border-right:2px solid #2d3748; padding:15px;
+            overflow-y:auto; box-shadow:2px 0 20px rgba(0,0,0,0.5); font-family:-apple-system, BlinkMacSystemFont,'Segoe UI',sans-serif; z-index:1000;
+            color:#e2e8f0; display: none;
+        }
+        .settings-panel h3 { margin-top:0; border-bottom:2px solid #3b82f6; padding-bottom:10px; color:#3b82f6; }
+        .settings-panel label { display:block; margin-top:10px; font-weight:bold; font-size:12px; color:#cbd5e1; }
+        .settings-panel input[type=range] { width:100%; accent-color:#3b82f6; }
+        .settings-panel select { width:100%; padding:6px; background:#0f172a; color:#e2e8f0; border:1px solid #334155; border-radius:6px; cursor:pointer; margin-top:5px; font-size:12px; }
+        .settings-toggle {
+            position: fixed; top:10px; left:10px; z-index:2000;
+            background:#3b82f6; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer;
+            font-weight:600; transition:all 0.2s; box-shadow:0 4px 8px rgba(59,130,246,0.3);
+            pointer-events: auto;
+        }
+        .settings-toggle:hover { background:#2563eb; box-shadow:0 6px 12px rgba(59,130,246,0.4); transform:translateY(-1px); }
+        
+        /* Edge Filters - Dark Theme */
+        .filter-section { margin-top:20px; padding-top:15px; border-top:2px solid #334155; }
+        .filter-item { display:flex; align-items:center; margin:8px 0; }
+        .filter-item input[type=checkbox] { margin-right:8px; width:16px; height:16px; cursor:pointer; accent-color:#3b82f6; }
+        .filter-item label { cursor:pointer; font-size:12px; font-weight:normal; color:#cbd5e1; }
+        .filter-section button { width:100%; padding:8px; margin-top:5px; cursor:pointer; background:#3b82f6; color:white; border:none; border-radius:6px; font-weight:600; transition:all 0.2s; }
+        .filter-section button:hover { background:#2563eb; box-shadow:0 4px 8px rgba(59,130,246,0.3); }
+        .filter-options { margin:10px 0; padding:10px; background:#0f172a; border-radius:6px; border:1px solid #334155; }
+        .filter-options label { display:flex; align-items:center; margin:6px 0; font-weight:normal; color:#cbd5e1; }
+        .filter-options input[type=checkbox] { margin-right:8px; accent-color:#3b82f6; }
+    
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 0;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: #1a1f2e;
+            border-right: 2px solid #2d3748;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            box-shadow: 2px 0 20px rgba(0,0,0,0.5);
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 2px solid #2d3748;
+            background: #0f1419;
+        }
+        
+        .sidebar-header h1 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            color: #60a5fa;
+        }
+        
+        .session-info {
+            font-size: 11px;
+            color: #94a3b8;
+            background: #0f172a;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 8px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        
+        .sidebar-section {
+            padding: 15px;
+            border-bottom: 1px solid #334155;
+        }
+        
+        .sidebar-section h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .control-button {
+            width: 100%;
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .control-button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(59,130,246,0.3);
+        }
+        
+        .control-button:disabled {
+            background: #64748b;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .control-button.danger {
+            background: #ef4444;
+        }
+        
+        .control-button.danger:hover {
+            background: #dc2626;
+        }
+        
+        .checkbox-group {
+            margin: 10px 0;
+        }
+        
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+            color: #cbd5e1;
+            cursor: pointer;
+            margin: 6px 0;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: #3b82f6;
+        }
+        
+        select {
+            width: 100%;
+            padding: 6px;
+            background: #0f172a;
+            color: #e2e8f0;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin: 6px 0;
+        }
+        
+        .file-list {
+            font-size: 11px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            background: #0f172a;
+            padding: 6px 8px;
+            margin: 4px 0;
+            border-radius: 4px;
+            border-left: 3px solid #10b981;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .file-item-name {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #60a5fa;
+        }
+        
+        .file-item-remove {
+            background: none;
+            border: none;
+            color: #ef4444;
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 10px;
+        }
+        
+        /* Main content area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* Graph container */
+        .graph-container {
+            flex: 1;
+            background: #0f1419;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 2px solid #2d3748;
+        }
+        
+        #graph {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .graph-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #1a1f2e;
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+        
+        .graph-control-btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        
+        .graph-control-btn:hover {
+            background: #2563eb;
+        }
+        
+        .graph-stats {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(26, 31, 46, 0.9);
+            border: 2px solid #3b82f6;
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 11px;
+            color: #cbd5e1;
+        }
+        
+        .stat-line {
+            margin: 2px 0;
+        }
+        
+        .stat-value {
+            color: #60a5fa;
+            font-weight: bold;
+        }
+        
+        /* Chat area */
+        .chat-container {
+            height: 300px;
+            background: #0f1419;
+            display: flex;
+            flex-direction: column;
+            border-top: 2px solid #2d3748;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .message {
+            display: flex;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+        
+        .message.assistant .message-avatar {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .message.user .message-avatar {
+            background: #10b981;
+            color: white;
+        }
+        
+        .message-content {
+            max-width: 60%;
+            padding: 10px 12px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .message.user .message-content {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .message.assistant .message-content {
+            background: #1e293b;
+            color: #cbd5e1;
+            border-left: 3px solid #3b82f6;
+        }
+        
+        .message.system .message-content {
+            background: #334155;
+            color: #94a3b8;
+            font-style: italic;
+            width: 100%;
+            text-align: center;
+        }
+        
+        .message-timestamp {
+            font-size: 10px;
+            color: #64748b;
+            margin-top: 4px;
+        }
+        
+        /* Chat input area */
+        .chat-input-area {
+            padding: 15px;
+            border-top: 2px solid #334155;
+            background: #1a1f2e;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .input-group {
+            flex: 1;
+            display: flex;
+            gap: 8px;
+        }
+        
+        textarea{
+            flex: 1;
+            padding: 10px 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #e2e8f0;
+            font-size: 13px;
+            outline: none;
+        }
+        
+        input[type="text"]:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .send-btn {
+            padding: 10px 16px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        
+        .send-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+        
+        .send-btn:disabled {
+            background: #64748b;
+            cursor: not-allowed;
+        }
+        
+        .icon-btn {
+            padding: 10px 12px;
+            background: #2d3748;
+            color: #cbd5e1;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .icon-btn:hover {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        /* Status indicators */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        
+        .status-indicator.connected {
+            background: #10b981;
+        }
+        
+        .status-indicator.disconnected {
+            background: #ef4444;
+        }
+        
+        .status-indicator.loading {
+            background: #f59e0b;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>🤖 Vera</h1>
+                <div class="session-info" id="sessionInfo">
+                    Session: Loading...
+                </div>
+            </div>
+            
+            <!-- Controls -->
+            <div class="sidebar-section">
+                <h3>Chat Controls</h3>
+                <button class="control-button" onclick="app.clearChat()">Clear Chat</button>
+                <button class="control-button" onclick="app.exportChat()">Export JSON</button>
+            </div>
+            
+            <!-- TTS Controls -->
+            <div class="sidebar-section">
+                <h3>Text-to-Speech</h3>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="ttsEnabled" checked onchange="app.updateSettings()">
+                        Enable TTS
+                    </label>
+                </div>
+                <select id="ttsLanguage" onchange="app.updateSettings()">
+                    <option value="en">English</option>
+                    <option value="es">Spanish</option>
+                    <option value="fr">French</option>
+                    <option value="de">German</option>
+                    <option value="it">Italian</option>
+                    <option value="pt">Portuguese</option>
+                    <option value="ja">Japanese</option>
+                    <option value="ko">Korean</option>
+                    <option value="zh">Chinese</option>
+                </select>
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="ttsChunkResponses" checked onchange="app.updateSettings()">
+                        Stream TTS (speak while typing)
+                    </label>
+                </div>
+                <button class="control-button" onclick="app.testTTS()">Test TTS</button>
+                <button class="control-button danger" onclick="app.stopTTS()">Stop TTS</button>
+            </div>
+            
+            <!-- Graph Controls -->
+            <div class="sidebar-section">
+                <h3>Graph Controls</h3>
+                <button class="control-button" onclick="app.loadGraph()">Refresh Graph</button>
+                <button class="control-button" onclick="app.fitGraph()">Fit to View</button>
+                <button class="control-button" onclick="app.clearGraph()">Clear Graph</button>
+            </div>
+            
+            <!-- File Management -->
+            <div class="sidebar-section">
+                <h3>Files</h3>
+                <button class="control-button" onclick="document.getElementById('fileInput').click()">Upload Files</button>
+                <input type="file" id="fileInput" multiple onchange="app.handleFileUpload(event)">
+                <div class="file-list" id="fileList"></div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Graph Visualization -->
+            <div class="graph-container">
+                <div id="graph"></div>
+                <div class="graph-controls">
+                    <button class="graph-control-btn" onclick="app.zoomIn()">+ Zoom</button>
+                    <button class="graph-control-btn" onclick="app.zoomOut()">- Zoom</button>
+                    <button class="graph-control-btn" onclick="app.fitGraph()">Fit</button>
+                </div>
+                <div class="graph-stats">
+                    <div class="stat-line">Nodes: <span class="stat-value" id="nodeCount">0</span></div>
+                    <div class="stat-line">Edges: <span class="stat-value" id="edgeCount">0</span></div>
+                    <div class="stat-line">Status: <span id="connectionStatus"><span class="status-indicator loading"></span>Connecting...</span></div>
+                </div>
+            </div>
+                
+    <!-- Chat Area -->
+    <div class="chat-container">
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+            <div class="input-group">
+                <textarea 
+                    id="messageInput" 
+                    placeholder="Type your message here..."
+                    rows="2"
+                    onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); app.sendMessage(); }"
+                ></textarea>
+                <button class="send-btn" id="sendBtn" onclick="app.sendMessage()">Send</button>
+            </div>
+            <button class="icon-btn" title="Stop TTS" onclick="app.stopTTS()">⏹️</button>
+            <button class="icon-btn" title="Clear Queue" onclick="app.clearTTSQueue()">🗑️</button>
+        </div>
+    </div>
+
+        </div>
+    </div>
+    
+    <!-- GraphAddon Settings Panel -->
+    <div id="settings-panel" style="position: fixed; left: -320px; top: 0; width: 300px; height: 100vh; background: #0f1419; border-right: 3px solid #10b981; padding: 20px; overflow-y: auto; box-shadow: 4px 0 30px rgba(0,0,0,0.9); z-index: 9000; color: #e2e8f0; transition: left 0.3s ease; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; display: block;">
+        <h3 style="margin-top: 0; border-bottom: 2px solid #3b82f6; padding-bottom: 10px; color: #3b82f6;">Graph Settings</h3>
+        
+        <label style="display: block; margin-top: 15px; font-weight: bold; font-size: 12px; color: #cbd5e1;">Base Node Size: <span id="nodeSizeVal">40</span></label>
+        <input type="range" min="10" max="100" value="40" id="nodeSize" style="width: 100%; accent-color: #3b82f6; margin-top: 5px;">
+        
+        <label style="display: block; margin-top: 15px; font-weight: bold; font-size: 12px; color: #cbd5e1;">Edge Thickness: <span id="edgeWidthVal">4</span></label>
+        <input type="range" min="1" max="10" value="4" id="edgeWidth" style="width: 100%; accent-color: #3b82f6; margin-top: 5px;">
+        
+        <label style="display: block; margin-top: 15px; font-weight: bold; font-size: 12px; color: #cbd5e1;">Physics Strength: <span id="physicsVal">0.01</span></label>
+        <input type="range" min="0.001" max="0.05" step="0.001" value="0.01" id="physics" style="width: 100%; accent-color: #3b82f6; margin-top: 5px;">
+        
+        <label style="display: block; margin-top: 15px; font-weight: bold; font-size: 12px; color: #cbd5e1;">Node Style:</label>
+        <select id="nodeStyle" style="width: 100%; padding: 6px; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; margin-top: 5px; font-size: 12px; cursor: pointer;">
+            <option value="dot">Circle (Default)</option>
+            <option value="box">Rounded Rectangle</option>
+            <option value="card">Card View (Rich)</option>
+            <option value="ellipse">Ellipse</option>
+            <option value="database">Database</option>
+            <option value="diamond">Diamond</option>
+            <option value="star">Star</option>
+            <option value="triangle">Triangle</option>
+            <option value="square">Square</option>
+        </select>
+        
+        <button id="reset-focus-btn" style="width: 100%; padding: 8px; margin-top: 10px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;">Reset View</button>
+        <button id="cluster-hubs-btn" style="width: 100%; padding: 8px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; transition: all 0.2s;">Cluster Hubs</button>
+        
+        <div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #334155;">
+            <h3 style="margin: 0 0 10px 0; color: #3b82f6; font-size: 14px;">Edge Filters</h3>
+            <div style="margin: 10px 0; padding: 10px; background: #0f172a; border-radius: 6px; border: 1px solid #334155;">
+                <label style="display: flex; align-items: center; font-size: 12px; color: #cbd5e1; cursor: pointer;">
+                    <input type="checkbox" id="cascade-hide" style="margin-right: 8px; cursor: pointer; accent-color: #3b82f6;">
+                    <span>Hide isolated nodes</span>
+                </label>
+            </div>
+            <div id="edge-filters" style="padding: 10px; color: #94a3b8; font-size: 12px; max-height: 200px; overflow-y: auto;">Loading...</div>
+            <button id="select-all-filters-btn" style="width: 100%; padding: 8px; margin-top: 8px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;">Select All</button>
+            <button id="deselect-all-filters-btn" style="width: 100%; padding: 8px; margin-top: 5px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;">Deselect All</button>
+            <button id="refresh-filters-btn" style="width: 100%; padding: 8px; margin-top: 5px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;">Refresh Filters</button>
+        </div>
+    </div>
+    
+    <!-- Search Bar -->
+    <div style="position: fixed; bottom: 20px; left: 10px; z-index: 2000; background: #1a1f2e; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 12px rgba(59,130,246,0.3); display: flex; flex-direction: column; gap: 8px; max-width: 300px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <input type="text" id="search-input" placeholder="Search nodes..." style="background: #0f172a; border: 1px solid #334155; color: #e2e8f0; padding: 6px 12px; border-radius: 6px; font-size: 13px; outline: none; flex: 1; width: 200px;">
+            <button id="search-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;">🔍</button>
+        </div>
+        <div id="search-results" style="max-height: 300px; overflow-y: auto; display: none; background: #0f172a; border-radius: 6px; padding: 4px;"></div>
+    </div>
+    
+    <!-- Settings Toggle Button -->
+    <button id="settings-toggle-btn" onclick="window.GraphAddon.toggleSettings(); return false;" style="position: fixed; top:10px; left:10px; z-index:9999; background:#3b82f6; color:white; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:600; transition:all 0.2s; box-shadow:0 4px 8px rgba(59,130,246,0.3);">⚙️ Settings</button>
+    
+    <!-- Context Menu -->
+    <div id="context-menu" style="position: fixed; background: #1a1f2e; border: 2px solid #3b82f6; border-radius: 8px; padding: 8px 0; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 3000; display: none;">
+        <div class="context-menu-item" data-action="search" style="padding: 10px 16px; color: #e2e8f0; cursor: pointer; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px; width: 20px; text-align: center;">🔍</span>
+            <span>Search</span>
+        </div>
+        <div class="context-menu-item" data-action="enrich" style="padding: 10px 16px; color: #e2e8f0; cursor: pointer; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px; width: 20px; text-align: center;">✨</span>
+            <span>Enrich (NLP Analysis)</span>
+        </div>
+        <div class="context-menu-item" data-action="subgraph" style="padding: 10px 16px; color: #e2e8f0; cursor: pointer; transition: all 0.2s; font-size: 13px; display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 16px; width: 20px; text-align: center;">🗺️</span>
+            <span>Extract Subgraph</span>
+        </div>
+    </div>
+    
+    <!-- Property Panel -->
+    <div id="property-panel" style="position: fixed; right: 0; top: 0; width: 350px; height: 100%; background: #1a1f2e; border-left: 2px solid #2d3748; box-shadow: -2px 0 20px rgba(0,0,0,0.5); overflow-y: auto; padding: 20px; z-index: 1000; color: #e2e8f0; display: none; flex-direction: column; overflow-y: auto;">
+        <button id="close-panel-btn" style="position:absolute; top:10px; right:10px; background:#ef4444; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; font-size:14px; transition:all 0.2s;">✕</button>
+        <h3 style="margin-top:0; border-bottom:2px solid #3b82f6; padding-bottom:10px; color:#3b82f6;">Node Properties</h3>
+        <div id="panel-content" style="Scolor:#999;">
+            <p>Click a node to view details</p>
+        </div>
+    </div>
+    
+    <!-- GraphAddon Script -->
+    <script src="graph-addon.js"></script>
+    <script>
+    class VeraChat {
+    constructor() {
+        this.messages = [];
+        this.files = {};
+        this.sessionId = null;
+        this.processing = false;
+        this.ttsQueue = [];
+        this.isTTSPlaying = false;
+        this.graph = null;
+        this.networkData = { nodes: [], edges: [] };
+        this.networkInstance = null;
+        this.graphRefreshInterval = null;
+        this.websocket = null;
+        this.currentStreamingMessageId = null;
+        this.useWebSocket = true; // Toggle to enable/disable WebSocket
+        this.init();
+    }
+    
+    async init() {
+        try {
+            // Initialize session
+            const response = await fetch('http://llm.int:8888/api/session/start', { method: 'POST' });
+            const data = await response.json();
+            this.sessionId = data.session_id;
+            
+            document.getElementById('sessionInfo').textContent = `Session: ${this.sessionId}`;
+            document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator connected"></span>Connected';
+            
+            this.initGraph();
+            this.addSystemMessage('Vera connected and ready!');
+            
+            // Autofocus on chat input
+            document.getElementById('messageInput').focus();
+            // Connect WebSocket after session is created
+            if (this.useWebSocket) {
+                this.connectWebSocket();
+            }
+        } catch (error) {
+            console.error('Init error:', error);
+            document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>Offline';
+            this.addSystemMessage('Connection failed. Running in offline mode.');
+        }
+    }
+    // NEW: WebSocket connection management
+    connectWebSocket() {
+        if (!this.sessionId) {
+            console.error('Cannot connect WebSocket: No session ID');
+            return;
+        }
+        
+        const wsUrl = `ws://llm.int:8888/ws/chat/${this.sessionId}`;
+        console.log('Connecting to WebSocket:', wsUrl);
+        
+        this.websocket = new WebSocket(wsUrl);
+        
+        this.websocket.onopen = () => {
+            console.log('WebSocket connected');
+            document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator connected"></span>Connected (WS)';
+        };
+        
+        this.websocket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                this.handleWebSocketMessage(data);
+            } catch (error) {
+                console.error('WebSocket message parse error:', error);
+            }
+        };
+        
+        this.websocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>WS Error';
+        };
+        
+        this.websocket.onclose = (event) => {
+            console.log('WebSocket disconnected:', event.code, event.reason);
+            document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>Disconnected';
+            
+            // Attempt to reconnect after 3 seconds if not intentionally closed
+            if (event.code !== 1000 && this.sessionId) {
+                setTimeout(() => {
+                    console.log('Attempting to reconnect WebSocket...');
+                    this.connectWebSocket();
+                }, 3000);
+            }
+        };
+    }
+
+    // NEW: Handle incoming WebSocket messages
+    handleWebSocketMessage(data) {
+        console.log('WebSocket message:', data.type);
+        
+        if (data.type === 'chunk') {
+            // Create streaming message if it doesn't exist
+            if (!this.currentStreamingMessageId) {
+                this.currentStreamingMessageId = `msg-${Date.now()}`;
+                this.addMessage('assistant', '', this.currentStreamingMessageId);
+            }
+            
+            // Append chunk to current message
+            const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
+            if (message) {
+                message.content += data.content;
+                this.updateStreamingMessageContent(this.currentStreamingMessageId, message.content);
+                
+                // Optional: Stream TTS for chunks if enabled
+                if (this.getSetting('ttsEnabled') && this.getSetting('ttsChunkResponses')) {
+                    this.enqueueTTS(data.content, this.getSetting('ttsLanguage'));
+                }
+            }
+        } else if (data.type === 'complete') {
+            console.log('Streaming complete');
+            
+            // Speak full message if TTS enabled but not chunked
+            if (this.getSetting('ttsEnabled') && !this.getSetting('ttsChunkResponses')) {
+                const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
+                if (message && message.content) {
+                    this.enqueueTTS(message.content, this.getSetting('ttsLanguage'));
+                }
+            }
+            
+            // Reset streaming state
+            this.currentStreamingMessageId = null;
+            this.processing = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('messageInput').focus();
+            
+            // Refresh graph after response completes
+            this.loadGraph();
+            
+        } else if (data.type === 'error') {
+            console.error('WebSocket error message:', data.error);
+            this.addSystemMessage(`Error: ${data.error}`);
+            
+            // Reset state on error
+            this.currentStreamingMessageId = null;
+            this.processing = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').disabled = false;
+        }
+    }
+
+    // NEW: Update streaming message content in real-time
+    updateStreamingMessageContent(messageId, content) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+        
+        const contentEl = messageEl.querySelector('.message-content');
+        if (contentEl) {
+            // Update with parsed markdown content
+            contentEl.innerHTML = this.parseMessageContent(content);
+            
+            // Auto-scroll to bottom
+            const container = document.getElementById('chatMessages');
+            const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+            
+            // Only auto-scroll if user is already at bottom
+            if (isScrolledToBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+    }
+
+    // NEW: Send message via WebSocket
+    async sendMessageViaWebSocket(message) {
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+            console.warn('WebSocket not connected, falling back to HTTP');
+            return false;
+        }
+        
+        try {
+            this.websocket.send(JSON.stringify({
+                message: message,
+                files: Object.keys(this.files)
+            }));
+            return true;
+        } catch (error) {
+            console.error('WebSocket send error:', error);
+            return false;
+        }
+    }
+
+    initGraph() {
+        const container = document.getElementById('graph');
+        const options = {
+            physics: {
+                enabled: true,
+                barnesHut: {
+                    gravitationalConstant: -9000,
+                    centralGravity: 0.06,
+                    springLength: 300,
+                    springConstant: 0.01,
+                    damping: 0.62
+                },
+                stabilization: {
+                    enabled: true,
+                    iterations: 200
+                }
+            },
+            interaction: {
+                hover: true,
+                navigationButtons: true,
+                zoomView: true,
+                dragView: true
+            },
+            edges: {
+                smooth: {
+                    enabled: true,
+                    type: 'dynamic'
+                },
+                font: {
+                    size: 16,
+                    color: '#ffffff',
+                    strokeWidth: 0,
+                    strokeColor: '#ffffff',
+                    background: 'none',
+                    align: 'top'
+                },
+                color: {
+                    color: '#00aaff',
+                    highlight: '#ffaa00',
+                    hover: '#ffaa00'
+                },
+                width: 2,
+                arrows: { to: { enabled: true, scaleFactor: 1.0 } }
+            },
+            nodes: {
+                color: {
+                    //background: '#3b82f6',
+                    border: '#60a5fa',
+                    highlight: {
+                        // background: '#2563eb',
+                        border: '#60a5fa'
+                    }
+                },
+                font: {
+                    color: '#fff',
+                    size: 13
+                }
+            }
+        };
+        
+        this.networkInstance = new vis.Network(container, this.networkData, options);
+        window.network = this.networkInstance;
+        
+        // Initialize GraphAddon after a small delay to ensure network is fully ready
+        setTimeout(() => {
+            if (window.GraphAddon) {
+                console.log('Initializing GraphAddon');
+                window.GraphAddon.init({});
+            }
+        }, 500);
+    }
+    
+    async loadGraph() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
+            const data = await response.json();
+            console.log(data.nodes)
+            this.networkData.nodes = data.nodes.map(n => ({
+                id: n.id,
+                label: n.label,
+                title: n.title,
+                properties: n.properties,
+                color: n.color || '#3b82f6',
+                size: n.size || 25,
+                labels: n.labels || [] 
+            }));
+            
+            this.networkData.edges = data.edges.map(e => ({
+                from: e.from,
+                to: e.to,
+                label: e.label,
+                title: e.label
+            }));
+            
+            if (this.networkInstance) {
+                this.networkInstance.setData(this.networkData);
+                
+                // Rebuild GraphAddon node data after graph update
+                if (window.GraphAddon) {
+                    window.GraphAddon.buildNodesData();
+                    window.GraphAddon.initializeFilters();
+                }
+            }
+            
+            document.getElementById('nodeCount').textContent = data.nodes.length;
+            document.getElementById('edgeCount').textContent = data.edges.length;
+        } catch (error) {
+            console.error('Graph load error:', error);
+        }
+    }
+    
+    // MODIFIED: Update your existing sendMessage() to use WebSocket
+    async sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        
+        if (!message || this.processing) return;
+        
+        this.processing = true;
+        document.getElementById('sendBtn').disabled = true;
+        input.disabled = true;
+        
+        this.addMessage('user', message);
+        input.value = '';
+        
+        // Try WebSocket first, fall back to HTTP
+        if (this.useWebSocket) {
+            const sent = await this.sendMessageViaWebSocket(message);
+            if (sent) {
+                console.log('Message sent via WebSocket');
+                return; // WebSocket handles the response
+            } else {
+                console.log('Falling back to HTTP');
+                this.addSystemMessage('WebSocket unavailable, using HTTP...');
+            }
+        }
+        
+        // Fallback to existing HTTP implementation
+        try {
+            const response = await fetch('http://llm.int:8888/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    message: message,
+                    files: Object.keys(this.files)
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Handle both string and object responses
+            let responseText = data.response;
+            
+            if (typeof responseText === 'string') {
+                try {
+                    const parsed = JSON.parse(responseText);
+                    if (typeof parsed === 'object' && parsed !== null) {
+                        if (parsed.deep) {
+                            responseText = parsed.deep;
+                        } else if (parsed.fast) {
+                            responseText = parsed.fast;
+                        } else {
+                            responseText = Object.values(parsed)
+                                .filter(v => typeof v === 'string')
+                                .join('\n');
+                        }
+                    }
+                } catch (e) {
+                    // Not JSON, use as-is
+                }
+            } else if (typeof responseText === 'object' && responseText !== null) {
+                if (responseText.deep) {
+                    responseText = responseText.deep;
+                } else if (responseText.fast) {
+                    responseText = responseText.fast;
+                } else {
+                    responseText = Object.values(responseText)
+                        .filter(v => typeof v === 'string')
+                        .join('\n');
+                }
+            }
+            
+            this.addMessage('assistant', responseText);
+            
+            if (this.getSetting('ttsEnabled')) {
+                this.enqueueTTS(responseText, this.getSetting('ttsLanguage'));
+            }
+            
+            await this.loadGraph();
+        } catch (error) {
+            console.error('Send error:', error);
+            this.addSystemMessage(`Error: ${error.message}`);
+        }
+        
+        this.processing = false;
+        document.getElementById('sendBtn').disabled = false;
+        input.disabled = false;
+        input.focus();
+    }
+
+    addMessage(role, content, id = null) {
+        const messageId = id || `msg-${Date.now()}`;
+        const message = { id: messageId, role, content, timestamp: new Date() };
+        this.messages.push(message);
+        this.renderMessage(message);
+    }
+    
+    escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+    
+    parseMessageContent(content) {
+        // Handle object input by extracting all string values
+        if (typeof content === 'object' && content !== null) {
+            if (Array.isArray(content)) {
+                content = content
+                    .filter(item => typeof item === 'string')
+                    .join('\n');
+            } else {
+                // Check if it's a response dict with 'fast'/'deep' keys
+                if (content.deep) {
+                    content = content.deep;
+                } else if (content.fast) {
+                    content = content.fast;
+                } else {
+                    content = Object.values(content)
+                        .filter(value => typeof value === 'string')
+                        .join('\n');
+                }
+            }
+        }
+        
+        // Ensure content is a string
+        content = String(content);
+        
+        // Try to parse as JSON/dict first - but skip if it looks like a response dict
+        let parsedStructure = this.tryParseStructure(content);
+        
+        // Only format as structured content if it's NOT a fast/deep response dict
+        if (parsedStructure !== null && 
+            typeof parsedStructure === 'object' && 
+            !parsedStructure.hasOwnProperty('fast') && 
+            !parsedStructure.hasOwnProperty('deep')) {
+            // It's a structured object (but not a response dict) - format it nicely
+            return this.formatStructuredContent(parsedStructure);
+        }
+        
+        // If it IS a fast/deep dict, extract the content
+        if (parsedStructure !== null && typeof parsedStructure === 'object') {
+            if (parsedStructure.deep) {
+                content = parsedStructure.deep;
+            } else if (parsedStructure.fast) {
+                content = parsedStructure.fast;
+            }
+        }
+        
+        // Parse as plain text with markdown
+        return this.formatPlainText(content);
+    }
+
+    tryParseStructure(content) {
+        content = content.trim();
+        
+        // Try JSON parsing first
+        try {
+            const json = JSON.parse(content);
+            if (typeof json === 'object' && json !== null) {
+                return json;
+            }
+        } catch (e) {
+            // Not valid JSON, continue
+        }
+        
+        // Try Python dict-like syntax (e.g., {'key': 'value'})
+        try {
+            // Replace single quotes with double quotes for JSON compatibility
+            const jsonLike = content
+                .replace(/'/g, '"')
+                .replace(/True/g, 'true')
+                .replace(/False/g, 'false')
+                .replace(/None/g, 'null');
+            
+            const parsed = JSON.parse(jsonLike);
+            if (typeof parsed === 'object' && parsed !== null) {
+                return parsed;
+            }
+        } catch (e) {
+            // Not valid dict syntax, continue
+        }
+        
+        return null;
+    }
+
+    formatStructuredContent(obj) {
+        let html = '<div style="display: grid; gap: 12px;">';
+        
+        for (const [key, value] of Object.entries(obj)) {
+            const formattedKey = this.escapeHtml(String(key));
+            const formattedValue = this.formatValue(value);
+            
+            html += `
+                <div style="background: #0f172a; border-left: 3px solid #3b82f6; border-radius: 4px; padding: 10px;">
+                    <div style="font-weight: bold; color: #60a5fa; margin-bottom: 6px; font-size: 13px;">${formattedKey}</div>
+                    <div style="color: #cbd5e1; font-size: 13px; line-height: 1.5;">${formattedValue}</div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        return html;
+    }
+
+    formatValue(value) {
+        // Handle null/undefined
+        if (value === null || value === undefined) {
+            return '<span style="color: #94a3b8; font-style: italic;">null</span>';
+        }
+        
+        // Handle booleans
+        if (typeof value === 'boolean') {
+            return `<span style="color: #a78bfa;">${value}</span>`;
+        }
+        
+        // Handle numbers
+        if (typeof value === 'number') {
+            return `<span style="color: #fbbf24;">${value}</span>`;
+        }
+        
+        // Handle nested objects/dicts
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            return this.formatNestedObject(value);
+        }
+        
+        // Handle arrays
+        if (Array.isArray(value)) {
+            return this.formatArray(value);
+        }
+        
+        // Handle strings - parse for markdown, newlines, etc
+        return this.formatPlainText(String(value));
+    }
+
+    formatNestedObject(obj) {
+        let html = '<div style="background: #1e293b; border-radius: 3px; padding: 8px; margin-top: 4px; font-size: 12px;">';
+        
+        for (const [k, v] of Object.entries(obj)) {
+            const key = this.escapeHtml(String(k));
+            const val = this.formatValue(v);
+            html += `<div style="margin: 4px 0;"><span style="color: #60a5fa;">${key}:</span> ${val}</div>`;
+        }
+        
+        html += '</div>';
+        return html;
+    }
+
+    formatArray(arr) {
+        let html = '<div style="background: #1e293b; border-radius: 3px; padding: 8px; margin-top: 4px;">';
+        
+        arr.forEach((item, idx) => {
+            const formatted = this.formatValue(item);
+            html += `<div style="margin: 4px 0; font-size: 12px;"><span style="color: #f87171;">[${idx}]</span> ${formatted}</div>`;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+
+    formatPlainText(content) {
+        content = String(content);
+        
+        // Convert literal \n strings to actual newlines
+        content = content.replace(/\\n/g, '\n');
+        
+        // Unescape common escaped characters
+        content = content.replace(/\\'/g, "'");
+        content = content.replace(/\\"/g, '"');
+        content = content.replace(/\\t/g, '\t');
+        
+        // Clean up backend-generated markers (INLINECODE0, CODEBLOCK0, etc)
+        content = content.replace(/INLINECODE\d+/g, '<code style="background: #0f172a; padding: 2px 6px; border-radius: 3px; color: #a78bfa; font-family: monospace; font-size: 12px;">[code]</code>');
+        content = content.replace(/CODEBLOCK\d+/g, '\n[Code Block]\n');
+        
+        // Store code blocks temporarily to protect them
+        const codeBlocks = [];
+        const inlineCodes = [];
+        const links = [];
+        
+        // Handle code blocks with language specification
+        content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            const language = lang || 'code';
+            const escapedCode = this.escapeHtml(code.trim());
+            const placeholder = `###CODEBLOCK${codeBlocks.length}###`;
+            codeBlocks.push(`<div style="display: block; background: #0f172a; border-radius: 4px; padding: 10px; margin: 8px 0; overflow-x: auto;"><div style="display: block; color: #94a3b8; font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">${language}</div><pre style="margin: 0; color: #e2e8f0; font-family: monospace; font-size: 12px; white-space: pre-wrap;">${escapedCode}</pre></div>`);
+            return placeholder;
+        });
+        
+        // Handle inline code backticks
+        content = content.replace(/`([^`]+)`/g, (match, code) => {
+            const placeholder = `###INLINECODE${inlineCodes.length}###`;
+            inlineCodes.push(`<code style="background: #0f172a; padding: 2px 6px; border-radius: 3px; color: #a78bfa; font-family: monospace; font-size: 12px;">${this.escapeHtml(code)}</code>`);
+            return placeholder;
+        });
+        
+        // Handle links
+        content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+            const placeholder = `###LINK${links.length}###`;
+            links.push(`<a href="${this.escapeHtml(url)}" target="_blank" style="color: #3b82f6; text-decoration: underline;">${this.escapeHtml(text)}</a>`);
+            return placeholder;
+        });
+        
+        // Escape remaining HTML
+        content = this.escapeHtml(content);
+        
+        // Handle bold (**text** or __text__) - but protect placeholders
+        content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        content = content.replace(/__(?!#)([^_]+)__/g, '<strong>$1</strong>');
+        
+        // Handle italic (*text* or _text_) - but protect placeholders
+        content = content.replace(/(?<!\*)(\*)(?!\*)([^*]+)(?<!\*)(\*)(?!\*)/g, '<em>$2</em>');
+        content = content.replace(/(?<!_)(_)(?!#)([^_]+)(?<!_)(_)(?!_)/g, '<em>$2</em>');
+        
+        // Handle line breaks
+        content = content.replace(/\n/g, '<br>');
+        
+        // Restore code blocks
+        codeBlocks.forEach((block, i) => {
+            content = content.replace(`###CODEBLOCK${i}###`, block);
+        });
+        
+        // Restore inline codes
+        inlineCodes.forEach((code, i) => {
+            content = content.replace(`###INLINECODE${i}###`, code);
+        });
+        
+        // Restore links
+        links.forEach((link, i) => {
+            content = content.replace(`###LINK${i}###`, link);
+        });
+        
+        return content;
+    }
+    
+    renderMessage(message) {
+        const container = document.getElementById('chatMessages');
+        const messageEl = document.createElement('div');
+        messageEl.id = message.id;
+        messageEl.className = `message ${message.role}`;
+        messageEl.style.position = 'relative';
+        
+        const avatar = document.createElement('div');
+        avatar.className = 'message-avatar';
+        avatar.textContent = message.role === 'user' ? 'You' : message.role === 'system' ? 'ℹ️' : 'V';
+        
+        const content = document.createElement('div');
+        content.className = 'message-content';
+        
+        // Process content with markdown parsing instead of plain text
+        content.innerHTML = this.parseMessageContent(message.content);
+        
+        // Create actions container with sticky positioning
+        const actions = document.createElement('div');
+        actions.className = 'message-actions';
+        actions.style.cssText = `
+            position: sticky;
+            top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            opacity: 0.7;
+            z-index: 10;
+            align-self: flex-start;
+            margin-left: auto;
+            padding: 8px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            border-radius: 8px;
+            border: 1px solid #334155;
+        `;
+        
+        // Copy button for all messages except system
+        if (message.role !== 'system') {
+            const copyBtn = document.createElement('button');
+            copyBtn.innerHTML = '📋';
+            copyBtn.title = 'Copy message';
+            copyBtn.style.cssText = 'background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s;';
+            copyBtn.onmouseenter = () => copyBtn.style.background = '#334155';
+            copyBtn.onmouseleave = () => copyBtn.style.background = '#1e293b';
+            copyBtn.onclick = () => this.copyMessage(message.content, copyBtn);
+            actions.appendChild(copyBtn);
+        }
+        
+        // Thumbs up/down for assistant messages
+        if (message.role === 'assistant') {
+            const thumbsUpBtn = document.createElement('button');
+            thumbsUpBtn.innerHTML = '👍';
+            thumbsUpBtn.title = 'Good response';
+            thumbsUpBtn.style.cssText = 'background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s;';
+            thumbsUpBtn.onmouseenter = () => thumbsUpBtn.style.background = '#334155';
+            thumbsUpBtn.onmouseleave = () => {
+                if (!message.rating || message.rating !== 'up') thumbsUpBtn.style.background = '#1e293b';
+            };
+            thumbsUpBtn.onclick = () => this.rateMessage(message.id, 'up', thumbsUpBtn);
+            
+            const thumbsDownBtn = document.createElement('button');
+            thumbsDownBtn.innerHTML = '👎';
+            thumbsDownBtn.title = 'Bad response';
+            thumbsDownBtn.style.cssText = 'background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: all 0.2s;';
+            thumbsDownBtn.onmouseenter = () => thumbsDownBtn.style.background = '#334155';
+            thumbsDownBtn.onmouseleave = () => {
+                if (!message.rating || message.rating !== 'down') thumbsDownBtn.style.background = '#1e293b';
+            };
+            thumbsDownBtn.onclick = () => this.rateMessage(message.id, 'down', thumbsDownBtn);
+            
+            actions.appendChild(thumbsUpBtn);
+            actions.appendChild(thumbsDownBtn);
+        }
+        
+        // Wrapper for content and actions to sit side by side
+        const contentWrapper = document.createElement('div');
+        contentWrapper.style.cssText = 'display: flex; gap: 12px; width: 100%;';
+        
+        const contentContainer = document.createElement('div');
+        contentContainer.style.cssText = 'flex: 1; min-width: 0;';
+        contentContainer.appendChild(content);
+        
+        contentWrapper.appendChild(contentContainer);
+        
+        // Only add actions if there are any
+        if (actions.children.length > 0) {
+            contentWrapper.appendChild(actions);
+        }
+        
+        if (message.role !== 'system') {
+            messageEl.appendChild(avatar);
+        }
+        messageEl.appendChild(contentWrapper);
+        
+        container.appendChild(messageEl);
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    addSystemMessage(content) {
+        this.addMessage('system', content);
+    }
+    
+    copyMessage(content, button) {
+        // Extract text content from structured content if it's an object
+        if (typeof content === 'object' && content !== null) {
+            content = JSON.stringify(content, null, 2);
+        }
+        
+        // Create a temporary textarea to copy from
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        
+        try {
+            document.execCommand('copy');
+            button.innerHTML = '✓';
+            button.style.color = '#22c55e';
+            setTimeout(() => {
+                button.innerHTML = '📋';
+                button.style.color = '#cbd5e1';
+            }, 2000);
+        } catch (err) {
+            console.error('Copy failed:', err);
+        } finally {
+            document.body.removeChild(textarea);
+        }
+    }
+    
+    rateMessage(messageId, rating, button) {
+        // Store rating locally
+        const message = this.messages.find(m => m.id === messageId);
+        if (message) {
+            message.rating = rating;
+        }
+        
+        // Visual feedback
+        button.style.color = rating === 'up' ? '#22c55e' : '#ef4444';
+        button.style.transform = 'scale(1.2)';
+        setTimeout(() => {
+            button.style.transform = 'scale(1)';
+        }, 200);
+        
+        // Optional: Send rating to backend
+        fetch('http://llm.int:8888/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: this.sessionId,
+                message_id: messageId,
+                rating: rating
+            })
+        }).catch(err => console.error('Rating error:', err));
+    }
+    
+    getSetting(key) {
+        const mapping = {
+            'ttsEnabled': 'ttsEnabled',
+            'ttsLanguage': 'ttsLanguage',
+            'ttsChunkResponses': 'ttsChunkResponses'
+        };
+        const elementId = mapping[key];
+        if (!elementId) return null;
+        
+        const el = document.getElementById(elementId);
+        if (el.type === 'checkbox') return el.checked;
+        return el.value;
+    }
+    
+    updateSettings() {
+        // Settings are updated via event handlers
+    }
+    
+    enqueueTTS(text, lang = 'en') {
+        if (!this.getSetting('ttsEnabled') || !text.trim()) return;
+        
+        fetch('http://llm.int:8888/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, lang })
+        }).catch(err => console.error('TTS error:', err));
+    }
+    
+    testTTS() {
+        this.enqueueTTS('Hello! This is a test of the text to speech system.', this.getSetting('ttsLanguage'));
+        this.addSystemMessage('TTS test queued...');
+    }
+    
+    stopTTS() {
+        fetch('http://llm.int:8888/api/tts/stop', { method: 'POST' }).catch(err => console.error('Stop TTS error:', err));
+        this.addSystemMessage('TTS stopped');
+    }
+    
+    clearTTSQueue() {
+        fetch('http://llm.int:8888/api/tts/queue/clear', { method: 'POST' }).catch(err => console.error('Clear queue error:', err));
+        this.addSystemMessage('TTS queue cleared');
+    }
+    
+    clearChat() {
+        if (confirm('Clear all messages?')) {
+            this.messages = [];
+            document.getElementById('chatMessages').innerHTML = '';
+            this.addSystemMessage('Chat cleared');
+        }
+    }
+    
+    exportChat() {
+        const data = {
+            session_id: this.sessionId,
+            messages: this.messages,
+            export_time: new Date().toISOString()
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `vera_chat_${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+    
+    handleFileUpload(event) {
+        for (const file of event.target.files) {
+            this.files[file.name] = file;
+            this.renderFileList();
+        }
+    }
+    
+    renderFileList() {
+        const container = document.getElementById('fileList');
+        container.innerHTML = Object.entries(this.files).map(([name, file]) => `
+            <div class="file-item">
+                <span class="file-item-name">${name}</span>
+                <button class="file-item-remove" onclick="app.removeFile('${name}')">✕</button>
+            </div>
+        `).join('');
+    }
+    
+    removeFile(name) {
+        delete this.files[name];
+        this.renderFileList();
+    }
+    
+    fitGraph() {
+        if (this.networkInstance) {
+            this.networkInstance.fit();
+        }
+    }
+    
+    zoomIn() {
+        if (this.networkInstance) {
+            const scale = this.networkInstance.getScale();
+            this.networkInstance.setOptions({ physics: false });
+            this.networkInstance.moveTo({ scale: scale * 1.2 });
+        }
+    }
+    
+    zoomOut() {
+        if (this.networkInstance) {
+            const scale = this.networkInstance.getScale();
+            this.networkInstance.setOptions({ physics: false });
+            this.networkInstance.moveTo({ scale: scale * 0.8 });
+        }
+    }
+    
+    clearGraph() {
+        this.networkData = { nodes: [], edges: [] };
+        if (this.networkInstance) {
+            this.networkInstance.setData(this.networkData);
+        }
+        document.getElementById('nodeCount').textContent = '0';
+        document.getElementById('edgeCount').textContent = '0';
+    }
+    
+    // MODIFIED: Update destroy() to close WebSocket
+    destroy() {
+        if (this.graphRefreshInterval) {
+            clearInterval(this.graphRefreshInterval);
+        }
+        if (this.networkInstance) {
+            this.networkInstance.destroy();
+        }
+        if (this.websocket) {
+            this.websocket.close(1000, 'Page unload');
+            this.websocket = null;
+        }
+    }
+
+    // NEW: Manual reconnect function (optional, for UI button)
+    reconnectWebSocket() {
+        if (this.websocket) {
+            this.websocket.close();
+        }
+        this.connectWebSocket();
+        this.addSystemMessage('Reconnecting WebSocket...');
+    }
+
+    // NEW: Toggle between WebSocket and HTTP (optional, for debugging)
+    toggleWebSocket(enabled) {
+        this.useWebSocket = enabled;
+        if (enabled && !this.websocket) {
+            this.connectWebSocket();
+        } else if (!enabled && this.websocket) {
+            this.websocket.close();
+            this.websocket = null;
+        }
+        this.addSystemMessage(`WebSocket ${enabled ? 'enabled' : 'disabled'}`);
+    }
+}
+
+const app = new VeraChat();
+
+window.addEventListener('beforeunload', () => {
+    if (app) {
+        app.destroy();
+    }
+});
+</script>
+</body>
+</html>
