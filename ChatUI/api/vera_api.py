@@ -1,0 +1,255 @@
+"""
+Vera API Endpoints using FastAPI - Enhanced with Toolchain Monitoring
+Compatible with the frontend chat interface
+""" 
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List, Dict, Any
+import json
+import asyncio
+import uuid
+from datetime import datetime
+import logging
+from collections import defaultdict
+from queue import Queue
+from threading import Thread
+from uuid import uuid4
+from neo4j import GraphDatabase
+
+# Import existing modules
+
+from Vera.vera import Vera
+from Vera.ChatUI.vectorstore import *
+from Vera.ChatUI.toolchain import *
+from Vera.ChatUI.graph import *
+from Vera.ChatUI.chat import *
+from Vera.ChatUI.memory import *
+from Vera.ChatUI.proactivefocus import *
+from Vera.ChatUI.notebook import *
+from Vera.ChatUI.schemas import *
+
+from Vera.ChatUI.state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Vera AI Chat API",
+    description="Multi-agent AI chat system with knowledge graph visualization and toolchain monitoring",
+    version="1.0.0"
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat.router)
+app.include_router(chat.wsrouter)
+app.include_router(graph.router)
+app.include_router(toolchain.router)
+app.include_router(toolchain.wsrouter)
+app.include_router(vectorstore.router)
+app.include_router(memory.router)
+app.include_router(proactivefocus.router)
+app.include_router(proactivefocus.wsrouter)
+app.include_router(notebook.router)
+
+# Global storage
+vera_instances: Dict[str, Vera] = {}
+sessions: Dict[str, Dict[str, Any]] = {}
+tts_queue: List[Dict[str, Any]] = []
+tts_playing = False
+
+# Toolchain monitoring storage
+toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_id -> execution_id -> execution_data
+active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
+websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
+
+# ============================================================
+# Health and Info
+# ============================================================
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "active_sessions": len(sessions),
+        "tts_queue_length": len(tts_queue),
+        "active_toolchains": len(active_toolchains)
+    }
+
+# Update the info endpoint to include new memory endpoints
+@app.get("/api/info")
+async def get_info():
+    """Get API information."""
+    return {
+        "name": "Vera AI Chat API",
+        "version": "1.0.0",
+        "active_sessions": len(sessions),
+        "endpoints": {
+            "session": ["/api/session/start", "/api/session/{id}/end"],
+            "chat": ["/api/chat", "/ws/chat/{session_id}"],
+            "memory": [
+                "/api/memory/query",
+                "/api/memory/hybrid-retrieve",
+                "/api/memory/extract-entities",
+                "/api/memory/subgraph",
+                "/api/memory/{session_id}/entities",
+                "/api/memory/{session_id}/relationships",
+                "/api/memory/{session_id}/promote"
+            ],
+            "graph": ["/api/graph/session/{session_id}"],
+            "toolchain": [
+                "/api/toolchain/execute",
+                "/ws/toolchain/{session_id}",
+                "/api/toolchain/{session_id}/executions",
+                "/api/toolchain/{session_id}/execution/{execution_id}",
+                "/api/toolchain/{session_id}/active",
+                "/api/toolchain/{session_id}/tools"
+            ],
+            "tts": ["/api/tts", "/api/tts/stop", "/api/tts/queue/clear"],
+            "files": ["/api/files/upload/{session_id}", "/api/files/{session_id}"]
+        }
+    }
+
+@app.get("/api/debug/neo4j/{session_id}")
+async def debug_neo4j(session_id: str):
+    """Debug endpoint to see what's in Neo4j for a session."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    actual_session_id = vera.sess.id
+    
+    try:
+        driver = vera.mem.graph._driver
+        
+        with driver.session() as db_sess:
+            # Get session node
+            session_result = db_sess.run("""
+                MATCH (s:Session {id: $session_id})
+                RETURN s, labels(s) AS labels
+            """, {"session_id": actual_session_id})
+            
+            session_info = []
+            for record in session_result:
+                session_info.append({
+                    "node": dict(record["s"]),
+                    "labels": record["labels"]
+                })
+            
+            # Get directly connected nodes
+            connected_result = db_sess.run("""
+                MATCH (s:Session {id: $session_id})-[r]-(n)
+                RETURN n.id AS id, labels(n) AS labels, n.type AS type, 
+                       n.text AS text, type(r) AS rel_type, 
+                       startNode(r).id AS start_id, endNode(r).id AS end_id
+                LIMIT 100
+            """, {"session_id": actual_session_id})
+            
+            directly_connected = []
+            for record in connected_result:
+                directly_connected.append({
+                    "id": record["id"],
+                    "labels": record["labels"],
+                    "type": record["type"],
+                    "text": record["text"][:100] if record["text"] else None,
+                    "rel_type": record["rel_type"],
+                    "start_id": record["start_id"],
+                    "end_id": record["end_id"]
+                })
+            
+            # Get all nodes (sample)
+            all_nodes_result = db_sess.run("""
+                MATCH (n)
+                RETURN n.id AS id, labels(n) AS labels, n.type AS type, n.text AS text
+                LIMIT 50
+            """)
+            
+            all_nodes = []
+            for record in all_nodes_result:
+                all_nodes.append({
+                    "id": record["id"],
+                    "labels": record["labels"],
+                    "type": record["type"],
+                    "text": record["text"][:100] if record["text"] else None
+                })
+            
+            # Get all relationships (sample)
+            all_rels_result = db_sess.run("""
+                MATCH (a)-[r]->(b)
+                RETURN a.id AS from, type(r) AS rel_type, 
+                       properties(r) AS rel_props, b.id AS to
+                LIMIT 100
+            """)
+            
+            all_rels = []
+            for record in all_rels_result:
+                all_rels.append({
+                    "from": record["from"],
+                    "rel_type": record["rel_type"],
+                    "rel_props": record["rel_props"],
+                    "to": record["to"]
+                })
+            
+            # Check for FOLLOWS chain
+            follows_result = db_sess.run("""
+                MATCH (a)-[r:REL {rel: 'FOLLOWS'}]->(b)
+                RETURN a.id AS from, a.text AS from_text, b.id AS to, b.text AS to_text
+                LIMIT 50
+            """)
+            
+            follows_chain = []
+            for record in follows_result:
+                follows_chain.append({
+                    "from": record["from"],
+                    "from_text": record["from_text"][:50] if record["from_text"] else None,
+                    "to": record["to"],
+                    "to_text": record["to_text"][:50] if record["to_text"] else None
+                })
+            
+            return {
+                "session_id": actual_session_id,
+                "session_nodes": session_info,
+                "directly_connected_to_session": directly_connected,
+                "follows_chain": follows_chain,
+                "all_nodes_sample": all_nodes,
+                "all_relationships_sample": all_rels,
+                "summary": {
+                    "session_found": len(session_info) > 0,
+                    "direct_connections": len(directly_connected),
+                    "follows_count": len(follows_chain),
+                    "total_nodes_sample": len(all_nodes),
+                    "total_relationships_sample": len(all_rels)
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"Debug error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================
+# Run Server
+# ============================================================
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8888,
+        log_level="info"
+    )

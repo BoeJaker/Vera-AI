@@ -1,0 +1,186 @@
+{
+  "focus": "poetry",
+  "project_id": null,
+  "created_at": "2025-11-03T22:35:33.510178",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "\"Brainstorm potential themes or subjects for the poetry (e.g., nature, love, loss, social commentary). Add 3-5 to the 'Ideas' list.\",",
+        "timestamp": "2025-11-03T21:24:18.345777",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research contemporary poets and poetry styles to identify potential inspiration. Document 2-3 poets/styles in 'Ideas'.\",",
+        "timestamp": "2025-11-03T21:24:18.346242",
+        "metadata": {}
+      },
+      {
+        "note": "\"Draft a first poem – aim for a short, free-verse piece, focusing on imagery. Add '[Draft 1 - Title]' to 'Progress' once completed.\",",
+        "timestamp": "2025-11-03T21:24:18.346714",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define a project scope. How many poems will this project encompass? Add this number to 'Ideas'.\",",
+        "timestamp": "2025-11-03T21:24:18.347243",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a 'Revision Notes' section within the board to capture feedback and ideas for improvement on draft poems.\"",
+        "timestamp": "2025-11-03T21:24:18.347808",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 3 potential themes or subjects for the next set of poems, documenting ideas in the 'Ideas' list.\",",
+        "timestamp": "2025-11-03T21:45:47.669091",
+        "metadata": {}
+      },
+      {
+        "note": "\"Draft a single poem (any length) focusing on one of the brainstormed themes, adding it to 'Progress' as a first draft.\",",
+        "timestamp": "2025-11-03T21:45:47.669098",
+        "metadata": {}
+      },
+      {
+        "note": "\"Review the 'Ideas' list and prioritize the top 2 most compelling ideas for further development, noting reasons for prioritization.\",",
+        "timestamp": "2025-11-03T21:45:47.669104",
+        "metadata": {}
+      },
+      {
+        "note": "\"Identify one potential resource (e.g., poet to read, writing prompt website, anthology) to inspire new work and add it to 'Ideas'.\",",
+        "timestamp": "2025-11-03T21:45:47.669110",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define the criteria for 'completion' of this poetry project (e.g., number of poems, specific style, submission goal) and document in 'Progress'.\"",
+        "timestamp": "2025-11-03T21:45:47.669116",
+        "metadata": {}
+      },
+      {
+        "note": "```json",
+        "timestamp": "2025-11-03T22:24:45.429259",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-03T22:24:45.429310",
+        "metadata": {}
+      },
+      {
+        "note": "\"Choose one of the 'Ideas' (Found Poetry, Poetry Pairing, Micro-Poetry, Poetry Swap, or Prompt Jar) and dedicate 30 minutes to *starting* that exercise today.\",",
+        "timestamp": "2025-11-03T22:24:45.429319",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a simple document (text file, note, etc.) titled 'Poetry Ideas - In Progress' to track which exercises are being attempted and any initial thoughts.\",",
+        "timestamp": "2025-11-03T22:24:45.429327",
+        "metadata": {}
+      },
+      {
+        "note": "\"Review the 14 pending next steps (mentioned in 'Additional Context') and prioritize the top 3 based on feasibility and potential impact.\",",
+        "timestamp": "2025-11-03T22:24:45.429344",
+        "metadata": {}
+      },
+      {
+        "note": "\"Set a realistic goal for poetry output this week (e.g., complete 3 micro-poems, finish one found poem, or participate in one poetry swap).\",",
+        "timestamp": "2025-11-03T22:24:45.429351",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm potential sources for text snippets if opting for the 'Found Poetry' exercise (newspapers, magazines, books, websites).\"",
+        "timestamp": "2025-11-03T22:24:45.429356",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-03T22:24:45.429372",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-03T22:24:45.429378",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-03T22:11:28.217963",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-03T22:11:28.217999",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Experiment with Found Poetry:** Collect snippets of text from various sources (newspapers, books, online articles) and rearrange them to create a poem. This circumvents initial drafting hurdles and encourages unique perspectives.\",",
+        "timestamp": "2025-11-03T22:11:28.218008",
+        "metadata": {}
+      },
+      {
+        "note": "\"**'Poetry Pairing' Exercise:** Select a painting, photograph, or piece of music and write a poem *inspired* by it. Focus on capturing the mood, texture, or narrative suggested by the external stimulus.\",",
+        "timestamp": "2025-11-03T22:11:28.218018",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Micro-Poetry Challenge:** Commit to writing a series of very short poems (e.g., haiku, senryu, tanka, or three-line poems) daily for a week. This builds momentum and encourages concise, impactful writing.\",",
+        "timestamp": "2025-11-03T22:11:28.218023",
+        "metadata": {}
+      },
+      {
+        "note": "\"**'Poetry Swap' with a Friend:** Exchange first drafts with a friend or fellow writer for constructive feedback. Focus feedback requests on specific areas like imagery, rhythm, or clarity.\",",
+        "timestamp": "2025-11-03T22:11:28.218034",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Develop a 'Poetry Prompt Jar':** Write down a variety of creative writing prompts (single words, phrases, scenarios, or 'what if' questions) on slips of paper and draw one each time you want to start a new poem. This eliminates decision fatigue and introduces unexpected inspiration.\"",
+        "timestamp": "2025-11-03T22:11:28.218045",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-03T22:11:28.218053",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-03T22:11:28.218064",
+        "metadata": {}
+      }
+    ],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm poetry themes and subjects. Add 3-5 to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research contemporary poets and styles. Use the LLM to suggest 2-3, and add to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Define the project scope - how many poems will this project encompass. Use the LLM to suggest a reasonable number and add it to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Create a 'Revision Notes' section by writing a blank list to the 'ideas' board. This will prepare the board for future revisions.\\\",\\n    \\\"tools\\\": [\\n      \\\"Write File\\\"\\n    ],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-03T21:29:15.323078",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm poetry themes and subjects. Add 3-5 to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research contemporary poets and styles. Use the LLM to suggest 2-3, and add to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Define the project scope - how many poems will this project encompass. Use the LLM to suggest a reasonable number and add it to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Create a 'Revision Notes' section by writing a blank list to the 'ideas' board. This will prepare the board for future revisions.\",\n    \"tools\": [\n      \"Write File\"\n    ],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      },
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm poetry themes and subjects. Add 3-5 to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research contemporary poets and styles. Use the LLM to suggest 2-3, and add to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Define the project scope - how many poems will this project encompass. Use the LLM to suggest a reasonable number and add it to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-03T21:53:55.026573",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm poetry themes and subjects. Add 3-5 to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research contemporary poets and styles. Use the LLM to suggest 2-3, and add to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Define the project scope - how many poems will this project encompass. Use the LLM to suggest a reasonable number and add it to the 'Ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      },
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm 3 potential poetry themes or subjects using the Fast LLM.\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research 2-3 contemporary poets and poetry styles using the Fast LLM and add them to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Define a reasonable project scope (number of poems) for this project using the Fast LLM and add it to the 'Ideas' list.\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-03T22:35:33.409178",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm 3 potential poetry themes or subjects using the Fast LLM.\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research 2-3 contemporary poets and poetry styles using the Fast LLM and add them to the 'Ideas' list.\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Define a reasonable project scope (number of poems) for this project using the Fast LLM and add it to the 'Ideas' list.\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"medium\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762204870750"
+  }
+}

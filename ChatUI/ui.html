@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vera Chat - Enhanced</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1 style="font-size: 20px; margin-bottom: 4px;">Vera Chat</h1>
+                <div style="font-size: 12px; color: #94a3b8;">
+                    <span id="connectionStatus">Connecting...</span> • 
+                    <span id="sessionInfo">No session</span>
+                </div>
+            </div>
+            <!-- <div style="display: flex; gap: 8px;">
+                <button class="column-btn" onclick="app.addColumn()" style="padding: 6px 12px; font-size: 12px;">
+                    ➕ Add Column
+                </button>
+            </div> -->
+        <div id="vera-robot"></div>
+        </div>
+
+        <div class="main-content" id="mainContent">
+           
+        </div>
+
+        <div id="settings-panel">
+            <div class="settings-section">
+                <h3>Graph Controls</h3>
+                <button class="settings-btn" id="reset-focus-btn">Reset View</button>
+                <button class="settings-btn" id="cluster-hubs-btn">Cluster Hubs</button>
+            </div>
+
+            <div class="settings-section">
+                <h3>Edge Filters</h3>
+                <div style="margin-bottom: 12px;">
+                    <button class="settings-btn" id="select-all-filters-btn">Select All</button>
+                    <button class="settings-btn" id="deselect-all-filters-btn">Deselect All</button>
+                    <button class="settings-btn" id="refresh-filters-btn">Refresh</button>
+                </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: #cbd5e1;">
+                        <input type="checkbox" id="cascade-hide">
+                        Hide isolated nodes
+                    </label>
+                </div>
+                <div id="edge-filters"></div>
+            </div>
+
+            <div class="settings-section">
+                <h3>Visual Settings</h3>
+                
+                <div class="slider-container">
+                    <label>
+                        <span>Node Style</span>
+                    </label>
+                    <select id="nodeStyle">
+                        <option value="dot">Dot</option>
+                        <option value="box">Box</option>
+                        <option value="card">Card View</option>
+                        <option value="circle">Circle</option>
+                        <option value="ellipse">Ellipse</option>
+                        <option value="diamond">Diamond</option>
+                    </select>
+                </div>
+
+                <div class="slider-container">
+                    <label>
+                        <span>Node Size</span>
+                        <span id="nodeSizeVal">25</span>
+                    </label>
+                    <input type="range" id="nodeSize" min="10" max="50" value="25">
+                </div>
+
+                <div class="slider-container">
+                    <label>
+                        <span>Edge Width</span>
+                        <span id="edgeWidthVal">2</span>
+                    </label>
+                    <input type="range" id="edgeWidth" min="1" max="10" value="2">
+                </div>
+
+                <div class="slider-container">
+                    <label>
+                        <span>Physics Strength</span>
+                        <span id="physicsVal">0.010</span>
+                    </label>
+                    <input type="range" id="physics" min="0.001" max="0.1" step="0.001" value="0.01">
+                </div>
+            </div>
+        </div>
+
+        <div id="property-panel">
+            <div class="panel-header-controls">
+                <h2>Node Details</h2>
+                <button class="panel-btn" id="close-panel-btn" onclick="document.getElementById('property-panel').classList.remove('active');">✕</button>
+            </div>
+            <div id="panel-content">
+                <p style="color: #94a3b8; padding: 20px;">Click a node to see details...</p>
+            </div>
+        </div>
+
+        <div id="context-menu">
+            <div class="context-menu-item" data-action="search">🔍 Search</div>
+            <div class="context-menu-item" data-action="enrich">🧠 Enrich (NLP)</div>
+            <div class="context-menu-item" data-action="hidden-relationships">🔗 Hidden Relationships</div>
+            <div class="context-menu-item" data-action="discover">💡 Discover</div>
+            <div class="context-menu-item" data-action="ideas">✨ Generate Ideas</div>
+            <div class="context-menu-item" data-action="subgraph">🗺️ Extract Subgraph</div>
+            <div class="context-menu-item" data-action="ask-vera">💬 Ask Vera</div>
+            <div class="context-menu-item" data-action="extract-entities">🧠 Extract Entities</div>
+        </div>
+    </div>
+
+    <script src="tamagochi/tamagochi_robot.js"></script> 
+    <script src="js/graph-addon.js"></script>
+    <!-- <script src="js/notebook.js"></script> -->
+    <!-- <script>const app = new VeraChat();</script>  -->
+    <script src="js/chat.js"></script>
+    
+    <script src="js/toolchain.js"></script>
+    <script src="js/proactive-focus-manager.js?v=3"></script>
+    <script src="js/memory.js?v=3"></script>
+    <script src="js/notebook.js"></script>
+    <script src="js/theme.js?v=3"></script>
+</body>
+</html>

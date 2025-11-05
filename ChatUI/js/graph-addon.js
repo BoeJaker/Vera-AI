@@ -375,14 +375,7 @@
                     console.log('Ask Vera action for node:', nodeName);
                     alert(`Ask Vera about: ${nodeName}\n\nYou can ask:\n- Questions about this node\n- Request analysis\n- Get recommendations`);
                     break;
-                case 'extract-entities':
-                    const nodeData = window.GraphAddon.nodesData[nodeId];
-                    if (nodeData && nodeData.properties && nodeData.properties.text) {
-                        this.extractEntities(nodeData.properties.text, false);
-                    }
-                    break;
             }
-        }
         },
         
         /**

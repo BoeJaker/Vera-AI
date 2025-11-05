@@ -1,476 +1,43 @@
-"""
-Vera API Endpoints using FastAPI - Enhanced with Toolchain Monitoring
-Compatible with the frontend chat interface
-""" 
-
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional
-import json
-import asyncio
-import uuid
-from datetime import datetime
 import logging
-from collections import defaultdict
-from queue import Queue
-from threading import Thread
-
-# Import existing modules
-from vera import Vera
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize FastAPI app
-app = FastAPI(
-    title="Vera AI Chat API",
-    description="Multi-agent AI chat system with knowledge graph visualization and toolchain monitoring",
-    version="1.0.0"
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Global storage
-vera_instances: Dict[str, Vera] = {}
-sessions: Dict[str, Dict[str, Any]] = {}
-tts_queue: List[Dict[str, Any]] = []
-tts_playing = False
-
-# Toolchain monitoring storage
-toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_id -> execution_id -> execution_data
-active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
-websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
-
-
-# ============================================================
-# Request/Response Models
-# ============================================================
-
-class SessionStartResponse(BaseModel):
-    session_id: str
-    status: str = "started"
-    timestamp: str
-
-
-class ChatRequest(BaseModel):
-    session_id: str
-    message: str
-    files: Optional[List[str]] = []
-
-
-class ChatResponse(BaseModel):
-    response: str
-    session_id: str
-    timestamp: str
-
-
-class TTSRequest(BaseModel):
-    text: str
-    lang: str = "en"
-
-class VectorStoreRequest(BaseModel):
-    session_id: str
-    collection_name: str
-
-class GraphNode(BaseModel):
-    id: str
-    label: str
-    title: str
-    color: str = "#3b82f6"
-    properties: Dict[str, Any]
-    size: int = 25
-
-
-class GraphEdge(BaseModel):
-    from_node: str = Field(..., alias="from")
-    to_node: str = Field(..., alias="to")
-    label: str
-    
-    class Config:
-        populate_by_name = True
-
-
-class GraphResponse(BaseModel):
-    nodes: List[GraphNode]
-    edges: List[GraphEdge]
-    stats: Dict[str, Any]
-
-
-class ToolExecutionStep(BaseModel):
-    step_number: int
-    tool_name: str
-    tool_input: str
-    tool_output: Optional[str] = None
-    status: str  # "pending", "running", "completed", "failed"
-    start_time: str
-    end_time: Optional[str] = None
-    error: Optional[str] = None
-    metadata: Dict[str, Any] = {}
-
-
-class ToolchainExecution(BaseModel):
-    execution_id: str
-    session_id: str
-    query: str
-    plan: List[Dict[str, str]]
-    steps: List[ToolExecutionStep]
-    status: str  # "planning", "executing", "completed", "failed"
-    start_time: str
-    end_time: Optional[str] = None
-    total_steps: int
-    completed_steps: int
-    final_result: Optional[str] = None
-
-
-class ToolchainRequest(BaseModel):
-    session_id: str
-    query: str
-
-
-class MemoryQueryRequest(BaseModel):
-    session_id: str
-    query: str
-    k: int = 5
-    retrieval_type: str = "hybrid"  # "vector", "graph", "hybrid"
-    filters: Optional[Dict[str, Any]] = None
-
-class MemoryQueryResponse(BaseModel):
-    results: List[Dict[str, Any]]
-    retrieval_type: str
-    query: str
-    session_id: str
-
-class EntityExtractionRequest(BaseModel):
-    session_id: str
-    text: str
-    auto_promote: bool = False
-    source_node_id: Optional[str] = None
-
-class EntityExtractionResponse(BaseModel):
-    entities: List[Dict[str, Any]]
-    relations: List[Dict[str, Any]]
-    clusters: Dict[str, List[str]]
-    session_id: str
-
-class SubgraphRequest(BaseModel):
-    session_id: str
-    seed_entity_ids: List[str]
-    depth: int = 2
-
-class HybridRetrievalRequest(BaseModel):
-    session_id: str
-    query: str
-    k_vector: int = 5
-    k_graph: int = 3
-    graph_depth: int = 2
-    include_entities: bool = True
-    filters: Optional[Dict[str, Any]] = None
-
-
-# ============================================================
-# Helper Functions
-# ============================================================
-
-def get_or_create_vera(session_id: str) -> Vera:
-    """Get or create a Vera instance for a session."""
-    if session_id not in vera_instances:
-        logger.warning(f"Vera instance not found for session {session_id}, creating new one")
-        raise HTTPException(
-            status_code=400, 
-            detail="Session not properly initialized. Please start a new session."
-        )
-    return vera_instances[session_id]
-
-# ============================================================
-# Session Management
-# ============================================================
-
-@app.post("/api/session/start", response_model=SessionStartResponse)
-async def start_session():
-    """Start a new chat session."""
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-        
-        def create_vera():
-            return Vera()
-        
-        loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor() as executor:
-            vera = await loop.run_in_executor(executor, create_vera)
-        
-        session_id = vera.sess.id
-        vera_instances[session_id] = vera
-        
-        sessions[session_id] = {
-            "created_at": datetime.utcnow().isoformat(),
-            "messages": [],
-            "files": {},
-            "vera": vera
-        }
-        
-        # Initialize toolchain storage for this session
-        toolchain_executions[session_id] = {}
-        
-        # IMPORTANT: Wrap Vera's toolchain with monitoring
-        if hasattr(vera, 'toolchain'):
-            original_toolchain = vera.toolchain
-            vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
-            logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
-        
-        logger.info(f"Started session: {session_id}")
-        
-        return SessionStartResponse(
-            session_id=session_id,
-            status="started",
-            timestamp=datetime.utcnow().isoformat()
-        )
-    except Exception as e:
-        logger.error(f"Session start error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
-
-
-@app.post("/api/session/{session_id}/end")
-async def end_session(session_id: str):
-    """End a chat session."""
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Cleanup
-    vera_instances.pop(session_id, None)
-    sessions.pop(session_id, None)
-    toolchain_executions.pop(session_id, None)
-    active_toolchains.pop(session_id, None)
-    
-    return {"status": "ended", "session_id": session_id}
-
-# ============================================================
-# Health and Info
-# ============================================================
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "active_sessions": len(sessions),
-        "tts_queue_length": len(tts_queue),
-        "active_toolchains": len(active_toolchains)
-    }
-
-# Update the info endpoint to include new memory endpoints
-@app.get("/api/info")
-async def get_info():
-    """Get API information."""
-    return {
-        "name": "Vera AI Chat API",
-        "version": "1.0.0",
-        "active_sessions": len(sessions),
-        "endpoints": {
-            "session": ["/api/session/start", "/api/session/{id}/end"],
-            "chat": ["/api/chat", "/ws/chat/{session_id}"],
-            "memory": [
-                "/api/memory/query",
-                "/api/memory/hybrid-retrieve",
-                "/api/memory/extract-entities",
-                "/api/memory/subgraph",
-                "/api/memory/{session_id}/entities",
-                "/api/memory/{session_id}/relationships",
-                "/api/memory/{session_id}/promote"
-            ],
-            "graph": ["/api/graph/session/{session_id}"],
-            "toolchain": [
-                "/api/toolchain/execute",
-                "/ws/toolchain/{session_id}",
-                "/api/toolchain/{session_id}/executions",
-                "/api/toolchain/{session_id}/execution/{execution_id}",
-                "/api/toolchain/{session_id}/active",
-                "/api/toolchain/{session_id}/tools"
-            ],
-            "tts": ["/api/tts", "/api/tts/stop", "/api/tts/queue/clear"],
-            "files": ["/api/files/upload/{session_id}", "/api/files/{session_id}"]
-        }
-    }
-
-@app.get("/api/debug/neo4j/{session_id}")
-async def debug_neo4j(session_id: str):
-    """Debug endpoint to see what's in Neo4j for a session."""
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    vera = get_or_create_vera(session_id)
-    actual_session_id = vera.sess.id
-    
-    try:
-        driver = vera.mem.graph._driver
-        
-        with driver.session() as db_sess:
-            # Get session node
-            session_result = db_sess.run("""
-                MATCH (s:Session {id: $session_id})
-                RETURN s, labels(s) AS labels
-            """, {"session_id": actual_session_id})
-            
-            session_info = []
-            for record in session_result:
-                session_info.append({
-                    "node": dict(record["s"]),
-                    "labels": record["labels"]
-                })
-            
-            # Get directly connected nodes
-            connected_result = db_sess.run("""
-                MATCH (s:Session {id: $session_id})-[r]-(n)
-                RETURN n.id AS id, labels(n) AS labels, n.type AS type, 
-                       n.text AS text, type(r) AS rel_type, 
-                       startNode(r).id AS start_id, endNode(r).id AS end_id
-                LIMIT 100
-            """, {"session_id": actual_session_id})
-            
-            directly_connected = []
-            for record in connected_result:
-                directly_connected.append({
-                    "id": record["id"],
-                    "labels": record["labels"],
-                    "type": record["type"],
-                    "text": record["text"][:100] if record["text"] else None,
-                    "rel_type": record["rel_type"],
-                    "start_id": record["start_id"],
-                    "end_id": record["end_id"]
-                })
-            
-            # Get all nodes (sample)
-            all_nodes_result = db_sess.run("""
-                MATCH (n)
-                RETURN n.id AS id, labels(n) AS labels, n.type AS type, n.text AS text
-                LIMIT 50
-            """)
-            
-            all_nodes = []
-            for record in all_nodes_result:
-                all_nodes.append({
-                    "id": record["id"],
-                    "labels": record["labels"],
-                    "type": record["type"],
-                    "text": record["text"][:100] if record["text"] else None
-                })
-            
-            # Get all relationships (sample)
-            all_rels_result = db_sess.run("""
-                MATCH (a)-[r]->(b)
-                RETURN a.id AS from, type(r) AS rel_type, 
-                       properties(r) AS rel_props, b.id AS to
-                LIMIT 100
-            """)
-            
-            all_rels = []
-            for record in all_rels_result:
-                all_rels.append({
-                    "from": record["from"],
-                    "rel_type": record["rel_type"],
-                    "rel_props": record["rel_props"],
-                    "to": record["to"]
-                })
-            
-            # Check for FOLLOWS chain
-            follows_result = db_sess.run("""
-                MATCH (a)-[r:REL {rel: 'FOLLOWS'}]->(b)
-                RETURN a.id AS from, a.text AS from_text, b.id AS to, b.text AS to_text
-                LIMIT 50
-            """)
-            
-            follows_chain = []
-            for record in follows_result:
-                follows_chain.append({
-                    "from": record["from"],
-                    "from_text": record["from_text"][:50] if record["from_text"] else None,
-                    "to": record["to"],
-                    "to_text": record["to_text"][:50] if record["to_text"] else None
-                })
-            
-            return {
-                "session_id": actual_session_id,
-                "session_nodes": session_info,
-                "directly_connected_to_session": directly_connected,
-                "follows_chain": follows_chain,
-                "all_nodes_sample": all_nodes,
-                "all_relationships_sample": all_rels,
-                "summary": {
-                    "session_found": len(session_info) > 0,
-                    "direct_connections": len(directly_connected),
-                    "follows_count": len(follows_chain),
-                    "total_nodes_sample": len(all_nodes),
-                    "total_relationships_sample": len(all_rels)
-                }
-            }
-    
-    except Exception as e:
-        logger.error(f"Debug error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-# from fastapi import FastAPI, HTTPException, Depends
-# from pydantic import BaseModel, Field
-# from typing import Optional, List, Dict, Any
-# from datetime import datetime
 from uuid import uuid4
-# import neo4j
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, HTTPException
 from neo4j import GraphDatabase
 
-# Pydantic Models
-class NotebookCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
+# ============================================================
+# Models — adjust import paths to match your structure
+# ============================================================
+from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
-class NotebookUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+from schemas import (
+    NotebookCreate,
+    NotebookUpdate,
+    NoteCreate,
+    NoteUpdate,
+    NoteSearch,
+)
 
-class NoteSource(BaseModel):
-    type: str  # chat_message, graph_node, memory, etc.
-    message_id: Optional[str] = None
-    role: Optional[str] = None
-    timestamp: Optional[str] = None
-    node_id: Optional[str] = None
-    content: Optional[str] = None
+# ============================================================
+# Logging setup
+# ============================================================
+logger = logging.getLogger(__name__)
 
-class NoteCreate(BaseModel):
-    title: str
-    content: str = ""
-    source: Optional[NoteSource] = None
-    tags: List[str] = []
-    metadata: Dict[str, Any] = {}
+# ============================================================
+# Router setup
+# ============================================================
+router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
 
-class NoteUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
-    tags: Optional[List[str]] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-class NoteSearch(BaseModel):
-    query: str
-    notebook_ids: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    source_type: Optional[str] = None
-    date_from: Optional[str] = None
-    date_to: Optional[str] = None
+# ============================================================
+#  Notebook Endpoints
+# ============================================================
 
 # Database helper
 def get_neo4j_driver():
     return GraphDatabase.driver("bolt://localhost:7687", auth=("neo4j", "testpassword"))
 
-# ==================== NOTEBOOK ENDPOINTS ====================
-
-@app.get("/api/notebooks/{session_id}")
+@router.get("/{session_id}")
 async def get_notebooks(session_id: str):
     """Get all notebooks for a session"""
     driver = get_neo4j_driver()
@@ -501,7 +68,7 @@ async def get_notebooks(session_id: str):
     driver.close()
     return {"notebooks": notebooks}
 
-@app.post("/api/notebooks/{session_id}/create")
+@router.post("/{session_id}/create")
 async def create_notebook(session_id: str, notebook: NotebookCreate):
     """Create a new notebook"""
     driver = get_neo4j_driver()
@@ -553,7 +120,7 @@ async def create_notebook(session_id: str, notebook: NotebookCreate):
     driver.close()
     return {"notebook": notebook_data}
 
-@app.put("/api/notebooks/{session_id}/{notebook_id}")
+@router.put("/{session_id}/{notebook_id}")
 async def update_notebook(session_id: str, notebook_id: str, notebook: NotebookUpdate):
     """Update a notebook"""
     driver = get_neo4j_driver()
@@ -600,7 +167,7 @@ async def update_notebook(session_id: str, notebook_id: str, notebook: NotebookU
     driver.close()
     return {"notebook": notebook_data}
 
-@app.delete("/api/notebooks/{session_id}/{notebook_id}")
+@router.delete("/{session_id}/{notebook_id}")
 async def delete_notebook(session_id: str, notebook_id: str):
     """Delete a notebook and all its notes"""
     driver = get_neo4j_driver()
@@ -632,7 +199,7 @@ async def delete_notebook(session_id: str, notebook_id: str):
 
 # ==================== NOTE ENDPOINTS ====================
 
-@app.get("/api/notebooks/{session_id}/{notebook_id}/notes")
+@router.get("/{session_id}/{notebook_id}/notes")
 async def get_notes(
     session_id: str, 
     notebook_id: str,
@@ -697,7 +264,7 @@ async def get_notes(
         "offset": offset
     }
 
-@app.get("/api/notebooks/{session_id}/{notebook_id}/notes/{note_id}")
+@router.get("/{session_id}/{notebook_id}/notes/{note_id}")
 async def get_note(session_id: str, notebook_id: str, note_id: str):
     """Get a single note"""
     driver = get_neo4j_driver()
@@ -733,7 +300,7 @@ async def get_note(session_id: str, notebook_id: str, note_id: str):
     driver.close()
     return {"note": note}
 
-@app.post("/api/notebooks/{session_id}/{notebook_id}/notes/create")
+@router.post("/{session_id}/{notebook_id}/notes/create")
 async def create_note(session_id: str, notebook_id: str, note: NoteCreate):
     """Create a new note"""
     driver = get_neo4j_driver()
@@ -803,7 +370,7 @@ async def create_note(session_id: str, notebook_id: str, note: NoteCreate):
     driver.close()
     return {"note": note_data}
 
-@app.put("/api/notebooks/{session_id}/{notebook_id}/notes/{note_id}/update")
+@router.put("/{session_id}/{notebook_id}/notes/{note_id}/update")
 async def update_note(session_id: str, notebook_id: str, note_id: str, note: NoteUpdate):
     """Update a note"""
     driver = get_neo4j_driver()
@@ -869,7 +436,7 @@ async def update_note(session_id: str, notebook_id: str, note_id: str, note: Not
     driver.close()
     return {"note": note_data}
 
-@app.delete("/api/notebooks/{session_id}/{notebook_id}/notes/{note_id}")
+@router.delete("/{session_id}/{notebook_id}/notes/{note_id}")
 async def delete_note(session_id: str, notebook_id: str, note_id: str):
     """Delete a note"""
     driver = get_neo4j_driver()
@@ -892,7 +459,7 @@ async def delete_note(session_id: str, notebook_id: str, note_id: str):
 
 # ==================== SEARCH ENDPOINTS ====================
 
-@app.post("/api/notebooks/{session_id}/search")
+@router.post("/{session_id}/search")
 async def search_notes(session_id: str, search: NoteSearch):
     """Search notes across notebooks"""
     driver = get_neo4j_driver()
@@ -976,7 +543,7 @@ async def search_notes(session_id: str, search: NoteSearch):
     driver.close()
     return {"results": results, "total": len(results)}
 
-@app.get("/api/notebooks/{session_id}/tags/{tag_name}")
+@router.get("/{session_id}/tags/{tag_name}")
 async def get_notes_by_tag(session_id: str, tag_name: str):
     """Get all notes with a specific tag"""
     driver = get_neo4j_driver()
@@ -1020,7 +587,7 @@ async def get_notes_by_tag(session_id: str, tag_name: str):
         "notebooks": list(notebooks_dict.values())
     }
 
-@app.get("/api/notebooks/{session_id}/tags")
+@router.get("/{session_id}/tags")
 async def get_all_tags(session_id: str):
     """Get all tags used in session notebooks"""
     driver = get_neo4j_driver()
@@ -1043,7 +610,7 @@ async def get_all_tags(session_id: str):
 
 # ==================== EXPORT/IMPORT ENDPOINTS ====================
 
-@app.get("/api/notebooks/{session_id}/{notebook_id}/export")
+@router.get("/{session_id}/{notebook_id}/export")
 async def export_notebook(session_id: str, notebook_id: str):
     """Export entire notebook as JSON"""
     driver = get_neo4j_driver()
@@ -1096,16 +663,3 @@ async def export_notebook(session_id: str, notebook_id: str):
         "notes": notes,
         "exported_at": datetime.utcnow().isoformat()
     }
-# ============================================================
-# Run Server
-# ============================================================
-
-if __name__ == "__main__":
-    import uvicorn
-    
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8888,
-        log_level="info"
-    )

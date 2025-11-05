@@ -1,0 +1,83 @@
+{
+  "focus": "poetry",
+  "project_id": null,
+  "created_at": "2025-11-05T00:53:25.977503",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-05T00:49:14.011146",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-05T00:49:14.114345",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 3-5 potential themes or subjects for the poetry (e.g., nature, loss, city life, relationships). Add these to the 'Ideas' list.\",",
+        "timestamp": "2025-11-05T00:49:14.200822",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-05T00:49:14.289818",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-05T00:49:14.501241",
+        "metadata": {}
+      },
+      {
+        "note": "test input",
+        "timestamp": "2025-11-05T00:49:39.692525",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\":\"test\",\"tools\":[],\"priority\":\"medium\"}",
+        "timestamp": "2025-11-05T00:42:22.748631",
+        "metadata": {}
+      },
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential poetry themes using a web search.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research common poetic forms and their characteristics.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Search for inspiring poets and poems online.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Create a file to store the list of brainstormed themes.\\\",\\n    \\\"tools\\\": [\\\"Write File\\\"],\\n    \\\"priority\\\": \\\"low\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Create a file to store the list of poetic forms.\\\",\\n    \\\"tools\\\": [\\\"Write File\\\"],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-05T00:53:25.875906",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm potential poetry themes using a web search.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research common poetic forms and their characteristics.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Search for inspiring poets and poems online.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Create a file to store the list of brainstormed themes.\",\n    \"tools\": [\"Write File\"],\n    \"priority\": \"low\"\n  },\n  {\n    \"description\": \"Create a file to store the list of poetic forms.\",\n    \"tools\": [\"Write File\"],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": [
+      {
+        "note": "{\"note\":\"test4\",\"timestamp\":\"2025-11-05T00:44:40.335059\",\"metadata\":{},\"completed_at\":\"2025-11-05T00:44:45.034Z\",\"original_category\":\"next_steps\"}",
+        "timestamp": "2025-11-05T00:44:44.882349",
+        "metadata": {}
+      },
+      {
+        "note": "{\"note\":\"\\\"Create a 'Progress' list entry: 'Initial brainstorming & form research started'.\\\",\",\"timestamp\":\"2025-11-05T00:48:35.685976\",\"metadata\":{},\"completed_at\":\"2025-11-05T00:48:49.585Z\",\"original_category\":\"next_steps\"}",
+        "timestamp": "2025-11-05T00:48:49.823544",
+        "metadata": {}
+      },
+      {
+        "note": "{\"note\":\"\\\"Research poetic forms (sonnet, haiku, free verse, etc.) and identify 2-3 that align with your intended theme(s). Add these to 'Ideas'.\\\",\",\"timestamp\":\"2025-11-05T00:48:52.037337\",\"metadata\":{},\"completed_at\":\"2025-11-05T00:48:58.627Z\",\"original_category\":\"next_steps\"}",
+        "timestamp": "2025-11-05T00:48:58.368859",
+        "metadata": {}
+      },
+      {
+        "note": "{\"note\":\"\\\"Write a first draft of one poem, focusing on a single chosen theme. Aim for at least 10 lines.\\\",\",\"timestamp\":\"2025-11-05T00:49:00.265490\",\"metadata\":{},\"completed_at\":\"2025-11-05T00:49:07.367Z\",\"original_category\":\"next_steps\"}",
+        "timestamp": "2025-11-05T00:49:07.163841",
+        "metadata": {}
+      }
+    ]
+  },
+  "metadata": {
+    "session_id": "sess_1762303319354"
+  }
+}
