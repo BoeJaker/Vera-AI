@@ -21,6 +21,7 @@ from langchain_community.tools.playwright.utils import (
 )
 from typing import List, Dict, Any, Type
 from pydantic import BaseModel, Field
+from functools import partial
 def ToolLoader(agent):
 
     # @tool
@@ -533,13 +534,13 @@ def ToolLoader(agent):
     return [
         Tool( 
             name="Query Fast LLM",
-            func=fast_llm_func,
+            func=partial(fast_llm_func, agent),
             description="capable of creative writing, reviewing text, summarizing, combining text, improving text. Fast but can be inaccurate"
             #"Given a query and context, reviews or summarizes the response for clarity and brevity. Acts as a quick reviewer, extractor, transformer or summarizer, not a solution provider."
         ),
         Tool( 
             name="Query Deep LLM",
-            func=deep_llm_func,
+            func=partial(deep_llm_func, agent),
             description="capable of creative writing, reviewing text, summarizing, combining text, improving text. slow and accurate"
             #"Given a query and context, reviews, improves or summarizes the response. Acts as a detailed reviewer, extractor, transformer  or summarizer, not a solution provider."
         ),
@@ -551,17 +552,17 @@ def ToolLoader(agent):
         ),
         Tool(
             name="Run Python Code",
-            func=run_python,
+            func=partial(run_python, agent),
             description="Execute a Python code snippet."
         ),
         Tool(
             name="Read File",
-            func=read_file_tool,
+            func=partial(read_file_tool, agent),
             description="Read the contents of a file. Provide the full path to the file."
         ),
         Tool(
             name="Write File",
-            func=write_file_tool,
+            func=partial(write_file_tool, agent),
             description="Given a filepath and content, saves content to a file. Input format: filepath, followed by '|||' delimiter, then the file content. Example input: /path/to/file.txt|||This is the file content. Do NOT use newlines as delimiter."
         ),
         Tool(
@@ -569,16 +570,16 @@ def ToolLoader(agent):
             func=lambda q: sorted(list(sys.modules.keys())),
             description="List all currently loaded Python modules."
         ),
-        Tool(
-            name="List Installed Programs",
-            func=lambda q: subprocess.check_output(
-                "wmic product get name" if sys.platform == "win32" else "dpkg --get-selections" if sys.platform.startswith("linux") else "brew list",
-                shell=True,
-                text=True,
-                stderr=subprocess.STDOUT
-            ),
-            description="List all installed programs on this system."
-        ),
+        # Tool(
+        #     name="List Installed Programs",
+        #     func=lambda q: subprocess.check_output(
+        #         "wmic product get name" if sys.platform == "win32" else "dpkg --get-selections" if sys.platform.startswith("linux") else "brew list",
+        #         shell=True,
+        #         text=True,
+        #         stderr=subprocess.STDOUT
+        #     ),
+        #     description="List all installed programs on this system."
+        # ),
         # Tool(
         #     name="Review Output",
         #     func=lambda q: agent.review_output(q.get("query", ""), q.get("response", "")) if isinstance(q, dict) and "query" in q and "response" in q else "Input must be a dict with 'query' and 'response' keys.",
@@ -593,17 +594,17 @@ def ToolLoader(agent):
         ),
         Tool(
             name="DuckDuckGo Web Search",
-            func=duckduckgo_search,
+            func=partial(duckduckgo_search, agent),
             description="Search the web for relevant websites using DuckDuckGo."
         ),
         Tool(
             name="DuckDuckGo News Search",
-            func=duckduckgo_search_news,
+            func=partial(duckduckgo_search_news,agent),
             description="Searches the web for news using DuckDuckGo."
         ),
             Tool(
             name="Web Search Report", 
-            func=web_search_report,
+            func=partial(web_search_report,agent),
             description="Comprehensive web search with page scraping using Playwright. Accepts search queries or existing search results. Returns detailed reports with full page content. Use when you need in-depth information from web pages."
         ),
         Tool(

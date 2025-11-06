@@ -1,0 +1,72 @@
+{
+  "focus": "focus: poetry",
+  "project_id": null,
+  "created_at": "2025-11-04T20:04:12.576454",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-04T19:59:52.393825",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-04T19:59:52.394359",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 5-10 potential themes or subjects for the poetry (e.g., nature, loss, love, urban life, introspection). Document these in the 'Ideas' section.\",",
+        "timestamp": "2025-11-04T19:59:52.394898",
+        "metadata": {}
+      },
+      {
+        "note": "\"Write a first draft of one poem (approx. 10-20 lines) exploring one of the brainstormed themes. Add 'Draft 1 - [Poem Title]' to the 'Progress' section when complete.\",",
+        "timestamp": "2025-11-04T19:59:52.395341",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research 3-5 contemporary poets whose style resonates with the desired aesthetic for this project. Note key stylistic elements in the 'Ideas' section.\",",
+        "timestamp": "2025-11-04T19:59:52.395792",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define the intended tone or mood of the poetry collection (e.g., melancholic, hopeful, cynical, playful). Add this to the 'Ideas' section.\",",
+        "timestamp": "2025-11-04T19:59:52.396346",
+        "metadata": {}
+      },
+      {
+        "note": "\"Establish a consistent writing schedule (e.g., 30 minutes per day, 2 poems per week) to ensure consistent progress. Record this commitment in the 'Ideas' section.\"",
+        "timestamp": "2025-11-04T19:59:52.396839",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-04T19:59:52.397335",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-04T19:59:52.397858",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential themes for the poetry. This will kickstart the creative process and provide a focus for the first draft.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research contemporary poets to find stylistic inspiration. Search for poets known for evocative language or themes similar to what's being considered.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Define the intended tone/mood for the poetry. This will help maintain consistency throughout the collection.\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Establish a writing schedule. A consistent schedule will increase the chances of completing the project.\\\",\\n    \\\"tools\\\": [\\\"Scheduling Assistant\\\"],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-04T20:04:12.474475",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm potential themes for the poetry. This will kickstart the creative process and provide a focus for the first draft.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research contemporary poets to find stylistic inspiration. Search for poets known for evocative language or themes similar to what's being considered.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Define the intended tone/mood for the poetry. This will help maintain consistency throughout the collection.\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Establish a writing schedule. A consistent schedule will increase the chances of completing the project.\",\n    \"tools\": [\"Scheduling Assistant\"],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762286123424"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "focus": "focus: advanced and novel network scanning techniques in python",
+  "project_id": null,
+  "created_at": "2025-10-26T20:27:26.835167",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-10-26T20:21:21.152813",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-10-26T20:21:21.153938",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research and document 3-5 existing advanced network scanning libraries in Python (e.g., Scapy, Nmap Python bindings, pyasn1) focusing on their capabilities and limitations.\",",
+        "timestamp": "2025-10-26T20:21:21.154771",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define 2-3 specific 'novel' network scanning techniques to investigate. Examples: traffic pattern analysis for service fingerprinting, passive DNS scanning integrated with active probing, or anomaly detection using machine learning on scan results. Document the feasibility and potential benefits of each.\",",
+        "timestamp": "2025-10-26T20:21:21.155326",
+        "metadata": {}
+      },
+      {
+        "note": "\"Set up a virtualized network environment (using tools like VirtualBox or Docker) for safe and controlled testing of scanning techniques. This environment should include a variety of target services and operating systems.\",",
+        "timestamp": "2025-10-26T20:21:21.155890",
+        "metadata": {}
+      },
+      {
+        "note": "\"Implement a basic Scapy-based port scanner with TCP SYN, Connect, UDP, and ICMP probes as a baseline for comparison with more advanced techniques. Focus on speed and reliability.\",",
+        "timestamp": "2025-10-26T20:21:21.156459",
+        "metadata": {}
+      },
+      {
+        "note": "\"Begin prototyping the first chosen novel technique. This should involve writing initial code to capture network traffic (if required) and begin implementing the core logic of the technique. Aim for a minimal working example.\"",
+        "timestamp": "2025-10-26T20:21:21.157023",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-10-26T20:21:21.157579",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-10-26T20:21:21.158116",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Research existing advanced network scanning libraries in Python. Focus on Scapy, Nmap Python bindings, and pyasn1. Document their capabilities and limitations.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"List available Python modules related to networking and packet manipulation to confirm compatibility and identify potential tools beyond the initially listed libraries.\\\",\\n    \\\"tools\\\": [\\\"List Python Modules\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Set up a virtualized network environment using VirtualBox or Docker. This involves a web search for tutorials/documentation for setting up a basic network with different OSes.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Run a basic Python script to check if Scapy is installed and functioning correctly. If not, install it using pip.\\\",\\n    \\\"tools\\\": [\\\"Run Python Code\\\"],\\n    \\\"priority\\\": \\\"low\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Perform a web search for examples of Scapy-based port scanners. This will provide a starting point for implementing the baseline port scanner.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-10-26T20:27:26.732662",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Research existing advanced network scanning libraries in Python. Focus on Scapy, Nmap Python bindings, and pyasn1. Document their capabilities and limitations.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"List available Python modules related to networking and packet manipulation to confirm compatibility and identify potential tools beyond the initially listed libraries.\",\n    \"tools\": [\"List Python Modules\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Set up a virtualized network environment using VirtualBox or Docker. This involves a web search for tutorials/documentation for setting up a basic network with different OSes.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Run a basic Python script to check if Scapy is installed and functioning correctly. If not, install it using pip.\",\n    \"tools\": [\"Run Python Code\"],\n    \"priority\": \"low\"\n  },\n  {\n    \"description\": \"Perform a web search for examples of Scapy-based port scanners. This will provide a starting point for implementing the baseline port scanner.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1761509758437"
+  }
+}
