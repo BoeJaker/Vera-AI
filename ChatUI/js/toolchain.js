@@ -175,15 +175,15 @@ VeraChat.prototype.updateToolchainUI = async function() {
                 <div style="display: flex; gap: 8px;">
                     <button class="panel-btn ${this.toolchainView === 'tools' ? 'active' : ''}" 
                             onclick="app.switchToolchainView('tools')">
-                        🔧 Tools
+                        Tools
                     </button>
                     <button class="panel-btn ${this.toolchainView === 'executions' ? 'active' : ''}" 
                             onclick="app.switchToolchainView('executions')">
-                        ⚙️ Executions
+                        Executions
                     </button>
                     <button class="panel-btn ${this.toolchainView === 'history' ? 'active' : ''}" 
                             onclick="app.switchToolchainView('history')">
-                        📜 History
+                        History
                     </button>
                 </div>
             </div>
@@ -232,7 +232,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
                         this.currentExecution.status === 'executing' ? '#3b82f6' : '#f59e0b';
         
         html += `
-            <div style="background: #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
+            <div class="tool-card" style=" border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
                     <div style="font-weight: 600; color: #e2e8f0;">Current Execution</div>
                     <div style="color: ${statusColor}; font-size: 12px; text-transform: uppercase;">${this.currentExecution.status}</div>
@@ -245,7 +245,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
         // Show plan if available
         if (this.currentExecution.plan) {
             html += `
-                <div style="background: #0f172a; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                <div class="tool-container" style="border-radius: 8px; padding: 16px; margin-bottom: 16px;">
                     <div style="font-weight: 600; color: #60a5fa; margin-bottom: 12px;">Execution Plan</div>
                     <div style="display: flex; flex-direction: column; gap: 8px;">
             `;
@@ -253,7 +253,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
             this.currentExecution.plan.forEach((step, i) => {
                 const toolInfo = this.availableTools && this.availableTools[step.tool];
                 html += `
-                    <div style="background: #1e293b; padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                    <div class="tool-card" style=" padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
                         <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Step ${i + 1}</div>
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
                             <div style="color: #e2e8f0; font-size: 13px; font-weight: 600;">${this.escapeHtml(step.tool)}</div>
@@ -271,7 +271,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
         // Show steps execution
         if (this.currentExecution.steps.length > 0) {
             html += `
-                <div style="background: #0f172a; border-radius: 8px; padding: 16px;">
+                <div class="tool-container" style="border-radius: 8px; padding: 16px;">
                     <div style="font-weight: 600; color: #60a5fa; margin-bottom: 12px;">Step Execution</div>
                     <div style="display: flex; flex-direction: column; gap: 12px;">
             `;
@@ -282,7 +282,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
                 const toolInfo = this.availableTools && this.availableTools[step.toolName];
                 
                 html += `
-                    <div style="background: #1e293b; border-radius: 6px; overflow: hidden;">
+                    <div class="tool-card" style=" border-radius: 6px; overflow: hidden;">
                         <div style="padding: 12px; border-left: 4px solid ${stepStatusColor};">
                             <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                                 <div>
@@ -292,13 +292,13 @@ VeraChat.prototype.renderCurrentExecution = function() {
                                 <div style="color: ${stepStatusColor}; font-size: 11px; text-transform: uppercase; white-space: nowrap;">${step.status}</div>
                             </div>
                             
-                            <div style="background: #0f172a; padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                            <div class="tool-subcard" style=" padding: 8px; border-radius: 4px; margin-bottom: 8px;">
                                 <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
                                 <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${this.escapeHtml(step.input.substring(0, 200))}${step.input.length > 200 ? '...' : ''}</div>
                             </div>
                             
                             ${step.output ? `
-                                <div style="background: #0f172a; padding: 8px; border-radius: 4px;">
+                                <divclass="tool-subcard" style=" padding: 8px; border-radius: 4px;">
                                     <div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">Output:</div>
                                     <div style="color: #cbd5e1; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto;">${this.escapeHtml(step.output)}</div>
                                 </div>
@@ -376,10 +376,10 @@ VeraChat.prototype.renderExecutionHistory = function() {
             null;
         
         html += `
-            <div style="background: #1e293b; border-radius: 8px; padding: 16px; border-left: 4px solid ${statusColor}; cursor: pointer; transition: all 0.2s;" 
+            <div class="tool-card" style=" border-radius: 8px; padding: 16px; border-left: 4px solid ${statusColor}; cursor: pointer; transition: all 0.2s;" 
                  onclick="app.viewExecution('${exec.execution_id}')"
-                 onmouseover="this.style.background='#334155'" 
-                 onmouseout="this.style.background='#1e293b'">
+                //  onmouseover="this.style.background='#334155'" 
+                //  onmouseout="this.style.background='#1e293b'">
                 <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
                     <div style="color: #e2e8f0; font-weight: 600; flex: 1; margin-right: 12px;">
                         ${this.escapeHtml(exec.query.substring(0, 80))}${exec.query.length > 80 ? '...' : ''}
@@ -563,7 +563,7 @@ VeraChat.prototype.viewExecution = async function(executionId) {
             </div>
             
             ${this.showManualExecution ? `
-                <div style="background: #0f172a; border-radius: 6px; padding: 12px;">
+                <div class="tool-subcard" style=" border-radius: 6px; padding: 12px;">
                     <div style="margin-bottom: 12px;">
                         <label style="display: block; color: #94a3b8; font-size: 12px; margin-bottom: 6px;">Select Tool:</label>
                         <select id="manual-tool-select" style="width: 100%; padding: 8px;  color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 13px;">

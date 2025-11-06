@@ -167,8 +167,8 @@ async def start_proactive_thought(session_id: str):
     vera.focus_manager.iterative_workflow( 
         max_iterations = None, 
         iteration_interval = 600,
-        auto_execute = True,
-        stream_output = True
+        auto_execute = True
+        # stream_output = True
     )
     
     return {
@@ -440,4 +440,110 @@ async def get_focus_history(session_id: str):
     except Exception as e:
         logger.error(f"Failed to get focus history: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get history: {str(e)}")
+
+@router.get("/{session_id}/boards/list")
+async def list_focus_boards(session_id: str):
+    """Get list of all saved focus board files."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    try:
+        boards = vera.focus_manager.list_saved_boards()
         
+        return {
+            "status": "success",
+            "boards": boards,
+            "total": len(boards)
+        }
+    except Exception as e:
+        logger.error(f"Failed to list focus boards: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list boards: {str(e)}")
+
+
+@router.post("/{session_id}/boards/load")
+async def load_focus_board_file(session_id: str, request: dict):
+    """Load a focus board from file."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    filename = request.get("filename")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+    
+    try:
+        success = vera.focus_manager.load_focus_board(filename)
+        
+        if not success:
+            return {
+                "status": "error",
+                "message": f"Focus board not found: {filename}"
+            }
+        
+        # Broadcast the loaded state
+        vera.focus_manager._broadcast_sync("focus_loaded", {
+            "focus": vera.focus_manager.focus,
+            "focus_board": vera.focus_manager.focus_board,
+            "filename": filename
+        })
+        
+        return {
+            "status": "success",
+            "focus": vera.focus_manager.focus,
+            "focus_board": vera.focus_manager.focus_board,
+            "project_id": vera.focus_manager.project_id,
+            "filename": filename
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to load focus board: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load: {str(e)}")
+
+
+@router.delete("/{session_id}/boards/delete")
+async def delete_focus_board_file(session_id: str, request: dict):
+    """Delete a saved focus board file."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    filename = request.get("filename")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Filename required")
+    
+    try:
+        import os
+        filepath = os.path.join(vera.focus_manager.focus_boards_dir, filename)
+        
+        if not os.path.exists(filepath):
+            return {
+                "status": "error",
+                "message": f"File not found: {filename}"
+            }
+        
+        # Delete the file
+        os.remove(filepath)
+        
+        logger.info(f"Deleted focus board file: {filepath}")
+        
+        return {
+            "status": "success",
+            "message": f"Deleted: {filename}"
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to delete focus board: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {str(e)}")

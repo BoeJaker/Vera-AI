@@ -61,6 +61,18 @@
     border-radius: 8px;
     padding: 12px;
     }
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
     .chat-panel, .graph-panel {
       background: var(--panel-bg);
       border-color: var(--border);
@@ -178,6 +190,18 @@
       border: 1px solid var(--border);
       border-radius: 8px;
       padding: 12px;
+    }
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
     }
     .chat-panel, .graph-panel {
       background: var(--panel-bg);
@@ -350,6 +374,18 @@
       border-radius: 8px;
       padding: 12px;
     }
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
     .chat-panel, .graph-panel {
       background: var(--bg);
       border: 1px solid var(--border);
@@ -486,7 +522,18 @@
       border-radius: 8px;
       padding: 12px;
     }
-
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
     .chat-panel, .graph-panel {
       background: var(--bg);
       border: 2px solid var(--border);
@@ -701,7 +748,18 @@ retroGaming: {
         border-radius: 8px;
         padding: 12px;
     }
-
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
     .chat-panel, .graph-panel {
       background: var(--bg);
       border: 2px solid var(--border);
@@ -847,7 +905,18 @@ sunsetGlow: {
       border-radius: 8px;
       padding: 12px;
     }
-
+    .tool-subcard{
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
+    .tool-container{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    }
     .chat-panel, .graph-panel {
       background: var(--bg);
       border: 1px solid var(--border);

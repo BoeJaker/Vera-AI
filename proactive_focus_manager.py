@@ -1,5 +1,5 @@
 
-
+ 
 import asyncio
 import threading
 import time
@@ -80,13 +80,20 @@ class ProactiveFocusManager:
             return
         
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.broadcast_to_websockets(event_type, data))
-            loop.close()
+            # Try to get the running loop
+            try:
+                loop = asyncio.get_running_loop()
+                # If we're in an async context, schedule the broadcast
+                asyncio.ensure_future(self.broadcast_to_websockets(event_type, data))
+            except RuntimeError:
+                # No running loop, create a new one (safe in threads)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(self.broadcast_to_websockets(event_type, data))
+                loop.close()
         except Exception as e:
-            print(f"[FocusManager] Broadcast error: {e}")
-    
+            # Silently fail - broadcasting is not critical
+            print(f"[FocusManager] Broadcast failed (non-critical): {e}")
     @staticmethod
     def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -458,7 +465,34 @@ class ProactiveFocusManager:
                     print(f"[FocusManager] Error reading {filename}: {e}")
         
         return sorted(boards, key=lambda x: x.get("created_at", ""), reverse=True)
-    
+        
+    def _parse_json_response(self, response: str) -> list:
+            """Parse JSON response, handling markdown code fences and other formatting."""
+            # Remove markdown code fences if present
+            cleaned = response.strip()
+            if cleaned.startswith('```'):
+                # Remove opening fence
+                lines = cleaned.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]
+                # Remove closing fence
+                if lines and lines[-1].strip() == '```':
+                    lines = lines[:-1]
+                cleaned = '\n'.join(lines)
+            
+            try:
+                parsed = json.loads(cleaned)
+                if isinstance(parsed, list):
+                    return parsed
+                else:
+                    return [parsed]
+            except:
+                # Fallback: split by newlines and filter
+                lines = [line.strip() for line in cleaned.split('\n') if line.strip()]
+                # Filter out lines that look like JSON artifacts
+                lines = [line for line in lines if not line in ['[', ']', '{', '}']]
+                return lines if lines else [response]
+
     def generate_ideas(self, context: Optional[str] = None) -> List[str]:
         """Use LLM to generate ideas for the current focus."""
         if not self.focus:
@@ -504,14 +538,8 @@ class ProactiveFocusManager:
             response = f"Error streaming ideas response: {str(e)}"
             self._broadcast_sync("idea_generation_error", {"error": str(e)})
         
-        # Parse response
-        try:
-            ideas = json.loads(response)
-            if not isinstance(ideas, list):
-                ideas = [response]
-        except:
-            # Fallback: split by newlines
-            ideas = [line.strip() for line in response.split('\n') if line.strip()]
+        # Parse response using helper
+        ideas = self._parse_json_response(response)
         
         # Add to focus board
         for idea in ideas:
@@ -559,12 +587,8 @@ class ProactiveFocusManager:
             response = f"Error streaming ideas response: {str(e)}"
             self._broadcast_sync("idea_generation_error", {"error": str(e)})
         
-        try:
-            steps = json.loads(response)
-            if not isinstance(steps, list):
-                steps = [response]
-        except:
-            steps = [line.strip() for line in response.split('\n') if line.strip()]
+        # Parse response using helper
+        steps = self._parse_json_response(response)
         
         for step in steps:
             self.add_to_focus_board("next_steps", step)
@@ -624,27 +648,32 @@ class ProactiveFocusManager:
         except:
             actions = [{"description": response, "tools": [], "priority": "medium"}]
         
+        # Add each action individually to the focus board
         for action in actions:
-            self.add_to_focus_board("actions", json.dumps(action), 
-                                   metadata=action)
+            # Use the description as the note, store full action in metadata
+            description = action.get("description", str(action))
+            self.add_to_focus_board("actions", description, metadata=action)
         
         return actions
-    
+
     def handoff_to_toolchain(self, action: Dict[str, Any]):
         """Hand off an action to the ToolChainPlanner for decomposition and execution."""
-        print(f"[FocusManager] Handing off to toolchain: {action.get('description')}")
+        description = action.get('description', str(action))
+        print(f"[FocusManager] Handing off to toolchain: {description}")
         
         # Build query for toolchain
         query = f"""
-        Project: {self.focus}
-        Action: {action.get('description')}
-        Suggested Tools: {action.get('tools', [])}
-        Priority: {action.get('priority', 'medium')}
+Project: {self.focus}
+Action: {description}
+Suggested Tools: {action.get('tools', [])}
+Priority: {action.get('priority', 'medium')}
+
+Context:
+- Current Progress: {json.dumps(self.focus_board.get('progress', [])[-3:], indent=2)}
+- Related Issues: {json.dumps(self.focus_board.get('issues', [])[-3:], indent=2)}
+"""
         
-        Context:
-        - Current Progress: {json.dumps(self.focus_board.get('progress', [])[-3:], indent=2)}
-        - Related Issues: {json.dumps(self.focus_board.get('issues', [])[-3:], indent=2)}
-        """
+        print(f"[FocusManager] Toolchain query:\n{query}")
         
         self._broadcast_sync("toolchain_handoff", {
             "action": action,
@@ -653,13 +682,29 @@ class ProactiveFocusManager:
         
         # Execute via toolchain
         try:
+            print(f"[FocusManager] Calling agent.toolchain.execute_tool_chain...")
+            
+            # Check if toolchain exists
+            if not hasattr(self.agent, 'toolchain'):
+                error_msg = "Agent does not have a toolchain"
+                print(f"[FocusManager] ERROR: {error_msg}")
+                self.add_to_focus_board("issues", error_msg)
+                return None
+            
             result = ""
+            chunk_count = 0
             for chunk in self.agent.toolchain.execute_tool_chain(query):
                 result += str(chunk)
+                chunk_count += 1
+                if chunk_count % 10 == 0:  # Log every 10 chunks
+                    print(f"[FocusManager] Received {chunk_count} chunks from toolchain...")
+            
+            print(f"[FocusManager] Toolchain execution complete. Total chunks: {chunk_count}")
+            print(f"[FocusManager] Result preview: {result[:200]}...")
             
             # Update focus board with results
             self.add_to_focus_board("progress", 
-                                   f"Completed: {action.get('description')}")
+                                   f"Completed: {description}")
             
             if result:
                 self.add_to_focus_board("progress", 
@@ -667,12 +712,22 @@ class ProactiveFocusManager:
             
             return result
             
+        except AttributeError as e:
+            error_msg = f"Toolchain attribute error: {e}"
+            print(f"[FocusManager] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.add_to_focus_board("issues", error_msg)
+            return None
+            
         except Exception as e:
             error_msg = f"Toolchain execution failed: {e}"
             print(f"[FocusManager] {error_msg}")
+            import traceback
+            traceback.print_exc()
             self.add_to_focus_board("issues", error_msg)
             return None
-    
+        
     def update_latest_conversation(self, conversation: str):
         self.latest_conversation = conversation
     
@@ -749,7 +804,70 @@ class ProactiveFocusManager:
                     self.execute_goal_with_vera(proactive_thought)
             
             time.sleep(self.proactive_interval)
+
+    def trigger_proactive_thought(self):
+        """
+        Manually trigger a single proactive thought generation.
+        This runs in the current thread and returns the thought.
+        """
+        if not self.focus:
+            print("[FocusManager] Cannot generate thought: No focus set")
+            return None
+        
+        print("[FocusManager] Manually triggered proactive thought generation...")
+        
+        # Generate proactive thought with streaming
+        proactive_thought = self._generate_proactive_thought_streaming()
+        
+        if proactive_thought:
+            # Add to focus board
+            self.add_to_focus_board("actions", proactive_thought)
+            
+            # Evaluate if actionable
+            evaluation_prompt = f"""
+            Evaluate this proactive thought: {proactive_thought}
+            
+            Is it actionable given the tools available and relevant to the current focus?
+            Tools available: {[tool.name for tool in self.agent.tools]}
+            Focus: {self.focus}
+            
+            If actionable, respond with 'YES'. If not, respond with 'NO' and brief reason.
+            """
+            
+            try:
+                evaluation = self.agent.fast_llm.invoke(evaluation_prompt)
+                
+                if evaluation.strip().lower().startswith("yes"):
+                    self._broadcast_sync("proactive_executing", {"thought": proactive_thought})
+                    print(f"[FocusManager] Thought deemed actionable, executing...")
+                    self.execute_goal_with_vera(proactive_thought)
+                else:
+                    print(f"[FocusManager] Thought not actionable: {evaluation}")
+                    self._broadcast_sync("proactive_thought_generated", {
+                        "thought": proactive_thought,
+                        "actionable": False,
+                        "reason": evaluation
+                    })
+            except Exception as e:
+                print(f"[FocusManager] Error evaluating thought: {e}")
+            
+            return proactive_thought
+        
+        return None
     
+    def trigger_proactive_thought_async(self):
+        """
+        Trigger proactive thought generation in a background thread.
+        Returns immediately without blocking.
+        """
+        import threading
+        
+        def run():
+            self.trigger_proactive_thought()
+        
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        print("[FocusManager] Started proactive thought generation in background")
     def _generate_proactive_thought_streaming(self) -> Optional[str]:
         """Generate proactive thought with streaming support."""
         print("[FocusManager] Generating proactive thought (streaming)...")
@@ -839,7 +957,6 @@ class ProactiveFocusManager:
                 "goal": goal,
                 "error": str(e)
             })
-    
     def iterative_workflow(self, max_iterations: Optional[int] = None, 
                           iteration_interval: int = 300,
                           auto_execute: bool = True):
@@ -891,12 +1008,35 @@ class ProactiveFocusManager:
                 if auto_execute and actions:
                     executed_count = 0
                     for action in actions:
+                        # Parse action to ensure it's a dict
                         if isinstance(action, dict):
-                            priority = action.get('priority', 'medium')
-                            if priority == 'high' and executed_count < 2:  # Limit to 2 per iteration
-                                print(f"[FocusManager] Executing high-priority action...")
-                                self.handoff_to_toolchain(action)
-                                executed_count += 1
+                            action_dict = action
+                        elif isinstance(action, str):
+                            try:
+                                # Try to parse JSON string
+                                import json
+                                action_dict = json.loads(action)
+                            except:
+                                # Create minimal action dict
+                                action_dict = {
+                                    'description': action,
+                                    'priority': 'medium',
+                                    'tools': []
+                                }
+                        else:
+                            # Skip invalid actions
+                            print(f"[FocusManager] Skipping invalid action: {type(action)}")
+                            continue
+                        
+                        priority = action_dict.get('priority', 'medium')
+                        description = action_dict.get('description', str(action_dict))
+                        
+                        print(f"[FocusManager] Action priority={priority}, description={description[:50]}...")
+                        
+                        if priority == 'high' and executed_count < 2:  # Limit to 2 per iteration
+                            print(f"[FocusManager] Executing high-priority action: {description}")
+                            self.handoff_to_toolchain(action_dict)
+                            executed_count += 1
                         
                         # Check CPU before next execution
                         cpu_usage = self._count_ollama_processes()
@@ -927,6 +1067,8 @@ class ProactiveFocusManager:
                 
             except Exception as e:
                 print(f"[FocusManager] Error in iteration {iteration}: {e}")
+                import traceback
+                traceback.print_exc()
                 self.add_to_focus_board("issues", f"Workflow error in iteration {iteration}: {e}")
                 
                 # Broadcast error
@@ -940,6 +1082,263 @@ class ProactiveFocusManager:
         
         print(f"\n[FocusManager] Iterative workflow completed after {iteration} iterations")
         self._broadcast_sync("workflow_completed", {"total_iterations": iteration})
+    
+    # Add individual workflow stage methods for granular control
+    def generate_ideas_stage(self, context: Optional[str] = None):
+        """Run just the ideas generation stage."""
+        print("[FocusManager] Running ideas generation stage...")
+        self._broadcast_sync("stage_started", {"stage": "ideas"})
+        
+        try:
+            ideas = self.generate_ideas(context=context)
+            self._broadcast_sync("stage_completed", {
+                "stage": "ideas",
+                "count": len(ideas)
+            })
+            return ideas
+        except Exception as e:
+            print(f"[FocusManager] Ideas stage error: {e}")
+            self._broadcast_sync("stage_error", {"stage": "ideas", "error": str(e)})
+            return []
+    
+    def generate_next_steps_stage(self, context: Optional[str] = None):
+        """Run just the next steps generation stage."""
+        print("[FocusManager] Running next steps generation stage...")
+        self._broadcast_sync("stage_started", {"stage": "next_steps"})
+        
+        try:
+            steps = self.generate_next_steps(context=context)
+            self._broadcast_sync("stage_completed", {
+                "stage": "next_steps",
+                "count": len(steps)
+            })
+            return steps
+        except Exception as e:
+            print(f"[FocusManager] Next steps stage error: {e}")
+            self._broadcast_sync("stage_error", {"stage": "next_steps", "error": str(e)})
+            return []
+    
+    def generate_actions_stage(self, context: Optional[str] = None):
+        """Run just the actions generation stage."""
+        print("[FocusManager] Running actions generation stage...")
+        self._broadcast_sync("stage_started", {"stage": "actions"})
+        
+        try:
+            actions = self.generate_actions(context=context)
+            self._broadcast_sync("stage_completed", {
+                "stage": "actions",
+                "count": len(actions)
+            })
+            return actions
+        except Exception as e:
+            print(f"[FocusManager] Actions stage error: {e}")
+            self._broadcast_sync("stage_error", {"stage": "actions", "error": str(e)})
+            return []
+    
+    def execute_actions_stage(self, max_executions: int = 2, priority_filter: str = "high"):
+        """Execute actions from the focus board."""
+        print(f"[FocusManager] Running action execution stage (max={max_executions}, priority={priority_filter})...")
+        self._broadcast_sync("stage_started", {"stage": "execute_actions"})
+        
+        actions = self.focus_board.get("actions", [])
+        print(f"[FocusManager] Found {len(actions)} actions in focus board")
+        
+        if not actions:
+            print("[FocusManager] No actions to execute")
+            self._broadcast_sync("stage_completed", {
+                "stage": "execute_actions",
+                "count": 0
+            })
+            return 0
+        
+        executed_count = 0
+        
+        for idx, action in enumerate(actions):
+            if executed_count >= max_executions:
+                print(f"[FocusManager] Reached max executions ({max_executions})")
+                break
+            
+            print(f"[FocusManager] Processing action {idx}: {type(action)} - {str(action)[:100]}")
+            
+            # Parse action
+            try:
+                action_dict = self.parseActionItem(action)
+                print(f"[FocusManager] Parsed action: description='{action_dict.get('description', '')[:50]}...', priority={action_dict.get('priority')}")
+            except Exception as e:
+                print(f"[FocusManager] Failed to parse action {idx}: {e}")
+                continue
+            
+            priority = action_dict.get('priority', 'medium')
+            
+            # Filter by priority (None means execute all)
+            if priority_filter and priority_filter.lower() != 'all' and priority != priority_filter:
+                print(f"[FocusManager] Skipping action {idx}: priority {priority} doesn't match filter {priority_filter}")
+                continue
+            
+            description = action_dict.get('description', '')
+            print(f"[FocusManager] Executing action {idx}: {description[:100]}...")
+            
+            try:
+                result = self.handoff_to_toolchain(action_dict)
+                print(f"[FocusManager] Action {idx} completed with result: {str(result)[:100] if result else 'None'}")
+                executed_count += 1
+                
+                # Note: We don't move to completed here because handoff_to_toolchain 
+                # already updates the focus board
+                
+            except Exception as e:
+                error_msg = f"Action execution failed: {e}"
+                print(f"[FocusManager] {error_msg}")
+                import traceback
+                traceback.print_exc()
+                self.add_to_focus_board("issues", error_msg)
+            
+            # Check CPU
+            cpu_usage = self._count_ollama_processes()
+            if cpu_usage >= self.cpu_threshold:
+                print(f"[FocusManager] CPU threshold reached ({cpu_usage:.1f}%), stopping execution")
+                break
+        
+        print(f"[FocusManager] Executed {executed_count} actions")
+        self._broadcast_sync("stage_completed", {
+            "stage": "execute_actions",
+            "count": executed_count
+        })
+        
+        return executed_count
+    
+    
+    def parseActionItem(self, item):
+        """Parse an action item into a standard dict format."""
+        print(f"[FocusManager] parseActionItem input type: {type(item)}")
+        
+        if isinstance(item, dict):
+            # Already a dict, check if it has expected fields
+            if 'description' in item:
+                print(f"[FocusManager] Dict with description: {item.get('description', '')[:50]}")
+                return {
+                    'description': item.get('description', ''),
+                    'tools': item.get('tools', []),
+                    'priority': item.get('priority', 'medium'),
+                    'metadata': item.get('metadata', {})
+                }
+            elif 'note' in item:
+                # Try to parse note field
+                note = item['note']
+                print(f"[FocusManager] Dict with note field: {note[:100]}")
+                
+                # Remove markdown code fences if present
+                if isinstance(note, str):
+                    note = note.strip()
+                    if note.startswith('```'):
+                        lines = note.split('\n')
+                        if lines[0].startswith('```'):
+                            lines = lines[1:]
+                        if lines and lines[-1].strip() == '```':
+                            lines = lines[:-1]
+                        note = '\n'.join(lines).strip()
+                
+                try:
+                    parsed = json.loads(note)
+                    print(f"[FocusManager] Parsed note as JSON: {parsed}")
+                    if isinstance(parsed, dict) and 'description' in parsed:
+                        return {
+                            'description': parsed.get('description', ''),
+                            'tools': parsed.get('tools', []),
+                            'priority': parsed.get('priority', 'medium'),
+                            'metadata': item.get('metadata', {})
+                        }
+                    elif isinstance(parsed, list) and len(parsed) > 0:
+                        # If it's a list, take the first item
+                        first_item = parsed[0]
+                        if isinstance(first_item, dict):
+                            return {
+                                'description': first_item.get('description', str(first_item)),
+                                'tools': first_item.get('tools', []),
+                                'priority': first_item.get('priority', 'medium'),
+                                'metadata': item.get('metadata', {})
+                            }
+                except json.JSONDecodeError as e:
+                    print(f"[FocusManager] Note is not valid JSON: {e}")
+                    # Treat note as plain text description
+                    return {
+                        'description': note,
+                        'tools': [],
+                        'priority': 'medium',
+                        'metadata': item.get('metadata', {})
+                    }
+                
+                # Fallback: use note as description
+                return {
+                    'description': note,
+                    'tools': [],
+                    'priority': 'medium',
+                    'metadata': item.get('metadata', {})
+                }
+            else:
+                # Convert entire dict to description
+                print(f"[FocusManager] Dict without standard fields, converting to string")
+                return {
+                    'description': str(item),
+                    'tools': [],
+                    'priority': 'medium',
+                    'metadata': {}
+                }
+                
+        elif isinstance(item, str):
+            print(f"[FocusManager] String item: {item[:100]}")
+            
+            # Remove markdown code fences
+            item = item.strip()
+            if item.startswith('```'):
+                lines = item.split('\n')
+                if lines[0].startswith('```'):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == '```':
+                    lines = lines[:-1]
+                item = '\n'.join(lines).strip()
+            
+            # Try to parse as JSON
+            try:
+                parsed = json.loads(item)
+                print(f"[FocusManager] Parsed string as JSON: {type(parsed)}")
+                
+                if isinstance(parsed, dict):
+                    return {
+                        'description': parsed.get('description', str(parsed)),
+                        'tools': parsed.get('tools', []),
+                        'priority': parsed.get('priority', 'medium'),
+                        'metadata': {}
+                    }
+                elif isinstance(parsed, list) and len(parsed) > 0:
+                    first_item = parsed[0]
+                    if isinstance(first_item, dict):
+                        return {
+                            'description': first_item.get('description', str(first_item)),
+                            'tools': first_item.get('tools', []),
+                            'priority': first_item.get('priority', 'medium'),
+                            'metadata': {}
+                        }
+            except json.JSONDecodeError:
+                print(f"[FocusManager] String is not JSON, using as plain description")
+                pass
+            
+            # Return as simple action
+            return {
+                'description': item,
+                'priority': 'medium',
+                'tools': [],
+                'metadata': {}
+            }
+        else:
+            # Unknown type, convert to string
+            print(f"[FocusManager] Unknown type {type(item)}, converting to string")
+            return {
+                'description': str(item),
+                'priority': 'medium',
+                'tools': [],
+                'metadata': {}
+            }
     
     def _review_current_state(self) -> str:
         """Review and summarize current focus board state."""
