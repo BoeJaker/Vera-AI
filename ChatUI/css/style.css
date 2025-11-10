@@ -1077,7 +1077,7 @@ gap: 12px;
 
 .panel-btn.active {
     background: var(--accent);
-    color: white;
+    color: var(--text-inverted)
 }
 
 .panel-btn:disabled {

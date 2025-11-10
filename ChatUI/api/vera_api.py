@@ -6,6 +6,7 @@ Compatible with the frontend chat interface
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+
 from typing import List, Dict, Any
 import json
 import asyncio
@@ -21,20 +22,28 @@ from neo4j import GraphDatabase
 # Import existing modules
 
 from Vera.vera import Vera
-from Vera.ChatUI.vectorstore import *
-from Vera.ChatUI.toolchain import *
-from Vera.ChatUI.graph import *
-from Vera.ChatUI.chat import *
-from Vera.ChatUI.memory import *
-from Vera.ChatUI.proactivefocus import *
-from Vera.ChatUI.notebook import *
-from Vera.ChatUI.schemas import *
+import Vera.ChatUI.api.vectorstore_api as vectorstore_api
+import Vera.ChatUI.api.toolchain_api as toolchain_api
+import Vera.ChatUI.api.graph_api as graph_api
+import Vera.ChatUI.api.chat_api as chat_api
+import Vera.ChatUI.api.orchestrator_api as orchestrator_api
+import Vera.ChatUI.api.memory_api as memory_api
+import Vera.ChatUI.api.proactivefocus_api as proactivefocus_api
+import Vera.ChatUI.api.notebook_api as notebook_api
+import Vera.ChatUI.api.schemas as schemas
+import Vera.ChatUI.api.session as session
+# from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
-from Vera.ChatUI.state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+# ============================================================
+# Logging setup
+# ============================================================
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============================================================
+# FastAPI setup
+# ============================================================
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -52,20 +61,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(chat.router)
-app.include_router(chat.wsrouter)
-app.include_router(graph.router)
-app.include_router(toolchain.router)
-app.include_router(toolchain.wsrouter)
-app.include_router(vectorstore.router)
-app.include_router(memory.router)
-app.include_router(proactivefocus.router)
-app.include_router(proactivefocus.wsrouter)
-app.include_router(notebook.router)
+# ============================================================
+# Router setup
+# ============================================================
 
+app.include_router(chat_api.router)
+app.include_router(chat_api.wsrouter)
+app.include_router(graph_api.router)
+app.include_router(toolchain_api.router)
+app.include_router(toolchain_api.wsrouter)
+app.include_router(orchestrator_api.router)
+app.include_router(vectorstore_api.router)
+app.include_router(memory_api.router)
+app.include_router(proactivefocus_api.router)
+app.include_router(proactivefocus_api.wsrouter)
+app.include_router(session.router)
+app.include_router(notebook_api.router)
+
+# ============================================================
 # Global storage
-vera_instances: Dict[str, Vera] = {}
-sessions: Dict[str, Dict[str, Any]] = {}
+# ============================================================
+
+# vera_instances: Dict[str, Vera] = {}
+# sessions: Dict[str, Dict[str, Any]] = {}
 tts_queue: List[Dict[str, Any]] = []
 tts_playing = False
 
@@ -75,7 +93,7 @@ active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
 websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
 
 # ============================================================
-# Health and Info
+# Health and Info Endpoints
 # ============================================================
 
 @app.get("/health")

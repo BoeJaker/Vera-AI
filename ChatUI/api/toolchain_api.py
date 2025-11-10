@@ -13,14 +13,8 @@ from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisco
 # Global state references — adjust to your actual app context
 # ============================================================
 # (Assuming these come from your main session manager / memory module)
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
-
-from session import (
-    sessions,
-    get_or_create_vera,
-)
-
-from schemas import ToolchainRequest  # if defined elsewhere
+from Vera.ChatUI.api.session import sessions, toolchain_executions, active_toolchains, websocket_connections,  get_or_create_vera
+from Vera.ChatUI.api.schemas import ToolchainRequest  # if defined elsewhere
 
 # ============================================================
 # Logging setup
@@ -33,6 +27,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/toolchain", tags=["toolchain"])
 wsrouter = APIRouter(prefix="/ws/toolchain", tags=["wstoolchain"])
 
+# ============================================================
+# Toolchain Endpoints
+# ============================================================
 def create_toolchain_execution(session_id: str, query: str) -> str:
     """Create a new toolchain execution record."""
     execution_id = str(uuid.uuid4())

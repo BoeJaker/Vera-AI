@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vera Chat - Enhanced</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/standalone/umd/vis-network.min.js"></script>
+    <!-- Syntax Highlighting-->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <div class="container">
-        <div class="header">
+        <div class="header" id="header">
             <div>
                 <h1 style="font-size: 20px; margin-bottom: 4px;">Vera Chat</h1>
                 <div style="font-size: 12px; color: #94a3b8;">
@@ -22,6 +26,7 @@
                     ➕ Add Column
                 </button>
             </div> -->
+            
         <div id="vera-robot"></div>
         </div>
 
@@ -116,17 +121,19 @@
             <div class="context-menu-item" data-action="extract-entities">🧠 Extract Entities</div>
         </div>
     </div>
+    <div id="floating-widgets"></div>
 
     <script src="tamagochi/tamagochi_robot.js"></script> 
     <script src="js/graph-addon.js"></script>
-    <!-- <script src="js/notebook.js"></script> -->
+
     <!-- <script>const app = new VeraChat();</script>  -->
     <script src="js/chat.js"></script>
-    
+    <!-- <script src="js/notebook.js"></script>     -->
     <script src="js/toolchain.js"></script>
     <script src="js/proactive-focus-manager.js?v=3"></script>
     <script src="js/memory.js?v=3"></script>
     <script src="js/notebook.js"></script>
     <script src="js/theme.js?v=3"></script>
+    <script src="js/canvas.js?v=3"></script>
 </body>
 </html>
