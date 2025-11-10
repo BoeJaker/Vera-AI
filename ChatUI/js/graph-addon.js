@@ -339,7 +339,7 @@
         /**
          * Handle context menu actions
          */
-        handleContextMenuAction: function(action) {
+         handleContextMenuAction: function(action) {
             this.hideContextMenu();
             
             if (!this.contextMenuNode) return;
@@ -375,6 +375,140 @@
                     console.log('Ask Vera action for node:', nodeName);
                     alert(`Ask Vera about: ${nodeName}\n\nYou can ask:\n- Questions about this node\n- Request analysis\n- Get recommendations`);
                     break;
+            }
+        },
+        
+        /**
+         * Expand node to show all its connections
+         */
+        expandNode: async function(nodeId) {
+            const nodeData = this.nodesData[nodeId];
+            const nodeName = nodeData ? nodeData.display_name : nodeId;
+            
+            console.log('Expanding node:', nodeId);
+            
+            try {
+                // Get session ID from app
+                const sessionId = window.app ? window.app.sessionId : null;
+                if (!sessionId) {
+                    alert('Session ID not available');
+                    return;
+                }
+                
+                // Show loading state
+                const panel = document.getElementById('property-panel');
+                const content = document.getElementById('panel-content');
+                const originalContent = content.innerHTML;
+                
+                content.innerHTML = `
+                    <div style="text-align:center; padding:40px; color:#94a3b8;">
+                        <div style="font-size:24px; margin-bottom:16px;">🔄</div>
+                        <div style="font-size:14px;">Expanding connections for<br/><strong>${this.escapeHtml(nodeName)}</strong></div>
+                        <div style="margin-top:12px; font-size:12px; opacity:0.7;">Loading subgraph...</div>
+                    </div>
+                `;
+                
+                // Fetch subgraph from API
+                const response = await fetch('http://llm.int:8888/api/memory/subgraph', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        seed_entity_ids: [nodeId],
+                        depth: 2
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (!data.subgraph || !data.subgraph.nodes) {
+                    throw new Error('No subgraph data received');
+                }
+                
+                // Add new nodes to the graph
+                const newNodes = data.subgraph.nodes.map(n => ({
+                    id: n.id,
+                    label: n.properties?.text?.substring(0, 30) || n.id,
+                    title: JSON.stringify(n.properties, null, 2),
+                    color: n.properties?.type === 'extracted_entity' ? '#10b981' : '#3b82f6',
+                    size: 25,
+                    properties: n.properties,
+                    type: n.labels
+                }));
+                
+                const newEdges = data.subgraph.rels.map((r, idx) => ({
+                    id: `expanded-${nodeId}-${idx}`,
+                    from: r.start,
+                    to: r.end,
+                    label: r.type || r.properties?.rel || 'RELATED_TO',
+                    title: r.type || r.properties?.rel || 'RELATED_TO',
+                    color: { color: '#f59e0b', highlight: '#fbbf24' },
+                    width: 2
+                }));
+                
+                // Update network
+                const existingNodeIds = new Set(network.body.data.nodes.getIds());
+                const nodesToAdd = newNodes.filter(n => !existingNodeIds.has(n.id));
+                
+                if (nodesToAdd.length > 0) {
+                    network.body.data.nodes.add(nodesToAdd);
+                }
+                
+                network.body.data.edges.add(newEdges);
+                
+                // Rebuild node data
+                this.buildNodesData();
+                
+                // Focus on the expanded area
+                setTimeout(() => {
+                    const allNewNodeIds = newNodes.map(n => n.id);
+                    network.fit({
+                        nodes: allNewNodeIds,
+                        animation: { duration: 1000, easingFunction: 'easeInOutQuad' }
+                    });
+                }, 100);
+                
+                // Show success message
+                content.innerHTML = `
+                    <div style="text-align:center; padding:30px; color:#10b981;">
+                        <div style="font-size:32px; margin-bottom:16px;">✓</div>
+                        <div style="font-size:14px; font-weight:600; margin-bottom:8px;">Expansion Complete</div>
+                        <div style="font-size:12px; color:#94a3b8;">
+                            Added ${nodesToAdd.length} new nodes and ${newEdges.length} relationships
+                        </div>
+                        <button onclick="window.GraphAddon.showNodeDetails('${nodeId}', false)" style="
+                            margin-top:20px; background:#3b82f6; color:white; border:none; 
+                            padding:10px 20px; border-radius:6px; cursor:pointer; font-weight:600;
+                        ">View Node Details</button>
+                    </div>
+                `;
+                
+                // Auto-close after 2 seconds and show node details
+                setTimeout(() => {
+                    this.showNodeDetails(nodeId, false);
+                }, 2000);
+                
+            } catch (error) {
+                console.error('Error expanding node:', error);
+                
+                const content = document.getElementById('panel-content');
+                content.innerHTML = `
+                    <div style="text-align:center; padding:30px; color:#ef4444;">
+                        <div style="font-size:32px; margin-bottom:16px;">⚠️</div>
+                        <div style="font-size:14px; font-weight:600; margin-bottom:8px;">Expansion Failed</div>
+                        <div style="font-size:12px; color:#94a3b8; margin-bottom:20px;">
+                            ${this.escapeHtml(error.message)}
+                        </div>
+                        <button onclick="window.GraphAddon.showNodeDetails('${nodeId}', false)" style="
+                            background:#3b82f6; color:white; border:none; 
+                            padding:10px 20px; border-radius:6px; cursor:pointer; font-weight:600;
+                        ">Back to Node Details</button>
+                    </div>
+                `;
             }
         },
         

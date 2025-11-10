@@ -121,9 +121,9 @@
         }
 
         .panel-btn {
-            background: #1e293b;
+            background: var(--accent);
             border: 1px solid #334155;
-            color: #cbd5e1;
+            color: var(--text-inverted);
             padding: 4px 8px;
             border-radius: 4px;
             cursor: pointer;

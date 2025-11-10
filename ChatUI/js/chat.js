@@ -52,7 +52,7 @@
                 { id: 'graph', label: '📊 Knowledge Graph', columnId: 2 },
                 { id: 'memory', label: '📄 Memory', columnId: 2 },
                 { id: 'notebook', label: '📓 Notebook', columnId: 2 },
-                { id: 'vector', label: '🔍 Vector Store', columnId: 2 },
+                { id: 'canvas', label: '🎨 Canvas', columnId: 2 },
                 { id: 'toolchain', label: '🔧 Toolchain', columnId: 2 },
                 { id: 'focus', label: '🎯 Proactive Focus', columnId: 2 },
                 { id: 'orchestration', label: '🎻 Orchestration', columnId: 2 },
@@ -127,7 +127,14 @@
                 resizer.dataset.resizerId = id - 1;
                 mainContent.appendChild(resizer);
             }
-            
+            // const header = document.getElementById('header');
+            // const statusIndicator = document.createElement('div');
+            // statusIndicator.innerHTML = `
+            //     <span style="padding: 6px 12px; background: ${this.focusRunning ? '#10b981' : '#6b7280'}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">
+            //         ${this.focusRunning ? '● RUNNING' : '○ STOPPED'}
+            //     </span>`;
+            // header.appendChild(statusIndicator);
+
             const column = document.createElement('div');
             column.className = 'column';
             column.dataset.columnId = id;
@@ -135,9 +142,9 @@
                 <div class="column-header">
                     <span class="column-title" data-column-title="${id}">Column ${id}</span>
 
-                        <button class="column-btn" onclick="app.addColumn()" style="padding: 6px 12px; font-size: 12px;">
+                        ${this.columns.length >= 1 ? `<button class="column-btn" onclick="app.addColumn()" style="padding: 6px 12px; font-size: 12px;">
                             ➕ Add Column
-                        </button>
+                        </button>` : ''}
 
                     <div class="column-controls">
                         ${this.columns.length >= 2 ? `<button class="column-btn" onclick="app.removeColumn(${id})">✕ Remove</button>` : ''}
@@ -319,9 +326,9 @@
                         </div>
                     `;
                     
-                case 'vector':
-                    return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">Vector Store</h2><p style="color: #94a3b8;">Vector store coming soon...</p></div>`;
-                    
+                case 'canvas':
+                    return `<div id="tab-canvas" style="height: 100%; display: flex; flex-direction: column;"></div>`;
+                
                 case 'focus':
                     // Container that proactive-focus-manager.js expects
                     return `
@@ -450,6 +457,14 @@
                 }, 50);
             }
             
+            if (tabId === 'canvas') {
+                setTimeout(() => {
+                    if (this.initCanvasTab) {
+                        this.initCanvasTab();
+                    }
+                }, 50);
+            }
+
             if (tabId === 'memory') {
                 setTimeout(() => {
                     if (this.loadMemoryData) {
@@ -501,72 +516,6 @@
                 }
             }, 50);
         }
-        }
-
-        initThemeSettings() {
-            // Get saved theme or fallback
-            const themeName = localStorage.getItem('theme') || 'default';
-            const theme = (window.themes && window.themes[themeName] && window.themes[themeName].graph)
-                ? window.themes[themeName].graph
-                : {
-                    nodeFont: '#ffffff',
-                    edgeColor: '#999999',
-                    background: '#0f172a'
-                };
-
-            const settingsContainer = document.getElementById('theme-settings');
-            if (!settingsContainer) return;
-
-            // Create theme UI if not already present
-            settingsContainer.innerHTML = `
-                <div style="margin-top: 20px;">
-                    <h3 style="margin-bottom: 8px;">Graph Appearance</h3>
-                    <label style="display: block; margin-bottom: 8px;">
-                        Node Font Color:
-                        <input type="color" id="nodeFontInput" value="${localStorage.getItem('customNodeFont') || theme.nodeFont}">
-                    </label>
-                    <label style="display: block; margin-bottom: 8px;">
-                        Edge Color:
-                        <input type="color" id="edgeColorInput" value="${localStorage.getItem('customEdgeColor') || theme.edgeColor}">
-                    </label>
-                    <button id="resetThemeBtn" class="panel-btn" style="margin-top: 8px;">Reset to Theme Default</button>
-                </div>
-            `;
-
-            const nodeFontInput = document.getElementById("nodeFontInput");
-            const edgeColorInput = document.getElementById("edgeColorInput");
-            const resetBtn = document.getElementById("resetThemeBtn");
-
-            // Apply changes live
-            nodeFontInput.addEventListener("input", e => {
-                localStorage.setItem("customNodeFont", e.target.value);
-                if (window.network) {
-                    window.network.setOptions({ nodes: { font: { color: e.target.value } } });
-                }
-            });
-
-            edgeColorInput.addEventListener("input", e => {
-                localStorage.setItem("customEdgeColor", e.target.value);
-                if (window.network) {
-                    window.network.setOptions({ edges: { color: { color: e.target.value } } });
-                }
-            });
-
-            // Reset to defaults
-            resetBtn.addEventListener("click", () => {
-                localStorage.removeItem("customNodeFont");
-                localStorage.removeItem("customEdgeColor");
-
-                if (window.network) {
-                    window.network.setOptions({
-                        nodes: { font: { color: theme.nodeFont } },
-                        edges: { color: { color: theme.edgeColor } }
-                    });
-                }
-
-                nodeFontInput.value = theme.nodeFont;
-                edgeColorInput.value = theme.edgeColor;
-            });
         }
 
         initDragAndDrop() {
@@ -1503,7 +1452,192 @@
         }
 
     }
+    class FloatingPanel {
+    constructor(options) {
+        this.id = options.id || `floating-panel-${Date.now()}`;
+        this.title = options.title || "Panel";
+        this.content = options.content || "";
+        this.container = options.container || document.body;
+
+        this.isFloating = false;
+        this.createPanel();
+        this.initDrag();
+        this.restoreState();
+    }
+
+    createPanel() {
+        this.panel = document.createElement("div");
+        this.panel.className = "floating-panel";
+        this.panel.innerHTML = `
+        <div class="fp-header">
+            <span class="fp-title">${this.title}</span>
+            <button class="fp-toggle" title="Pop out / Dock">⇕</button>
+        </div>
+        <div class="fp-content">${this.content}</div>
+        `;
+
+        // Scoped style for panels only
+        const style = document.createElement("style");
+        style.textContent = `
+        .floating-panel {
+            background: rgba(30,30,30,0.96);
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 0.5rem;
+            width: 300px;
+            max-width: 90vw;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            font-family: sans-serif;
+            margin: 0.5rem 0;
+            position: relative;
+        }
+        .floating-panel.floating {
+            position: fixed !important;
+            width: 300px;
+            height: auto;
+            z-index: 9999;
+            cursor: grab;
+        }
+        .fp-header {
+            background: #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.3rem 0.5rem;
+            border-bottom: 1px solid #555;
+            cursor: grab;
+            border-radius: 0.5rem 0.5rem 0 0;
+        }
+        .fp-toggle {
+            background: #666;
+            color: white;
+            border: none;
+            border-radius: 0.3rem;
+            cursor: pointer;
+            padding: 0.2rem 0.4rem;
+        }
+        .fp-content {
+            padding: 0.5rem;
+        }
+        `;
+        document.head.appendChild(style);
+
+        this.container.appendChild(this.panel);
+
+        this.toggleBtn = this.panel.querySelector(".fp-toggle");
+        this.toggleBtn.addEventListener("click", () => {
+        if (this.isFloating) this.dock();
+        else this.float();
+        });
+    }
+
+    initDrag() {
+        const header = this.panel.querySelector(".fp-header");
+        let isDragging = false;
+        let offsetX = 0, offsetY = 0;
+
+        header.addEventListener("mousedown", (e) => {
+        if (!this.isFloating) return;
+        isDragging = true;
+        const rect = this.panel.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        this.panel.style.cursor = "grabbing";
+        e.preventDefault();
+        });
+
+        document.addEventListener("mousemove", (e) => {
+        if (!isDragging) return;
+        // Compute new position but keep within screen
+        let x = e.clientX - offsetX;
+        let y = e.clientY - offsetY;
+
+        const panelRect = this.panel.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // keep fully visible
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x + panelRect.width > vw) x = vw - panelRect.width;
+        if (y + panelRect.height > vh) y = vh - panelRect.height;
+
+        this.panel.style.left = `${x}px`;
+        this.panel.style.top = `${y}px`;
+        this.panel.style.bottom = "";
+        this.panel.style.right = "";
+        });
+
+        document.addEventListener("mouseup", () => {
+        if (isDragging) {
+            isDragging = false;
+            this.panel.style.cursor = "grab";
+            this.savePosition();
+        }
+        });
+    }
+
+    float() {
+        document.body.appendChild(this.panel);
+        this.panel.classList.add("floating");
+        this.isFloating = true;
+        this.toggleBtn.textContent = "⇓";
+        this.restorePosition();
+
+        // Default if no stored pos
+        if (!this.panel.style.left && !this.panel.style.top) {
+        this.panel.style.left = "calc(100vw - 320px)";
+        this.panel.style.top = "80vh";
+        }
+
+        localStorage.setItem(`${this.id}-floating`, "true");
+    }
+
+    dock() {
+        this.container.appendChild(this.panel);
+        this.panel.classList.remove("floating");
+        this.panel.style.left = "";
+        this.panel.style.top = "";
+        this.panel.style.bottom = "";
+        this.panel.style.right = "";
+        this.isFloating = false;
+        this.toggleBtn.textContent = "⇕";
+        localStorage.setItem(`${this.id}-floating`, "false");
+    }
+
+    savePosition() {
+        if (!this.isFloating) return;
+        localStorage.setItem(`${this.id}-pos`, JSON.stringify({
+        left: this.panel.style.left,
+        top: this.panel.style.top
+        }));
+    }
+
+    restorePosition() {
+        const saved = localStorage.getItem(`${this.id}-pos`);
+        if (saved) {
+        const { left, top } = JSON.parse(saved);
+        this.panel.style.left = left;
+        this.panel.style.top = top;
+        }
+    }
+
+    restoreState() {
+        const isFloating = localStorage.getItem(`${this.id}-floating`) === "true";
+        if (isFloating) this.float();
+    }
+    }
+
 
     window.VeraChat = VeraChat;
     window.app = new VeraChat();
+    const notesPanel = new FloatingPanel({
+    id: "notesPanel",
+    title: "Quick Notes",
+    content: `<textarea style="width:100%;height:100px"></textarea>`,
+    container:  document.getElementById("tab-memory") //document.body  // make sure container is visible
+    });
+
+    // Float it immediately so it appears on screen
+    notesPanel.float();
 })();

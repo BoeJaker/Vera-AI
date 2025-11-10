@@ -4,19 +4,42 @@
 import asyncio
 import logging
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, HTTPException
 from concurrent.futures import ThreadPoolExecutor
-from vera import Vera
-from toolchain import MonitoredToolChainPlanner
-from your_project.models.session import SessionStartResponse 
 
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+from Vera.vera import Vera
+# from Vera.ChatUI.api.toolchain_api import MonitoredToolChainPlanner
+from Vera.ChatUI.api.schemas import SessionStartResponse 
+
+from typing import Dict, Any, List
+from collections import defaultdict
+from fastapi import WebSocket
+# from Vera.vera import Vera
 
 # ============================================================
-# Globals / storage
+# Global storage
+# ============================================================
+vera_instances: Dict[str, Vera] = {}
+sessions: Dict[str, Dict[str, Any]] = {}
+tts_queue: List[Dict[str, Any]] = []
+tts_playing = False
+
+# Toolchain monitoring storage
+toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_id -> execution_id -> execution_data
+active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
+websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
+
+app = FastAPI()
+
+# ============================================================
+# Logging Setup
 # ============================================================
 logger = logging.getLogger(__name__)
-app = FastAPI()
+
+# ============================================================
+# Router Setup
+# ============================================================
+router = APIRouter(prefix="/api/session", tags=["session"])
 
 # ============================================================
 # Session Management
@@ -31,7 +54,7 @@ def get_or_create_vera(session_id: str) -> Vera:
         )
     return vera_instances[session_id]
 
-@app.post("/api/session/start", response_model=SessionStartResponse)
+@router.post("/start", response_model=SessionStartResponse)
 async def start_session():
     """Start a new chat session."""
     try:
@@ -60,8 +83,8 @@ async def start_session():
         # IMPORTANT: Wrap Vera's toolchain with monitoring
         if hasattr(vera, 'toolchain'):
             original_toolchain = vera.toolchain
-            vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
-            logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
+            # vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
+            # logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
         
         logger.info(f"Started session: {session_id}")
         
@@ -75,7 +98,7 @@ async def start_session():
         raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
 
 
-@app.post("/api/session/{session_id}/end")
+@router.post("/{session_id}/end")
 async def end_session(session_id: str):
     """End a chat session."""
     if session_id not in sessions:

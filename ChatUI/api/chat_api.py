@@ -16,8 +16,9 @@ from fastapi import (
     File,
 )
 
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
-from session import get_or_create_vera
+from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+from Vera.ChatUI.api.session import get_or_create_vera
+from Vera.ChatUI.api.schemas import ChatResponse, ChatRequest, TTSRequest
 
 # ============================================================
 # Logging setup

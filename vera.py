@@ -40,13 +40,13 @@ from langchain.tools import BaseTool
 from langchain.llms.base import LLM
 
 # --- Local Imports ---
-from Agents.executive_0_9 import executive
+from Vera.Agents.executive_0_9 import executive
 sys.path.append(os.path.join(os.path.dirname(__file__), 'Memory'))
-from Memory.memory import *
-from Toolchain.tools import ToolLoader
-from Agents.reviewer import Reviewer
-from Agents.planning import Planner
-from proactive_focus_manager import ProactiveFocusManager
+from Vera.Memory.memory import *
+from Vera.Toolchain.tools import ToolLoader
+from Vera.Agents.reviewer import Reviewer
+from Vera.Agents.planning import Planner
+from Vera.proactive_focus_manager import ProactiveFocusManager
 import hashlib
 
 #---- Constants ---
@@ -957,7 +957,7 @@ class Vera:
         else:
             pass
         
-        self.save_to_memory(query, total_response) # Legavy Memory
+        self.save_to_memory(query, total_response) # Legacy Memory
         # self.mem.add_session_memory(self.sess.id, f"{total_response}", "Response", {"topic": "response"}) 
 
 
@@ -1248,7 +1248,7 @@ if __name__ == "__main__":
             print(vera.execute_tool_chain("Add a new event to Google Calendar for tomorrow at 10 AM"))
         if user_query.lower() == "/run":
             print("Running a test query...")
-            print(vera.run("What is the weather like today?"))
+            print(vera.async_run("What is the weather like today?"))
         if user_query.lower() == "/replay":
             print("Replaying last tool plan...")
             with open("./Configuration/last_tool_plan.json", "r", encoding="utf-8") as f:
@@ -1272,7 +1272,10 @@ if __name__ == "__main__":
         # print("Deep Response:", result.get("deep", "No deep response"))
         # print("Tool Response:", result.get("tool", "No tool response"))
         # print("\n---\n")
-        result = vera.run(user_query)
+        result=""
+        for chunk in vera.async_run(user_query):
+            print(chunk)
+            result += chunk
         # get_ollama_cpu_load_and_count()
         print(result)
 

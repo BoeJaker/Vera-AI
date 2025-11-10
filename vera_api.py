@@ -54,6 +54,162 @@ websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session
 
 
 # ============================================================
+# Request Schemas
+# ============================================================
+
+class MemoryQueryRequest(BaseModel):
+    """Basic memory query request"""
+    session_id: str
+    query: str
+    k: Optional[int] = Field(default=None, description="Number of results (no limit if None)")
+    retrieval_type: str = Field(default="hybrid", description="vector|graph|hybrid")
+    filters: Optional[Dict[str, Any]] = None
+
+class HybridRetrievalRequest(BaseModel):
+    """Advanced hybrid retrieval request"""
+    session_id: str
+    query: str
+    k_vector: Optional[int] = Field(default=100, description="Number of vector results")
+    k_graph: Optional[int] = Field(default=50, description="Number of graph seeds")
+    graph_depth: int = Field(default=2, ge=1, le=5)
+    include_entities: bool = True
+    filters: Optional[Dict[str, Any]] = None
+
+class AdvancedSearchRequest(BaseModel):
+    """Comprehensive advanced search request"""
+    session_id: str
+    query: str
+    
+    # Search targets
+    search_session: bool = Field(default=True, description="Search session vector memory")
+    search_long_term: bool = Field(default=True, description="Search long-term vector memory")
+    search_graph: bool = Field(default=True, description="Search graph database")
+    
+    # Filters
+    limit: Optional[int] = Field(default=None, description="Maximum results (no limit if None)")
+    offset: int = Field(default=0, ge=0, description="Results offset for pagination")
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum confidence threshold")
+    entity_types: Optional[List[str]] = Field(default=None, description="Filter by entity types")
+    relation_types: Optional[List[str]] = Field(default=None, description="Filter by relationship types")
+    
+    # Date filters
+    date_from: Optional[str] = Field(default=None, description="Filter by creation date (ISO format)")
+    date_to: Optional[str] = Field(default=None, description="Filter by creation date (ISO format)")
+    
+    # Additional options
+    include_metadata: bool = Field(default=True, description="Include full metadata")
+    include_embeddings: bool = Field(default=False, description="Include embedding vectors")
+    sort_by: str = Field(default="relevance", description="relevance|confidence|date")
+    sort_order: str = Field(default="desc", description="asc|desc")
+
+class EntityExtractionRequest(BaseModel):
+    """Entity extraction request"""
+    session_id: str
+    text: str
+    source_node_id: Optional[str] = None
+    auto_promote: bool = False
+
+class SubgraphRequest(BaseModel):
+    """Subgraph extraction request"""
+    session_id: str
+    seed_entity_ids: List[str]
+    depth: int = Field(default=2, ge=1, le=5)
+
+class PromoteMemoryRequest(BaseModel):
+    """Memory promotion request"""
+    memory_id: str
+    entity_anchor: Optional[str] = None
+
+# ============================================================
+# Response Schemas
+# ============================================================
+
+class MemoryQueryResponse(BaseModel):
+    """Basic memory query response"""
+    results: List[Dict[str, Any]]
+    retrieval_type: str
+    query: str
+    session_id: str
+    total_results: int = 0
+
+class AdvancedSearchResponse(BaseModel):
+    """Advanced search response with detailed breakdown"""
+    results: List[Dict[str, Any]]
+    query: str
+    session_id: str
+    total_results: int
+    results_by_source: Dict[str, List[Dict[str, Any]]]
+    search_params: Dict[str, Any]
+    execution_time_ms: Optional[float] = None
+
+class EntityExtractionResponse(BaseModel):
+    """Entity extraction response"""
+    entities: List[Dict[str, Any]]
+    relations: List[Dict[str, Any]]
+    clusters: Dict[str, List[str]]
+    session_id: str
+    extraction_stats: Optional[Dict[str, Any]] = None
+
+class SubgraphResponse(BaseModel):
+    """Subgraph extraction response"""
+    session_id: str
+    seed_entity_ids: List[str]
+    depth: int
+    subgraph: Dict[str, Any]
+    stats: Dict[str, int]
+
+class EntityListResponse(BaseModel):
+    """Entity list response"""
+    session_id: str
+    entities: List[Dict[str, Any]]
+    total: int
+    returned: int
+    offset: int
+    limit: Optional[int]
+
+class RelationshipListResponse(BaseModel):
+    """Relationship list response"""
+    session_id: str
+    relationships: List[Dict[str, Any]]
+    total: int
+    returned: int
+    offset: int
+    limit: Optional[int]
+
+# ============================================================
+# Additional Helper Schemas
+# ============================================================
+
+class FilterParameters(BaseModel):
+    """Reusable filter parameters"""
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    entity_types: Optional[List[str]] = None
+    relation_types: Optional[List[str]] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    metadata_filters: Optional[Dict[str, Any]] = None
+
+class PaginationParameters(BaseModel):
+    """Reusable pagination parameters"""
+    limit: Optional[int] = Field(default=None, description="Results per page")
+    offset: int = Field(default=0, ge=0, description="Number of results to skip")
+    page: Optional[int] = Field(default=None, ge=1, description="Page number (alternative to offset)")
+    page_size: Optional[int] = Field(default=None, ge=1, description="Results per page")
+
+class SortParameters(BaseModel):
+    """Reusable sort parameters"""
+    sort_by: str = Field(default="relevance", description="Field to sort by")
+    sort_order: str = Field(default="desc", description="asc|desc")
+
+class SearchStatistics(BaseModel):
+    """Search execution statistics"""
+    total_results: int
+    execution_time_ms: float
+    sources_searched: List[str]
+    results_by_source: Dict[str, int]
+    filters_applied: Dict[str, Any]
+    cache_hit: bool = False
+# ============================================================
 # Request/Response Models
 # ============================================================
 
@@ -177,6 +333,37 @@ class HybridRetrievalRequest(BaseModel):
     include_entities: bool = True
     filters: Optional[Dict[str, Any]] = None
 
+# ============================================================
+# Schemas
+# ============================================================
+
+class MemoryQueryRequest(BaseModel):
+    session_id: str
+    query: str
+    k: Optional[int] = 50
+    retrieval_type: str = "hybrid"  # vector, graph, hybrid
+    filters: Optional[Dict[str, Any]] = None
+
+class MemoryQueryResponse(BaseModel):
+    results: List[Dict[str, Any]]
+    retrieval_type: str
+    query: str
+    session_id: str
+    total_results: int
+
+class SubgraphRequest(BaseModel):
+    session_id: str
+    seed_entity_ids: List[str]
+    depth: int = 2
+
+class HybridRetrievalRequest(BaseModel):
+    session_id: str
+    query: str
+    k_vector: Optional[int] = 50
+    k_graph: Optional[int] = 25
+    graph_depth: int = 2
+    include_entities: bool = True
+    filters: Optional[Dict[str, Any]] = None
 
 # ============================================================
 # Helper Functions
@@ -601,21 +788,32 @@ async def get_enhanced_context(vera, session_id: str, message: str, k: int = 5) 
             "entity_ids": []
         }
 
+from fastapi import APIRouter, HTTPException, Query
+from typing import Optional, List, Dict, Any
+import logging
+from datetime import datetime
+from pydantic import BaseModel, Field
 
+logger = logging.getLogger(__name__)
 
 # ============================================================
-# Memory Endpoints 
+# Router setup
+# ============================================================
+# router = APIRouter(prefix="/api/memory", tags=["memory"])
+
+# # Import your app and state management
+# from state import vera_instances, sessions
+# from session import get_or_create_vera
+
+# ============================================================
+# Fixed Endpoints
 # ============================================================
 
 @app.post("/api/memory/query", response_model=MemoryQueryResponse)
 async def query_memory(request: MemoryQueryRequest):
     """
     Query memory using vector, graph, or hybrid retrieval.
-    
-    Retrieval types:
-    - vector: Semantic search using embeddings
-    - graph: Graph traversal from relevant nodes
-    - hybrid: Combined vector + graph retrieval
+    FIXED: Properly handles all retrieval types with fallbacks
     """
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -624,68 +822,38 @@ async def query_memory(request: MemoryQueryRequest):
     
     try:
         results = []
+        k = request.k or 50
         
         if request.retrieval_type == "vector":
-            # Pure vector retrieval from session memory
-            vector_results = vera.mem.focus_context(
-                request.session_id, 
-                request.query, 
-                k=request.k
-            )
-            results = vector_results
+            # Session memory search
+            try:
+                session_results = vera.mem.focus_context(
+                    request.session_id, 
+                    request.query, 
+                    k=k
+                )
+                results.extend(normalize_results(session_results, "session"))
+            except Exception as e:
+                logger.error(f"Session vector search failed: {e}")
             
-        elif request.retrieval_type == "graph":
-            # Graph-based retrieval
-            # First, find relevant entities via vector search
-            vector_hits = vera.mem.focus_context(
-                request.session_id, 
-                request.query, 
-                k=3
-            )
-            
-            # Extract entity IDs from hits
-            seed_ids = []
-            for hit in vector_hits:
-                # Look for linked entities in metadata
-                if "entity_ids" in hit.get("metadata", {}):
-                    seed_ids.extend(hit["metadata"]["entity_ids"])
-            
-            if seed_ids:
-                # Get subgraph around these entities
-                subgraph = vera.mem.extract_subgraph(seed_ids[:5], depth=2)
-                results = [{
-                    "type": "subgraph",
-                    "nodes": subgraph["nodes"],
-                    "relationships": subgraph["rels"]
-                }]
-            else:
-                results = []
+            # Long-term memory search
+            try:
+                long_term_results = vera.mem.semantic_retrieve(
+                    request.query,
+                    k=k,
+                    where=build_chroma_filters(request.filters) if request.filters else None
+                )
+                results.extend(normalize_results(long_term_results, "long_term"))
+            except Exception as e:
+                logger.error(f"Long-term vector search failed: {e}")
                 
+        elif request.retrieval_type == "graph":
+            # Graph-based search
+            results = await search_graph_mode(vera, request.session_id, request.query, k)
+            
         elif request.retrieval_type == "hybrid":
-            # Hybrid retrieval: vector + graph
-            vector_results = vera.mem.focus_context(
-                request.session_id, 
-                request.query, 
-                k=request.k
-            )
-            
-            # Get long-term semantic results too
-            long_term_results = vera.mem.semantic_retrieve(
-                request.query,
-                k=request.k,
-                where=request.filters
-            )
-            
-            # Combine and deduplicate
-            seen_ids = set()
-            combined = []
-            
-            for result in vector_results + long_term_results:
-                if result["id"] not in seen_ids:
-                    seen_ids.add(result["id"])
-                    combined.append(result)
-            
-            results = combined[:request.k]
+            # Hybrid search combining all sources
+            results = await hybrid_search(vera, request.session_id, request.query, k, request.filters)
             
         else:
             raise HTTPException(
@@ -693,11 +861,24 @@ async def query_memory(request: MemoryQueryRequest):
                 detail=f"Invalid retrieval_type: {request.retrieval_type}"
             )
         
+        # Apply filters if provided
+        if request.filters:
+            results = apply_filters(results, request.filters)
+        
+        # Deduplicate by id
+        seen = set()
+        unique_results = []
+        for r in results:
+            if r.get("id") not in seen:
+                seen.add(r["id"])
+                unique_results.append(r)
+        
         return MemoryQueryResponse(
-            results=results,
+            results=unique_results,
             retrieval_type=request.retrieval_type,
             query=request.query,
-            session_id=request.session_id
+            session_id=request.session_id,
+            total_results=len(unique_results)
         )
         
     except Exception as e:
@@ -708,8 +889,8 @@ async def query_memory(request: MemoryQueryRequest):
 @app.post("/api/memory/hybrid-retrieve")
 async def hybrid_retrieve(request: HybridRetrievalRequest):
     """
-    Advanced hybrid retrieval combining vector search and graph traversal.
-    Returns both semantic matches and related entities from the knowledge graph.
+    Advanced hybrid retrieval combining vector and graph.
+    FIXED: Better error handling and result normalization
     """
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -717,59 +898,76 @@ async def hybrid_retrieve(request: HybridRetrievalRequest):
     vera = get_or_create_vera(request.session_id)
     
     try:
-        # Step 1: Vector retrieval from session context
-        session_hits = vera.mem.focus_context(
-            request.session_id,
-            request.query,
-            k=request.k_vector
-        )
+        k_vector = request.k_vector or 50
+        k_graph = request.k_graph or 25
         
-        # Step 2: Vector retrieval from long-term memory
-        long_term_hits = vera.mem.semantic_retrieve(
-            request.query,
-            k=request.k_vector,
-            where=request.filters
-        )
+        # Vector results
+        session_hits = []
+        long_term_hits = []
         
-        # Step 3: Extract entity IDs for graph traversal
+        try:
+            session_hits = vera.mem.focus_context(
+                request.session_id,
+                request.query,
+                k=k_vector
+            )
+        except Exception as e:
+            logger.error(f"Session vector search failed: {e}")
+        
+        try:
+            long_term_hits = vera.mem.semantic_retrieve(
+                request.query,
+                k=k_vector,
+                where=build_chroma_filters(request.filters) if request.filters else None
+            )
+        except Exception as e:
+            logger.error(f"Long-term vector search failed: {e}")
+        
+        # Extract entity seeds from vector results
         seed_entity_ids = set()
         
         for hit in session_hits + long_term_hits:
             metadata = hit.get("metadata", {})
             
-            # Check for linked entities
             if "entity_ids" in metadata:
-                seed_entity_ids.update(metadata["entity_ids"])
+                if isinstance(metadata["entity_ids"], list):
+                    seed_entity_ids.update(metadata["entity_ids"])
+                else:
+                    seed_entity_ids.add(metadata["entity_ids"])
             
-            # If hit itself is an entity
             if metadata.get("type") == "extracted_entity":
                 seed_entity_ids.add(hit["id"])
         
-        # Step 4: Graph traversal around seed entities
+        # Get graph context
         graph_context = None
         if seed_entity_ids and request.include_entities:
-            seed_list = list(seed_entity_ids)[:request.k_graph]
-            graph_context = vera.mem.extract_subgraph(
-                seed_list,
-                depth=request.graph_depth
-            )
+            try:
+                seed_list = list(seed_entity_ids)[:k_graph]
+                graph_context = vera.mem.extract_subgraph(
+                    seed_list,
+                    depth=request.graph_depth
+                )
+            except Exception as e:
+                logger.error(f"Subgraph extraction failed: {e}")
+                graph_context = {"nodes": [], "rels": []}
         
-        # Step 5: Combine results
         return {
             "session_id": request.session_id,
             "query": request.query,
             "vector_results": {
-                "session": session_hits,
-                "long_term": long_term_hits,
+                "session": normalize_results(session_hits, "session"),
+                "long_term": normalize_results(long_term_hits, "long_term"),
                 "total": len(session_hits) + len(long_term_hits)
             },
             "graph_context": graph_context,
             "seed_entities": list(seed_entity_ids),
             "retrieval_stats": {
-                "k_vector": request.k_vector,
-                "k_graph": request.k_graph,
+                "k_vector": k_vector,
+                "k_graph": k_graph,
                 "graph_depth": request.graph_depth,
-                "entities_found": len(seed_entity_ids)
+                "entities_found": len(seed_entity_ids),
+                "graph_nodes": len(graph_context.get("nodes", [])) if graph_context else 0,
+                "graph_relationships": len(graph_context.get("rels", [])) if graph_context else 0
             }
         }
         
@@ -778,42 +976,11 @@ async def hybrid_retrieve(request: HybridRetrievalRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/memory/extract-entities", response_model=EntityExtractionResponse)
-async def extract_entities(request: EntityExtractionRequest):
-    """
-    Extract entities and relationships from text using NLP.
-    Links extracted entities to the session graph.
-    """
-    if request.session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    vera = get_or_create_vera(request.session_id)
-    
-    try:
-        extraction = vera.mem.extract_and_link(
-            request.session_id,
-            request.text,
-            source_node_id=request.source_node_id,
-            auto_promote=request.auto_promote
-        )
-        
-        return EntityExtractionResponse(
-            entities=extraction.get("entities", []),
-            relations=extraction.get("relations", []),
-            clusters=extraction.get("clusters", {}),
-            session_id=request.session_id
-        )
-        
-    except Exception as e:
-        logger.error(f"Entity extraction error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/api/memory/subgraph")
 async def get_memory_subgraph(request: SubgraphRequest):
     """
     Extract a subgraph around specific entity IDs.
-    Useful for exploring knowledge graph neighborhoods.
+    FIXED: Better error handling and empty result handling
     """
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -821,6 +988,15 @@ async def get_memory_subgraph(request: SubgraphRequest):
     vera = get_or_create_vera(request.session_id)
     
     try:
+        if not request.seed_entity_ids:
+            return {
+                "session_id": request.session_id,
+                "seed_entity_ids": [],
+                "depth": request.depth,
+                "subgraph": {"nodes": [], "rels": []},
+                "stats": {"nodes": 0, "relationships": 0}
+            }
+        
         subgraph = vera.mem.extract_subgraph(
             request.seed_entity_ids,
             depth=request.depth
@@ -843,9 +1019,16 @@ async def get_memory_subgraph(request: SubgraphRequest):
 
 
 @app.get("/api/memory/{session_id}/entities")
-async def list_session_entities(session_id: str, limit: int = 50):
+async def list_session_entities(
+    session_id: str,
+    limit: Optional[int] = Query(50),
+    search: Optional[str] = Query(None),
+    min_confidence: float = Query(0.0, ge=0.0, le=1.0),
+    entity_types: Optional[List[str]] = Query(None)
+):
     """
     List all entities extracted in a session.
+    FIXED: Added search and filtering
     """
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -854,8 +1037,28 @@ async def list_session_entities(session_id: str, limit: int = 50):
     
     try:
         with vera.mem.graph._driver.session() as db_sess:
-            result = db_sess.run("""
+            cypher = """
                 MATCH (s:Session {id: $session_id})-[:EXTRACTED_IN]-(e:ExtractedEntity)
+                WHERE e.confidence >= $min_confidence
+            """
+            
+            params = {
+                "session_id": session_id,
+                "min_confidence": min_confidence,
+                "limit": limit
+            }
+            
+            # Add search filter
+            if search:
+                cypher += " AND (e.text CONTAINS $search OR e.id CONTAINS $search)"
+                params["search"] = search
+            
+            # Add entity type filter
+            if entity_types:
+                cypher += " AND any(label IN labels(e) WHERE label IN $entity_types)"
+                params["entity_types"] = entity_types
+            
+            cypher += """
                 RETURN e.id AS id, 
                        e.text AS text, 
                        e.type AS type,
@@ -864,7 +1067,9 @@ async def list_session_entities(session_id: str, limit: int = 50):
                        e.original_text AS original_text
                 ORDER BY e.confidence DESC
                 LIMIT $limit
-            """, {"session_id": session_id, "limit": limit})
+            """
+            
+            result = db_sess.run(cypher, params)
             
             entities = []
             for record in result:
@@ -889,9 +1094,15 @@ async def list_session_entities(session_id: str, limit: int = 50):
 
 
 @app.get("/api/memory/{session_id}/relationships")
-async def list_session_relationships(session_id: str, limit: int = 50):
+async def list_session_relationships(
+    session_id: str,
+    limit: Optional[int] = Query(50),
+    search: Optional[str] = Query(None),
+    min_confidence: float = Query(0.0, ge=0.0, le=1.0)
+):
     """
     List all relationships extracted in a session.
+    FIXED: Better query structure and search
     """
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -900,28 +1111,48 @@ async def list_session_relationships(session_id: str, limit: int = 50):
     
     try:
         with vera.mem.graph._driver.session() as db_sess:
-            result = db_sess.run("""
+            cypher = """
                 MATCH (s:Session {id: $session_id})-[:EXTRACTED_IN]-(e1:ExtractedEntity)
                 MATCH (e1)-[r:REL]->(e2:ExtractedEntity)
                 WHERE r.extracted_from_session = $session_id
-                RETURN e1.text AS head,
-                       type(r) AS rel_type,
+                  AND r.confidence >= $min_confidence
+            """
+            
+            params = {
+                "session_id": session_id,
+                "min_confidence": min_confidence,
+                "limit": limit
+            }
+            
+            if search:
+                cypher += """ AND (
+                    e1.text CONTAINS $search OR 
+                    e2.text CONTAINS $search OR 
+                    r.rel CONTAINS $search
+                )"""
+                params["search"] = search
+            
+            cypher += """
+                RETURN e1.text AS head, 
                        r.rel AS relation,
-                       e2.text AS tail,
+                       e2.text AS tail, 
                        r.confidence AS confidence,
-                       r.context AS context
+                       r.context AS context,
+                       r AS properties
                 ORDER BY r.confidence DESC
                 LIMIT $limit
-            """, {"session_id": session_id, "limit": limit})
+            """
+            
+            result = db_sess.run(cypher, params)
             
             relationships = []
             for record in result:
                 relationships.append({
                     "head": record["head"],
-                    "relation": record.get("relation") or record["rel_type"],
+                    "relation": record["relation"],
                     "tail": record["tail"],
                     "confidence": record.get("confidence", 0.0),
-                    "context": record.get("context", "")[:200]
+                    "context": record.get("context", "")
                 })
             
             return {
@@ -935,41 +1166,175 @@ async def list_session_relationships(session_id: str, limit: int = 50):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/memory/{session_id}/promote")
-async def promote_memory(session_id: str, memory_id: str, entity_anchor: Optional[str] = None):
+# ============================================================
+# Helper Functions
+# ============================================================
+
+def normalize_results(results: List[Dict[str, Any]], source: str) -> List[Dict[str, Any]]:
+    """Normalize results to consistent format"""
+    normalized = []
+    for r in results:
+        normalized.append({
+            "id": r.get("id", ""),
+            "text": r.get("text", r.get("document", "")),
+            "type": r.get("metadata", {}).get("type", "memory"),
+            "source": source,
+            "confidence": r.get("confidence", 1.0 - r.get("distance", 0.0)),
+            "distance": r.get("distance"),
+            "metadata": r.get("metadata", {}),
+            "displayText": r.get("text", r.get("document", ""))[:200]
+        })
+    return normalized
+
+
+async def search_graph_mode(vera, session_id: str, query: str, k: int) -> List[Dict[str, Any]]:
     """
-    Promote a session memory item to long-term storage.
+    Enhanced graph search that actually works
     """
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    vera = get_or_create_vera(session_id)
+    results = []
     
     try:
-        # Get the memory item
-        memories = vera.mem.get_session_memory(session_id)
-        memory = next((m for m in memories if m.id == memory_id), None)
+        # First, get some vector hits to find relevant entities
+        vector_hits = vera.mem.focus_context(session_id, query, k=min(10, k))
         
-        if not memory:
-            raise HTTPException(status_code=404, detail="Memory item not found")
+        # Extract entity IDs
+        seed_ids = set()
+        for hit in vector_hits:
+            metadata = hit.get("metadata", {})
+            if "entity_ids" in metadata:
+                if isinstance(metadata["entity_ids"], list):
+                    seed_ids.update(metadata["entity_ids"])
+                else:
+                    seed_ids.add(metadata["entity_ids"])
         
-        # Promote to long-term
-        vera.mem.promote_session_memory_to_long_term(memory, entity_anchor)
+        # If we found seed IDs, get subgraph
+        if seed_ids:
+            subgraph = vera.mem.extract_subgraph(list(seed_ids)[:20], depth=2)
+            
+            # Convert nodes to results
+            for node in subgraph.get("nodes", []):
+                results.append({
+                    "id": node["id"],
+                    "type": "graph_node",
+                    "text": node.get("properties", {}).get("text", node["id"]),
+                    "source": "graph",
+                    "confidence": node.get("properties", {}).get("confidence", 1.0),
+                    "metadata": node.get("properties", {}),
+                    "labels": node.get("labels", []),
+                    "displayText": node.get("properties", {}).get("text", node["id"])[:200]
+                })
+            
+            # Convert relationships to results
+            for rel in subgraph.get("rels", []):
+                if rel.get("start") and rel.get("end"):
+                    results.append({
+                        "id": f"{rel['start']}-{rel['end']}",
+                        "type": "relationship",
+                        "head": rel["start"],
+                        "tail": rel["end"],
+                        "relation": rel.get("type", "RELATED_TO"),
+                        "source": "graph",
+                        "confidence": rel.get("properties", {}).get("confidence", 1.0),
+                        "metadata": rel.get("properties", {}),
+                        "displayText": f"{rel['start']} → {rel['end']}"
+                    })
         
-        return {
-            "status": "promoted",
-            "memory_id": memory_id,
-            "session_id": session_id,
-            "entity_anchor": entity_anchor
-        }
+        # If no seeds found, search graph directly
+        if not results:
+            with vera.mem.graph._driver.session() as db_sess:
+                cypher = """
+                    MATCH (e:ExtractedEntity)
+                    WHERE e.text CONTAINS $query OR e.id CONTAINS $query
+                    RETURN e.id AS id, e.text AS text, e.type AS type,
+                           labels(e) AS labels, e AS properties
+                    LIMIT $k
+                """
+                rec = db_sess.run(cypher, {"query": query, "k": k})
+                
+                for record in rec:
+                    results.append({
+                        "id": record["id"],
+                        "type": "graph_node",
+                        "text": record["text"],
+                        "source": "graph",
+                        "confidence": 1.0,
+                        "labels": record["labels"],
+                        "metadata": dict(record["properties"]),
+                        "displayText": record["text"][:200]
+                    })
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Memory promotion error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Graph search failed: {e}")
+    
+    return results
 
 
+async def hybrid_search(vera, session_id: str, query: str, k: int, filters: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    True hybrid search combining all sources
+    """
+    all_results = []
+    
+    # Vector search - session
+    try:
+        session_hits = vera.mem.focus_context(session_id, query, k=k)
+        all_results.extend(normalize_results(session_hits, "session"))
+    except Exception as e:
+        logger.error(f"Session search failed: {e}")
+    
+    # Vector search - long term
+    try:
+        long_term_hits = vera.mem.semantic_retrieve(
+            query, 
+            k=k,
+            where=build_chroma_filters(filters) if filters else None
+        )
+        all_results.extend(normalize_results(long_term_hits, "long_term"))
+    except Exception as e:
+        logger.error(f"Long-term search failed: {e}")
+    
+    # Graph search
+    try:
+        graph_results = await search_graph_mode(vera, session_id, query, k)
+        all_results.extend(graph_results)
+    except Exception as e:
+        logger.error(f"Graph search failed: {e}")
+    
+    return all_results
+
+
+def build_chroma_filters(filters: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Build Chroma-compatible filter dictionary"""
+    if not filters:
+        return None
+    
+    chroma_filters = {}
+    
+    if filters.get("minConfidence", 0) > 0:
+        chroma_filters["confidence"] = {"$gte": filters["minConfidence"]}
+    
+    if filters.get("entityTypes"):
+        chroma_filters["type"] = {"$in": filters["entityTypes"]}
+    
+    return chroma_filters if chroma_filters else None
+
+
+def apply_filters(results: List[Dict[str, Any]], filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Apply filtering to results"""
+    filtered = results
+    
+    if filters.get("minConfidence", 0) > 0:
+        min_conf = filters["minConfidence"]
+        filtered = [r for r in filtered if r.get("confidence", 0) >= min_conf]
+    
+    if filters.get("entityTypes"):
+        types = set(filters["entityTypes"])
+        filtered = [r for r in filtered if 
+            r.get("type") in types or 
+            any(label in types for label in r.get("labels", []))
+        ]
+    
+    return filtered
 # ============================================================
 # Chat Endpoints 
 # ============================================================
@@ -1026,7 +1391,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
     await websocket.accept()
     
     if session_id not in sessions:
-        await websocket.close(code=4004, reason="Session not found")
+        try:
+            await websocket.send_json({"type": "error", "message": "..."})
+        except:
+            pass
         return
     
     vera = get_or_create_vera(session_id)
@@ -1295,8 +1663,12 @@ async def websocket_toolchain(websocket: WebSocket, session_id: str):
     await websocket.accept()
     
     if session_id not in sessions:
-        await websocket.close(code=4004, reason="Session not found")
+        try:
+            await websocket.send_json({"type": "error", "message": "..."})
+        except:
+            pass
         return
+
     
     # Register this websocket for broadcasts
     websocket_connections[session_id].append(websocket)
@@ -1774,28 +2146,77 @@ async def get_focus_status(session_id: str):
     }
 
 
-@app.post("/api/focus/{session_id}/set")
-async def set_focus(session_id: str, request: dict):
-    '''Set the focus for proactive thinking.'''
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+def set_focus(self, focus: str, project_name: Optional[str] = None, create_project: bool = True):
+    """Set focus and optionally link to a project in hybrid memory."""
     
-    vera = get_or_create_vera(session_id)
+    # Check if we already have a saved board for this focus
+    existing_board = self._find_matching_focus_board(focus)
     
-    if not hasattr(vera, 'focus_manager'):
-        raise HTTPException(status_code=400, detail="Focus manager not available")
+    if existing_board:
+        print(f"[FocusManager] Found existing focus board: {existing_board['filename']}")
+        # Load the existing board
+        if self.load_focus_board(existing_board['filename']):
+            print(f"[FocusManager] Loaded existing focus board for: {focus}")
+            self._broadcast_sync("focus_changed", {
+                "focus": focus, 
+                "project_id": self.project_id,
+                "loaded_existing": True,
+                "filename": existing_board['filename']
+            })
+            return
     
-    focus_text = request.get("focus", "")
-    if not focus_text:
-        raise HTTPException(status_code=400, detail="Focus text required")
+    # No existing board found, set new focus and clear board
+    old_focus = self.focus
     
-    vera.focus_manager.set_focus(focus_text)
+    # Save current board if there was a previous focus
+    if old_focus and old_focus != focus:
+        print(f"[FocusManager] Saving previous focus: {old_focus}")
+        self.save_focus_board()
     
-    return {
-        "status": "success",
-        "focus": vera.focus_manager.focus
+    # Set new focus
+    self.focus = focus
+    
+    # Clear the focus board for new focus
+    self.focus_board = {
+        "progress": [],
+        "next_steps": [],
+        "issues": [],
+        "ideas": [],
+        "actions": [],
+        "completed": []
     }
-
+    
+    print(f"[FocusManager] Focus set to: {focus} (new board)")
+    
+    # Create or link to project in hybrid memory
+    if self.hybrid_memory and (project_name or create_project):
+        project_name = project_name or focus
+        self.project_id = self._ensure_project(project_name, focus)
+        print(f"[FocusManager] Linked to project: {self.project_id}")
+    
+    # Store in agent memory with sanitized metadata
+    metadata = {"topic": "focus"}
+    if self.project_id:
+        metadata["project_id"] = self.project_id
+    
+    self.agent.mem.add_session_memory(
+        self.agent.sess.id, 
+        f"[FocusManager] Focus set to: {focus}", 
+        "Thought", 
+        metadata
+    )
+    
+    # Auto-save the new empty board
+    filepath = self.save_focus_board()
+    print(f"[FocusManager] Auto-saved new focus board: {filepath}")
+    
+    # Broadcast focus change
+    self._broadcast_sync("focus_changed", {
+        "focus": focus, 
+        "project_id": self.project_id,
+        "loaded_existing": False,
+        "filepath": filepath
+    })
 
 @app.post("/api/focus/{session_id}/clear")
 async def clear_focus(session_id: str):
@@ -1812,30 +2233,124 @@ async def clear_focus(session_id: str):
     
     return {"status": "success", "focus": None}
 
-
-@app.post("/api/focus/{session_id}/board/add")
-async def add_to_focus_board(session_id: str, request: dict):
-    '''Add an item to the focus board.'''
+@app.post("/api/focus/{session_id}/set")
+async def set_focus(session_id: str, request: dict):
+    '''Set the focus for proactive thinking.'''
+    logger.info(f"set_focus called for session: {session_id}")
+    logger.info(f"Available sessions: {list(sessions.keys())}")
+    
     if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
+        logger.error(f"Session not found: {session_id}")
+        logger.error(f"Available sessions: {list(sessions.keys())}")
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
     
     vera = get_or_create_vera(session_id)
     
     if not hasattr(vera, 'focus_manager'):
+        logger.error("Focus manager not available")
         raise HTTPException(status_code=400, detail="Focus manager not available")
     
-    category = request.get("category", "actions")
-    note = request.get("note", "")
+    focus_text = request.get("focus", "")
+    if not focus_text:
+        raise HTTPException(status_code=400, detail="Focus text required")
     
-    if not note:
-        raise HTTPException(status_code=400, detail="Note text required")
+    try:
+        logger.info(f"Setting focus to: {focus_text}")
+        vera.focus_manager.set_focus(focus_text)
+        
+        return {
+            "status": "success",
+            "focus": vera.focus_manager.focus,
+            "focus_board": vera.focus_manager.focus_board
+        }
+    except Exception as e:
+        logger.error(f"Error setting focus: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to set focus: {str(e)}")
+
+@app.post("/api/focus/{session_id}/board/add")
+def add_to_focus_board(self, category: str, note: str, metadata: Optional[Dict[str, Any]] = None):
+    """Add item to focus board with optional metadata."""
+    if category not in self.focus_board:
+        self.focus_board[category] = []
     
-    vera.focus_manager.add_to_focus_board(category, note)
-    
-    return {
-        "status": "success",
-        "focus_board": vera.focus_manager.focus_board
+    item = {
+        "note": note,
+        "timestamp": datetime.utcnow().isoformat(),
+        "metadata": metadata or {}
     }
+    
+    self.focus_board[category].append(item)
+    
+    # Store in hybrid memory if available
+    if self.hybrid_memory and self.project_id:
+        item_id = f"focus_item_{category}_{int(time.time()*1000)}"
+        
+        # Convert category to valid Neo4j label (CamelCase, no spaces/underscores)
+        category_label = self._to_camel_case(category)
+        
+        self.hybrid_memory.upsert_entity(
+            entity_id=item_id,
+            etype="focus_item",
+            labels=["FocusItem", category_label],
+            properties={
+                "category": category,
+                "note": note,
+                "project_id": self.project_id,
+                **item["metadata"]
+            }
+        )
+        self.hybrid_memory.link(self.project_id, item_id, f"HAS_{category.upper()}")
+    
+    # Broadcast board update
+    self._broadcast_sync("board_updated", {
+        "category": category,
+        "item": item,
+        "focus_board": self.focus_board
+    })
+    
+    print(f"[FocusManager] Added to {category}: {note}")
+    
+@staticmethod
+def _to_camel_case(text: str) -> str:
+    """
+    Convert text to valid Neo4j label (CamelCase, alphanumeric only).
+    
+    Neo4j label requirements:
+    - Must start with a letter
+    - Can only contain letters, numbers, and underscores
+    - Best practice: Use CamelCase without underscores
+    
+    Examples:
+        'next_steps' -> 'NextSteps'
+        'action-items' -> 'ActionItems'
+        'ideas!' -> 'Ideas'
+        '123test' -> 'Test123'
+        '' -> 'UnknownCategory'
+    """
+    if not text or not isinstance(text, str):
+        return "UnknownCategory"
+    
+    # Remove all non-alphanumeric characters except spaces and underscores
+    # This handles punctuation, special chars, etc.
+    cleaned = re.sub(r'[^a-zA-Z0-9\s_]', '', text)
+    
+    # Split on underscores, spaces, and hyphens
+    words = re.split(r'[\s_-]+', cleaned)
+    
+    # Filter out empty strings and capitalize each word
+    words = [word.capitalize() for word in words if word]
+    
+    if not words:
+        return "UnknownCategory"
+    
+    result = ''.join(words)
+    
+    # Ensure it starts with a letter (Neo4j requirement)
+    if result and not result[0].isalpha():
+        result = 'Category' + result
+    
+    # Fallback for edge cases
+    return result if result else "UnknownCategory"
 
 
 @app.post("/api/focus/{session_id}/board/clear")
@@ -2159,8 +2674,12 @@ async def websocket_focus(websocket: WebSocket, session_id: str):
     await websocket.accept()
     
     if session_id not in sessions:
-        await websocket.close(code=4004, reason="Session not found")
+        try:
+            await websocket.send_json({"type": "error", "message": "..."})
+        except:
+            pass
         return
+                
     
     vera = get_or_create_vera(session_id)
     
@@ -2221,10 +2740,9 @@ async def websocket_focus(websocket: WebSocket, session_id: str):
         if websocket in vera.focus_manager._websockets:
             vera.focus_manager._websockets.remove(websocket)
 
-
 @app.get("/api/focus/{session_id}/save")
 async def save_focus_state(session_id: str):
-    """Save current focus and board state to memory."""
+    """Save current focus and board state to memory AND file."""
     if session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -2235,15 +2753,18 @@ async def save_focus_state(session_id: str):
     
     fm = vera.focus_manager
     
-    # Save to Neo4j memory
-    focus_state = {
-        "focus": fm.focus,
-        "focus_board": fm.focus_board,
-        "running": fm.running,
-        "saved_at": datetime.utcnow().isoformat()
-    }
-    
     try:
+        # Save to file system using FocusManager's method
+        filepath = fm.save_focus_board()  # <-- ADD THIS LINE
+        
+        # Also save to Neo4j memory (keep existing behavior)
+        focus_state = {
+            "focus": fm.focus,
+            "focus_board": fm.focus_board,
+            "running": fm.running,
+            "saved_at": datetime.utcnow().isoformat()
+        }
+        
         vera.mem.add_session_memory(
             vera.sess.id,
             json.dumps(focus_state, indent=2),
@@ -2251,20 +2772,20 @@ async def save_focus_state(session_id: str):
             {
                 "topic": "focus_state",
                 "focus": fm.focus or "none",
-                "saved_at": focus_state["saved_at"]
+                "saved_at": focus_state["saved_at"],
+                "filepath": filepath  # <-- ADD THIS TOO
             },
             promote=True
         )
         
         return {
             "status": "saved",
-            "focus_state": focus_state
+            "focus_state": focus_state,
+            "filepath": filepath  # <-- RETURN THE FILEPATH
         }
     except Exception as e:
         logger.error(f"Failed to save focus state: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
-
-
 @app.get("/api/focus/{session_id}/load")
 async def load_focus_state(session_id: str):
     """Load last saved focus state from memory."""
@@ -2633,172 +3154,6 @@ async def delete_file(session_id: str, filename: str):
     sessions[session_id]["files"].pop(filename)
     
     return {"status": "deleted", "filename": filename}
-
-
-# ============================================================
-# Health and Info
-# ============================================================
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "active_sessions": len(sessions),
-        "tts_queue_length": len(tts_queue),
-        "active_toolchains": len(active_toolchains)
-    }
-
-# Update the info endpoint to include new memory endpoints
-@app.get("/api/info")
-async def get_info():
-    """Get API information."""
-    return {
-        "name": "Vera AI Chat API",
-        "version": "1.0.0",
-        "active_sessions": len(sessions),
-        "endpoints": {
-            "session": ["/api/session/start", "/api/session/{id}/end"],
-            "chat": ["/api/chat", "/ws/chat/{session_id}"],
-            "memory": [
-                "/api/memory/query",
-                "/api/memory/hybrid-retrieve",
-                "/api/memory/extract-entities",
-                "/api/memory/subgraph",
-                "/api/memory/{session_id}/entities",
-                "/api/memory/{session_id}/relationships",
-                "/api/memory/{session_id}/promote"
-            ],
-            "graph": ["/api/graph/session/{session_id}"],
-            "toolchain": [
-                "/api/toolchain/execute",
-                "/ws/toolchain/{session_id}",
-                "/api/toolchain/{session_id}/executions",
-                "/api/toolchain/{session_id}/execution/{execution_id}",
-                "/api/toolchain/{session_id}/active",
-                "/api/toolchain/{session_id}/tools"
-            ],
-            "tts": ["/api/tts", "/api/tts/stop", "/api/tts/queue/clear"],
-            "files": ["/api/files/upload/{session_id}", "/api/files/{session_id}"]
-        }
-    }
-
-@app.get("/api/debug/neo4j/{session_id}")
-async def debug_neo4j(session_id: str):
-    """Debug endpoint to see what's in Neo4j for a session."""
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    vera = get_or_create_vera(session_id)
-    actual_session_id = vera.sess.id
-    
-    try:
-        driver = vera.mem.graph._driver
-        
-        with driver.session() as db_sess:
-            # Get session node
-            session_result = db_sess.run("""
-                MATCH (s:Session {id: $session_id})
-                RETURN s, labels(s) AS labels
-            """, {"session_id": actual_session_id})
-            
-            session_info = []
-            for record in session_result:
-                session_info.append({
-                    "node": dict(record["s"]),
-                    "labels": record["labels"]
-                })
-            
-            # Get directly connected nodes
-            connected_result = db_sess.run("""
-                MATCH (s:Session {id: $session_id})-[r]-(n)
-                RETURN n.id AS id, labels(n) AS labels, n.type AS type, 
-                       n.text AS text, type(r) AS rel_type, 
-                       startNode(r).id AS start_id, endNode(r).id AS end_id
-                LIMIT 100
-            """, {"session_id": actual_session_id})
-            
-            directly_connected = []
-            for record in connected_result:
-                directly_connected.append({
-                    "id": record["id"],
-                    "labels": record["labels"],
-                    "type": record["type"],
-                    "text": record["text"][:100] if record["text"] else None,
-                    "rel_type": record["rel_type"],
-                    "start_id": record["start_id"],
-                    "end_id": record["end_id"]
-                })
-            
-            # Get all nodes (sample)
-            all_nodes_result = db_sess.run("""
-                MATCH (n)
-                RETURN n.id AS id, labels(n) AS labels, n.type AS type, n.text AS text
-                LIMIT 50
-            """)
-            
-            all_nodes = []
-            for record in all_nodes_result:
-                all_nodes.append({
-                    "id": record["id"],
-                    "labels": record["labels"],
-                    "type": record["type"],
-                    "text": record["text"][:100] if record["text"] else None
-                })
-            
-            # Get all relationships (sample)
-            all_rels_result = db_sess.run("""
-                MATCH (a)-[r]->(b)
-                RETURN a.id AS from, type(r) AS rel_type, 
-                       properties(r) AS rel_props, b.id AS to
-                LIMIT 100
-            """)
-            
-            all_rels = []
-            for record in all_rels_result:
-                all_rels.append({
-                    "from": record["from"],
-                    "rel_type": record["rel_type"],
-                    "rel_props": record["rel_props"],
-                    "to": record["to"]
-                })
-            
-            # Check for FOLLOWS chain
-            follows_result = db_sess.run("""
-                MATCH (a)-[r:REL {rel: 'FOLLOWS'}]->(b)
-                RETURN a.id AS from, a.text AS from_text, b.id AS to, b.text AS to_text
-                LIMIT 50
-            """)
-            
-            follows_chain = []
-            for record in follows_result:
-                follows_chain.append({
-                    "from": record["from"],
-                    "from_text": record["from_text"][:50] if record["from_text"] else None,
-                    "to": record["to"],
-                    "to_text": record["to_text"][:50] if record["to_text"] else None
-                })
-            
-            return {
-                "session_id": actual_session_id,
-                "session_nodes": session_info,
-                "directly_connected_to_session": directly_connected,
-                "follows_chain": follows_chain,
-                "all_nodes_sample": all_nodes,
-                "all_relationships_sample": all_rels,
-                "summary": {
-                    "session_found": len(session_info) > 0,
-                    "direct_connections": len(directly_connected),
-                    "follows_count": len(follows_chain),
-                    "total_nodes_sample": len(all_nodes),
-                    "total_relationships_sample": len(all_rels)
-                }
-            }
-    
-    except Exception as e:
-        logger.error(f"Debug error: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
 
 # from fastapi import FastAPI, HTTPException, Depends
 # from pydantic import BaseModel, Field
@@ -3479,6 +3834,968 @@ async def export_notebook(session_id: str, notebook_id: str):
         "notes": notes,
         "exported_at": datetime.utcnow().isoformat()
     }
+"""
+Integration module to add orchestrator routes to existing FastAPI application
+Usage: 
+    from orchestrator_integration import add_orchestrator_routes
+    add_orchestrator_routes(app, vera_instance)
+"""
+
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+import os
+from BackgroundCognition.proactive_background_focus import (
+    PriorityWorkerPool, 
+    ClusterWorkerPool, 
+    RemoteNode,
+    GLOBAL_TASK_REGISTRY as R,
+    Priority,
+    ProactiveFocusManager,
+    ScheduledTask,
+    TokenBucket
+)
+
+# def add_orchestrator_routes(app: FastAPI, vera_instance=None):
+#     """
+#     Add orchestrator routes to an existing FastAPI application
+    
+#     Args:
+#         app: FastAPI application instance
+#         vera_instance: Optional Vera instance to connect immediately
+#     """
+    
+#     # Import the orchestrator API
+#     from orchestrator_api import (
+#         state, manager, on_task_start, on_task_end,
+#         WorkerPoolConfig, RemoteNodeConfig, TaskSubmission,
+#         FocusUpdate, RateLimitConfig
+#     )
+    
+#     # Set Vera instance if provided
+#     if vera_instance:
+
+#         print(f"[Orchestrator] Vera instance connected with {len(vera_instance.tools)} tools")
+    
+#     # Mount static files for the frontend
+#     frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
+#     if os.path.exists(frontend_path):
+#         app.mount("/orchestrator/static", StaticFiles(directory=frontend_path), name="orchestrator_static")
+    
+# Initialize FastAPI app
+app = FastAPI(title="Vera Task Orchestrator API")
+
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# ============================================================================
+# GLOBAL STATE
+# ============================================================================
+
+class OrchestratorState:
+    def __init__(self):
+        self.local_pool: Optional[PriorityWorkerPool] = None
+        self.cluster_pool: Optional[ClusterWorkerPool] = None
+        self.focus_manager: Optional[ProactiveFocusManager] = None
+        self.vera_instance = None
+        self.task_history: List[Dict] = []
+        self.system_metrics: List[Dict] = []
+        self.remote_nodes: List[RemoteNode] = []
+        self.websocket_connections: List[WebSocket] = []
+
+state = OrchestratorState()
+
+
+# ============================================================================
+# PYDANTIC MODELS
+# ============================================================================
+
+class WorkerPoolConfig(BaseModel):
+    worker_count: int = 4
+    cpu_threshold: float = 85.0
+    max_processes: int = 24
+    max_process_name: str = "ollama"
+
+
+class RemoteNodeConfig(BaseModel):
+    name: str
+    base_url: str
+    labels: List[str]
+    auth_token: Optional[str] = None
+    weight: int = 1
+
+
+class TaskSubmission(BaseModel):
+    name: str
+    payload: Dict[str, Any]
+    priority: str = "NORMAL"
+    labels: List[str] = []
+    delay: float = 0.0
+    context: Dict[str, Any] = {}
+
+
+class FocusUpdate(BaseModel):
+    focus: str
+
+
+class RateLimitConfig(BaseModel):
+    label: str
+    fill_rate: float
+    capacity: int
+
+
+# ============================================================================
+# WEBSOCKET MANAGER
+# ============================================================================
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                disconnected.append(connection)
+        
+        for conn in disconnected:
+            self.disconnect(conn)
+
+
+manager = ConnectionManager()
+
+
+# ============================================================================
+# TASK CALLBACKS
+# ============================================================================
+
+def on_task_start(task: ScheduledTask):
+    """Called when a task starts execution"""
+    task_data = {
+        "type": "task_start",
+        "timestamp": datetime.now().isoformat(),
+        "task_id": task.task_id,
+        "name": task.name,
+        "priority": task.priority.name if hasattr(task.priority, 'name') else str(task.priority),
+        "labels": list(task.labels)
+    }
+    
+    state.task_history.append({
+        "timestamp": task_data["timestamp"],
+        "task_id": task.task_id,
+        "name": task.name,
+        "priority": task_data["priority"],
+        "status": "started",
+        "labels": ", ".join(task.labels)
+    })
+    
+    # Broadcast to WebSocket clients
+    asyncio.create_task(manager.broadcast({"type": "task_start", "data": task_data}))
+
+
+def on_task_end(task: ScheduledTask, result: Optional[Any], error: Optional[BaseException]):
+    """Called when a task completes or fails"""
+    status = "completed" if error is None else "failed"
+    
+    task_data = {
+        "type": "task_end",
+        "timestamp": datetime.now().isoformat(),
+        "task_id": task.task_id,
+        "name": task.name,
+        "priority": task.priority.name if hasattr(task.priority, 'name') else str(task.priority),
+        "status": status,
+        "result": str(result) if result else None,
+        "error": str(error) if error else None,
+        "labels": list(task.labels)
+    }
+    
+    state.task_history.append({
+        "timestamp": task_data["timestamp"],
+        "task_id": task.task_id,
+        "name": task.name,
+        "priority": task_data["priority"],
+        "status": status,
+        "result": task_data["result"],
+        "error": task_data["error"],
+        "labels": ", ".join(task.labels)
+    })
+    
+    # Keep history limited
+    if len(state.task_history) > 1000:
+        state.task_history = state.task_history[-500:]
+    
+    # Broadcast to WebSocket clients
+    asyncio.create_task(manager.broadcast({"type": "task_end", "data": task_data}))
+
+# ============================================================================
+# FRONTEND UI
+# ============================================================================
+
+@app.get("/orchestrator")
+async def serve_orchestrator_ui():
+    """Serve the orchestrator frontend"""
+    html_path = os.path.join(os.path.dirname(__file__), "orchestrator.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    else:
+        return {
+            "message": "Orchestrator UI not found. Place orchestrator.html in the same directory.",
+            "expected_path": html_path
+        }
+
+
+# ============================================================================
+# HEALTH & STATUS
+# ============================================================================
+
+@app.get("/orchestrator/health")
+async def orchestrator_health():
+    """Get overall system health status"""
+    return {
+        "status": "healthy",
+        "local_pool": state.local_pool is not None and state.local_pool._running,
+        "cluster_pool": state.cluster_pool is not None,
+        "focus_manager": state.focus_manager is not None and state.focus_manager._running,
+        "vera_connected": state.vera_instance is not None
+    }
+
+
+# ============================================================================
+# WORKER POOL MANAGEMENT
+# ============================================================================
+
+@app.post("/orchestrator/pool/initialize")
+async def initialize_pool(config: WorkerPoolConfig):
+    """Initialize the local worker pool"""
+    try:
+        # Define rate limits
+        rate_limits = {
+            "llm": (0.5, 2),
+            "exec": (2.0, 5),
+            "heavy": (0.2, 1)
+        }
+        
+        # Create the pool
+        state.local_pool = PriorityWorkerPool(
+            worker_count=config.worker_count,
+            cpu_threshold=config.cpu_threshold,
+            max_process_name=config.max_process_name,
+            max_processes=config.max_processes,
+            rate_limits=rate_limits,
+            on_task_start=on_task_start,
+            on_task_end=on_task_end,
+            name="VeraPool"
+        )
+        
+        # Set concurrency limits
+        state.local_pool.set_concurrency_limit("llm", 2)
+        state.local_pool.set_concurrency_limit("exec", 3)
+        state.local_pool.set_concurrency_limit("heavy", 1)
+        
+        return {
+            "status": "success",
+            "message": "Local pool initialized",
+            "config": {
+                "worker_count": config.worker_count,
+                "cpu_threshold": config.cpu_threshold,
+                "max_processes": config.max_processes,
+                "max_process_name": config.max_process_name
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize pool: {str(e)}")
+
+
+@app.post("/orchestrator/pool/start")
+async def start_pool():
+    """Start the worker pool"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Pool not initialized. Call /pool/initialize first.")
+    
+    try:
+        state.local_pool.start()
+        return {"status": "success", "message": "Pool started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/orchestrator/pool/stop")
+async def stop_pool():
+    """Stop the worker pool"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Pool not initialized")
+    
+    try:
+        state.local_pool.stop()
+        return {"status": "success", "message": "Pool stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/orchestrator/pool/pause")
+async def pause_pool():
+    """Pause the worker pool (stop accepting new tasks)"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Pool not initialized")
+    
+    try:
+        state.local_pool.pause()
+        return {"status": "success", "message": "Pool paused"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/orchestrator/pool/resume")
+async def resume_pool():
+    """Resume the worker pool"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Pool not initialized")
+    
+    try:
+        state.local_pool.resume()
+        return {"status": "success", "message": "Pool resumed"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/orchestrator/pool/status")
+async def get_pool_status():
+    """Get current pool status and metrics"""
+    if not state.local_pool:
+        return {"initialized": False}
+    
+    return {
+        "initialized": True,
+        "running": state.local_pool._running,
+        "worker_count": state.local_pool.worker_count,
+        "queue_size": state.local_pool._q.qsize(),
+        "active_workers": len([t for t in state.local_pool._threads if t.is_alive()]),
+        "rate_limits": {
+            label: {
+                "fill_rate": bucket.fill_rate,
+                "capacity": bucket.capacity,
+                "current_tokens": bucket.tokens
+            }
+            for label, bucket in getattr(state.local_pool, 'rate_buckets', {}).items()
+        }
+    }
+
+
+# ============================================================================
+# CLUSTER MANAGEMENT
+# ============================================================================
+
+@app.post("/orchestrator/cluster/initialize")
+async def initialize_cluster():
+    """Initialize the cluster pool"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Local pool must be initialized first")
+    
+    try:
+        state.cluster_pool = ClusterWorkerPool(state.local_pool)
+        
+        # Re-add any existing nodes
+        for node in state.remote_nodes:
+            state.cluster_pool.add_node(node)
+        
+        return {
+            "status": "success",
+            "message": "Cluster initialized",
+            "node_count": len(state.remote_nodes)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/orchestrator/cluster/nodes/add")
+async def add_cluster_node(config: RemoteNodeConfig):
+    """Add a remote node to the cluster"""
+    if not state.cluster_pool:
+        raise HTTPException(status_code=400, detail="Cluster not initialized. Call /cluster/initialize first.")
+    
+    try:
+        node = RemoteNode(
+            name=config.name,
+            base_url=config.base_url,
+            labels=tuple(config.labels),
+            auth_token=config.auth_token or "",
+            weight=config.weight
+        )
+        
+        state.remote_nodes.append(node)
+        state.cluster_pool.add_node(node)
+        
+        return {
+            "status": "success",
+            "message": f"Node '{config.name}' added",
+            "node": {
+                "name": node.name,
+                "base_url": node.base_url,
+                "labels": list(node.labels),
+                "weight": node.weight
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/orchestrator/cluster/nodes")
+async def get_cluster_nodes():
+    """Get list of all cluster nodes"""
+    nodes = []
+    for node in state.remote_nodes:
+        nodes.append({
+            "name": node.name,
+            "base_url": node.base_url,
+            "labels": list(node.labels),
+            "weight": node.weight,
+            "last_ok": node.last_ok > 0,
+            "inflight": node.inflight
+        })
+    
+    return {"nodes": nodes}
+
+
+@app.delete("/orchestrator/cluster/nodes/{node_name}")
+async def remove_cluster_node(node_name: str):
+    """Remove a node from the cluster"""
+    if not state.cluster_pool:
+        raise HTTPException(status_code=400, detail="Cluster not initialized")
+    
+    # Find and remove from state
+    node = next((n for n in state.remote_nodes if n.name == node_name), None)
+    if not node:
+        raise HTTPException(status_code=404, detail=f"Node '{node_name}' not found")
+    
+    state.remote_nodes.remove(node)
+    
+    # Remove from cluster pool
+    state.cluster_pool.nodes = [n for n in state.cluster_pool.nodes if n.name != node_name]
+    
+    return {"status": "success", "message": f"Node '{node_name}' removed"}
+
+
+# ============================================================================
+# TASK MANAGEMENT
+# ============================================================================
+
+@app.post("/orchestrator/tasks/submit")
+async def submit_task(task: TaskSubmission):
+    """Submit a new task for execution"""
+    try:
+        # Map priority string to enum
+        priority_map = {
+            "CRITICAL": Priority.CRITICAL,
+            "HIGH": Priority.HIGH,
+            "NORMAL": Priority.NORMAL,
+            "LOW": Priority.LOW
+        }
+        
+        priority = priority_map.get(task.priority.upper(), Priority.NORMAL)
+        
+        # Submit through cluster if available, otherwise local pool
+        if state.cluster_pool:
+            task_id = state.cluster_pool.submit_task(
+                name=task.name,
+                payload=task.payload,
+                priority=priority,
+                labels=task.labels,
+                delay=task.delay,
+                context=task.context
+            )
+        elif state.local_pool:
+            task_id = state.local_pool.submit(
+                lambda: R.run(task.name, task.payload, task.context),
+                priority=priority,
+                delay=task.delay,
+                name=task.name,
+                labels=tuple(task.labels)
+            )
+        else:
+            raise HTTPException(status_code=400, detail="No worker pool available. Initialize a pool first.")
+        
+        return {
+            "status": "success",
+            "task_id": task_id,
+            "message": f"Task '{task.name}' submitted"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to submit task: {str(e)}")
+
+
+@app.get("/orchestrator/tasks/history")
+async def get_task_history(limit: int = 50):
+    """Get task execution history"""
+    return {"history": state.task_history[-limit:]}
+
+
+@app.get("/orchestrator/tasks/registry")
+async def get_registered_tasks():
+    """Get list of registered task handlers"""
+    tasks = list(R._h.keys()) if hasattr(R, '_h') else []
+    return {"tasks": tasks}
+
+
+# ============================================================================
+# SYSTEM MONITORING
+# ============================================================================
+
+@app.get("/orchestrator/system/metrics")
+async def get_system_metrics():
+    """Get current system metrics"""
+    try:
+        metrics = {
+            "timestamp": datetime.now().isoformat(),
+            "cpu_percent": psutil.cpu_percent(interval=0.1),
+            "memory_percent": psutil.virtual_memory().percent,
+            "queue_size": state.local_pool._q.qsize() if state.local_pool else 0
+        }
+        
+        state.system_metrics.append(metrics)
+        if len(state.system_metrics) > 100:
+            state.system_metrics = state.system_metrics[-100:]
+        
+        return {"metrics": metrics}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/orchestrator/system/processes")
+async def get_process_info():
+    """Get top processes by CPU usage"""
+    try:
+        processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'num_threads']):
+            try:
+                info = proc.info
+                if info['cpu_percent'] is not None:
+                    processes.append(info)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        processes.sort(key=lambda x: x.get('cpu_percent', 0) or 0, reverse=True)
+        return {"processes": processes[:20]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# RATE LIMITS
+# ============================================================================
+
+@app.post("/orchestrator/rate-limits/add")
+async def add_rate_limit(config: RateLimitConfig):
+    """Add or update a rate limit"""
+    if not state.local_pool:
+        raise HTTPException(status_code=400, detail="Pool not initialized")
+    
+    try:
+        # from worker_pool import TokenBucket
+        state.local_pool.rate_buckets[config.label] = TokenBucket(
+            fill_rate=config.fill_rate,
+            capacity=float(config.capacity)
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Rate limit set for label '{config.label}'"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/orchestrator/rate-limits")
+async def get_rate_limits():
+    """Get all configured rate limits"""
+    if not state.local_pool:
+        return {"rate_limits": {}}
+    
+    limits = {}
+    for label, bucket in getattr(state.local_pool, 'rate_buckets', {}).items():
+        limits[label] = {
+            "fill_rate": bucket.fill_rate,
+            "capacity": bucket.capacity,
+            "current_tokens": bucket.tokens
+        }
+    
+    return {"rate_limits": limits}
+
+
+# ============================================================================
+# OLLAMA MONITORING
+# ============================================================================
+
+@app.get("/orchestrator/ollama/status")
+async def get_ollama_status():
+    """Get Ollama process status and API health"""
+    try:
+        import requests
+        
+        ollama_processes = []
+        total_cpu = 0
+        total_memory = 0
+        total_threads = 0
+        
+        # Find Ollama processes
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'num_threads', 'memory_info']):
+            try:
+                if proc.info['name'] and 'ollama' in proc.info['name'].lower():
+                    memory_mb = (proc.info['memory_info'].rss / 1024 / 1024) if proc.info.get('memory_info') else 0
+                    
+                    ollama_processes.append({
+                        'pid': proc.info['pid'],
+                        'name': proc.info['name'],
+                        'cpu_percent': proc.info['cpu_percent'] or 0,
+                        'memory_percent': proc.info['memory_percent'] or 0,
+                        'num_threads': proc.info['num_threads'] or 0,
+                        'memory_mb': memory_mb
+                    })
+                    
+                    total_cpu += proc.info['cpu_percent'] or 0
+                    total_memory += proc.info['memory_percent'] or 0
+                    total_threads += proc.info['num_threads'] or 0
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        # Check Ollama API health
+        api_status = "unknown"
+        models = []
+        try:
+            response = requests.get("http://localhost:11434/api/tags", timeout=2)
+            if response.status_code == 200:
+                api_status = "healthy"
+                models_data = response.json().get("models", [])
+                models = [m.get("name", m.get("model", "")) for m in models_data]
+        except Exception:
+            api_status = "unavailable"
+        
+        return {
+            "processes": ollama_processes,
+            "summary": {
+                "process_count": len(ollama_processes),
+                "total_cpu": total_cpu,
+                "total_memory": total_memory,
+                "total_threads": total_threads
+            },
+            "api_status": api_status,
+            "models": models
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# WEBSOCKET ENDPOINTS
+# ============================================================================
+
+@app.websocket("/orchestrator/ws/updates")
+async def websocket_updates(websocket: WebSocket):
+    """WebSocket endpoint for real-time system updates"""
+    await manager.connect(websocket)
+    try:
+        while True:
+            await asyncio.sleep(2)
+            if state.local_pool:
+                try:
+                    await websocket.send_json({
+                        "type": "status_update",
+                        "data": {
+                            "queue_size": state.local_pool._q.qsize(),
+                            "timestamp": datetime.now().isoformat()
+                        }
+                    })
+                except Exception:
+                    break
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        manager.disconnect(websocket)
+
+
+# ============================================================================
+# FOCUS MANAGER
+# ============================================================================
+
+@app.post("/orchestrator/focus/set")
+async def set_focus(update: FocusUpdate):
+    """Set the proactive focus"""
+    if not state.focus_manager:
+        # Initialize focus manager if not exists
+        if state.local_pool:
+            state.focus_manager = ProactiveFocusManager(
+                agent=state.vera_instance,
+                pool=state.local_pool
+            )
+        else:
+            raise HTTPException(status_code=400, detail="Pool not initialized")
+    
+    try:
+        state.focus_manager.set_focus(update.focus)
+        state.focus_manager.start()
+        
+        return {
+            "status": "success",
+            "message": f"Focus set to: {update.focus}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/orchestrator/focus/status")
+async def get_focus_status():
+    """Get current focus status"""
+    if not state.focus_manager:
+        return {"active": False, "focus": None}
+    
+    return {
+        "active": state.focus_manager._running,
+        "focus": state.focus_manager.focus,
+        "focus_board": state.focus_manager.focus_board if hasattr(state.focus_manager, 'focus_board') else {}
+    }
+
+
+@app.post("/orchestrator/focus/stop")
+async def stop_focus():
+    """Stop the proactive focus manager"""
+    if not state.focus_manager:
+        raise HTTPException(status_code=400, detail="Focus manager not initialized")
+    
+    try:
+        state.focus_manager.stop()
+        return {"status": "success", "message": "Focus manager stopped"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# STARTUP / SHUTDOWN
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize on startup"""
+    print("=" * 60)
+    print("Vera Task Orchestrator API Starting...")
+    print("=" * 60)
+    
+    # Register some example tasks
+    @R.register("example.hello")
+    def hello_task(payload, context):
+        name = payload.get("name", "World")
+        return f"Hello, {name}!"
+    
+    @R.register("example.compute")
+    def compute_task(payload, context):
+        import time
+        duration = payload.get("duration", 1)
+        time.sleep(duration)
+        return f"Computed for {duration} seconds"
+    
+    print("Registered example tasks: example.hello, example.compute")
+    print("=" * 60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    print("Shutting down Vera Task Orchestrator...")
+    
+    if state.focus_manager and state.focus_manager._running:
+        state.focus_manager.stop()
+    
+    if state.local_pool and state.local_pool._running:
+        state.local_pool.stop(wait=True)
+    
+    print("Shutdown complete")
+
+
+
+
+# ============================================================
+# Health and Info
+# ============================================================
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "active_sessions": len(sessions),
+        "tts_queue_length": len(tts_queue),
+        "active_toolchains": len(active_toolchains)
+    }
+
+# Update the info endpoint to include new memory endpoints
+@app.get("/api/info")
+async def get_info():
+    """Get API information."""
+    return {
+        "name": "Vera AI Chat API",
+        "version": "1.0.0",
+        "active_sessions": len(sessions),
+        "endpoints": {
+            "session": ["/api/session/start", "/api/session/{id}/end"],
+            "chat": ["/api/chat", "/ws/chat/{session_id}"],
+            "memory": [
+                "/api/memory/query",
+                "/api/memory/hybrid-retrieve",
+                "/api/memory/extract-entities",
+                "/api/memory/subgraph",
+                "/api/memory/{session_id}/entities",
+                "/api/memory/{session_id}/relationships",
+                "/api/memory/{session_id}/promote"
+            ],
+            "graph": ["/api/graph/session/{session_id}"],
+            "toolchain": [
+                "/api/toolchain/execute",
+                "/ws/toolchain/{session_id}",
+                "/api/toolchain/{session_id}/executions",
+                "/api/toolchain/{session_id}/execution/{execution_id}",
+                "/api/toolchain/{session_id}/active",
+                "/api/toolchain/{session_id}/tools"
+            ],
+            "tts": ["/api/tts", "/api/tts/stop", "/api/tts/queue/clear"],
+            "files": ["/api/files/upload/{session_id}", "/api/files/{session_id}"]
+        }
+    }
+
+@app.get("/api/debug/neo4j/{session_id}")
+async def debug_neo4j(session_id: str):
+    """Debug endpoint to see what's in Neo4j for a session."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    actual_session_id = vera.sess.id
+    
+    try:
+        driver = vera.mem.graph._driver
+        
+        with driver.session() as db_sess:
+            # Get session node
+            session_result = db_sess.run("""
+                MATCH (s:Session {id: $session_id})
+                RETURN s, labels(s) AS labels
+            """, {"session_id": actual_session_id})
+            
+            session_info = []
+            for record in session_result:
+                session_info.append({
+                    "node": dict(record["s"]),
+                    "labels": record["labels"]
+                })
+            
+            # Get directly connected nodes
+            connected_result = db_sess.run("""
+                MATCH (s:Session {id: $session_id})-[r]-(n)
+                RETURN n.id AS id, labels(n) AS labels, n.type AS type, 
+                       n.text AS text, type(r) AS rel_type, 
+                       startNode(r).id AS start_id, endNode(r).id AS end_id
+                LIMIT 100
+            """, {"session_id": actual_session_id})
+            
+            directly_connected = []
+            for record in connected_result:
+                directly_connected.append({
+                    "id": record["id"],
+                    "labels": record["labels"],
+                    "type": record["type"],
+                    "text": record["text"][:100] if record["text"] else None,
+                    "rel_type": record["rel_type"],
+                    "start_id": record["start_id"],
+                    "end_id": record["end_id"]
+                })
+            
+            # Get all nodes (sample)
+            all_nodes_result = db_sess.run("""
+                MATCH (n)
+                RETURN n.id AS id, labels(n) AS labels, n.type AS type, n.text AS text
+                LIMIT 50
+            """)
+            
+            all_nodes = []
+            for record in all_nodes_result:
+                all_nodes.append({
+                    "id": record["id"],
+                    "labels": record["labels"],
+                    "type": record["type"],
+                    "text": record["text"][:100] if record["text"] else None
+                })
+            
+            # Get all relationships (sample)
+            all_rels_result = db_sess.run("""
+                MATCH (a)-[r]->(b)
+                RETURN a.id AS from, type(r) AS rel_type, 
+                       properties(r) AS rel_props, b.id AS to
+                LIMIT 100
+            """)
+            
+            all_rels = []
+            for record in all_rels_result:
+                all_rels.append({
+                    "from": record["from"],
+                    "rel_type": record["rel_type"],
+                    "rel_props": record["rel_props"],
+                    "to": record["to"]
+                })
+            
+            # Check for FOLLOWS chain
+            follows_result = db_sess.run("""
+                MATCH (a)-[r:REL {rel: 'FOLLOWS'}]->(b)
+                RETURN a.id AS from, a.text AS from_text, b.id AS to, b.text AS to_text
+                LIMIT 50
+            """)
+            
+            follows_chain = []
+            for record in follows_result:
+                follows_chain.append({
+                    "from": record["from"],
+                    "from_text": record["from_text"][:50] if record["from_text"] else None,
+                    "to": record["to"],
+                    "to_text": record["to_text"][:50] if record["to_text"] else None
+                })
+            
+            return {
+                "session_id": actual_session_id,
+                "session_nodes": session_info,
+                "directly_connected_to_session": directly_connected,
+                "follows_chain": follows_chain,
+                "all_nodes_sample": all_nodes,
+                "all_relationships_sample": all_rels,
+                "summary": {
+                    "session_found": len(session_info) > 0,
+                    "direct_connections": len(directly_connected),
+                    "follows_count": len(follows_chain),
+                    "total_nodes_sample": len(all_nodes),
+                    "total_relationships_sample": len(all_rels)
+                }
+            }
+    
+    except Exception as e:
+        logger.error(f"Debug error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
 # ============================================================
 # Run Server
 # ============================================================
