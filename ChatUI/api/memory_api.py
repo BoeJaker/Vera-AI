@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional
 import logging
 
-from .schemas import (
+from Vera.ChatUI.api.schemas import (
     MemoryQueryRequest,
     MemoryQueryResponse,
     HybridRetrievalRequest,
@@ -11,8 +11,8 @@ from .schemas import (
     SubgraphRequest
 )
 
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
-from session import get_or_create_vera
+from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+from Vera.ChatUI.api.session import get_or_create_vera
 
 # ============================================================
 # Logging setup

@@ -43,7 +43,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 import inspect
 import sys
 
-from Memory.nlp import NLPExtractor  # Assume this is a custom module for NLP extraction
+from Vera.Memory.nlp import NLPExtractor  
 import hashlib
 import time
 from typing import Dict, Any, List

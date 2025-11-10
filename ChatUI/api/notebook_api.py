@@ -9,9 +9,9 @@ from neo4j import GraphDatabase
 # ============================================================
 # Models — adjust import paths to match your structure
 # ============================================================
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
-from schemas import (
+from Vera.ChatUI.api.schemas import (
     NotebookCreate,
     NotebookUpdate,
     NoteCreate,

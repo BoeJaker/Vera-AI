@@ -6,13 +6,8 @@ from typing import List
 # ============================================================
 # Application imports — adjust to your structure
 # ============================================================
-from state import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
-
-from session import (
-    sessions,
-    get_or_create_vera,
-)
-from schemas import VectorStoreRequest  # if defined elsewhere
+from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections, get_or_create_vera
+from Vera.ChatUI.api.schemas import VectorStoreRequest  # if defined elsewhere
 
 # ============================================================
 # Logging setup

@@ -1,779 +1,1419 @@
 (() => {
     // ============================================================
-    // Memory Integration Module
-    // Adds memory query, entity extraction, and graph integration
+    // Enhanced Memory Integration Module
+    // Advanced search, filtering, and detailed result viewing
     // ============================================================
 
-    // Add CSS for dropdown menus
+    // Add comprehensive CSS
     const style = document.createElement('style');
     style.textContent = `
-        .result-menu-item:hover {
+        .memory-search-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 16px;
+            background: #0f172a;
+            border-radius: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .search-input-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+        
+        .search-input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 40px 12px 16px;
+            background: #1e293b;
+            border: 2px solid #334155;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        
+        .search-clear-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        
+        .search-clear-btn:hover {
+            background: #334155;
+            color: #e2e8f0;
+        }
+        
+        .search-controls {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .search-mode-group {
+            display: flex;
+            gap: 4px;
+            background: #1e293b;
+            padding: 4px;
+            border-radius: 6px;
+        }
+        
+        .search-mode-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: #94a3b8;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        .search-mode-btn.active {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .search-mode-btn:hover:not(.active) {
+            background: #334155;
+            color: #e2e8f0;
+        }
+        
+        .filter-section {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-group {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            background: #1e293b;
+            padding: 4px 12px;
+            border-radius: 6px;
+        }
+        
+        .filter-label {
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .filter-select {
+            background: transparent;
+            border: none;
+            color: #e2e8f0;
+            font-size: 13px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+        
+        .filter-select:hover {
             background: #334155;
         }
-        .result-dropdown-menu {
-            animation: slideDown 0.2s ease;
+        
+        .filter-input {
+            background: transparent;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            font-size: 13px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            width: 100px;
         }
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: #1e293b;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .results-title {
+            color: #e2e8f0;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .results-stats {
+            color: #94a3b8;
+            font-size: 12px;
+        }
+        
+        .results-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .result-card {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+        
+        .result-card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+        }
+        
+        .result-card.expanded {
+            border-color: #3b82f6;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            padding: 16px;
+            cursor: pointer;
+            gap: 12px;
+        }
+        
+        .result-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .result-type-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #1e293b;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #60a5fa;
+            margin-bottom: 8px;
+        }
+        
+        .result-text {
+            color: #e2e8f0;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+        
+        .result-text.truncated {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .result-metadata {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            color: #64748b;
+            font-size: 11px;
+        }
+        
+        .result-metadata-item {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .result-metadata-key {
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        
+        .result-actions-btn {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+        
+        .expand-btn {
+            background: transparent;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 18px;
+            transition: all 0.2s;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .expand-btn:hover {
+            background: #1e293b;
+            color: #e2e8f0;
+        }
+        
+        .expand-btn.expanded {
+            transform: rotate(180deg);
+            color: #3b82f6;
+        }
+        
+        .result-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .result-details.expanded {
+            max-height: 2000px;
+        }
+        
+        .result-details-content {
+            padding: 0 16px 16px 16px;
+            border-top: 1px solid #334155;
+        }
+        
+        .detail-section {
+            margin-top: 16px;
+        }
+        
+        .detail-section-title {
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+        
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        
+        .detail-item {
+            background: #1e293b;
+            padding: 12px;
+            border-radius: 6px;
+        }
+        
+        .detail-item-label {
+            color: #64748b;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        
+        .detail-item-value {
+            color: #e2e8f0;
+            font-size: 13px;
+            word-break: break-word;
+        }
+        
+        .detail-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        
+        .action-btn {
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .action-btn:hover {
+            background: #334155;
+            border-color: #3b82f6;
+        }
+        
+        .action-btn.primary {
+            background: #3b82f6;
+            border-color: #3b82f6;
+        }
+        
+        .action-btn.primary:hover {
+            background: #2563eb;
+        }
+        
+        .loading-spinner {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            color: #64748b;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #334155;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+        
+        .empty-state-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #94a3b8;
+        }
+        
+        .empty-state-text {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            margin-top: 16px;
+            padding: 16px;
+        }
+        
+        .pagination-btn {
+            padding: 8px 16px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .pagination-btn:hover:not(:disabled) {
+            background: #334155;
+            border-color: #3b82f6;
+        }
+        
+        .pagination-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-info {
+            color: #94a3b8;
+            font-size: 13px;
+            padding: 0 16px;
+        }
+        
+        .advanced-filters-toggle {
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid #334155;
+            color: #94a3b8;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .advanced-filters-toggle:hover {
+            background: #1e293b;
+            border-color: #3b82f6;
+            color: #e2e8f0;
+        }
+        
+        .advanced-filters {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .advanced-filters.expanded {
+            max-height: 500px;
+        }
+        
+        .advanced-filters-content {
+            padding: 16px;
+            background: #1e293b;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        
+        .filter-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        
+        .filter-field-label {
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .filter-field-input {
+            padding: 8px 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: #e2e8f0;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        
+        .filter-field-input:focus {
+            outline: none;
+            border-color: #3b82f6;
         }
     `;
     document.head.appendChild(style);
 
-    // Query memory with different retrieval modes
-    VeraChat.prototype.queryMemory = async function(query, retrievalType = 'hybrid', k = 5) {
-        if (!this.sessionId) return;
-            
-        try {
-            const response = await fetch('http://llm.int:8888/api/memory/query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    query: query,
-                    k: k,
-                    retrieval_type: retrievalType,
-                    filters: null
-                })
+    // ============================================================
+    // State Management
+    // ============================================================
+    
+    VeraChat.prototype.memoryState = {
+        searchMode: 'hybrid', // 'vector', 'graph', 'hybrid', 'session'
+        searchQuery: '',
+        currentResults: [],
+        expandedResults: new Set(),
+        filters: {
+            limit: 50,
+            minConfidence: 0,
+            entityTypes: [],
+            dateFrom: null,
+            dateTo: null,
+            sessionId: null,
+        },
+        pagination: {
+            page: 1,
+            pageSize: 20,
+            total: 0
+        },
+        loading: false,
+        advancedFiltersExpanded: false
+    };
+
+    // ============================================================
+    // Search Functions
+    // ============================================================
+VeraChat.prototype.performMemorySearch = async function() {
+    const query = this.memoryState.searchQuery.trim();
+    
+    // Session mode doesn't require query
+    if (!query && this.memoryState.searchMode !== 'session') {
+        this.addSystemMessage('Please enter a search query');
+        return;
+    }
+
+    this.memoryState.loading = true;
+    this.memoryState.currentResults = [];
+    this.updateMemoryUI();
+
+    try {
+        const filters = this.buildSearchFilters();
+        let results = [];
+
+        switch (this.memoryState.searchMode) {
+            case 'vector':
+                results = await this.searchVector(query, filters);
+                break;
+            case 'graph':
+                results = await this.searchGraph(query, filters);
+                break;
+            case 'hybrid':
+                results = await this.searchHybrid(query, filters);
+                break;
+            case 'session':
+                results = await this.searchSession(query, filters);
+                break;
+        }
+
+        console.log(`Search returned ${results.length} results`);
+        
+        this.memoryState.currentResults = results;
+        this.memoryState.pagination.total = results.length;
+        this.memoryState.pagination.page = 1;
+
+        if (results.length === 0) {
+            this.addSystemMessage('No results found. Try adjusting your search query or filters.');
+        } else {
+            this.addSystemMessage(`Found ${results.length} results`);
+        }
+
+    } catch (error) {
+        console.error('Search error:', error);
+        this.addSystemMessage(`Search failed: ${error.message}`);
+    } finally {
+        this.memoryState.loading = false;
+        this.updateMemoryUI();
+    }
+};
+
+VeraChat.prototype.searchVector = async function(query, filters) {
+    try {
+        const response = await fetch('http://llm.int:8888/api/memory/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: this.sessionId,
+                query: query,
+                k: filters.limit || 50,
+                retrieval_type: 'vector',
+                filters: {
+                    minConfidence: filters.minConfidence,
+                    entityTypes: filters.entityTypes
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Vector search response:', data);
+        
+        return this.normalizeResults(data.results || [], 'vector');
+    } catch (error) {
+        console.error('Vector search error:', error);
+        this.addSystemMessage(`Vector search failed: ${error.message}`);
+        return [];
+    }
+};
+
+VeraChat.prototype.searchGraph = async function(query, filters) {
+    try {
+        const response = await fetch('http://llm.int:8888/api/memory/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: this.sessionId,
+                query: query,
+                k: filters.limit || 50,
+                retrieval_type: 'graph',
+                filters: {
+                    minConfidence: filters.minConfidence,
+                    entityTypes: filters.entityTypes
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Graph search response:', data);
+        
+        return this.normalizeResults(data.results || [], 'graph');
+    } catch (error) {
+        console.error('Graph search error:', error);
+        this.addSystemMessage(`Graph search failed: ${error.message}`);
+        return [];
+    }
+};
+
+VeraChat.prototype.searchHybrid = async function(query, filters) {
+    try {
+        const response = await fetch('http://llm.int:8888/api/memory/hybrid-retrieve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: this.sessionId,
+                query: query,
+                k_vector: Math.floor((filters.limit || 50) / 2),
+                k_graph: Math.floor((filters.limit || 50) / 4),
+                graph_depth: 2,
+                include_entities: true,
+                filters: {
+                    minConfidence: filters.minConfidence,
+                    entityTypes: filters.entityTypes
+                }
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Hybrid search response:', data);
+        
+        // Combine session and long-term results
+        const sessionResults = data.vector_results?.session || [];
+        const longTermResults = data.vector_results?.long_term || [];
+        
+        let combined = [
+            ...sessionResults,
+            ...longTermResults
+        ];
+        
+        // Add graph nodes as results
+        if (data.graph_context && data.graph_context.nodes) {
+            const graphResults = data.graph_context.nodes.map(node => ({
+                id: node.id,
+                type: 'graph_node',
+                source: 'graph',
+                text: node.properties?.text || node.id,
+                displayText: node.properties?.text || node.id,
+                metadata: node.properties || {},
+                labels: node.labels || [],
+                confidence: node.properties?.confidence || 1.0
+            }));
+            combined = [...combined, ...graphResults];
+        }
+        
+        // Add graph relationships as results
+        if (data.graph_context && data.graph_context.rels) {
+            const relResults = data.graph_context.rels.map(rel => ({
+                id: `${rel.start}-${rel.end}`,
+                type: 'relationship',
+                source: 'graph',
+                head: rel.start,
+                tail: rel.end,
+                relation: rel.type || rel.properties?.rel || 'RELATED_TO',
+                displayText: `${rel.start} → ${rel.end}`,
+                metadata: rel.properties || {},
+                confidence: rel.properties?.confidence || 1.0
+            }));
+            combined = [...combined, ...relResults];
+        }
+        
+        return combined;
+    } catch (error) {
+        console.error('Hybrid search error:', error);
+        this.addSystemMessage(`Hybrid search failed: ${error.message}`);
+        return [];
+    }
+};
+
+VeraChat.prototype.searchSession = async function(query, filters) {
+    try {
+        // Get entities
+        const entityParams = new URLSearchParams({
+            limit: filters.limit || 50,
+            min_confidence: filters.minConfidence || 0
+        });
+        
+        if (query) {
+            entityParams.append('search', query);
+        }
+        
+        if (filters.entityTypes && filters.entityTypes.length > 0) {
+            filters.entityTypes.forEach(type => {
+                entityParams.append('entity_types', type);
             });
-            
-            const data = await response.json();
-            this.memoryQueryResults = data;
-            this.updateMemoryUI();
-            return data;
-        } catch (error) {
-            console.error('Memory query error:', error);
-            this.addSystemMessage(`Memory query failed: ${error.message}`);
         }
-    };
-
-    // Advanced hybrid retrieval
-    VeraChat.prototype.hybridRetrieve = async function(query, kVector = 5, kGraph = 3, graphDepth = 2) {
-        if (!this.sessionId) return;
         
-        try {
-            const response = await fetch('http://llm.int:8888/api/memory/hybrid-retrieve', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    query: query,
-                    k_vector: kVector,
-                    k_graph: kGraph,
-                    graph_depth: graphDepth,
-                    include_entities: true,
-                    filters: null
-                })
-            });
-            
-            const data = await response.json();
-            this.memoryQueryResults = data;
-            this.updateMemoryUI();
-            return data;
-        } catch (error) {
-            console.error('Hybrid retrieval error:', error);
+        const entityResponse = await fetch(
+            `http://llm.int:8888/api/memory/${this.sessionId}/entities?${entityParams}`
+        );
+        
+        if (!entityResponse.ok) {
+            throw new Error(`Entities fetch failed: ${entityResponse.status}`);
         }
-    };
-
-    // Extract entities from text
-    VeraChat.prototype.extractEntities = async function(text, autoPromote = false) {
-        if (!this.sessionId) return;
         
-        try {
-            const response = await fetch('http://llm.int:8888/api/memory/extract-entities', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    text: text,
-                    auto_promote: autoPromote,
-                    source_node_id: null
-                })
-            });
-            
-            const data = await response.json();
-            this.addSystemMessage(`Extracted ${data.entities.length} entities and ${data.relations.length} relationships`);
-            
-            // Reload graph to show new entities
-            await this.loadGraph();
-            return data;
-        } catch (error) {
-            console.error('Entity extraction error:', error);
+        const entitiesData = await entityResponse.json();
+        
+        // Get relationships
+        const relParams = new URLSearchParams({
+            limit: filters.limit || 50,
+            min_confidence: filters.minConfidence || 0
+        });
+        
+        if (query) {
+            relParams.append('search', query);
         }
-    };
-
-    // Load session entities
-    VeraChat.prototype.loadSessionEntities = async function() {
-        if (!this.sessionId) return;
         
-        try {
-            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/entities`);
-            const data = await response.json();
-            this.memoryEntities = data.entities;
-            this.updateMemoryUI();
-        } catch (error) {
-            console.error('Failed to load entities:', error);
+        const relResponse = await fetch(
+            `http://llm.int:8888/api/memory/${this.sessionId}/relationships?${relParams}`
+        );
+        
+        if (!relResponse.ok) {
+            throw new Error(`Relationships fetch failed: ${relResponse.status}`);
         }
-    };
-
-    // Load session relationships
-    VeraChat.prototype.loadSessionRelationships = async function() {
-        if (!this.sessionId) return;
         
-        try {
-            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/relationships`);
-            const data = await response.json();
-            this.memoryRelationships = data.relationships;
-            this.updateMemoryUI();
-        } catch (error) {
-            console.error('Failed to load relationships:', error);
+        const relData = await relResponse.json();
+        
+        console.log('Session search:', {
+            entities: entitiesData.entities?.length || 0,
+            relationships: relData.relationships?.length || 0
+        });
+        
+        let results = [
+            ...(entitiesData.entities || []).map(e => ({
+                ...e,
+                source: 'session_entity',
+                displayText: e.text,
+                type: e.type || 'entity'
+            })),
+            ...(relData.relationships || []).map(r => ({
+                ...r,
+                source: 'session_relationship',
+                displayText: `${r.head} → ${r.tail}`,
+                id: `${r.head}-${r.relation}-${r.tail}`,
+                type: 'relationship'
+            }))
+        ];
+        
+        return results;
+    } catch (error) {
+        console.error('Session search error:', error);
+        this.addSystemMessage(`Session search failed: ${error.message}`);
+        return [];
+    }
+};
+
+VeraChat.prototype.normalizeResults = function(results, source) {
+    if (!Array.isArray(results)) {
+        console.warn('normalizeResults received non-array:', results);
+        return [];
+    }
+    
+    return results.map(result => {
+        // Ensure we have basic fields
+        const normalized = {
+            id: result.id || `unknown-${Math.random()}`,
+            source: result.source || source,
+            type: result.type || 'unknown',
+            confidence: result.confidence || (result.distance ? (1 - result.distance) : 1.0)
+        };
+        
+        // Handle text/displayText
+        if (result.displayText) {
+            normalized.displayText = result.displayText;
+            normalized.text = result.text || result.displayText;
+        } else if (result.text) {
+            normalized.text = result.text;
+            normalized.displayText = result.text;
+        } else if (result.head && result.tail) {
+            normalized.displayText = `${result.head} → ${result.tail}`;
+            normalized.text = normalized.displayText;
+        } else {
+            normalized.displayText = result.id;
+            normalized.text = result.id;
         }
+        
+        // Copy over other fields
+        normalized.metadata = result.metadata || {};
+        normalized.labels = result.labels || [];
+        
+        // Relationship-specific fields
+        if (result.head) normalized.head = result.head;
+        if (result.tail) normalized.tail = result.tail;
+        if (result.relation) normalized.relation = result.relation;
+        if (result.context) normalized.context = result.context;
+        
+        return normalized;
+    });
+};
+
+VeraChat.prototype.buildSearchFilters = function() {
+    return {
+        limit: this.memoryState.filters.limit,
+        minConfidence: this.memoryState.filters.minConfidence,
+        entityTypes: this.memoryState.filters.entityTypes,
+        dateFrom: this.memoryState.filters.dateFrom,
+        dateTo: this.memoryState.filters.dateTo
+    };
+};
+
+// Add debug logging
+VeraChat.prototype.debugSearch = async function() {
+    console.log('=== Search Debug ===');
+    console.log('Session ID:', this.sessionId);
+    console.log('Search mode:', this.memoryState.searchMode);
+    console.log('Query:', this.memoryState.searchQuery);
+    console.log('Filters:', this.memoryState.filters);
+    
+    // Test API connectivity
+    try {
+        const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/entities?limit=1`);
+        console.log('API Status:', response.status);
+        const data = await response.json();
+        console.log('API Response:', data);
+    } catch (error) {
+        console.error('API Error:', error);
+    }
+};
+    VeraChat.prototype.buildSearchFilters = function() {
+        return {
+            limit: this.memoryState.filters.limit,
+            minConfidence: this.memoryState.filters.minConfidence,
+            entityTypes: this.memoryState.filters.entityTypes,
+            dateFrom: this.memoryState.filters.dateFrom,
+            dateTo: this.memoryState.filters.dateTo
+        };
     };
 
-    // Get subgraph around entities
-    VeraChat.prototype.getMemorySubgraph = async function(entityIds, depth = 2) {
-        if (!this.sessionId) return;
+    VeraChat.prototype.buildVectorFilters = function(filters) {
+        const vectorFilters = {};
         
-        try {
-            const response = await fetch('http://llm.int:8888/api/memory/subgraph', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: this.sessionId,
-                    seed_entity_ids: entityIds,
-                    depth: depth
-                })
-            });
-            
-            const data = await response.json();
-            
-            // Visualize subgraph
-            if (data.subgraph && this.networkInstance) {
-                this.visualizeSubgraph(data.subgraph);
-            }
-            
-            return data;
-        } catch (error) {
-            console.error('Subgraph retrieval error:', error);
+        if (filters.minConfidence > 0) {
+            vectorFilters.confidence = { $gte: filters.minConfidence };
         }
-    };
-
-    // Promote memory to long-term
-    VeraChat.prototype.promoteMemory = async function(memoryId, entityAnchor = null) {
-        if (!this.sessionId) return;
         
-        try {
-            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/promote`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    memory_id: memoryId,
-                    entity_anchor: entityAnchor
-                })
-            });
-            
-            const data = await response.json();
-            this.addSystemMessage(`Memory promoted to long-term storage`);
-            return data;
-        } catch (error) {
-            console.error('Memory promotion error:', error);
+        if (filters.entityTypes.length > 0) {
+            vectorFilters.type = { $in: filters.entityTypes };
         }
+        
+        return Object.keys(vectorFilters).length > 0 ? vectorFilters : null;
     };
 
-    // Visualize subgraph in network
-    VeraChat.prototype.visualizeSubgraph = function(subgraph) {
-        if (!this.networkInstance) return;
-        
-        const nodes = subgraph.nodes.map(n => ({
-            id: n.id,
-            label: n.properties?.text?.substring(0, 30) || n.id,
-            title: JSON.stringify(n.properties, null, 2),
-            color: n.properties?.type === 'extracted_entity' ? '#10b93a' : '#3b82f6',
-            size: 30
-        }));
-        
-        const edges = subgraph.rels.map((r, idx) => ({
-            id: `subgraph-edge-${idx}`,
-            from: r.start,
-            to: r.end,
-            label: r.type || r.properties?.rel,
-            color: { color: '#f59e0b', highlight: '#fbbf24' },
-            width: 3
-        }));
-        
-        // Highlight these nodes/edges in the existing graph
-        this.networkInstance.selectNodes(nodes.map(n => n.id));
-        
-        // Or switch to subgraph view
-        this.switchTab('graph');
-        setTimeout(() => {
-            this.networkInstance.fit({
-                nodes: nodes.map(n => n.id),
-                animation: true
-            });
-        }, 100);
+    VeraChat.prototype.buildGraphFilters = function(filters) {
+        // Graph-specific filters can be added here
+        return this.buildVectorFilters(filters);
     };
 
-    // Update memory UI
+    // ============================================================
+    // UI Rendering
+    // ============================================================
+
     VeraChat.prototype.updateMemoryUI = function() {
         const container = document.getElementById('memory-content');
-        if (!container || this.activeTab !== 'memory') return;
-        
-        let html = `
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                <!-- Memory Query Section -->
-                <div class="memoryQuery" style="border-radius: 8px; padding: 16px;">
-                    <h3 style="margin-bottom: 12px; font-size: 16px;">🔍 Memory Query</h3>
-                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                        <input 
-                            type="text" 
-                            id="memory-query-input" 
-                            placeholder="Search memories..." 
-                            style="flex: 1; padding: 10px; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px;"
-                        >
-                        <select 
-                            id="memory-retrieval-type" 
-                            style="padding: 10px; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px;"
-                        >
-                            <option value="hybrid">Hybrid</option>
-                            <option value="vector">Vector</option>
-                            <option value="graph">Graph</option>
-                        </select>
-                        <button 
-                            class="panel-btn" 
-                            onclick="app.performMemoryQuery()"
-                            style="padding: 10px 20px; font-size: 14px;"
-                        >
-                            Search
-                        </button>
-                    </div>
-                    
-                    ${this.memoryQueryResults ? this.renderMemoryQueryResults() : '<p style="color: #94a3b8; font-size: 13px;">No query results yet</p>'}
-                </div>
-                
-                <!-- Entity Extraction Section -->
-                <div class="memoryQuery" style="border-radius: 8px; padding: 16px;">
-                    <h3 style="margin-bottom: 12px; font-size: 16px;">🧠 Entity Extraction</h3>
-                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                        <textarea 
-                            id="entity-extract-input" 
-                            placeholder="Enter text to extract entities..." 
-                            rows="3"
-                            style="flex: 1; padding: 10px; border: 1px solid #334155; color: #e2e8f0; border-radius: 6px; resize: vertical;"
-                        ></textarea>
-                    </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <label style="display: flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: 13px;">
-                            <input type="checkbox" id="auto-promote-checkbox">
-                            Auto-promote high-confidence entities
-                        </label>
-                        <button 
-                            class="panel-btn" 
-                            onclick="app.performEntityExtraction()"
-                            style="margin-left: auto; padding: 10px 20px;"
-                        >
-                            Extract
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Session Entities Section -->
-                <div class="memoryQuery" style=" border-radius: 8px; padding: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h3 style="margin: 0; font-size: 16px;">📦 Session Entities (${this.memoryEntities.length})</h3>
-                        <button class="panel-btn" onclick="app.loadSessionEntities()">🔄 Refresh</button>
-                    </div>
-                    
-                    ${this.renderEntitiesList()}
-                </div>
-                
-                <!-- Session Relationships Section -->
-                <div class="memoryQuery" style="border-radius: 8px; padding: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                        <h3 style="margin: 0; font-size: 16px;">🔗 Session Relationships (${this.memoryRelationships.length})</h3>
-                        <button class="panel-btn" onclick="app.loadSessionRelationships()">🔄 Refresh</button>
-                    </div>
-                    
-                    ${this.renderRelationshipsList()}
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = html;
-    };
-
-    // Render memory query results
-    VeraChat.prototype.renderMemoryQueryResults = function() {
-        if (!this.memoryQueryResults) return '';
-        
-        // Handle different result formats
-        if (this.memoryQueryResults.results) {
-            // Simple query results
-            const results = this.memoryQueryResults.results;
-            if (results.length === 0) {
-                return '<p style="color: #94a3b8; font-size: 13px;">No results found</p>';
-            }
-            
-            let html = '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;">';
-            results.forEach((result, idx) => {
-                const resultData = JSON.stringify(result).replace(/"/g, '&quot;');
-                html += `
-                    <div style="background: #0f172a; padding: 12px; border-radius: 6px; border-left: 3px solid #3b82f6; position: relative;">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
-                            <div style="flex: 1;">
-                                <div style="color: #e2e8f0; font-size: 13px; margin-bottom: 4px;">${this.escapeHtml(result.text || result.id)}</div>
-                                ${result.distance ? `<div style="color: #94a3b8; font-size: 11px;">Distance: ${result.distance.toFixed(3)}</div>` : ''}
-                            </div>
-                            <div class="result-menu-btn" style="position: relative;">
-                                <button 
-                                    class="panel-btn" 
-                                    onclick="app.toggleResultMenu(event, ${idx})"
-                                    style="padding: 4px 8px; font-size: 11px;"
-                                >
-                                    ⋮
-                                </button>
-                                <div id="result-menu-${idx}" class="result-dropdown-menu" style="display: none; position: absolute; right: 0; top: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 4px; min-width: 180px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                                    <div class="result-menu-item" onclick="app.viewResultDetails('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">
-                                        📄 View Details
-                                    </div>
-                                    <div class="result-menu-item" onclick="app.focusInGraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">
-                                        🎯 Focus in Graph
-                                    </div>
-                                    <div class="result-menu-item" onclick="app.loadResultSubgraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">
-                                        🗺️ Load Subgraph
-                                    </div>
-                                    ${result.metadata?.session_id ? `
-                                        <div class="result-menu-item" onclick="app.loadSessionInGraph('${result.metadata.session_id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">
-                                            📊 Load Session Graph
-                                        </div>
-                                    ` : ''}
-                                    <div class="result-menu-item" onclick="app.extractFromResult('${result.id}', \`${this.escapeHtml(result.text || '')}\`)" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">
-                                        🧠 Extract Entities
-                                    </div>
-                                    <div class="result-menu-item" onclick="app.copyResultText(\`${this.escapeHtml(result.text || '')}\`)" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px;">
-                                        📋 Copy Text
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        ${result.metadata ? `
-                            <div style="color: #64748b; font-size: 11px; margin-top: 4px;">
-                                ${Object.entries(result.metadata).slice(0, 3).map(([k, v]) => 
-                                    `<span style="margin-right: 12px;"><strong>${k}:</strong> ${String(v).substring(0, 30)}</span>`
-                                ).join('')}
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            });
-            html += '</div>';
-            return html;
-        } else if (this.memoryQueryResults.vector_results) {
-            // Hybrid retrieval results
-            const session = this.memoryQueryResults.vector_results.session || [];
-            const longTerm = this.memoryQueryResults.vector_results.long_term || [];
-            const graphContext = this.memoryQueryResults.graph_context;
-            
-            let html = `
-                <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <div>
-                        <div style="color: #60a5fa; font-weight: 600; margin-bottom: 8px; font-size: 13px;">Session Results (${session.length})</div>
-                        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
-            `;
-            
-            session.forEach((result, idx) => {
-                html += `
-                    <div style="background: #0f172a; padding: 10px; border-radius: 4px; border-left: 3px solid #8b5cf6; position: relative;">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div style="color: #cbd5e1; font-size: 12px; flex: 1;">${this.escapeHtml(result.text?.substring(0, 150) || result.id)}...</div>
-                            <button 
-                                class="panel-btn" 
-                                onclick="app.toggleResultMenu(event, 'session-${idx}')"
-                                style="padding: 2px 6px; font-size: 11px; margin-left: 8px;"
-                            >
-                                ⋮
-                            </button>
-                            <div id="result-menu-session-${idx}" class="result-dropdown-menu" style="display: none; position: absolute; right: 0; top: 20px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; min-width: 180px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                                <div class="result-menu-item" onclick="app.viewResultDetails('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">📄 View Details</div>
-                                <div class="result-menu-item" onclick="app.focusInGraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">🎯 Focus in Graph</div>
-                                <div class="result-menu-item" onclick="app.loadResultSubgraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px;">🗺️ Load Subgraph</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            html += `
-                        </div>
-                    </div>
-                    
-                    <div>
-                        <div style="color: #10b981; font-weight: 600; margin-bottom: 8px; font-size: 13px;">Long-term Results (${longTerm.length})</div>
-                        <div style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
-            `;
-            
-            longTerm.forEach((result, idx) => {
-                html += `
-                    <div style="background: #0f172a; padding: 10px; border-radius: 4px; border-left: 3px solid #10b981; position: relative;">
-                        <div style="display: flex; justify-content: space-between; align-items: start;">
-                            <div style="color: #cbd5e1; font-size: 12px; flex: 1;">${this.escapeHtml(result.text?.substring(0, 150) || result.id)}...</div>
-                            <button 
-                                class="panel-btn" 
-                                onclick="app.toggleResultMenu(event, 'longterm-${idx}')"
-                                style="padding: 2px 6px; font-size: 11px; margin-left: 8px;"
-                            >
-                                ⋮
-                            </button>
-                            <div id="result-menu-longterm-${idx}" class="result-dropdown-menu" style="display: none; position: absolute; right: 0; top: 20px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; min-width: 180px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
-                                <div class="result-menu-item" onclick="app.viewResultDetails('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">📄 View Details</div>
-                                <div class="result-menu-item" onclick="app.focusInGraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px; border-bottom: 1px solid #334155;">🎯 Focus in Graph</div>
-                                <div class="result-menu-item" onclick="app.loadResultSubgraph('${result.id}')" style="padding: 8px 12px; cursor: pointer; color: #cbd5e1; font-size: 12px;">🗺️ Load Subgraph</div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            });
-            
-            html += `
-                        </div>
-                    </div>
-            `;
-            
-            if (graphContext) {
-                const nodeCount = graphContext.nodes?.length || 0;
-                const relCount = graphContext.rels?.length || 0;
-                html += `
-                    <div>
-                        <div style="color: #f59e0b; font-weight: 600; margin-bottom: 8px; font-size: 13px;">
-                            Graph Context (${nodeCount} nodes, ${relCount} relationships)
-                        </div>
-                        <button 
-                            class="panel-btn" 
-                            onclick="app.visualizeSubgraph(${JSON.stringify(graphContext).replace(/"/g, '&quot;')})"
-                        >
-                            📊 Visualize in Graph
-                        </button>
-                    </div>
-                `;
-            }
-            
-            html += '</div>';
-            return html;
-        }
-        
-        return '<p style="color: #94a3b8;">Unknown result format</p>';
-    };
-
-    // Render entities list
-    VeraChat.prototype.renderEntitiesList = function() {
-        if (this.memoryEntities.length === 0) {
-            return '<p style="color: #94a3b8; font-size: 13px;">No entities extracted yet</p>';
-        }
-        
-        let html = '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;">';
-        
-        this.memoryEntities.forEach(entity => {
-            const confidenceColor = entity.confidence > 0.8 ? '#10b981' : 
-                                entity.confidence > 0.5 ? '#f59e0b' : '#ef4444';
-            
-            html += `
-                <div class="memoryQuery" style=" padding: 12px; border-radius: 6px; border-left: 3px solid ${confidenceColor};">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
-                        <div style="color: #e2e8f0; font-weight: 600; font-size: 13px;">${this.escapeHtml(entity.text)}</div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <span style="font-size: 11px; color: #94a3b8;">${(entity.confidence * 100).toFixed(0)}%</span>
-                            <button 
-                                class="panel-btn" 
-                                onclick="app.focusOnEntity('${entity.id}')"
-                                style="padding: 4px 8px; font-size: 11px;"
-                            >
-                                🎯 Focus
-                            </button>
-                        </div>
-                    </div>
-                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                        ${entity.labels?.map(label => 
-                            `<span class="label-badge" style="font-size: 10px;">${label}</span>`
-                        ).join('') || ''}
-                    </div>
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        return html;
-    };
-
-    // Render relationships list
-    VeraChat.prototype.renderRelationshipsList = function() {
-        if (this.memoryRelationships.length === 0) {
-            return '<p style="color: #94a3b8; font-size: 13px;">No relationships extracted yet</p>';
-        }
-        
-        let html = '<div style="display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto;">';
-        
-        this.memoryRelationships.forEach(rel => {
-            html += `
-                <div class="memoryQuery" style="padding: 12px; border-radius: 6px; border-left: 3px solid #3b82f6;">
-                    <div style="color: #e2e8f0; font-size: 13px; margin-bottom: 6px;">
-                        <span style="color: #60a5fa;">${this.escapeHtml(rel.head)}</span>
-                        <span style="color: #94a3b8; margin: 0 8px;">—[${this.escapeHtml(rel.relation)}]→</span>
-                        <span style="color: #a78bfa;">${this.escapeHtml(rel.tail)}</span>
-                    </div>
-                    ${rel.context ? `
-                        <div style="color: #64748b; font-size: 11px; margin-top: 6px; font-style: italic;">
-                            "${this.escapeHtml(rel.context.substring(0, 100))}..."
-                        </div>
-                    ` : ''}
-                    ${rel.confidence ? `
-                        <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">
-                            Confidence: ${(rel.confidence * 100).toFixed(0)}%
-                        </div>
-                    ` : ''}
-                </div>
-            `;
-        });
-        
-        html += '</div>';
-        return html;
-    };
-
-    // Helper: Perform memory query
-    VeraChat.prototype.performMemoryQuery = async function() {
-        const input = document.getElementById('memory-query-input');
-        const typeSelect = document.getElementById('memory-retrieval-type');
-        
-        const query = input.value.trim();
-        const retrievalType = typeSelect.value;
-        
-        if (!query) return;
-        
-        if (retrievalType === 'hybrid') {
-            await this.hybridRetrieve(query, 20, 3, 2);
-        } else {
-            await this.queryMemory(query, retrievalType, 20);
-        }
-    };
-
-    // Helper: Perform entity extraction
-    VeraChat.prototype.performEntityExtraction = async function() {
-        const input = document.getElementById('entity-extract-input');
-        const autoPromote = document.getElementById('auto-promote-checkbox').checked;
-        
-        const text = input.value.trim();
-        if (!text) return;
-        
-        await this.extractEntities(text, autoPromote);
-        input.value = '';
-        
-        // Reload entities list
-        await this.loadSessionEntities();
-        await this.loadSessionRelationships();
-    };
-
-    // Helper: Focus on entity in graph
-    VeraChat.prototype.focusOnEntity = async function(entityId) {
-        // Get subgraph around this entity
-        await this.getMemorySubgraph([entityId], 2);
-    };
-
-    // Load memory data when tab opens
-    VeraChat.prototype.loadMemoryData = async function() {
-        await Promise.all([
-            this.loadSessionEntities(),
-            this.loadSessionRelationships()
-        ]);
-        this.updateMemoryUI();
-    };
-
-    // ============================================================
-    // Result Menu Actions
-    // ============================================================
-
-    // Toggle dropdown menu for result items
-    VeraChat.prototype.toggleResultMenu = function(event, menuId) {
-        event.stopPropagation();
-        
-        // Close all other menus
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            if (menu.id !== `result-menu-${menuId}`) {
-                menu.style.display = 'none';
-            }
-        });
-        
-        // Toggle this menu
-        const menu = document.getElementById(`result-menu-${menuId}`);
-        if (menu) {
-            menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
-        }
-    };
-
-    // Close menus when clicking outside
-    document.addEventListener('click', function(event) {
-        if (!event.target.closest('.result-menu-btn')) {
-            document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-                menu.style.display = 'none';
-            });
-        }
-    });
-
-    // View detailed information about a result
-    VeraChat.prototype.viewResultDetails = async function(resultId) {
-        const panel = document.getElementById('property-panel');
-        const content = document.getElementById('panel-content');
-        
-        // Show loading state
-        panel.classList.add('active');
-        content.innerHTML = '<div style="padding: 20px; color: #94a3b8;">Loading details...</div>';
-        
-        try {
-            // Try to get node details from graph
-            if (window.GraphAddon && window.GraphAddon.nodesData[resultId]) {
-                window.GraphAddon.showNodeDetails(resultId, true);
-            } else {
-                // Fallback: fetch from API or show basic info
-                const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
-                const data = await response.json();
-                
-                const node = data.nodes.find(n => n.id === resultId);
-                if (node) {
-                    this.displayNodeDetails(node);
-                } else {
-                    content.innerHTML = `
-                        <div style="padding: 20px;">
-                            <h3 style="color: #60a5fa; margin-bottom: 12px;">Result: ${resultId}</h3>
-                            <p style="color: #94a3b8;">Node not found in current graph view.</p>
-                            <button class="panel-btn" onclick="app.loadResultSubgraph('${resultId}')" style="margin-top: 12px;">
-                                Load Subgraph
-                            </button>
-                        </div>
-                    `;
-                }
-            }
-        } catch (error) {
-            console.error('Error viewing result details:', error);
-            content.innerHTML = `
-                <div style="padding: 20px;">
-                    <h3 style="color: #ef4444;">Error</h3>
-                    <p style="color: #94a3b8;">${error.message}</p>
-                </div>
-            `;
-        }
-        
-        // Close dropdown menu
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            menu.style.display = 'none';
-        });
-    };
-
-    // Display node details in property panel
-    VeraChat.prototype.displayNodeDetails = function(node) {
-        const content = document.getElementById('panel-content');
-        
-        let html = `
-            <div style="padding: 16px;">
-                <div class="section">
-                    <div class="section-title">Node Information</div>
-                    <div class="property">
-                        <span class="property-key">ID:</span> ${node.id}
-                    </div>
-                    <div class="property">
-                        <span class="property-key">Type:</span> ${node.type || 'N/A'}
-                    </div>
-                </div>
-                
-                <div class="section">
-                    <div class="section-title">Labels</div>
-                    <div>
-                        ${node.labels?.map(label => 
-                            `<span class="label-badge">${label}</span>`
-                        ).join('') || '<span style="color: #64748b;">No labels</span>'}
-                    </div>
-                </div>
-                
-                ${node.properties ? `
-                    <div class="section">
-                        <div class="section-title">Properties</div>
-                        ${Object.entries(node.properties).map(([key, value]) => `
-                            <div class="property">
-                                <span class="property-key">${key}:</span> 
-                                ${typeof value === 'string' && value.length > 100 
-                                    ? value.substring(0, 100) + '...' 
-                                    : String(value)}
-                            </div>
-                        `).join('')}
-                    </div>
-                ` : ''}
-                
-                <div class="section">
-                    <div class="section-title">Actions</div>
-                    <button class="panel-btn" onclick="app.focusInGraph('${node.id}')" style="margin-right: 8px; margin-bottom: 8px;">
-                        🎯 Focus in Graph
-                    </button>
-                    <button class="panel-btn" onclick="app.loadResultSubgraph('${node.id}')" style="margin-right: 8px; margin-bottom: 8px;">
-                        🗺️ Load Subgraph
-                    </button>
-                    ${node.properties?.text ? `
-                        <button class="panel-btn" onclick="app.extractFromResult('${node.id}', \`${this.escapeHtml(node.properties.text)}\`)" style="margin-bottom: 8px;">
-                            🧠 Extract Entities
-                        </button>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-        
-        content.innerHTML = html;
-    };
-
-    // Focus on a specific node in the graph
-    VeraChat.prototype.focusInGraph = async function(nodeId) {
-        if (!this.networkInstance) {
-            this.addSystemMessage('Graph not initialized');
+        if (!container) {
+            console.warn('Memory content container not found');
             return;
         }
         
-        // Switch to graph tab
-        this.switchTab('graph');
-        
-        // Wait for tab switch animation
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Check if node exists in current graph
-        const node = this.networkInstance.body.data.nodes.get(nodeId);
-        
-        if (node) {
-            // Node exists, focus on it
-            this.networkInstance.selectNodes([nodeId]);
-            this.networkInstance.focus(nodeId, {
-                scale: 1.5,
-                animation: {
-                    duration: 1000,
-                    easingFunction: 'easeInOutQuad'
-                }
-            });
-            
-            // Show node details
-            if (window.GraphAddon && window.GraphAddon.showNodeDetails) {
-                window.GraphAddon.showNodeDetails(nodeId, true);
-            }
-        } else {
-            // Node not in current graph, load its subgraph
-            this.addSystemMessage(`Node ${nodeId} not in current view. Loading subgraph...`);
-            await this.loadResultSubgraph(nodeId);
+        // Initialize state if needed
+        if (!this.memoryState) {
+            this.memoryState = {
+                searchMode: 'hybrid',
+                searchQuery: '',
+                currentResults: [],
+                expandedResults: new Set(),
+                filters: {
+                    limit: 50,
+                    minConfidence: 0,
+                    entityTypes: [],
+                    dateFrom: null,
+                    dateTo: null,
+                    sessionId: null,
+                },
+                pagination: {
+                    page: 1,
+                    pageSize: 20,
+                    total: 0
+                },
+                loading: false,
+                advancedFiltersExpanded: false
+            };
         }
+
+        const state = this.memoryState;
         
-        // Close dropdown menu
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            menu.style.display = 'none';
-        });
+        const html = `
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <!-- Search Container -->
+                <div class="memory-search-container">
+                    <!-- Search Input -->
+                    <div class="search-input-row">
+                        <div class="search-input-wrapper">
+                            <input 
+                                type="text" 
+                                class="search-input"
+                                id="memory-search-input"
+                                placeholder="Search memory, entities, relationships..."
+                                value="${this.escapeHtml(state.searchQuery)}"
+                                onkeypress="if(event.key==='Enter') app.performMemorySearch()"
+                            >
+                            <button 
+                                class="search-clear-btn" 
+                                onclick="app.clearMemorySearch()"
+                                style="display: ${state.searchQuery ? 'block' : 'none'}"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <button 
+                            class="action-btn primary" 
+                            onclick="app.performMemorySearch()"
+                            style="padding: 12px 24px;"
+                        >
+                            🔍 Search
+                        </button>
+                    </div>
+                    
+                    <!-- Search Mode Selection -->
+                    <div class="search-controls">
+                        <div class="search-mode-group">
+                            <button 
+                                class="search-mode-btn ${state.searchMode === 'hybrid' ? 'active' : ''}"
+                                onclick="app.setSearchMode('hybrid')"
+                            >
+                                🔀 Hybrid
+                            </button>
+                            <button 
+                                class="search-mode-btn ${state.searchMode === 'vector' ? 'active' : ''}"
+                                onclick="app.setSearchMode('vector')"
+                            >
+                                📊 Vector
+                            </button>
+                            <button 
+                                class="search-mode-btn ${state.searchMode === 'graph' ? 'active' : ''}"
+                                onclick="app.setSearchMode('graph')"
+                            >
+                                🕸️ Graph
+                            </button>
+                            <button 
+                                class="search-mode-btn ${state.searchMode === 'session' ? 'active' : ''}"
+                                onclick="app.setSearchMode('session')"
+                            >
+                                📝 Session
+                            </button>
+                        </div>
+                        
+                        <button 
+                            class="advanced-filters-toggle"
+                            onclick="app.toggleAdvancedFilters()"
+                        >
+                            ${state.advancedFiltersExpanded ? '▼' : '▶'} Advanced Filters
+                        </button>
+                    </div>
+                    
+                    <!-- Advanced Filters -->
+                    <div class="advanced-filters ${state.advancedFiltersExpanded ? 'expanded' : ''}">
+                        <div class="advanced-filters-content">
+                            <div class="filter-field">
+                                <label class="filter-field-label">Result Limit</label>
+                                <input 
+                                    type="number" 
+                                    class="filter-field-input"
+                                    value="${state.filters.limit}"
+                                    onchange="app.updateFilter('limit', parseInt(this.value))"
+                                    min="1"
+                                    max="500"
+                                >
+                            </div>
+                            
+                            <div class="filter-field">
+                                <label class="filter-field-label">Min Confidence</label>
+                                <input 
+                                    type="range" 
+                                    class="filter-field-input"
+                                    value="${state.filters.minConfidence}"
+                                    onchange="app.updateFilter('minConfidence', parseFloat(this.value))"
+                                    min="0"
+                                    max="1"
+                                    step="0.1"
+                                    style="width: 100%;"
+                                >
+                                <span style="color: #94a3b8; font-size: 11px;">${(state.filters.minConfidence * 100).toFixed(0)}%</span>
+                            </div>
+                            
+                            <div class="filter-field">
+                                <label class="filter-field-label">Entity Types</label>
+                                <select 
+                                    class="filter-field-input"
+                                    onchange="app.updateFilter('entityTypes', Array.from(this.selectedOptions).map(o => o.value))"
+                                    multiple
+                                    style="height: 80px;"
+                                >
+                                    <option value="PERSON">Person</option>
+                                    <option value="ORG">Organization</option>
+                                    <option value="GPE">Location</option>
+                                    <option value="DATE">Date</option>
+                                    <option value="EVENT">Event</option>
+                                    <option value="PRODUCT">Product</option>
+                                    <option value="CODE_BLOCK">Code Block</option>
+                                    <option value="CLASS">Class</option>
+                                    <option value="METHOD">Method</option>
+                                    <option value="FUNCTION">Function</option>
+                                </select>
+                            </div>
+                            
+                            <div class="filter-field">
+                                <label class="filter-field-label">Date From</label>
+                                <input 
+                                    type="date" 
+                                    class="filter-field-input"
+                                    value="${state.filters.dateFrom || ''}"
+                                    onchange="app.updateFilter('dateFrom', this.value)"
+                                >
+                            </div>
+                            
+                            <div class="filter-field">
+                                <label class="filter-field-label">Date To</label>
+                                <input 
+                                    type="date" 
+                                    class="filter-field-input"
+                                    value="${state.filters.dateTo || ''}"
+                                    onchange="app.updateFilter('dateTo', this.value)"
+                                >
+                            </div>
+                            
+                            <div class="filter-field">
+                                <button 
+                                    class="action-btn"
+                                    onclick="app.resetFilters()"
+                                    style="width: 100%; margin-top: 20px;"
+                                >
+                                    🔄 Reset Filters
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Results -->
+                ${this.renderMemoryResults()}
+            </div>
+        `;
+
+        container.innerHTML = html;
     };
 
+    VeraChat.prototype.renderMemoryResults = function() {
+        const state = this.memoryState;
+        
+        if (state.loading) {
+            return `
+                <div class="loading-spinner">
+                    <div class="spinner"></div>
+                </div>
+            `;
+        }
+        
+        if (state.currentResults.length === 0) {
+            return `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <div class="empty-state-title">No Results Found</div>
+                    <div class="empty-state-text">
+                        ${state.searchQuery 
+                            ? 'Try adjusting your search query or filters' 
+                            : 'Enter a search query to get started'}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Pagination
+        const { page, pageSize } = state.pagination;
+        const startIdx = (page - 1) * pageSize;
+        const endIdx = Math.min(startIdx + pageSize, state.currentResults.length);
+        const paginatedResults = state.currentResults.slice(startIdx, endIdx);
+        const totalPages = Math.ceil(state.currentResults.length / pageSize);
+        
+        let html = `
+            <div class="results-header">
+                <div class="results-title">
+                    Search Results
+                </div>
+                <div class="results-stats">
+                    ${state.currentResults.length} results found
+                    ${state.searchMode !== 'session' ? `(${state.searchMode} search)` : ''}
+                </div>
+                <div class="results-actions">
+                    <button class="action-btn" onclick="app.exportResults()">
+                        💾 Export
+                    </button>
+                    <button class="action-btn" onclick="app.expandAllResults()">
+                        📖 Expand All
+                    </button>
+                    <button class="action-btn" onclick="app.collapseAllResults()">
+                        📕 Collapse All
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Result Cards -->
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                ${paginatedResults.map((result, idx) => this.renderResultCard(result, startIdx + idx)).join('')}
+            </div>
+            
+            <!-- Pagination Controls -->
+            ${totalPages > 1 ? `
+                <div class="pagination">
+                    <button 
+                        class="pagination-btn"
+                        onclick="app.goToPage(${page - 1})"
+                        ${page === 1 ? 'disabled' : ''}
+                    >
+                        ← Previous
+                    </button>
+                    <div class="pagination-info">
+                        Page ${page} of ${totalPages} (${startIdx + 1}-${endIdx} of ${state.currentResults.length})
+                    </div>
+                    <button 
+                        class="pagination-btn"
+                        onclick="app.goToPage(${page + 1})"
+                        ${page === totalPages ? 'disabled' : ''}
+                    >
+                        Next →
+                    </button>
+                </div>
+            ` : ''}
+        `;
+        
+        return html;
+    };
+
+    VeraChat.prototype.renderResultCard = function(result, index) {
+        const isExpanded = this.memoryState.expandedResults.has(result.id);
+        const confidenceColor = (result.confidence || 0) > 0.8 ? '#10b981' : 
+                               (result.confidence || 0) > 0.5 ? '#f59e0b' : '#ef4444';
+        
+        return `
+            <div class="result-card ${isExpanded ? 'expanded' : ''}" id="result-${result.id}">
+                <div class="result-header" onclick="app.toggleResultExpansion('${result.id}')">
+                    <div class="result-content">
+                        <span class="result-type-badge" style="background: ${this.getSourceColor(result.source)};">
+                            ${this.getSourceIcon(result.source)} ${result.source || 'unknown'}
+                        </span>
+                        <div class="result-text ${isExpanded ? '' : 'truncated'}">
+                            ${this.escapeHtml(result.displayText || result.text || result.id || 'No content')}
+                        </div>
+                        <div class="result-metadata">
+                            ${result.type ? `
+                                <div class="result-metadata-item">
+                                    <span class="result-metadata-key">Type:</span>
+                                    <span>${this.escapeHtml(result.type)}</span>
+                                </div>
+                            ` : ''}
+                            ${result.confidence !== undefined ? `
+                                <div class="result-metadata-item">
+                                    <span class="result-metadata-key">Confidence:</span>
+                                    <span style="color: ${confidenceColor};">${(result.confidence * 100).toFixed(1)}%</span>
+                                </div>
+                            ` : ''}
+                            ${result.distance !== undefined ? `
+                                <div class="result-metadata-item">
+                                    <span class="result-metadata-key">Distance:</span>
+                                    <span>${result.distance.toFixed(3)}</span>
+                                </div>
+                            ` : ''}
+                            ${result.labels && result.labels.length > 0 ? `
+                                <div class="result-metadata-item">
+                                    <span class="result-metadata-key">Labels:</span>
+                                    <span>${result.labels.slice(0, 3).join(', ')}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                    <div class="result-actions-btn">
+                        <button class="expand-btn ${isExpanded ? 'expanded' : ''}" onclick="event.stopPropagation(); app.toggleResultExpansion('${result.id}')">
+                            ▼
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="result-details ${isExpanded ? 'expanded' : ''}">
+                    <div class="result-details-content">
+                        ${this.renderResultDetails(result)}
+                    </div>
+                </div>
+            </div>
+        `;
+    };
+
+    VeraChat.prototype.renderResultDetails = function(result) {
+        let html = '';
+        
+        // Full Text Section
+        if (result.text || result.displayText) {
+            html += `
+                <div class="detail-section">
+                    <div class="detail-section-title">Full Text</div>
+                    <div style="background: #1e293b; padding: 16px; border-radius: 6px; color: #e2e8f0; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">
+                        ${this.escapeHtml(result.text || result.displayText || '')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Relationship Details (for relationship type results)
+        if (result.head && result.tail && result.relation) {
+            html += `
+                <div class="detail-section">
+                    <div class="detail-section-title">Relationship</div>
+                    <div style="background: #1e293b; padding: 16px; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                            <div style="background: #3b82f6; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
+                                ${this.escapeHtml(result.head)}
+                            </div>
+                            <div style="color: #94a3b8; font-weight: 600;">
+                                —[ ${this.escapeHtml(result.relation)} ]→
+                            </div>
+                            <div style="background: #8b5cf6; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
+                                ${this.escapeHtml(result.tail)}
+                            </div>
+                        </div>
+                        ${result.context ? `
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #334155; color: #94a3b8; font-style: italic; font-size: 13px;">
+                                Context: "${this.escapeHtml(result.context)}"
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Metadata Section
+        if (result.metadata && Object.keys(result.metadata).length > 0) {
+            const metadataEntries = Object.entries(result.metadata)
+                .filter(([key, value]) => value !== null && value !== undefined);
+            
+            if (metadataEntries.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <div class="detail-section-title">Metadata</div>
+                        <div class="detail-grid">
+                            ${metadataEntries.map(([key, value]) => {
+                                let displayValue = value;
+                                if (typeof value === 'object') {
+                                    displayValue = JSON.stringify(value, null, 2);
+                                } else if (typeof value === 'string' && value.length > 100) {
+                                    displayValue = value.substring(0, 100) + '...';
+                                } else {
+                                    displayValue = String(value);
+                                }
+                                
+                                return `
+                                    <div class="detail-item">
+                                        <div class="detail-item-label">${this.escapeHtml(key)}</div>
+                                        <div class="detail-item-value">${this.escapeHtml(displayValue)}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Properties Section (for graph nodes)
+        if (result.properties && Object.keys(result.properties).length > 0) {
+            const propEntries = Object.entries(result.properties)
+                .filter(([key, value]) => !['text'].includes(key) && value !== null);
+            
+            if (propEntries.length > 0) {
+                html += `
+                    <div class="detail-section">
+                        <div class="detail-section-title">Properties</div>
+                        <div class="detail-grid">
+                            ${propEntries.map(([key, value]) => {
+                                let displayValue = value;
+                                if (typeof value === 'object') {
+                                    displayValue = JSON.stringify(value, null, 2);
+                                } else if (typeof value === 'string' && value.length > 100) {
+                                    displayValue = value.substring(0, 100) + '...';
+                                } else {
+                                    displayValue = String(value);
+                                }
+                                
+                                return `
+                                    <div class="detail-item">
+                                        <div class="detail-item-label">${this.escapeHtml(key)}</div>
+                                        <div class="detail-item-value">${this.escapeHtml(displayValue)}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // Labels Section
+        if (result.labels && result.labels.length > 0) {
+            html += `
+                <div class="detail-section">
+                    <div class="detail-section-title">Labels</div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        ${result.labels.map(label => 
+                            `<span class="label-badge">${this.escapeHtml(label)}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Actions Section
+        html += `
+            <div class="detail-section">
+                <div class="detail-section-title">Actions</div>
+                <div class="detail-actions">
+                    <button class="action-btn" onclick="app.focusInGraph('${result.id}')">
+                        🎯 Focus in Graph
+                    </button>
+                    <button class="action-btn" onclick="app.loadResultSubgraph('${result.id}')">
+                        🗺️ Load Subgraph
+                    </button>
+                    ${result.text ? `
+                        <button class="action-btn" onclick="app.extractFromResult('${result.id}', \`${this.escapeHtml(result.text).replace(/`/g, '\\`')}\`)">
+                            🧠 Extract Entities
+                        </button>
+                    ` : ''}
+                    <button class="action-btn" onclick="app.copyToClipboard('${result.id}')">
+                        📋 Copy to Clipboard
+                    </button>
+                    ${result.metadata?.session_id && result.metadata.session_id !== this.sessionId ? `
+                        <button class="action-btn" onclick="app.loadSessionInGraph('${result.metadata.session_id}')">
+                            📊 Load Session Graph
+                        </button>
+                    ` : ''}
+                    <button class="action-btn" onclick="app.promoteResult('${result.id}')">
+                        ⬆️ Promote to Long-term
+                    </button>
+                    <button class="action-btn" onclick="app.viewResultJSON('${result.id}')">
+                        📄 View JSON
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    };
     // Load subgraph around a result node
     VeraChat.prototype.loadResultSubgraph = async function(nodeId) {
         try {
@@ -894,6 +1534,216 @@
         });
     };
 
+
+    // ============================================================
+    // Helper Functions
+    // ============================================================
+
+    VeraChat.prototype.getSourceColor = function(source) {
+        const colors = {
+            'vector': '#3b82f6',
+            'graph': '#8b5cf6',
+            'hybrid': '#06b6d4',
+            'session': '#10b981',
+            'long_term': '#f59e0b',
+            'entity': '#ec4899',
+            'relationship': '#6366f1',
+            'graph_node': '#8b5cf6'
+        };
+        return colors[source] || '#64748b';
+    };
+
+    VeraChat.prototype.getSourceIcon = function(source) {
+        const icons = {
+            'vector': '📊',
+            'graph': '🕸️',
+            'hybrid': '🔀',
+            'session': '📝',
+            'long_term': '💾',
+            'entity': '🏷️',
+            'relationship': '🔗',
+            'graph_node': '⬢'
+        };
+        return icons[source] || '📌';
+    };
+
+    // ============================================================
+    // UI Interaction Functions
+    // ============================================================
+
+    VeraChat.prototype.setSearchMode = function(mode) {
+        this.memoryState.searchMode = mode;
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.clearMemorySearch = function() {
+        this.memoryState.searchQuery = '';
+        this.memoryState.currentResults = [];
+        this.memoryState.expandedResults.clear();
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.toggleAdvancedFilters = function() {
+        this.memoryState.advancedFiltersExpanded = !this.memoryState.advancedFiltersExpanded;
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.updateFilter = function(filterName, value) {
+        this.memoryState.filters[filterName] = value;
+        // Auto-search when filters change
+        if (this.memoryState.currentResults.length > 0) {
+            this.performMemorySearch();
+        }
+    };
+
+    VeraChat.prototype.resetFilters = function() {
+        this.memoryState.filters = {
+            limit: 50,
+            minConfidence: 0,
+            entityTypes: [],
+            dateFrom: null,
+            dateTo: null,
+            sessionId: null,
+        };
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.toggleResultExpansion = function(resultId) {
+        if (this.memoryState.expandedResults.has(resultId)) {
+            this.memoryState.expandedResults.delete(resultId);
+        } else {
+            this.memoryState.expandedResults.add(resultId);
+        }
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.expandAllResults = function() {
+        const { page, pageSize } = this.memoryState.pagination;
+        const startIdx = (page - 1) * pageSize;
+        const endIdx = Math.min(startIdx + pageSize, this.memoryState.currentResults.length);
+        const paginatedResults = this.memoryState.currentResults.slice(startIdx, endIdx);
+        
+        paginatedResults.forEach(result => {
+            this.memoryState.expandedResults.add(result.id);
+        });
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.collapseAllResults = function() {
+        this.memoryState.expandedResults.clear();
+        this.updateMemoryUI();
+    };
+
+    VeraChat.prototype.goToPage = function(pageNumber) {
+        const totalPages = Math.ceil(this.memoryState.currentResults.length / this.memoryState.pagination.pageSize);
+        if (pageNumber >= 1 && pageNumber <= totalPages) {
+            this.memoryState.pagination.page = pageNumber;
+            this.memoryState.expandedResults.clear(); // Collapse all when changing pages
+            this.updateMemoryUI();
+            
+            // Scroll to top of results
+            const memoryContent = document.getElementById('memory-content');
+            if (memoryContent) {
+                memoryContent.scrollTop = 0;
+            }
+        }
+    };
+
+    VeraChat.prototype.exportResults = function() {
+        const results = this.memoryState.currentResults;
+        const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `memory_search_results_${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        this.addSystemMessage('Results exported successfully');
+    };
+
+    VeraChat.prototype.copyToClipboard = async function(resultId) {
+        const result = this.memoryState.currentResults.find(r => r.id === resultId);
+        if (!result) return;
+        
+        const textToCopy = result.text || result.displayText || JSON.stringify(result, null, 2);
+        
+        try {
+            await navigator.clipboard.writeText(textToCopy);
+            this.addSystemMessage('Copied to clipboard');
+        } catch (err) {
+            console.error('Failed to copy:', err);
+            this.addSystemMessage('Failed to copy to clipboard');
+        }
+    };
+
+    VeraChat.prototype.promoteResult = async function(resultId) {
+        const result = this.memoryState.currentResults.find(r => r.id === resultId);
+        if (!result) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/promote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    memory_id: resultId,
+                    entity_anchor: null
+                })
+            });
+            
+            if (response.ok) {
+                this.addSystemMessage('Result promoted to long-term memory');
+            } else {
+                throw new Error('Promotion failed');
+            }
+        } catch (error) {
+            console.error('Promotion error:', error);
+            this.addSystemMessage('Failed to promote result');
+        }
+    };
+    
+     // Focus on a specific node in the graph
+    VeraChat.prototype.focusInGraph = async function(nodeId) {
+        if (!this.networkInstance) {
+            this.addSystemMessage('Graph not initialized');
+            return;
+        }
+        
+        // Switch to graph tab
+        this.switchTab('graph');
+        
+        // Wait for tab switch animation
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Check if node exists in current graph
+        const node = this.networkInstance.body.data.nodes.get(nodeId);
+        
+        if (node) {
+            // Node exists, focus on it
+            this.networkInstance.selectNodes([nodeId]);
+            this.networkInstance.focus(nodeId, {
+                scale: 1.5,
+                animation: {
+                    duration: 1000,
+                    easingFunction: 'easeInOutQuad'
+                }
+            });
+            
+            // Show node details
+            if (window.GraphAddon && window.GraphAddon.showNodeDetails) {
+                window.GraphAddon.showNodeDetails(nodeId, true);
+            }
+        } else {
+            // Node not in current graph, load its subgraph
+            this.addSystemMessage(`Node ${nodeId} not in current view. Loading subgraph...`);
+            await this.loadResultSubgraph(nodeId);
+        }
+        
+        // Close dropdown menu
+        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
+            menu.style.display = 'none';
+        });
+    };
+
     // Extract entities from result text
     VeraChat.prototype.extractFromResult = async function(resultId, text) {
         // Close dropdown menu
@@ -935,19 +1785,242 @@
         }
     };
 
-    // Copy result text to clipboard
-    VeraChat.prototype.copyResultText = function(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            this.addSystemMessage('Text copied to clipboard');
-        }).catch(err => {
-            console.error('Failed to copy text:', err);
-            this.addSystemMessage('Failed to copy text');
-        });
+
+    // Extract entities from text
+    VeraChat.prototype.extractEntities = async function(text, autoPromote = false) {
+        if (!this.sessionId) return;
         
-        // Close dropdown menu
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            menu.style.display = 'none';
-        });
+        try {
+            const response = await fetch('http://llm.int:8888/api/memory/extract-entities', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    text: text,
+                    auto_promote: autoPromote,
+                    source_node_id: null
+                })
+            });
+            
+            const data = await response.json();
+            this.addSystemMessage(`Extracted ${data.entities.length} entities and ${data.relations.length} relationships`);
+            
+            // Reload graph to show new entities
+            await this.loadGraph();
+            return data;
+        } catch (error) {
+            console.error('Entity extraction error:', error);
+        }
     };
+
+    // Load session entities
+    VeraChat.prototype.loadSessionEntities = async function() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/entities`);
+            const data = await response.json();
+            this.memoryEntities = data.entities;
+            this.updateMemoryUI();
+        } catch (error) {
+            console.error('Failed to load entities:', error);
+        }
+    };
+
+    // Load session relationships
+    VeraChat.prototype.loadSessionRelationships = async function() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/relationships`);
+            const data = await response.json();
+            this.memoryRelationships = data.relationships;
+            this.updateMemoryUI();
+        } catch (error) {
+            console.error('Failed to load relationships:', error);
+        }
+    };
+
+    // Get subgraph around entities
+    VeraChat.prototype.getMemorySubgraph = async function(entityIds, depth = 2) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch('http://llm.int:8888/api/memory/subgraph', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    session_id: this.sessionId,
+                    seed_entity_ids: entityIds,
+                    depth: depth
+                })
+            });
+            
+            const data = await response.json();
+            
+            // Visualize subgraph
+            if (data.subgraph && this.networkInstance) {
+                this.visualizeSubgraph(data.subgraph);
+            }
+            
+            return data;
+        } catch (error) {
+            console.error('Subgraph retrieval error:', error);
+        }
+    };
+
+    // Promote memory to long-term
+    VeraChat.prototype.promoteMemory = async function(memoryId, entityAnchor = null) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/memory/${this.sessionId}/promote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    memory_id: memoryId,
+                    entity_anchor: entityAnchor
+                })
+            });
+            
+            const data = await response.json();
+            this.addSystemMessage(`Memory promoted to long-term storage`);
+            return data;
+        } catch (error) {
+            console.error('Memory promotion error:', error);
+        }
+    };
+    VeraChat.prototype.viewResultJSON = function(resultId) {
+        const result = this.memoryState.currentResults.find(r => r.id === resultId);
+        if (!result) return;
+        
+        const panel = document.getElementById('property-panel');
+        const content = document.getElementById('panel-content');
+        
+        panel.classList.add('active');
+        content.innerHTML = `
+            <div style="padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="color: #60a5fa; margin: 0;">Result JSON</h3>
+                    <button class="panel-btn" onclick="app.copyToClipboard('${resultId}')">
+                        📋 Copy
+                    </button>
+                </div>
+                <pre style="background: #0f172a; padding: 16px; border-radius: 6px; color: #e2e8f0; overflow-x: auto; font-size: 12px; line-height: 1.5;">${this.escapeHtml(JSON.stringify(result, null, 2))}</pre>
+            </div>
+        `;
+    };
+
+    // ============================================================
+    // Event Listeners
+    // ============================================================
+
+    // Update search query on input
+    document.addEventListener('input', function(event) {
+        if (event.target.id === 'memory-search-input') {
+            app.memoryState.searchQuery = event.target.value;
+        }
+    });
+
+    // ============================================================
+    // Initialization and Setup
+    // ============================================================
+    
+    // Initialize memory state if it doesn't exist
+    if (!VeraChat.prototype.memoryState) {
+        VeraChat.prototype.memoryState = {
+            searchMode: 'hybrid',
+            searchQuery: '',
+            currentResults: [],
+            expandedResults: new Set(),
+            filters: {
+                limit: 50,
+                minConfidence: 0,
+                entityTypes: [],
+                dateFrom: null,
+                dateTo: null,
+                sessionId: null,
+            },
+            pagination: {
+                page: 1,
+                pageSize: 20,
+                total: 0
+            },
+            loading: false,
+            advancedFiltersExpanded: false
+        };
+    }
+
+    // Manual initialization function for testing
+    VeraChat.prototype.initializeMemoryUI = function() {
+        console.log('Initializing enhanced memory UI...');
+        
+        // Ensure state exists
+        if (!this.memoryState) {
+            this.memoryState = {
+                searchMode: 'hybrid',
+                searchQuery: '',
+                currentResults: [],
+                expandedResults: new Set(),
+                filters: {
+                    limit: 50,
+                    minConfidence: 0,
+                    entityTypes: [],
+                    dateFrom: null,
+                    dateTo: null,
+                    sessionId: null,
+                },
+                pagination: {
+                    page: 1,
+                    pageSize: 20,
+                    total: 0
+                },
+                loading: false,
+                advancedFiltersExpanded: false
+            };
+        }
+        
+        // Check if container exists
+        const container = document.getElementById('memory-content');
+        if (container) {
+            console.log('Memory content container found, rendering UI...');
+            this.updateMemoryUI();
+        } else {
+            console.warn('Memory content container not found. Make sure you\'re on the memory tab.');
+        }
+    };
+
+    // Hook into existing tab switching
+    const originalSwitchTab = VeraChat.prototype.switchTab;
+    VeraChat.prototype.switchTab = function(tab) {
+        if (originalSwitchTab) {
+            originalSwitchTab.call(this, tab);
+        }
+        
+        if (tab === 'memory') {
+            // Small delay to ensure DOM is ready
+            setTimeout(() => {
+                this.updateMemoryUI();
+            }, 50);
+        }
+    };
+
+    // Also hook into the original loadMemoryData if it exists
+    const originalLoadMemoryData = VeraChat.prototype.loadMemoryData;
+    VeraChat.prototype.loadMemoryData = async function() {
+        if (originalLoadMemoryData) {
+            await originalLoadMemoryData.call(this);
+        }
+        this.updateMemoryUI();
+    };
+
+    // Initialize on load if memory tab is already active
+    if (window.app && window.app.activeTab === 'memory') {
+        setTimeout(() => {
+            window.app.updateMemoryUI();
+        }, 100);
+    }
+    
+    console.log('Enhanced memory UI module loaded. Call app.initializeMemoryUI() to manually initialize.');
 
 })();

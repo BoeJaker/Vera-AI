@@ -3,8 +3,8 @@
 # ============================================================
 import logging
 from fastapi import APIRouter, HTTPException
-from session import sessions, get_or_create_vera
-from schemas import GraphResponse, GraphNode, GraphEdge 
+from Vera.ChatUI.api.session import sessions, get_or_create_vera
+from Vera.ChatUI.api.schemas import GraphResponse, GraphNode, GraphEdge 
 
 # ============================================================
 # Logging

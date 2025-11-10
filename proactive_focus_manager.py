@@ -238,8 +238,45 @@ class ProactiveFocusManager:
     
     def set_focus(self, focus: str, project_name: Optional[str] = None, create_project: bool = True):
         """Set focus and optionally link to a project in hybrid memory."""
+        
+        # Check if we already have a saved board for this focus
+        existing_board = self._find_matching_focus_board(focus)
+        
+        if existing_board:
+            print(f"[FocusManager] Found existing focus board: {existing_board['filename']}")
+            # Load the existing board
+            if self.load_focus_board(existing_board['filename']):
+                print(f"[FocusManager] Loaded existing focus board for: {focus}")
+                self._broadcast_sync("focus_changed", {
+                    "focus": focus, 
+                    "project_id": self.project_id,
+                    "loaded_existing": True,
+                    "filename": existing_board['filename']
+                })
+                return
+        
+        # No existing board found, set new focus and clear board
+        old_focus = self.focus
+        
+        # Save current board if there was a previous focus
+        if old_focus and old_focus != focus:
+            print(f"[FocusManager] Saving previous focus: {old_focus}")
+            self.save_focus_board()
+        
+        # Set new focus
         self.focus = focus
-        print(f"[FocusManager] Focus set to: {focus}")
+        
+        # Clear the focus board for new focus
+        self.focus_board = {
+            "progress": [],
+            "next_steps": [],
+            "issues": [],
+            "ideas": [],
+            "actions": [],
+            "completed": []
+        }
+        
+        print(f"[FocusManager] Focus set to: {focus} (new board)")
         
         # Create or link to project in hybrid memory
         if self.hybrid_memory and (project_name or create_project):
@@ -259,12 +296,49 @@ class ProactiveFocusManager:
             metadata
         )
         
+        # Auto-save the new empty board
+        filepath = self.save_focus_board()
+        print(f"[FocusManager] Auto-saved new focus board: {filepath}")
+        
         # Broadcast focus change
         self._broadcast_sync("focus_changed", {
             "focus": focus, 
-            "project_id": self.project_id
+            "project_id": self.project_id,
+            "loaded_existing": False,
+            "filepath": filepath
         })
-    
+
+    def _find_matching_focus_board(self, focus: str) -> Optional[Dict[str, Any]]:
+        """
+        Find the most recent saved focus board that matches the given focus.
+        Uses fuzzy matching to handle slight variations.
+        """
+        if not focus:
+            return None
+        
+        focus_lower = focus.lower().strip()
+        saved_boards = self.list_saved_boards()
+        
+        # First try exact match
+        for board in saved_boards:
+            if board.get('focus', '').lower().strip() == focus_lower:
+                print(f"[FocusManager] Found exact match: {board['filename']}")
+                return board
+        
+        # Try partial match (focus text contains or is contained in saved focus)
+        for board in saved_boards:
+            saved_focus = board.get('focus', '').lower().strip()
+            if not saved_focus:
+                continue
+            
+            # Check if one contains the other
+            if focus_lower in saved_focus or saved_focus in focus_lower:
+                print(f"[FocusManager] Found partial match: {board['filename']}")
+                return board
+        
+        print(f"[FocusManager] No matching focus board found for: {focus}")
+        return None
+        
     def _ensure_project(self, project_name: str, description: str) -> str:
         """Create or retrieve a project entity in hybrid memory."""
         project_id = f"project_{project_name.lower().replace(' ', '_')}"
@@ -544,6 +618,8 @@ class ProactiveFocusManager:
         # Add to focus board
         for idea in ideas:
             self.add_to_focus_board("ideas", idea)
+            self.agent.mem.add_session_memory(self.agent.sess.id, idea, "Idea", {"focus": self.focus, "Source":"Proactive Focus Manager"})
+            
         
         return ideas
     
@@ -592,6 +668,8 @@ class ProactiveFocusManager:
         
         for step in steps:
             self.add_to_focus_board("next_steps", step)
+            self.agent.mem.add_session_memory(self.agent.sess.id, step, "Next_Step", {"focus": self.focus, "Source":"Proactive Focus Manager"})
+            
         
         return steps
     
@@ -653,6 +731,9 @@ class ProactiveFocusManager:
             # Use the description as the note, store full action in metadata
             description = action.get("description", str(action))
             self.add_to_focus_board("actions", description, metadata=action)
+            self.agent.mem.add_session_memory(self.agent.sess.id, description, "Action", {"focus": self.focus, "Source":"Proactive Focus Manager"})
+            # self.mem.add_session_memory(self.sess.id, ai_output, "Response", {"topic": "response"})
+        
         
         return actions
 

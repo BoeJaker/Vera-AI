@@ -1,0 +1,1456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vera Task Orchestrator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(96, 165, 250, 0.2);
+        }
+
+        .header h1 {
+            color: #60a5fa;
+            font-size: 28px;
+            margin-bottom: 16px;
+        }
+
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .status-card {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+        }
+
+        .status-card h3 {
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .status-card .value {
+            color: #e2e8f0;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .status-running { background: #22c55e; }
+        .status-stopped { background: #ef4444; }
+        .status-inactive { background: #eab308; }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(96, 165, 250, 0.2);
+            height: fit-content;
+            position: sticky;
+            top: 20px;
+        }
+
+        .nav-item {
+            padding: 12px 16px;
+            margin: 6px 0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #cbd5e1;
+            border: 1px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: rgba(96, 165, 250, 0.1);
+            border-color: rgba(96, 165, 250, 0.3);
+        }
+
+        .nav-item.active {
+            background: rgba(96, 165, 250, 0.2);
+            border-color: #60a5fa;
+            color: #60a5fa;
+        }
+
+        .content-panel {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 24px;
+            border-radius: 12px;
+            border: 1px solid rgba(96, 165, 250, 0.2);
+            min-height: 600px;
+        }
+
+        .panel-hidden {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            margin: 4px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%);
+        }
+
+        .input-group {
+            margin: 16px 0;
+        }
+
+        .input-group label {
+            display: block;
+            color: #94a3b8;
+            font-size: 13px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .input-group input,
+        .input-group textarea,
+        .input-group select {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.3);
+            color: #e2e8f0;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .input-group textarea {
+            min-height: 100px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .card {
+            background: rgba(15, 23, 42, 0.6);
+            padding: 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            margin: 12px 0;
+        }
+
+        .card h3 {
+            color: #60a5fa;
+            margin-bottom: 12px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .table th {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 12px;
+            text-align: left;
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 2px solid rgba(96, 165, 250, 0.3);
+        }
+
+        .table td {
+            padding: 12px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+        }
+
+        .table tr:hover {
+            background: rgba(96, 165, 250, 0.05);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .badge-critical { background: #ef4444; }
+        .badge-high { background: #f59e0b; }
+        .badge-normal { background: #3b82f6; }
+        .badge-low { background: #6b7280; }
+        .badge-started { background: #3b82f6; }
+        .badge-completed { background: #22c55e; }
+        .badge-failed { background: #ef4444; }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(96, 165, 250, 0.3);
+            border-top-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(30, 41, 59, 0.95);
+            border: 1px solid rgba(96, 165, 250, 0.5);
+            border-radius: 8px;
+            padding: 16px;
+            max-width: 400px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .node-health {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .health-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .health-good { background: #22c55e; }
+        .health-degraded { background: #eab308; }
+        .health-error { background: #ef4444; }
+
+        .process-card {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+        }
+
+        .process-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .process-name {
+            color: #60a5fa;
+            font-weight: bold;
+        }
+
+        .process-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 8px;
+        }
+
+        .metric {
+            text-align: center;
+        }
+
+        .metric-label {
+            color: #94a3b8;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+
+        .metric-value {
+            color: #e2e8f0;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            transition: width 0.3s ease;
+        }
+
+        .model-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 8px 0;
+        }
+
+        .model-name {
+            color: #a78bfa;
+            font-weight: bold;
+        }
+
+        .model-status {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .stat-box {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #94a3b8;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #60a5fa;
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .stat-subtext {
+            color: #94a3b8;
+            font-size: 11px;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔧 Vera Task Orchestrator</h1>
+            <div class="status-cards">
+                <div class="status-card">
+                    <h3>Local Pool</h3>
+                    <div class="value">
+                        <span class="status-indicator status-stopped" id="pool-status"></span>
+                        <span id="pool-status-text">Stopped</span>
+                    </div>
+                </div>
+                <div class="status-card">
+                    <h3>Cluster</h3>
+                    <div class="value">
+                        <span class="status-indicator status-inactive" id="cluster-status"></span>
+                        <span id="cluster-status-text">Inactive</span>
+                    </div>
+                </div>
+                <div class="status-card">
+                    <h3>CPU Usage</h3>
+                    <div class="value" id="cpu-usage">0%</div>
+                </div>
+                <div class="status-card">
+                    <h3>Memory</h3>
+                    <div class="value" id="memory-usage">0%</div>
+                </div>
+                <div class="status-card">
+                    <h3>Queue Size</h3>
+                    <div class="value" id="queue-size">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="sidebar">
+                <div class="nav-item active" data-panel="dashboard">📊 Dashboard</div>
+                <div class="nav-item" data-panel="pool">🏭 Worker Pool</div>
+                <div class="nav-item" data-panel="cluster">🌐 Cluster</div>
+                <div class="nav-item" data-panel="tasks">📋 Tasks</div>
+                <div class="nav-item" data-panel="monitor">📈 System Monitor</div>
+                <div class="nav-item" data-panel="ollama">🦙 Ollama Status</div>
+            </div>
+
+            <div id="content-area">
+                <!-- Dashboard Panel -->
+                <div class="content-panel" id="panel-dashboard">
+                    <h2>System Overview</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-label">Active Workers</div>
+                            <div class="stat-value" id="dash-active-workers">0</div>
+                            <div class="stat-subtext">of <span id="dash-total-workers">0</span> total</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Tasks Completed</div>
+                            <div class="stat-value" id="dash-completed-tasks">0</div>
+                            <div class="stat-subtext">this session</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Ollama Load</div>
+                            <div class="stat-value" id="dash-ollama-load">0%</div>
+                            <div class="stat-subtext"><span id="dash-ollama-threads">0</span> threads</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Remote Nodes</div>
+                            <div class="stat-value" id="dash-node-count">0</div>
+                            <div class="stat-subtext"><span id="dash-healthy-nodes">0</span> healthy</div>
+                        </div>
+                    </div>
+
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3>Worker Utilization</h3>
+                            <div id="worker-info">
+                                <div class="metric-value" style="text-align: center; font-size: 48px;" id="worker-util">0%</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="worker-progress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <h3>Queue Status</h3>
+                            <div style="text-align: center;">
+                                <div class="metric-value" style="font-size: 48px;" id="dash-queue-size">0</div>
+                                <div style="color: #94a3b8; font-size: 13px; margin-top: 8px;">tasks pending</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Recent Task History</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Task</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Labels</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dash-task-history"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Worker Pool Panel -->
+                <div class="content-panel panel-hidden" id="panel-pool">
+                    <h2>Worker Pool Control</h2>
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3>Configuration</h3>
+                            <div class="input-group">
+                                <label>Worker Count</label>
+                                <input type="number" id="worker-count" value="4" min="1" max="32">
+                            </div>
+                            <div class="input-group">
+                                <label>CPU Threshold (%)</label>
+                                <input type="number" id="cpu-threshold" value="85" min="50" max="100">
+                            </div>
+                            <div class="input-group">
+                                <label>Max Processes</label>
+                                <input type="number" id="max-processes" value="24" min="1">
+                            </div>
+                            <div class="input-group">
+                                <label>Process Name to Monitor</label>
+                                <input type="text" id="process-name" value="ollama">
+                            </div>
+                            <button class="btn btn-success" onclick="app.initializePool()">Initialize Pool</button>
+                        </div>
+                        <div class="card">
+                            <h3>Controls</h3>
+                            <button class="btn btn-success" onclick="app.startPool()">▶ Start</button>
+                            <button class="btn btn-warning" onclick="app.pausePool()">⏸ Pause</button>
+                            <button class="btn btn-success" onclick="app.resumePool()">▶ Resume</button>
+                            <button class="btn btn-danger" onclick="app.stopPool()">⏹ Stop</button>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Rate Limits</h3>
+                        <table class="table" id="rate-limits-table">
+                            <thead>
+                                <tr>
+                                    <th>Label</th>
+                                    <th>Fill Rate</th>
+                                    <th>Capacity</th>
+                                    <th>Current Tokens</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rate-limits-tbody"></tbody>
+                        </table>
+                        <button class="btn" onclick="app.showAddRateLimitDialog()">+ Add Rate Limit</button>
+                    </div>
+                </div>
+
+                <!-- Cluster Panel -->
+                <div class="content-panel panel-hidden" id="panel-cluster">
+                    <h2>Cluster Management</h2>
+                    <button class="btn btn-success" onclick="app.initializeCluster()">Initialize Cluster</button>
+                    <button class="btn" onclick="app.checkNodeHealth()">🔍 Check Node Health</button>
+                    
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3>Remote Nodes</h3>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>URL</th>
+                                        <th>Status</th>
+                                        <th>Weight</th>
+                                        <th>Inflight</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="nodes-tbody">
+                                    <tr><td colspan="5" style="text-align: center; color: #94a3b8;">No nodes configured</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="card">
+                            <h3>Add Node</h3>
+                            <div class="input-group">
+                                <label>Node Name</label>
+                                <input type="text" id="node-name">
+                            </div>
+                            <div class="input-group">
+                                <label>Base URL</label>
+                                <input type="text" id="node-url" placeholder="http://host:port">
+                            </div>
+                            <div class="input-group">
+                                <label>Labels (comma-separated)</label>
+                                <input type="text" id="node-labels" placeholder="llm,exec">
+                            </div>
+                            <div class="input-group">
+                                <label>Auth Token (optional)</label>
+                                <input type="password" id="node-auth">
+                            </div>
+                            <div class="input-group">
+                                <label>Weight</label>
+                                <input type="number" id="node-weight" value="1" min="1">
+                            </div>
+                            <button class="btn btn-success" onclick="app.addNode()">Add Node</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tasks Panel -->
+                <div class="content-panel panel-hidden" id="panel-tasks">
+                    <h2>Task Management</h2>
+                    <div class="grid-2">
+                        <div class="card">
+                            <h3>Submit Task</h3>
+                            <div class="input-group">
+                                <label>Task Name</label>
+                                <select id="task-name">
+                                    <option>Loading tasks...</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Priority</label>
+                                <select id="task-priority">
+                                    <option value="NORMAL">Normal</option>
+                                    <option value="HIGH">High</option>
+                                    <option value="CRITICAL">Critical</option>
+                                    <option value="LOW">Low</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>Labels (comma-separated)</label>
+                                <input type="text" id="task-labels" placeholder="llm,exec">
+                            </div>
+                            <div class="input-group">
+                                <label>Delay (seconds)</label>
+                                <input type="number" id="task-delay" value="0" min="0" step="0.1">
+                            </div>
+                            <div class="input-group">
+                                <label>Payload (JSON)</label>
+                                <textarea id="task-payload">{"example": "data"}</textarea>
+                            </div>
+                            <div class="input-group">
+                                <label>Context (JSON)</label>
+                                <textarea id="task-context">{}</textarea>
+                            </div>
+                            <button class="btn btn-success" onclick="app.submitTask()">Submit Task</button>
+                        </div>
+                        <div class="card">
+                            <h3>Registered Tasks</h3>
+                            <div id="registered-tasks-list">
+                                <p style="color: #94a3b8;">Loading tasks...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Task History</h3>
+                        <div style="margin-bottom: 12px;">
+                            <button class="btn" onclick="app.refreshTaskHistory()">🔄 Refresh</button>
+                        </div>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Task ID</th>
+                                    <th>Name</th>
+                                    <th>Priority</th>
+                                    <th>Status</th>
+                                    <th>Result</th>
+                                </tr>
+                            </thead>
+                            <tbody id="task-history-tbody">
+                                <tr><td colspan="6" style="text-align: center; color: #94a3b8;">No task history</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- System Monitor Panel -->
+                <div class="content-panel panel-hidden" id="panel-monitor">
+                    <h2>System Monitor</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-label">CPU Usage</div>
+                            <div class="stat-value" id="monitor-cpu">0%</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="cpu-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Memory Usage</div>
+                            <div class="stat-value" id="monitor-memory">0%</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="memory-progress" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Queue Depth</div>
+                            <div class="stat-value" id="monitor-queue">0</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Total Processes</div>
+                            <div class="stat-value" id="monitor-processes">0</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Top Processes by CPU</h3>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>PID</th>
+                                    <th>Name</th>
+                                    <th>CPU %</th>
+                                    <th>Memory %</th>
+                                </tr>
+                            </thead>
+                            <tbody id="processes-tbody">
+                                <tr><td colspan="4" style="text-align: center; color: #94a3b8;">Loading processes...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Ollama Status Panel -->
+                <div class="content-panel panel-hidden" id="panel-ollama">
+                    <h2>Ollama Status &amp; Monitoring</h2>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <div class="stat-label">Ollama Processes</div>
+                            <div class="stat-value" id="ollama-process-count">0</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Total CPU Load</div>
+                            <div class="stat-value" id="ollama-cpu-load">0%</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Active Threads</div>
+                            <div class="stat-value" id="ollama-threads">0</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Memory Usage</div>
+                            <div class="stat-value" id="ollama-memory">0 MB</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Ollama Processes</h3>
+                        <div id="ollama-processes">
+                            <p style="color: #94a3b8;">No Ollama processes detected</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Active Models</h3>
+                        <div id="active-models">
+                            <p style="color: #94a3b8;">No models loaded</p>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h3>API Health</h3>
+                        <button class="btn" onclick="app.checkOllamaHealth()">🔍 Check Health</button>
+                        <div id="ollama-health-status" style="margin-top: 16px;">
+                            <p style="color: #94a3b8;">Click "Check Health" to test Ollama API</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class VeraOrchestratorApp {
+            constructor() {
+                // Auto-detect API URL based on current page location
+                const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+                const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.hostname;
+                const port = window.location.port || '8888'; // Default to 8888 if no port specified
+                
+                // Base URL with /orchestrator prefix
+                this.baseUrl = `${protocol}//${host}:${port}`;
+                this.apiUrl = `${this.baseUrl}/orchestrator`;
+                this.wsUrl = `${wsProtocol}//${host}:${port}/orchestrator`;
+                
+                // Allow override via URL parameter
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('api')) {
+                    this.apiUrl = urlParams.get('api');
+                    this.wsUrl = this.apiUrl.replace('http', 'ws');
+                }
+                
+                console.log('API URL:', this.apiUrl);
+                console.log('WebSocket URL:', this.wsUrl);
+                
+                this.ws = null;
+                this.currentPanel = 'dashboard';
+                this.metricsHistory = [];
+                this.connectionRetries = 0;
+                this.maxRetries = 3;
+                
+                this.init();
+            }
+
+            async init() {
+                this.setupNavigation();
+                this.setupWebSocket();
+                this.startPeriodicUpdates();
+                await this.refreshAll();
+            }
+
+            setupNavigation() {
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.addEventListener('click', () => {
+                        const panel = item.dataset.panel;
+                        this.switchPanel(panel);
+                    });
+                });
+            }
+
+            switchPanel(panelName) {
+                document.querySelectorAll('.nav-item').forEach(item => {
+                    item.classList.remove('active');
+                });
+                document.querySelectorAll('.content-panel').forEach(panel => {
+                    panel.classList.add('panel-hidden');
+                });
+
+                document.querySelector(`[data-panel="${panelName}"]`).classList.add('active');
+                document.getElementById(`panel-${panelName}`).classList.remove('panel-hidden');
+                
+                this.currentPanel = panelName;
+                this.onPanelSwitch(panelName);
+            }
+
+            async onPanelSwitch(panelName) {
+                switch(panelName) {
+                    case 'dashboard':
+                        await this.updateDashboard();
+                        break;
+                    case 'tasks':
+                        await this.loadRegisteredTasks();
+                        await this.refreshTaskHistory();
+                        break;
+                    case 'cluster':
+                        await this.loadNodes();
+                        break;
+                    case 'monitor':
+                        await this.updateSystemMetrics();
+                        break;
+                    case 'ollama':
+                        await this.updateOllamaStatus();
+                        break;
+                    case 'pool':
+                        await this.updatePoolStatus();
+                        break;
+                }
+            }
+
+            setupWebSocket() {
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    return; // Already connected
+                }
+                
+                try {
+                    this.ws = new WebSocket(`${this.wsUrl}/ws/updates`);
+                    
+                    this.ws.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.connectionRetries = 0;
+                    };
+                    
+                    this.ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        this.handleWebSocketMessage(data);
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                    };
+
+                    this.ws.onclose = () => {
+                        console.log('WebSocket closed, reconnecting...');
+                        this.ws = null;
+                        
+                        if (this.connectionRetries < this.maxRetries) {
+                            this.connectionRetries++;
+                            setTimeout(() => this.setupWebSocket(), 5000);
+                        } else {
+                            console.warn('Max WebSocket reconnection attempts reached');
+                        }
+                    };
+                } catch (error) {
+                    console.error('Failed to create WebSocket:', error);
+                }
+            }
+
+            handleWebSocketMessage(data) {
+                if (data.type === 'task_start') {
+                    this.showNotification(`Task started: ${data.data.name}`, 'info');
+                    this.addTaskToHistory(data.data);
+                } else if (data.type === 'task_end') {
+                    this.showNotification(`Task ${data.data.status}: ${data.data.name}`, 
+                        data.data.status === 'completed' ? 'success' : 'error');
+                    this.addTaskToHistory(data.data);
+                } else if (data.type === 'status_update') {
+                    this.updateQueueSize(data.data.queue_size);
+                }
+            }
+
+            startPeriodicUpdates() {
+                setInterval(() => this.refreshHealth(), 5000);
+                setInterval(() => this.updateSystemMetrics(), 2000);
+                setInterval(() => {
+                    if (this.currentPanel === 'dashboard') {
+                        this.updateDashboard();
+                    } else if (this.currentPanel === 'ollama') {
+                        this.updateOllamaStatus();
+                    }
+                }, 3000);
+            }
+
+            async refreshAll() {
+                await this.refreshHealth();
+                await this.updateDashboard();
+                await this.loadRegisteredTasks();
+            }
+
+            async refreshHealth() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/health`, { 
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    this.updateStatusIndicator('pool-status', data.local_pool);
+                    document.getElementById('pool-status-text').textContent = 
+                        data.local_pool ? 'Running' : 'Stopped';
+                    
+                    this.updateStatusIndicator('cluster-status', data.cluster_pool);
+                    document.getElementById('cluster-status-text').textContent = 
+                        data.cluster_pool ? 'Active' : 'Inactive';
+                } catch (error) {
+                    console.error('Health check failed:', error.message);
+                    // Update UI to show disconnected state
+                    this.updateStatusIndicator('pool-status', false);
+                    document.getElementById('pool-status-text').textContent = 'Disconnected';
+                }
+            }
+
+            updateStatusIndicator(elementId, isActive) {
+                const element = document.getElementById(elementId);
+                element.className = 'status-indicator';
+                if (isActive) {
+                    element.classList.add('status-running');
+                } else {
+                    element.classList.add('status-stopped');
+                }
+            }
+
+            async updateDashboard() {
+                try {
+                    const [poolStatus, taskHistory] = await Promise.all([
+                        fetch(`${this.apiUrl}/pool/status`).then(r => r.json()).catch(() => ({initialized: false})),
+                        fetch(`${this.apiUrl}/tasks/history?limit=10`).then(r => r.json()).catch(() => ({history: []}))
+                    ]);
+
+                    if (poolStatus.initialized) {
+                        const utilization = poolStatus.worker_count > 0 
+                            ? (poolStatus.active_workers / poolStatus.worker_count * 100).toFixed(1)
+                            : 0;
+                        
+                        document.getElementById('dash-active-workers').textContent = poolStatus.active_workers;
+                        document.getElementById('dash-total-workers').textContent = poolStatus.worker_count;
+                        document.getElementById('worker-util').textContent = `${utilization}%`;
+                        document.getElementById('worker-progress').style.width = `${utilization}%`;
+                        document.getElementById('queue-size').textContent = poolStatus.queue_size;
+                        document.getElementById('dash-queue-size').textContent = poolStatus.queue_size;
+                    }
+
+                    const completedTasks = taskHistory.history.filter(t => t.status === 'completed').length;
+                    document.getElementById('dash-completed-tasks').textContent = completedTasks;
+
+                    const tbody = document.getElementById('dash-task-history');
+                    tbody.innerHTML = taskHistory.history.slice(0, 5).map(task => `
+                        <tr>
+                            <td>${new Date(task.timestamp).toLocaleTimeString()}</td>
+                            <td>${task.name}</td>
+                            <td><span class="badge badge-${task.priority.toLowerCase()}">${task.priority}</span></td>
+                            <td><span class="badge badge-${task.status}">${task.status}</span></td>
+                            <td>${task.labels || ''}</td>
+                        </tr>
+                    `).join('') || '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No recent tasks</td></tr>';
+
+                } catch (error) {
+                    console.error('Dashboard update failed:', error);
+                }
+            }
+
+            async updateSystemMetrics() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/system/metrics`, {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                    
+                    const data = await response.json();
+                    const metrics = data.metrics;
+
+                    document.getElementById('cpu-usage').textContent = `${metrics.cpu_percent.toFixed(1)}%`;
+                    document.getElementById('memory-usage').textContent = `${metrics.memory_percent.toFixed(1)}%`;
+                    
+                    document.getElementById('monitor-cpu').textContent = `${metrics.cpu_percent.toFixed(1)}%`;
+                    document.getElementById('monitor-memory').textContent = `${metrics.memory_percent.toFixed(1)}%`;
+                    document.getElementById('monitor-queue').textContent = metrics.queue_size;
+                    
+                    document.getElementById('cpu-progress').style.width = `${metrics.cpu_percent}%`;
+                    document.getElementById('memory-progress').style.width = `${metrics.memory_percent}%`;
+
+                    if (this.currentPanel === 'monitor') {
+                        await this.updateProcessTable();
+                    }
+                } catch (error) {
+                    // Silently fail - don't spam console
+                    if (this.connectionRetries === 0) {
+                        console.warn('Metrics update failed - API may not be running');
+                    }
+                }
+            }
+
+            async updateProcessTable() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/system/processes`);
+                    const data = await response.json();
+                    
+                    const tbody = document.getElementById('processes-tbody');
+                    tbody.innerHTML = data.processes.map(proc => `
+                        <tr>
+                            <td>${proc.pid}</td>
+                            <td>${proc.name}</td>
+                            <td>${(proc.cpu_percent || 0).toFixed(1)}%</td>
+                            <td>${(proc.memory_percent || 0).toFixed(1)}%</td>
+                        </tr>
+                    `).join('');
+
+                    document.getElementById('monitor-processes').textContent = data.processes.length;
+                } catch (error) {
+                    console.error('Process table update failed:', error);
+                }
+            }
+
+            async updateOllamaStatus() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/system/processes`);
+                    const data = await response.json();
+                    
+                    const ollamaProcesses = data.processes.filter(p => 
+                        p.name && p.name.toLowerCase().includes('ollama')
+                    );
+
+                    document.getElementById('ollama-process-count').textContent = ollamaProcesses.length;
+                    
+                    const totalCpu = ollamaProcesses.reduce((sum, p) => sum + (p.cpu_percent || 0), 0);
+                    const totalThreads = ollamaProcesses.reduce((sum, p) => sum + (p.num_threads || 0), 0);
+                    
+                    document.getElementById('ollama-cpu-load').textContent = `${totalCpu.toFixed(1)}%`;
+                    document.getElementById('ollama-threads').textContent = totalThreads;
+                    document.getElementById('dash-ollama-load').textContent = `${totalCpu.toFixed(1)}%`;
+                    document.getElementById('dash-ollama-threads').textContent = totalThreads;
+
+                    const processesDiv = document.getElementById('ollama-processes');
+                    processesDiv.innerHTML = ollamaProcesses.map(proc => `
+                        <div class="process-card">
+                            <div class="process-header">
+                                <span class="process-name">${proc.name}</span>
+                                <span style="color: #94a3b8;">PID: ${proc.pid}</span>
+                            </div>
+                            <div class="process-metrics">
+                                <div class="metric">
+                                    <div class="metric-label">CPU</div>
+                                    <div class="metric-value">${(proc.cpu_percent || 0).toFixed(1)}%</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Memory</div>
+                                    <div class="metric-value">${(proc.memory_percent || 0).toFixed(1)}%</div>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('') || '<p style="color: #94a3b8;">No Ollama processes found</p>';
+
+                } catch (error) {
+                    console.error('Ollama status update failed:', error);
+                }
+            }
+
+            async checkOllamaHealth() {
+                const statusDiv = document.getElementById('ollama-health-status');
+                statusDiv.innerHTML = '<div class="loading"></div> Checking...';
+                
+                try {
+                    const response = await fetch('http://localhost:11434/api/tags');
+                    const data = await response.json();
+                    
+                    statusDiv.innerHTML = `
+                        <div class="node-health">
+                            <span class="health-indicator health-good"></span>
+                            <span style="color: #22c55e;">Ollama API is healthy</span>
+                        </div>
+                        <div style="margin-top: 12px; color: #94a3b8; font-size: 13px;">
+                            ${data.models ? data.models.length : 0} models available
+                        </div>
+                    `;
+
+                    if (data.models) {
+                        const modelsDiv = document.getElementById('active-models');
+                        modelsDiv.innerHTML = data.models.map(model => `
+                            <div class="model-item">
+                                <span class="model-name">${model.name}</span>
+                                <span class="model-status">Ready</span>
+                            </div>
+                        `).join('');
+                    }
+                } catch (error) {
+                    statusDiv.innerHTML = `
+                        <div class="node-health">
+                            <span class="health-indicator health-error"></span>
+                            <span style="color: #ef4444;">Ollama API unavailable</span>
+                        </div>
+                        <div style="margin-top: 8px; color: #94a3b8; font-size: 12px;">
+                            ${error.message}
+                        </div>
+                    `;
+                }
+            }
+
+            async initializePool() {
+                const config = {
+                    worker_count: parseInt(document.getElementById('worker-count').value),
+                    cpu_threshold: parseFloat(document.getElementById('cpu-threshold').value),
+                    max_processes: parseInt(document.getElementById('max-processes').value),
+                    max_process_name: document.getElementById('process-name').value
+                };
+
+                try {
+                    const response = await fetch(`${this.apiUrl}/pool/initialize`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+                    const data = await response.json();
+                    this.showNotification(data.message, 'success');
+                    await this.refreshHealth();
+                } catch (error) {
+                    this.showNotification(`Failed to initialize pool: ${error.message}`, 'error');
+                }
+            }
+
+            async startPool() {
+                try {
+                    await fetch(`${this.apiUrl}/pool/start`, { method: 'POST' });
+                    this.showNotification('Pool started', 'success');
+                    await this.refreshHealth();
+                } catch (error) {
+                    this.showNotification(`Failed to start pool: ${error.message}`, 'error');
+                }
+            }
+
+            async stopPool() {
+                try {
+                    await fetch(`${this.apiUrl}/pool/stop`, { method: 'POST' });
+                    this.showNotification('Pool stopped', 'error');
+                    await this.refreshHealth();
+                } catch (error) {
+                    this.showNotification(`Failed to stop pool: ${error.message}`, 'error');
+                }
+            }
+
+            async pausePool() {
+                try {
+                    await fetch(`${this.apiUrl}/pool/pause`, { method: 'POST' });
+                    this.showNotification('Pool paused', 'warning');
+                } catch (error) {
+                    this.showNotification(`Failed to pause pool: ${error.message}`, 'error');
+                }
+            }
+
+            async resumePool() {
+                try {
+                    await fetch(`${this.apiUrl}/pool/resume`, { method: 'POST' });
+                    this.showNotification('Pool resumed', 'success');
+                } catch (error) {
+                    this.showNotification(`Failed to resume pool: ${error.message}`, 'error');
+                }
+            }
+
+            async updatePoolStatus() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/pool/status`);
+                    const data = await response.json();
+                    
+                    if (data.rate_limits) {
+                        const tbody = document.getElementById('rate-limits-tbody');
+                        tbody.innerHTML = Object.entries(data.rate_limits).map(([label, limit]) => `
+                            <tr>
+                                <td>${label}</td>
+                                <td>${limit.fill_rate}/s</td>
+                                <td>${limit.capacity}</td>
+                                <td>${limit.current_tokens.toFixed(2)}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="4" style="text-align: center; color: #94a3b8;">No rate limits configured</td></tr>';
+                    }
+                } catch (error) {
+                    console.error('Failed to update pool status:', error);
+                }
+            }
+
+            async initializeCluster() {
+                try {
+                    await fetch(`${this.apiUrl}/cluster/initialize`, { method: 'POST' });
+                    this.showNotification('Cluster initialized', 'success');
+                    await this.refreshHealth();
+                } catch (error) {
+                    this.showNotification(`Failed to initialize cluster: ${error.message}`, 'error');
+                }
+            }
+
+            async addNode() {
+                const config = {
+                    name: document.getElementById('node-name').value,
+                    base_url: document.getElementById('node-url').value,
+                    labels: document.getElementById('node-labels').value.split(',').map(l => l.trim()),
+                    auth_token: document.getElementById('node-auth').value || null,
+                    weight: parseInt(document.getElementById('node-weight').value)
+                };
+
+                try {
+                    await fetch(`${this.apiUrl}/cluster/nodes/add`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(config)
+                    });
+                    this.showNotification(`Node ${config.name} added`, 'success');
+                    await this.loadNodes();
+                    
+                    document.getElementById('node-name').value = '';
+                    document.getElementById('node-url').value = '';
+                    document.getElementById('node-labels').value = '';
+                    document.getElementById('node-auth').value = '';
+                } catch (error) {
+                    this.showNotification(`Failed to add node: ${error.message}`, 'error');
+                }
+            }
+
+            async loadNodes() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/cluster/nodes`);
+                    const data = await response.json();
+                    
+                    const tbody = document.getElementById('nodes-tbody');
+                    tbody.innerHTML = data.nodes.map(node => `
+                        <tr>
+                            <td>${node.name}</td>
+                            <td>${node.base_url}</td>
+                            <td>
+                                <div class="node-health">
+                                    <span class="health-indicator ${node.last_ok ? 'health-good' : 'health-error'}"></span>
+                                    ${node.last_ok ? 'Healthy' : 'Unknown'}
+                                </div>
+                            </td>
+                            <td>${node.weight}</td>
+                            <td>${node.inflight}</td>
+                        </tr>
+                    `).join('') || '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No nodes configured</td></tr>';
+
+                    document.getElementById('dash-node-count').textContent = data.nodes.length;
+                    const healthyNodes = data.nodes.filter(n => n.last_ok).length;
+                    document.getElementById('dash-healthy-nodes').textContent = healthyNodes;
+                } catch (error) {
+                    console.error('Failed to load nodes:', error);
+                }
+            }
+
+            async checkNodeHealth() {
+                this.showNotification('Checking node health...', 'info');
+                await this.loadNodes();
+            }
+
+            async loadRegisteredTasks() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/tasks/registry`);
+                    const data = await response.json();
+                    
+                    const select = document.getElementById('task-name');
+                    select.innerHTML = data.tasks.map(task => 
+                        `<option value="${task}">${task}</option>`
+                    ).join('') || '<option>No tasks registered</option>';
+
+                    const listDiv = document.getElementById('registered-tasks-list');
+                    listDiv.innerHTML = data.tasks.map(task => 
+                        `<div style="padding: 8px; background: rgba(96, 165, 250, 0.1); 
+                         border-radius: 4px; margin: 4px 0;">${task}</div>`
+                    ).join('') || '<p style="color: #94a3b8;">No tasks registered</p>';
+                } catch (error) {
+                    console.error('Failed to load tasks:', error);
+                }
+            }
+
+            async submitTask() {
+                try {
+                    const taskData = {
+                        name: document.getElementById('task-name').value,
+                        priority: document.getElementById('task-priority').value,
+                        labels: document.getElementById('task-labels').value.split(',').map(l => l.trim()).filter(l => l),
+                        delay: parseFloat(document.getElementById('task-delay').value),
+                        payload: JSON.parse(document.getElementById('task-payload').value),
+                        context: JSON.parse(document.getElementById('task-context').value)
+                    };
+
+                    const response = await fetch(`${this.apiUrl}/tasks/submit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(taskData)
+                    });
+                    const data = await response.json();
+                    this.showNotification(`Task submitted: ${data.task_id}`, 'success');
+                } catch (error) {
+                    this.showNotification(`Failed to submit task: ${error.message}`, 'error');
+                }
+            }
+
+            async refreshTaskHistory() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/tasks/history?limit=50`);
+                    const data = await response.json();
+                    
+                    const tbody = document.getElementById('task-history-tbody');
+                    tbody.innerHTML = data.history.map(task => `
+                        <tr>
+                            <td>${new Date(task.timestamp).toLocaleString()}</td>
+                            <td style="font-family: monospace; font-size: 11px;">${task.task_id}</td>
+                            <td>${task.name}</td>
+                            <td><span class="badge badge-${task.priority.toLowerCase()}">${task.priority}</span></td>
+                            <td><span class="badge badge-${task.status}">${task.status}</span></td>
+                            <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;">
+                                ${task.result || task.error || '-'}
+                            </td>
+                        </tr>
+                    `).join('') || '<tr><td colspan="6" style="text-align: center; color: #94a3b8;">No task history</td></tr>';
+                } catch (error) {
+                    console.error('Failed to refresh task history:', error);
+                }
+            }
+
+            addTaskToHistory(taskData) {
+                if (this.currentPanel === 'tasks') {
+                    this.refreshTaskHistory();
+                }
+                this.updateDashboard();
+            }
+
+            showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = 'notification';
+                
+                let color = '#60a5fa';
+                if (type === 'success') color = '#22c55e';
+                if (type === 'error') color = '#ef4444';
+                if (type === 'warning') color = '#eab308';
+                
+                notification.innerHTML = `
+                    <div style="border-left: 4px solid ${color}; padding-left: 12px;">
+                        <strong style="color: ${color};">${type.toUpperCase()}</strong>
+                        <div style="margin-top: 4px; color: #cbd5e1;">${message}</div>
+                    </div>
+                `;
+                
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                    setTimeout(() => notification.remove(), 300);
+                }, 4000);
+            }
+
+            updateQueueSize(size) {
+                document.getElementById('queue-size').textContent = size;
+                document.getElementById('monitor-queue').textContent = size;
+                document.getElementById('dash-queue-size').textContent = size;
+            }
+
+            showAddRateLimitDialog() {
+                const label = prompt('Enter label for rate limit:');
+                if (!label) return;
+                
+                const fillRate = parseFloat(prompt('Fill rate (tokens/sec):', '1.0'));
+                const capacity = parseInt(prompt('Capacity:', '5'));
+                
+                this.addRateLimit(label, fillRate, capacity);
+            }
+
+            async addRateLimit(label, fillRate, capacity) {
+                try {
+                    await fetch(`${this.apiUrl}/rate-limits/add`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label, fill_rate: fillRate, capacity })
+                    });
+                    this.showNotification(`Rate limit added for ${label}`, 'success');
+                    await this.updatePoolStatus();
+                } catch (error) {
+                    this.showNotification(`Failed to add rate limit: ${error.message}`, 'error');
+                }
+            }
+        }
+
+        const app = new VeraOrchestratorApp();
+    </script>
+</body>
+</html>

@@ -86,44 +86,72 @@ class ToolchainRequest(BaseModel):
     query: str
 
 
+# ============================================================
+# Request Schemas
+# ============================================================
+
 class MemoryQueryRequest(BaseModel):
+    """Basic memory query request"""
     session_id: str
     query: str
-    k: int = 5
-    retrieval_type: str = "hybrid"  # "vector", "graph", "hybrid"
+    k: Optional[int] = Field(default=None, description="Number of results (no limit if None)")
+    retrieval_type: str = Field(default="hybrid", description="vector|graph|hybrid")
     filters: Optional[Dict[str, Any]] = None
-
-class MemoryQueryResponse(BaseModel):
-    results: List[Dict[str, Any]]
-    retrieval_type: str
-    query: str
-    session_id: str
-
-class EntityExtractionRequest(BaseModel):
-    session_id: str
-    text: str
-    auto_promote: bool = False
-    source_node_id: Optional[str] = None
-
-class EntityExtractionResponse(BaseModel):
-    entities: List[Dict[str, Any]]
-    relations: List[Dict[str, Any]]
-    clusters: Dict[str, List[str]]
-    session_id: str
-
-class SubgraphRequest(BaseModel):
-    session_id: str
-    seed_entity_ids: List[str]
-    depth: int = 2
 
 class HybridRetrievalRequest(BaseModel):
+    """Advanced hybrid retrieval request"""
     session_id: str
     query: str
-    k_vector: int = 5
-    k_graph: int = 3
-    graph_depth: int = 2
+    k_vector: Optional[int] = Field(default=100, description="Number of vector results")
+    k_graph: Optional[int] = Field(default=50, description="Number of graph seeds")
+    graph_depth: int = Field(default=2, ge=1, le=5)
     include_entities: bool = True
     filters: Optional[Dict[str, Any]] = None
+
+class AdvancedSearchRequest(BaseModel):
+    """Comprehensive advanced search request"""
+    session_id: str
+    query: str
+    
+    # Search targets
+    search_session: bool = Field(default=True, description="Search session vector memory")
+    search_long_term: bool = Field(default=True, description="Search long-term vector memory")
+    search_graph: bool = Field(default=True, description="Search graph database")
+    
+    # Filters
+    limit: Optional[int] = Field(default=None, description="Maximum results (no limit if None)")
+    offset: int = Field(default=0, ge=0, description="Results offset for pagination")
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum confidence threshold")
+    entity_types: Optional[List[str]] = Field(default=None, description="Filter by entity types")
+    relation_types: Optional[List[str]] = Field(default=None, description="Filter by relationship types")
+    
+    # Date filters
+    date_from: Optional[str] = Field(default=None, description="Filter by creation date (ISO format)")
+    date_to: Optional[str] = Field(default=None, description="Filter by creation date (ISO format)")
+    
+    # Additional options
+    include_metadata: bool = Field(default=True, description="Include full metadata")
+    include_embeddings: bool = Field(default=False, description="Include embedding vectors")
+    sort_by: str = Field(default="relevance", description="relevance|confidence|date")
+    sort_order: str = Field(default="desc", description="asc|desc")
+
+class EntityExtractionRequest(BaseModel):
+    """Entity extraction request"""
+    session_id: str
+    text: str
+    source_node_id: Optional[str] = None
+    auto_promote: bool = False
+
+class SubgraphRequest(BaseModel):
+    """Subgraph extraction request"""
+    session_id: str
+    seed_entity_ids: List[str]
+    depth: int = Field(default=2, ge=1, le=5)
+
+class PromoteMemoryRequest(BaseModel):
+    """Memory promotion request"""
+    memory_id: str
+    entity_anchor: Optional[str] = None
 
 # Pydantic Models
 class NotebookCreate(BaseModel):
@@ -162,3 +190,56 @@ class NoteSearch(BaseModel):
     source_type: Optional[str] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
+
+
+class MemoryQueryResponse(BaseModel):
+    """Basic memory query response"""
+    results: List[Dict[str, Any]]
+    retrieval_type: str
+    query: str
+    session_id: str
+    total_results: int = 0
+
+class AdvancedSearchResponse(BaseModel):
+    """Advanced search response with detailed breakdown"""
+    results: List[Dict[str, Any]]
+    query: str
+    session_id: str
+    total_results: int
+    results_by_source: Dict[str, List[Dict[str, Any]]]
+    search_params: Dict[str, Any]
+    execution_time_ms: Optional[float] = None
+
+class EntityExtractionResponse(BaseModel):
+    """Entity extraction response"""
+    entities: List[Dict[str, Any]]
+    relations: List[Dict[str, Any]]
+    clusters: Dict[str, List[str]]
+    session_id: str
+    extraction_stats: Optional[Dict[str, Any]] = None
+
+class SubgraphResponse(BaseModel):
+    """Subgraph extraction response"""
+    session_id: str
+    seed_entity_ids: List[str]
+    depth: int
+    subgraph: Dict[str, Any]
+    stats: Dict[str, int]
+
+class EntityListResponse(BaseModel):
+    """Entity list response"""
+    session_id: str
+    entities: List[Dict[str, Any]]
+    total: int
+    returned: int
+    offset: int
+    limit: Optional[int]
+
+class RelationshipListResponse(BaseModel):
+    """Relationship list response"""
+    session_id: str
+    relationships: List[Dict[str, Any]]
+    total: int
+    returned: int
+    offset: int
+    limit: Optional[int]
