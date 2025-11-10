@@ -366,19 +366,8 @@ class HybridRetrievalRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
 
 # ============================================================
-# Helper Functions
+# Toolchain Functions
 # ============================================================
-
-def get_or_create_vera(session_id: str) -> Vera:
-    """Get or create a Vera instance for a session."""
-    if session_id not in vera_instances:
-        logger.warning(f"Vera instance not found for session {session_id}, creating new one")
-        raise HTTPException(
-            status_code=400, 
-            detail="Session not properly initialized. Please start a new session."
-        )
-    return vera_instances[session_id]
-
 
 def create_toolchain_execution(session_id: str, query: str) -> str:
     """Create a new toolchain execution record."""
@@ -684,6 +673,16 @@ class MonitoredToolChainPlanner:
 # ============================================================
 # Session Management
 # ============================================================
+
+def get_or_create_vera(session_id: str) -> Vera:
+    """Get or create a Vera instance for a session."""
+    if session_id not in vera_instances:
+        logger.warning(f"Vera instance not found for session {session_id}, creating new one")
+        raise HTTPException(
+            status_code=400, 
+            detail="Session not properly initialized. Please start a new session."
+        )
+    return vera_instances[session_id]
 
 @app.post("/api/session/start", response_model=SessionStartResponse)
 async def start_session():
@@ -2786,6 +2785,7 @@ async def save_focus_state(session_id: str):
     except Exception as e:
         logger.error(f"Failed to save focus state: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
+
 @app.get("/api/focus/{session_id}/load")
 async def load_focus_state(session_id: str):
     """Load last saved focus state from memory."""
