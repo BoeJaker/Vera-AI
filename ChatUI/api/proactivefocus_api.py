@@ -7,7 +7,11 @@ import logging
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+<<<<<<< HEAD
+
+=======
 from starlette.websockets import WebSocketState
+>>>>>>> dev-vera-ollama-fixed
 # ============================================================
 # Internal dependencies (adjust paths as needed)
 # ============================================================
@@ -690,6 +694,41 @@ async def stop_stage(session_id: str):
 
 @wsrouter.websocket("/{session_id}")
 async def websocket_focus(websocket: WebSocket, session_id: str):
+<<<<<<< HEAD
+    '''WebSocket endpoint for real-time focus manager updates.'''
+    await websocket.accept()
+    
+    if session_id not in sessions:
+        try:
+            await websocket.send_json({"type": "error", "message": "..."})
+        except:
+            pass
+        return
+                
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        await websocket.send_json({"type": "error", "error": "Focus manager not available"})
+        await websocket.close()
+        return
+    
+    # Register websocket for focus updates
+    if not hasattr(vera.focus_manager, '_websockets'):
+        vera.focus_manager._websockets = []
+    vera.focus_manager._websockets.append(websocket)
+    
+    # Send initial state
+    await websocket.send_json({
+        "type": "focus_status",
+        "data": {
+            "focus": vera.focus_manager.focus,
+            "focus_board": vera.focus_manager.focus_board,
+            "running": vera.focus_manager.running
+        }
+    })
+    
+=======
     """WebSocket endpoint for real-time focus manager updates."""
     await websocket.accept()
 
@@ -727,11 +766,44 @@ async def websocket_focus(websocket: WebSocket, session_id: str):
         # Socket closed before first send
         return
 
+>>>>>>> dev-vera-ollama-fixed
     try:
         # Keep connection alive, only send updates on changes
         last_state = {
             "focus": vera.focus_manager.focus,
             "focus_board": json.dumps(vera.focus_manager.focus_board),
+<<<<<<< HEAD
+            "running": vera.focus_manager.running
+        }
+        
+        while True:
+            await asyncio.sleep(5)  # Check every 5 seconds instead of 1
+            
+            # Only send if state changed
+            current_state = {
+                "focus": vera.focus_manager.focus,
+                "focus_board": json.dumps(vera.focus_manager.focus_board),
+                "running": vera.focus_manager.running
+            }
+            
+            if current_state != last_state:
+                await websocket.send_json({
+                    "type": "focus_status",
+                    "data": {
+                        "focus": vera.focus_manager.focus,
+                        "focus_board": vera.focus_manager.focus_board,
+                        "running": vera.focus_manager.running
+                    }
+                })
+                last_state = current_state
+    
+    except WebSocketDisconnect:
+        logger.info(f"Focus WebSocket disconnected: {session_id}")
+    except Exception as e:
+        logger.error(f"Focus WebSocket error: {str(e)}", exc_info=True)
+    finally:
+        if websocket in vera.focus_manager._websockets:
+=======
             "running": vera.focus_manager.running,
         }
 
@@ -770,6 +842,7 @@ async def websocket_focus(websocket: WebSocket, session_id: str):
         logger.error(f"Focus WebSocket error: {e}", exc_info=True)
     finally:
         if websocket in getattr(vera.focus_manager, "_websockets", []):
+>>>>>>> dev-vera-ollama-fixed
             vera.focus_manager._websockets.remove(websocket)
 
 @router.get("/{session_id}/save")

@@ -30,6 +30,8 @@ wsrouter = APIRouter(prefix="/ws/toolchain", tags=["wstoolchain"])
 # ============================================================
 # Toolchain Endpoints
 # ============================================================
+<<<<<<< HEAD
+=======
 @router.get("/{session_id}/tool/{tool_name}/schema")
 async def get_tool_schema(session_id: str, tool_name: str):
     """Get the input schema for a specific tool."""
@@ -75,6 +77,7 @@ async def get_tool_schema(session_id: str, tool_name: str):
         }]
     
     return schema_info
+>>>>>>> dev-vera-ollama-fixed
 def create_toolchain_execution(session_id: str, query: str) -> str:
     """Create a new toolchain execution record."""
     execution_id = str(uuid.uuid4())

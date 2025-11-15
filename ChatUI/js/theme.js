@@ -34,11 +34,15 @@
           color: var(--text-inverted);
           font-weight: bold;
         }
+<<<<<<< HEAD
+
+=======
         .tab-content {
           background: var(--bg);
           color: var(--text-inverted);
           font-weight: bold;
         }
+>>>>>>> dev-vera-ollama-fixed
         .memoryQuery {
           background: var(--panel-bg);
           border-radius: 8px;
@@ -103,6 +107,8 @@
           padding: 16px;
           border-left: 4px solid var(--accent);
         }
+<<<<<<< HEAD
+=======
         .graph-stats{
             background: var(--bg);
             color: var(--text);
@@ -116,6 +122,7 @@
         .action-btn{
           color: var(--text)
         }
+>>>>>>> dev-vera-ollama-fixed
       `,
       graph: {
         nodeBorder: '#60a5fa',
@@ -140,7 +147,10 @@
           --panel-bg: #000;
           --border: #00aa44;
           --accent: #00ff66;
+<<<<<<< HEAD
+=======
           --accent-muted: #00ff66b0 ;
+>>>>>>> dev-vera-ollama-fixed
           --caret: #00ff66;
           --text-inverted: #000000;
         }
@@ -162,7 +172,10 @@
         }
         select {
           font-family: "Fira Code", monospace;
+<<<<<<< HEAD
+=======
           background: var(--bg);
+>>>>>>> dev-vera-ollama-fixed
           color: var(--text-inverted);
         }
         input {
@@ -181,11 +194,15 @@
           color: var(--text-inverted);
           font-weight: bold;
         }
+<<<<<<< HEAD
+        
+=======
         .tab-content {
           background: var(--bg);
           color: var(--text-inverted);
           font-weight: bold;
         }
+>>>>>>> dev-vera-ollama-fixed
         .memoryQuery {
           background: var(--panel-bg);
           border-radius: 8px;
@@ -330,6 +347,8 @@
           background: var(--panel-bg)
           color: var(--text)
         }
+<<<<<<< HEAD
+=======
         
         .search-result-item{
           background: var(--panel-bg)
@@ -347,6 +366,7 @@
         .action-btn{
           color: var(--text)
         }
+>>>>>>> dev-vera-ollama-fixed
       `,
       graph: {
         nodeBorder: '#00ff66',
@@ -371,7 +391,10 @@
           --panel-bg: #141414;
           --text: #e8e6e3;
           --accent: #f5f5f5;
+<<<<<<< HEAD
+=======
           --accent-muted: #f5f5f5d5;
+>>>>>>> dev-vera-ollama-fixed
           --border: #333;
           --hover: #555;
           --text-inverted: #000000;
@@ -396,6 +419,217 @@
           color: var(--text-inverted);
           font-weight: bold;
         }
+<<<<<<< HEAD
+
+        button {
+          font-family: 'Playfair Display', serif;
+          color: var(--text-inverted);
+          background: var(--panel-bg)
+        }
+        
+        select {
+          font-family: 'Playfair Display', serif;
+          color: var(--text-inverted);
+        }
+        
+        input {
+          font-family: 'Crimson Text', serif;
+          color: var(--text-inverted);
+          background: var(--bg-surface);
+        }
+        
+        textarea {
+          font-family: 'Crimson Text', serif;
+          color: var(--text-inverted);
+          background: var(--bg-surface);
+        }
+        memory-content{
+          background: var(--panel-bg);
+          border-radius: 8px;
+          padding: 16px;
+        }
+        .memoryQuery {
+          background: var(--panel-bg);
+          border-radius: 8px;
+          padding: 16px;
+          border-left: 4px solid var(--accent);
+        }
+        
+        .focusContent {
+          background: var(--panel-bg);
+          border-radius: 8px;
+          padding: 16px;
+        }
+        
+        .tool-card {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+          border-left: 4px solid var(--accent);
+        }
+        
+        .tool-subcard {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .tool-container {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .chat-panel, .graph-panel {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
+        }
+
+        #chatMessages {
+          background: var(--bg);
+          color: var(--text);
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .message-content {
+          background: #181818;
+          color: var(--text);
+          border-left: 3px solid #555;
+          padding: 14px 18px;
+          font-family: 'Playfair Display', serif;
+        }
+
+        .message.user .message-content {
+          background: #202020;
+          border-left-color: #666;
+        }
+
+        #messageInput {
+          background: #1a1a1a;
+          color: #f0f0f0;
+          border: 1px solid #333;
+          font-family: 'Crimson Text', serif;
+        }
+
+        .send-btn {
+          background: #333;
+          color: #eee;
+          border: 1px solid #444;
+          font-family: 'Playfair Display', serif;
+        }
+
+        .send-btn:hover {
+          background: var(--hover);
+          border-color: #777;
+        }
+
+        body::before {
+          content: "";
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
+          opacity: 0.05;
+          pointer-events: none;
+          z-index: 9999;
+        }
+        
+        .toolchain-box {
+          background: var(--panel-bg);
+          color: var(--text);
+          border-radius: 8px;
+          padding: 16px;
+          border-left: 4px solid var(--accent);
+        }
+        .tool-type-filter{
+          background: var(--panel-bg)
+          color: var(--text)
+        }
+      `,
+      graph: {
+        nodeBorder: '#e8e6e3',
+        nodeBackground: '#1a1a1a',
+        nodeHighlight: '#f5f5f5',
+        nodeFont: '#e8e6e3',
+        nodeFontSize: 15,
+        edgeColor: '#b9b9b9ff',
+        edgeHighlight: '#e8e6e3',
+        background: '#111111',
+        fontFamily: '"Crimson Text", "Georgia", serif'
+      }
+    },
+
+    pixelArt: {
+      css: `
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        :root {
+          --bg: #0d0d1a;
+          --bg-surface: #0d0d1a;
+          --panel-bg: #1a0d2f;
+          --text: #66f0ff;
+          --accent: #ff33cc;
+          --hover: #9b00ff;
+          --border: #440066;
+          --user-text: #ff77ff;
+          --text-inverted: #000000;
+        }
+
+        body {
+          background: var(--bg);
+          color: var(--text);
+          font-family: 'Press Start 2P', monospace;
+          font-size: 12px;
+          image-rendering: pixelated;
+          letter-spacing: 0.05em;
+          transition: background 0.3s, color 0.3s;
+        }
+
+        h1, h2, h3 {
+          color: var(--accent);
+          text-shadow: 2px 2px #000;
+        }
+        
+        button {
+          font-family: 'Press Start 2P', monospace;
+          color: var(--text-inverted);
+          background: var(--panel-bg)
+        }
+        
+        select {
+          font-family: 'Press Start 2P', monospace;
+          color: var(--text-inverted);
+        }
+        
+        input {
+          font-family: 'Press Start 2P', monospace;
+          color: var(--text-inverted);
+          background: var(--bg-surface);
+        }
+        
+        textarea {
+          font-family: 'Press Start 2P', monospace;
+          color: var(--text-inverted);
+          background: var(--bg-surface);
+        }
+        
+        a {
+          color: var(--accent);
+          text-decoration: underline;
+        }
+        
+        .tab.active {
+          background: var(--accent);
+          color: var(--text-inverted);
+          font-weight: bold;
+        }
+        memory-content{
+=======
         .tab-content {
           background: var(--bg);
           color: var(--text-inverted);
@@ -640,10 +874,179 @@
         }
 
         .focusContent {
+>>>>>>> dev-vera-ollama-fixed
           background: var(--panel-bg);
           border-radius: 8px;
           padding: 16px;
         }
+<<<<<<< HEAD
+        .memoryQuery {
+          background: var(--panel-bg);
+          border-radius: 8px;
+          padding: 16px;
+          border-left: 4px solid var(--accent);
+        }
+
+        .focusContent {
+          background: var(--panel-bg);
+          border-radius: 8px;
+          padding: 16px;
+        }
+        
+        .tool-card {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .tool-subcard {
+          background: var(--bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .tool-container {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .chat-panel, .graph-panel {
+          background: var(--bg);
+          border: 2px solid var(--border);
+          box-shadow: 0 0 12px var(--accent);
+          padding: 12px;
+          overflow: hidden;
+          image-rendering: pixelated;
+        }
+
+        #chatMessages {
+          background: var(--bg);
+          color: var(--text);
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          overflow-y: auto;
+          font-size: 12px;
+          line-height: 1.2;
+        }
+
+        .message {
+          display: flex;
+          gap: 8px;
+          align-items: flex-start;
+        }
+
+        .message-avatar {
+          width: 28px;
+          height: 28px;
+          background: #220022;
+          border: 2px solid var(--accent);
+          color: var(--accent);
+          font-size: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          text-shadow: 0 0 4px var(--accent);
+        }
+
+        .message.assistant .message-avatar {
+          border-color: #33ffff;
+          color: #33ffff;
+          text-shadow: 0 0 4px #33ffff;
+        }
+
+        .message-content {
+          background: rgba(0,0,0,0.6);
+          border: 2px solid var(--accent);
+          color: var(--text);
+          padding: 10px 12px;
+          border-radius: 4px;
+          line-height: 1.2;
+          text-shadow: 0 0 4px var(--text);
+        }
+
+        .message.user .message-content {
+          border-color: var(--user-text);
+          color: var(--user-text);
+          text-shadow: 0 0 4px var(--user-text);
+        }
+
+        .input-area {
+          background: var(--panel-bg);
+          border-top: 2px solid var(--border);
+          padding: 10px;
+        }
+
+        #messageInput {
+          width: 100%;
+          background: #110022;
+          color: var(--text);
+          border: 2px solid var(--accent);
+          font-family: 'Press Start 2P', monospace;
+          padding: 10px;
+          font-size: 11px;
+          resize: none;
+          outline: none;
+          caret-color: var(--accent);
+          text-transform: uppercase;
+        }
+
+        #messageInput::placeholder {
+          color: #330044;
+        }
+
+        .send-btn {
+          background: #220033;
+          color: var(--accent);
+          border: 2px solid var(--accent);
+          font-family: 'Press Start 2P', monospace;
+          text-transform: uppercase;
+          padding: 10px 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .send-btn:hover {
+          background: var(--hover);
+          color: #fff;
+          box-shadow: 0 0 12px var(--accent);
+        }
+
+        #graph {
+          background: repeating-linear-gradient(
+            to bottom,
+            #0d0d1a,
+            #0d0d1a 2px,
+            #110033 3px
+          );
+          image-rendering: pixelated;
+        }
+
+        ::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+          background: var(--accent);
+          border-radius: 2px;
+        }
+
+        @keyframes neonFlicker {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.95; }
+          25%, 75% { opacity: 0.97; }
+        }
+        
+        body {
+          animation: neonFlicker 0.1s infinite;
+        }
+
+=======
         
         .tool-card {
           background: var(--panel-bg);
@@ -802,6 +1205,7 @@
           animation: neonFlicker 0.1s infinite;
         }
 
+>>>>>>> dev-vera-ollama-fixed
         body::before {
           content: "";
           position: fixed;
@@ -828,6 +1232,8 @@
           background: var(--panel-bg)
           color: var(--text)
         }
+<<<<<<< HEAD
+=======
         .search-result-item{
           background: var(--panel-bg)
         }
@@ -844,6 +1250,7 @@
         .action-btn{
           color: var(--text)
         } 
+>>>>>>> dev-vera-ollama-fixed
       `,
       graph: {
         nodeBorder: '#ff33cc',
@@ -866,6 +1273,29 @@
 
         :root {
           --bg: #000;
+<<<<<<< HEAD
+          --panel-bg: #000;
+          --text: #00ffcc;
+          --accent: #ff0077;
+          --border: #00ffcc;
+        }
+
+        body {
+          background: radial-gradient(circle at center, #101010 0%, #000 100%);
+          color: var(--text);
+          font-family: 'Press Start 2P', monospace;
+          font-size: 11px;
+          text-transform: uppercase;
+          image-rendering: pixelated;
+        }
+        button{
+          font-family: 'Press Start 2P', monospace;
+          background: var(--panel-bg)
+        }
+        .message-content {
+          background: rgba(0, 0, 0, 0.7);
+          border: 2px solid var(--border);
+=======
           --bg-surface: #000;
           --panel-bg: #000;
           --text: #00ffcc;
@@ -1032,6 +1462,7 @@
           background: var(--panel-bg);
           border-top: 2px solid var(--border);
           padding: 10px;
+>>>>>>> dev-vera-ollama-fixed
         }
         memory-content{
           background: var(--panel-bg);
@@ -1051,6 +1482,8 @@
           background: var(--panel-bg)
           color: var(--text)
         }
+<<<<<<< HEAD
+=======
         .search-result-item{
           background: var(--panel-bg)
         }
@@ -1067,6 +1500,7 @@
         .action-btn{
           color: var(--text)
         }
+>>>>>>> dev-vera-ollama-fixed
       `,
       graph: {
         nodeBorder: '#00ffcc',
@@ -1093,11 +1527,18 @@
           --panel-bg: #593964;
           --text: #ffd8a8;
           --accent: #ff6f61;
+<<<<<<< HEAD
+          --hover: #ffa07a;
+          --border: #7e5a7e;
+          --user-text: #ffb347;
+          --text-inverted: #000000;
+=======
           --accent-muted: #ff6f61;
           --hover: #ffa07a;
           --border: #7e5a7e;
           --user-text: #ffb347;
           --text-inverted: #ffffffff;
+>>>>>>> dev-vera-ollama-fixed
         }
 
         body {
@@ -1121,7 +1562,10 @@
         
         select {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+<<<<<<< HEAD
+=======
           background: var(--bg);
+>>>>>>> dev-vera-ollama-fixed
           color: var(--text-inverted);
         }
         
@@ -1242,6 +1686,8 @@
           background: var(--panel-bg)
           color: var(--text)
         }
+<<<<<<< HEAD
+=======
         .search-result-item{
           background: var(--panel-bg)
         }
@@ -1258,6 +1704,7 @@
         .action-btn{
           color: var(--text)
         }
+>>>>>>> dev-vera-ollama-fixed
       `,
       graph: {
         nodeBorder: '#ff6f61',

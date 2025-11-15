@@ -48,6 +48,19 @@
             this.columns = [];
             this.nextColumnId = 1; // Track next available column ID
             this.tabs = [
+<<<<<<< HEAD
+                { id: 'chat', label: '💬 Chat', columnId: 1 },
+                { id: 'graph', label: '📊 Knowledge Graph', columnId: 2 },
+                { id: 'memory', label: '📄 Memory', columnId: 2 },
+                { id: 'notebook', label: '📓 Notebook', columnId: 2 },
+                { id: 'canvas', label: '🎨 Canvas', columnId: 2 },
+                { id: 'toolchain', label: '🔧 Toolchain', columnId: 2 },
+                { id: 'focus', label: '🎯 Proactive Focus', columnId: 2 },
+                { id: 'orchestration', label: '🎻 Orchestration', columnId: 2 },
+                { id: 'analytics', label: '📈 Analytics', columnId: 2 },
+                { id: 'files', label: '📁 Files', columnId: 2 },
+                { id: 'settings', label: '⚙️ Settings', columnId: 2 }
+=======
                 { id: 'chat', label: 'Chat', columnId: 1 },
                 { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
                 { id: 'memory', label: 'Memory', columnId: 2 },
@@ -59,6 +72,7 @@
                 { id: 'analytics', label: 'Analytics', columnId: 2 },
                 { id: 'files', label: 'Files', columnId: 2 },
                 { id: 'settings', label: 'Settings', columnId: 2 }
+>>>>>>> dev-vera-ollama-fixed
             ];
             this.activeTabPerColumn = {};
             this.draggedTab = null;

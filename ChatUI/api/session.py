@@ -8,6 +8,10 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from concurrent.futures import ThreadPoolExecutor
 
 from Vera.vera import Vera
+<<<<<<< HEAD
+# from Vera.ChatUI.api.toolchain_api import MonitoredToolChainPlanner
+=======
+>>>>>>> dev-vera-ollama-fixed
 from Vera.ChatUI.api.schemas import SessionStartResponse 
 
 from typing import Dict, Any, List
@@ -28,7 +32,11 @@ toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_i
 active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
 websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
 
+<<<<<<< HEAD
+app = FastAPI()
+=======
 # app = FastAPI()
+>>>>>>> dev-vera-ollama-fixed
 
 # ============================================================
 # Logging Setup
@@ -83,8 +91,8 @@ async def start_session():
         # IMPORTANT: Wrap Vera's toolchain with monitoring
         if hasattr(vera, 'toolchain'):
             original_toolchain = vera.toolchain
-            vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
-            logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
+            # vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
+            # logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
         
         logger.info(f"Started session: {session_id}")
         

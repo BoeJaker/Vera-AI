@@ -1,6 +1,15 @@
 [
   {
+<<<<<<< HEAD
+    "tool": "web_search",
+    "input": "Summarize the key differences between React, Angular, and Vue.js, focusing on their strengths and weaknesses for different project types."
+  },
+  {
+    "tool": "deep_llm",
+    "input": "Based on the search results from {prev}, create a detailed comparison table outlining the pros, cons, learning curves (beginner, intermediate, advanced), and ideal use cases for React, Angular, and Vue.js. Include performance considerations and community support size."
+=======
     "tool": "bash",
     "input": "whoami"
+>>>>>>> dev-vera-ollama-fixed
   }
 ]

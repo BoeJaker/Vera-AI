@@ -916,6 +916,8 @@ class LLMTools:
             
         except Exception as e:
             return f"[Deep Search Error] {str(e)}"
+<<<<<<< HEAD
+=======
 
     def _parse_search_results(self, text: str) -> List[Dict[str, str]]:
         """Parse search results from text format."""
@@ -2117,8 +2119,666 @@ def ToolLoader(agent):
         )
     
     return tool_list
+>>>>>>> dev-vera-ollama-fixed
 
+    def _parse_search_results(self, text: str) -> List[Dict[str, str]]:
+        """Parse search results from text format."""
+        results = []
+        lines = text.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            if re.match(r'^\d+\.\s+.+', line):
+                title = line.split('. ', 1)[1] if '. ' in line else line
+                url = lines[i + 1].strip() if i + 1 < len(lines) and lines[i + 1].startswith('http') else ""
+                body = lines[i + 2].strip() if i + 2 < len(lines) else ""
+                
+                if url:
+                    results.append({"title": title, "href": url, "body": body})
+                i += 3
+            else:
+                i += 1
+        
+        return results
     
+<<<<<<< HEAD
+    # ------------------------------------------------------------------------
+    # HTTP/API TOOLS
+    # ------------------------------------------------------------------------
+    
+    def http_request(self, url: str, method: str = "GET", headers: Optional[Dict] = None, body: Optional[str] = None) -> str:
+        """
+        Make HTTP requests to APIs or web services.
+        Supports GET, POST, PUT, DELETE methods.
+        """
+        try:
+            method = method.upper()
+            headers = headers or {}
+            
+            if method == "GET":
+                response = requests.get(url, headers=headers, timeout=30)
+            elif method == "POST":
+                response = requests.post(url, headers=headers, data=body, timeout=30)
+            elif method == "PUT":
+                response = requests.put(url, headers=headers, data=body, timeout=30)
+            elif method == "DELETE":
+                response = requests.delete(url, headers=headers, timeout=30)
+            else:
+                return f"[Error] Unsupported method: {method}"
+            
+            result = {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "body": response.text[:5000]  # Truncate large responses
+            }
+            
+            return format_json(result)
+            
+        except Exception as e:
+            return f"[HTTP Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # DATABASE TOOLS
+    # ------------------------------------------------------------------------
+    
+    def sqlite_query(self, db_path: str, query: str) -> str:
+        """
+        Execute SQLite queries. Supports SELECT, INSERT, UPDATE, DELETE.
+        Returns formatted results.
+        """
+        try:
+            db_path = sanitize_path(db_path)
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute(query)
+            
+            if query.strip().upper().startswith("SELECT"):
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                
+                result = {"columns": columns, "rows": rows, "count": len(rows)}
+                output = format_json(result)
+            else:
+                conn.commit()
+                output = f"Query executed successfully. Rows affected: {cursor.rowcount}"
+            
+            conn.close()
+            return output
+            
+        except Exception as e:
+            return f"[SQLite Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # GIT TOOLS
+    # ------------------------------------------------------------------------
+    
+    def git_operation(self, repo_path: str = ".", command: str = "status", args: str = "") -> str:
+        """
+        Execute git commands in a repository.
+        Supports: status, log, diff, branch, add, commit, push, pull, etc.
+        """
+        try:
+            repo_path = sanitize_path(repo_path)
+            
+            full_command = f"git -C {repo_path} {command} {args}"
+            
+            result = subprocess.check_output(
+                full_command,
+                shell=True,
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=30
+            )
+            
+            return truncate_output(result)
+            
+        except subprocess.CalledProcessError as e:
+            return f"[Git Error] {e.output}"
+        except Exception as e:
+            return f"[Git Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # MCP TOOLS
+    # ------------------------------------------------------------------------
+    
+    def mcp_call_tool(self, server_name: str, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """
+        Call a tool on an MCP server. 
+        MCP servers must be configured first. Common servers:
+        - filesystem: File operations
+        - github: GitHub API access
+        - postgres: PostgreSQL database access
+        - slack: Slack messaging
+        """
+        if not MCP_AVAILABLE:
+            return "[Error] MCP not available. Install with: pip install mcp anthropic-mcp-client"
+        
+        try:
+            loop = asyncio.get_event_loop()
+            result = loop.run_until_complete(
+                self.mcp_manager.call_tool(server_name, tool_name, arguments)
+            )
+            return result
+        except Exception as e:
+            return f"[MCP Error] {str(e)}"
+    
+    def mcp_list_tools(self, server_name: str) -> str:
+        """
+        List all available tools from an MCP server.
+        Use this to discover what tools are available.
+        """
+        if not MCP_AVAILABLE:
+            return "[Error] MCP not available. Install with: pip install mcp anthropic-mcp-client"
+        
+        try:
+            loop = asyncio.get_event_loop()
+            tools = loop.run_until_complete(
+                self.mcp_manager.list_tools(server_name)
+            )
+            return format_json(tools)
+        except Exception as e:
+            return f"[MCP Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # TIME & DATE TOOLS
+    # ------------------------------------------------------------------------
+    
+    def get_current_time(self, timezone: str = "UTC") -> str:
+        """
+        Get current date and time in specified timezone.
+        Examples: UTC, America/New_York, Europe/London, Asia/Tokyo
+        """
+        try:
+            import pytz
+            tz = pytz.timezone(timezone)
+            now = datetime.now(tz)
+            return now.strftime("%Y-%m-%d %H:%M:%S %Z")
+        except ImportError:
+            # Fallback if pytz not available
+            now = datetime.now()
+            return now.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    def calculate_time_delta(self, start_time: str, end_time: str = None) -> str:
+        """
+        Calculate time difference between two dates.
+        Format: YYYY-MM-DD HH:MM:SS or YYYY-MM-DD
+        If end_time not provided, uses current time.
+        """
+        try:
+            formats = ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d"]
+            
+            start = None
+            for fmt in formats:
+                try:
+                    start = datetime.strptime(start_time, fmt)
+                    break
+                except:
+                    continue
+            
+            if not start:
+                return "[Error] Invalid start_time format"
+            
+            if end_time:
+                end = None
+                for fmt in formats:
+                    try:
+                        end = datetime.strptime(end_time, fmt)
+                        break
+                    except:
+                        continue
+                if not end:
+                    return "[Error] Invalid end_time format"
+            else:
+                end = datetime.now()
+            
+            delta = end - start
+            
+            days = delta.days
+            hours, remainder = divmod(delta.seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            
+            return f"{days} days, {hours} hours, {minutes} minutes, {seconds} seconds"
+            
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # TEXT PROCESSING TOOLS
+    # ------------------------------------------------------------------------
+    
+    def count_tokens(self, text: str, model: str = "gpt-3.5-turbo") -> str:
+        """
+        Estimate token count for text using tiktoken.
+        Useful for managing context windows.
+        """
+        try:
+            import tiktoken
+            encoding = tiktoken.encoding_for_model(model)
+            tokens = len(encoding.encode(text))
+            return f"Token count: {tokens}\nCharacter count: {len(text)}\nWord count: {len(text.split())}"
+        except ImportError:
+            # Rough estimate if tiktoken not available
+            tokens = len(text) // 4
+            return f"Estimated tokens: ~{tokens}\nCharacter count: {len(text)}\nWord count: {len(text.split())}"
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    def regex_search(self, pattern: str, text: str, flags: str = "") -> str:
+        """
+        Search text using regular expressions.
+        Flags: i (ignore case), m (multiline), s (dotall)
+        """
+        try:
+            flag_map = {'i': re.IGNORECASE, 'm': re.MULTILINE, 's': re.DOTALL}
+            regex_flags = 0
+            for f in flags.lower():
+                if f in flag_map:
+                    regex_flags |= flag_map[f]
+            
+            matches = re.findall(pattern, text, regex_flags)
+            
+            if not matches:
+                return "No matches found"
+            
+            result = {
+                "pattern": pattern,
+                "match_count": len(matches),
+                "matches": matches[:100]  # Limit to 100 matches
+            }
+            return format_json(result)
+            
+        except Exception as e:
+            return f"[Regex Error] {str(e)}"
+    
+    def text_statistics(self, text: str) -> str:
+        """
+        Generate comprehensive statistics about text.
+        Includes word count, character count, sentence count, etc.
+        """
+        try:
+            lines = text.split('\n')
+            words = text.split()
+            sentences = re.split(r'[.!?]+', text)
+            
+            stats = {
+                "characters": len(text),
+                "characters_no_spaces": len(text.replace(' ', '')),
+                "words": len(words),
+                "lines": len(lines),
+                "sentences": len([s for s in sentences if s.strip()]),
+                "paragraphs": len([p for p in text.split('\n\n') if p.strip()]),
+                "avg_word_length": sum(len(w) for w in words) / len(words) if words else 0,
+                "unique_words": len(set(words))
+            }
+            
+            return format_json(stats)
+            
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # DATA PROCESSING TOOLS
+    # ------------------------------------------------------------------------
+    
+    def parse_json(self, json_string: str) -> str:
+        """
+        Parse and validate JSON, returning formatted output.
+        Useful for debugging and validating JSON data.
+        """
+        try:
+            data = json.loads(json_string)
+            return format_json(data)
+        except json.JSONDecodeError as e:
+            return f"[JSON Error] {str(e)}"
+    
+    def convert_csv_to_json(self, csv_path: str) -> str:
+        """
+        Convert CSV file to JSON format.
+        """
+        try:
+            import csv
+            csv_path = sanitize_path(csv_path)
+            
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                data = list(reader)
+            
+            return format_json(data)
+            
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    def hash_text(self, text: str, algorithm: str = "sha256") -> str:
+        """
+        Generate cryptographic hash of text.
+        Algorithms: md5, sha1, sha256, sha512
+        """
+        try:
+            import hashlib
+            
+            hash_func = getattr(hashlib, algorithm.lower(), None)
+            if not hash_func:
+                return f"[Error] Unsupported algorithm: {algorithm}"
+            
+            hash_obj = hash_func(text.encode('utf-8'))
+            
+            return f"{algorithm.upper()}: {hash_obj.hexdigest()}"
+            
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # SYSTEM INTROSPECTION TOOLS
+    # ------------------------------------------------------------------------
+    
+    def list_python_modules(self, _: str = "") -> str:
+        """List all currently loaded Python modules."""
+        modules = sorted(sys.modules.keys())
+        return "\n".join(modules)
+    
+    def get_system_info(self, _: str = "") -> str:
+        """
+        Get system information including OS, Python version, etc.
+        """
+        try:
+            import platform
+            
+            info = {
+                "os": platform.system(),
+                "os_version": platform.release(),
+                "architecture": platform.machine(),
+                "python_version": sys.version,
+                "python_executable": sys.executable,
+                "cwd": os.getcwd(),
+                "user": os.environ.get('USER', 'unknown')
+            }
+            
+            return format_json(info)
+            
+        except Exception as e:
+            return f"[Error] {str(e)}"
+    
+    def search_memory(self, query: str, k: int = 5) -> str:
+        """
+        Search agent's long-term memory for relevant information.
+        Uses vector similarity to find related past interactions.
+        """
+        try:
+            docs = self.agent.vectorstore.similarity_search(query, k=k)
+            if not docs:
+                return "No relevant memories found."
+            
+            results = [f"--- Memory {i+1} ---\n{doc.page_content}" 
+                      for i, doc in enumerate(docs)]
+            return "\n\n".join(results)
+        except Exception as e:
+            return f"[Memory Search Error] {str(e)}"
+    
+    # ------------------------------------------------------------------------
+    # ENVIRONMENT & CONFIGURATION TOOLS
+    # ------------------------------------------------------------------------
+    
+    def get_env_variable(self, var_name: str) -> str:
+        """
+        Get environment variable value.
+        """
+        value = os.environ.get(var_name)
+        if value is None:
+            return f"[Error] Environment variable '{var_name}' not found"
+        return value
+    
+    def list_env_variables(self, _: str = "") -> str:
+        """
+        List all environment variables (sanitized for security).
+        """
+        # Filter out sensitive variables
+        sensitive_keys = ['password', 'secret', 'key', 'token', 'api']
+        
+        env_vars = {}
+        for key, value in os.environ.items():
+            if any(sensitive in key.lower() for sensitive in sensitive_keys):
+                env_vars[key] = "[HIDDEN]"
+            else:
+                env_vars[key] = value
+        
+        return format_json(env_vars)
+
+
+# ============================================================================
+# TOOL LOADER - Creates LangChain Tool instances
+# ============================================================================
+
+def ToolLoader(agent):
+    """
+    Create and return a list of LangChain Tool instances with proper schemas.
+    
+    Args:
+        agent: Agent instance with mem, sess, fast_llm, deep_llm, vectorstore
+    
+    Returns:
+        List[Tool]: Configured tools ready for LangChain agent use
+    """
+    tools = LLMTools(agent)
+    
+    tool_list = [
+        # LLM Interaction Tools
+        StructuredTool.from_function(
+            func=tools.fast_llm_query,
+            name="fast_llm",
+            description="Query fast LLM for quick tasks: creative writing, text review, summarization. Fast but less accurate.",
+            args_schema=LLMQueryInput
+        ),
+        StructuredTool.from_function(
+            func=tools.deep_llm_query,
+            name="deep_llm",
+            description="Query deep LLM for complex reasoning and detailed analysis. Slower but more accurate.",
+            args_schema=LLMQueryInput
+        ),
+        
+        # File System Tools
+        StructuredTool.from_function(
+            func=tools.read_file,
+            name="read_file",
+            description="Read contents of a text file. Provide full file path.",
+            args_schema=FilePathInput
+        ),
+        StructuredTool.from_function(
+            func=tools.write_file,
+            name="write_file",
+            description="Write content to a file. Creates directories if needed. Overwrites existing files.",
+            args_schema=WriteFileInput
+        ),
+        StructuredTool.from_function(
+            func=tools.list_directory,
+            name="list_directory",
+            description="List directory contents with file sizes and types.",
+            args_schema=FilePathInput
+        ),
+        StructuredTool.from_function(
+            func=tools.search_files,
+            name="search_files",
+            description="Search for files matching a pattern recursively. Supports glob and regex patterns.",
+            args_schema=SearchInput
+        ),
+        
+        # Code Execution Tools
+        StructuredTool.from_function(
+            func=tools.run_python,
+            name="python",
+            description="Execute Python code. Use print() for output. Supports both expressions and statements.",
+            args_schema=PythonInput
+        ),
+        StructuredTool.from_function(
+            func=tools.run_bash_command,
+            name="bash",
+            description="Execute bash command. Returns command output. Use with caution.",
+            args_schema=CommandInput
+        ),
+        
+        # Web Search Tools
+        StructuredTool.from_function(
+            func=tools.search_web,
+            name="web_search",
+            description="Advanced web search using Playwright for robustness.Supports multiple search engines with automatic fallback.",
+            args_schema=SearchInput
+        ),
+        StructuredTool.from_function(
+            func=tools.search_news,
+            name="news_search",
+            description="Search recent news using DuckDuckGo News. Best for current events.",
+            args_schema=SearchInput
+        ),
+        StructuredTool.from_function(
+            func=tools.web_search_deep,
+            name="web_search_deep",
+            description="Comprehensive web search with full page scraping. Use for in-depth information.",
+            args_schema=WebReportInput
+        ),
+        
+        # HTTP/API Tools
+        StructuredTool.from_function(
+            func=tools.http_request,
+            name="http_request",
+            description="Make HTTP requests to APIs. Supports GET, POST, PUT, DELETE methods.",
+            args_schema=HTTPInput
+        ),
+        
+        # Database Tools
+        StructuredTool.from_function(
+            func=tools.sqlite_query,
+            name="sqlite_query",
+            description="Execute SQLite queries. Supports SELECT, INSERT, UPDATE, DELETE.",
+            args_schema=SQLInput
+        ),
+        
+        # Git Tools
+        StructuredTool.from_function(
+            func=tools.git_operation,
+            name="git",
+            description="Execute git commands: status, log, diff, branch, add, commit, push, pull.",
+            args_schema=GitInput
+        ),
+        
+        # Time & Date Tools
+        StructuredTool.from_function(
+            func=tools.get_current_time,
+            name="get_time",
+            description="Get current date and time in specified timezone.",
+            args_schema=LLMQueryInput
+        ),
+        StructuredTool.from_function(
+            func=tools.calculate_time_delta,
+            name="time_delta",
+            description="Calculate time difference between two dates or from date to now.",
+            args_schema=SearchInput
+        ),
+        
+        # Text Processing Tools
+        StructuredTool.from_function(
+            func=tools.count_tokens,
+            name="count_tokens",
+            description="Estimate token count for text. Useful for managing context windows.",
+            args_schema=SearchInput
+        ),
+        StructuredTool.from_function(
+            func=tools.regex_search,
+            name="regex_search",
+            description="Search text using regular expressions with optional flags.",
+            args_schema=SearchInput
+        ),
+        StructuredTool.from_function(
+            func=tools.text_statistics,
+            name="text_stats",
+            description="Generate comprehensive statistics about text (word count, sentences, etc).",
+            args_schema=LLMQueryInput
+        ),
+        
+        # Data Processing Tools
+        StructuredTool.from_function(
+            func=tools.parse_json,
+            name="parse_json",
+            description="Parse and validate JSON, returning formatted output.",
+            args_schema=LLMQueryInput
+        ),
+        StructuredTool.from_function(
+            func=tools.convert_csv_to_json,
+            name="csv_to_json",
+            description="Convert CSV file to JSON format.",
+            args_schema=FilePathInput
+        ),
+        StructuredTool.from_function(
+            func=tools.hash_text,
+            name="hash_text",
+            description="Generate cryptographic hash (md5, sha1, sha256, sha512) of text.",
+            args_schema=SearchInput
+        ),
+        
+        # System Tools
+        StructuredTool.from_function(
+            func=tools.get_system_info,
+            name="system_info",
+            description="Get system information including OS, Python version, etc.",
+        ),
+        StructuredTool.from_function(
+            func=tools.get_env_variable,
+            name="get_env",
+            description="Get environment variable value.",
+            args_schema=LLMQueryInput
+        ),
+        StructuredTool.from_function(
+            func=tools.list_env_variables,
+            name="list_env",
+            description="List all environment variables (sanitized).",
+        ),
+        
+        # Memory & Search Tools
+        StructuredTool.from_function(
+            func=tools.search_memory,
+            name="search_memory",
+            description="Search agent's long-term memory for relevant past information.",
+            args_schema=LLMQueryInput
+        ),
+        StructuredTool.from_function(
+            func=tools.list_python_modules,
+            name="list_modules",
+            description="List all currently loaded Python modules in the runtime.",
+        ),
+    ]
+    
+    # Add MCP tools if available
+    if MCP_AVAILABLE:
+        tool_list.extend([
+            StructuredTool.from_function(
+                func=tools.mcp_call_tool,
+                name="mcp_call",
+                description="Call a tool on an MCP server (filesystem, github, postgres, slack, etc).",
+                args_schema=MCPInput
+            ),
+            StructuredTool.from_function(
+                func=tools.mcp_list_tools,
+                name="mcp_list_tools",
+                description="List all available tools from an MCP server.",
+                args_schema=LLMQueryInput
+            ),
+        ])
+    
+    # Add executive assistant if available
+    if hasattr(agent, 'executive_instance') and agent.executive_instance:
+        tool_list.append(
+            StructuredTool.from_function(
+                func=agent.executive_instance.main,
+                name="scheduling_assistant",
+                description="Run the executive scheduling assistant. Access to calendars, todos, scheduling apps. Input: query string.",
+            )
+        )
+    
+    return tool_list
+=======
 # # ============================================================================
 # # EXAMPLE CUSTOM TOOL FILE (save as custom_tools/example_tool.py)
 # # ============================================================================
@@ -2223,3 +2883,4 @@ def ToolLoader(agent):
 #     else:
 #         print(f"ℹ Example tool file already exists: {example_file}")
 #         return str(example_file)
+>>>>>>> dev-vera-ollama-fixed

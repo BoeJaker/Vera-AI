@@ -40,6 +40,15 @@ from langchain.tools import BaseTool
 from langchain.llms.base import LLM
 
 # --- Local Imports ---
+<<<<<<< HEAD
+from Vera.Agents.executive_0_9 import executive
+sys.path.append(os.path.join(os.path.dirname(__file__), 'Memory'))
+from Vera.Memory.memory import *
+from Vera.Toolchain.tools import ToolLoader
+from Vera.Agents.reviewer import Reviewer
+from Vera.Agents.planning import Planner
+from Vera.proactive_focus_manager import ProactiveFocusManager
+=======
 try:
     from Vera.Agents.executive_0_9 import executive
     from Vera.Memory.memory import *
@@ -57,6 +66,7 @@ except:
     from Agents.reviewer import Reviewer
     from Agents.planning import Planner
     from proactive_focus_manager import ProactiveFocusManager
+>>>>>>> dev-vera-ollama-fixed
 import hashlib
 
 #---- Constants ---
