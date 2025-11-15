@@ -135,7 +135,6 @@ async def get_session_graph(session_id: str):
                             continue
             
             logger.info(f"Returning {len(nodes_list)} nodes and {len(edges)} edges for session {actual_session_id}")
-            
             return GraphResponse(
                 nodes=nodes_list,
                 edges=edges,

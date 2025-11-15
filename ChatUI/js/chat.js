@@ -48,17 +48,17 @@
             this.columns = [];
             this.nextColumnId = 1; // Track next available column ID
             this.tabs = [
-                { id: 'chat', label: '💬 Chat', columnId: 1 },
-                { id: 'graph', label: '📊 Knowledge Graph', columnId: 2 },
-                { id: 'memory', label: '📄 Memory', columnId: 2 },
-                { id: 'notebook', label: '📓 Notebook', columnId: 2 },
-                { id: 'canvas', label: '🎨 Canvas', columnId: 2 },
-                { id: 'toolchain', label: '🔧 Toolchain', columnId: 2 },
-                { id: 'focus', label: '🎯 Proactive Focus', columnId: 2 },
-                { id: 'orchestration', label: '🎻 Orchestration', columnId: 2 },
-                { id: 'analytics', label: '📈 Analytics', columnId: 2 },
-                { id: 'files', label: '📁 Files', columnId: 2 },
-                { id: 'settings', label: '⚙️ Settings', columnId: 2 }
+                { id: 'chat', label: 'Chat', columnId: 1 },
+                { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
+                { id: 'memory', label: 'Memory', columnId: 2 },
+                { id: 'notebook', label: 'Notebook', columnId: 2 },
+                { id: 'canvas', label: 'Canvas', columnId: 2 },
+                { id: 'toolchain', label: 'Toolchain', columnId: 2 },
+                { id: 'focus', label: 'Proactive Focus', columnId: 2 },
+                { id: 'orchestration', label: 'Orchestration', columnId: 2 },
+                { id: 'analytics', label: 'Analytics', columnId: 2 },
+                { id: 'files', label: 'Files', columnId: 2 },
+                { id: 'settings', label: 'Settings', columnId: 2 }
             ];
             this.activeTabPerColumn = {};
             this.draggedTab = null;
@@ -360,7 +360,7 @@
                     `;
                     
                 case 'orchestration':
-                    return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">🎻 Orchestration</h2><p style="color: #94a3b8;">Orchestration coming soon...</p></div>`;
+                    return `<div id="tab-orchestration" style="padding: 20px;"><h2 style="margin-bottom: 16px;">🎻 Orchestration</h2><p style="color: #94a3b8;">Orchestration coming soon...</p></div>`;
                     
                 case 'analytics':
                     return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📈 Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;
@@ -374,8 +374,6 @@
                         <h2 style="margin-bottom: 16px;">⚙️ Settings</h2>
 
                         <div id="theme-settings" style="margin-top: 20px;">
-                            <h3 style="margin-bottom: 10px;">🎨 Theme Customization</h3>
-                            <p style="color: #94a3b8;">Adjust your colors and styles below.</p>
                         </div>
                         </div>
                     `;
@@ -448,7 +446,16 @@
                     }
                 }, 100);
             }
-            
+
+            if (tabId === 'orchestration') {
+            //     fetch("orchestratior.html")
+            //     .then(response => response.text())
+            //     .then(html => {
+            //         document.getElementById("tab-orchestration").innerHTML = html;
+            //     })
+            //     .catch(err => console.error("Error loading HTML:", err));
+            }
+    
             if (tabId === 'notebook') {
                 setTimeout(() => {
                     if (this.loadNotebooks) {
@@ -845,14 +852,16 @@
         }
         
         testPanel() {
-            console.log('Test button clicked');
-            const panel = document.getElementById('property-panel');
-            console.log('Panel element:', panel);
-            panel.classList.add('active');
-            console.log('Panel classes:', panel.className);
+            // console.log('Test button clicked');
+            app.initThemeSettings();
+            window.applyThemeToGraph();
+            // const panel = document.getElementById('property-panel');
+            // console.log('Panel element:', panel);
+            // panel.classList.add('active');
+            // console.log('Panel classes:', panel.className);
             
-            const content = document.getElementById('panel-content');
-            content.innerHTML = '<div style="padding: 20px;"><h3 style="color: #60a5fa;">Test Panel</h3><p>If you see this, the panel HTML/CSS is working correctly!</p></div>';
+            // const content = document.getElementById('panel-content');
+            // content.innerHTML = '<div style="padding: 20px;"><h3 style="color: #60a5fa;">Test Panel</h3><p>If you see this, the panel HTML/CSS is working correctly!</p></div>';
         }            
 
 
@@ -1176,8 +1185,8 @@
                     size: n.size || 25
                 }));
                 
-                this.networkData.edges = data.edges.map(e => ({
-                    id: e.id || `${e.from}-${e.to}`,
+                this.networkData.edges = data.edges.map((e, index) => ({
+                    id: e.id || `edge_${e.from}_${e.to}_${index}`,
                     from: e.from,
                     to: e.to,
                     label: e.label,
@@ -1382,17 +1391,17 @@
             content.innerHTML = this.parseMessageContent(message.content);
             
             if (message.role !== 'system') {
-            const saveBtn = document.createElement('button');
-            saveBtn.className = 'message-copy-btn';
-            saveBtn.textContent = '📓';
-            saveBtn.title = 'Save to notebook';
-            saveBtn.style.right = '40px'; // Position next to copy button
-            saveBtn.onclick = (e) => {
-                e.stopPropagation();
-                this.captureMessageAsNote(message.id);
-            };
-            content.appendChild(saveBtn);
-        }
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'message-copy-btn';
+                saveBtn.textContent = '📓';
+                saveBtn.title = 'Save to notebook';
+                saveBtn.style.right = '40px'; // Position next to copy button
+                saveBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    this.captureMessageAsNote(message.id);
+                };
+                content.appendChild(saveBtn);
+            }
             
             if (message.role !== 'system') {
                 messageEl.appendChild(avatar);
@@ -1400,6 +1409,8 @@
             messageEl.appendChild(content);
             
             container.appendChild(messageEl);
+            const block = { lang: app.detectLanguage, code: message.content };
+            app.attachCanvasButtonsToMessage(messageEl, block.lang, block.code, message.id);
             container.scrollTop = container.scrollHeight;
         }
         

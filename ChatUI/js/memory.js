@@ -12,7 +12,6 @@
             flex-direction: column;
             gap: 16px;
             padding: 16px;
-            background: #0f172a;
             border-radius: 8px;
             margin-bottom: 16px;
         }
@@ -81,7 +80,6 @@
         
         .search-mode-btn {
             padding: 8px 16px;
-            background: transparent;
             border: none;
             color: #94a3b8;
             cursor: pointer;
@@ -89,16 +87,6 @@
             font-size: 13px;
             font-weight: 500;
             transition: all 0.2s;
-        }
-        
-        .search-mode-btn.active {
-            background: #3b82f6;
-            color: white;
-        }
-        
-        .search-mode-btn:hover:not(.active) {
-            background: #334155;
-            color: #e2e8f0;
         }
         
         .filter-section {
@@ -340,9 +328,6 @@
         
         .action-btn {
             padding: 8px 16px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            color: #e2e8f0;
             border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
@@ -351,21 +336,7 @@
             align-items: center;
             gap: 6px;
         }
-        
-        .action-btn:hover {
-            background: #334155;
-            border-color: #3b82f6;
-        }
-        
-        .action-btn.primary {
-            background: #3b82f6;
-            border-color: #3b82f6;
-        }
-        
-        .action-btn.primary:hover {
-            background: #2563eb;
-        }
-        
+          
         .loading-spinner {
             display: flex;
             justify-content: center;
@@ -449,7 +420,6 @@
         
         .advanced-filters-toggle {
             padding: 8px 16px;
-            background: transparent;
             border: 1px solid #334155;
             color: #94a3b8;
             border-radius: 6px;
@@ -460,13 +430,7 @@
             align-items: center;
             gap: 6px;
         }
-        
-        .advanced-filters-toggle:hover {
-            background: #1e293b;
-            border-color: #3b82f6;
-            color: #e2e8f0;
-        }
-        
+
         .advanced-filters {
             max-height: 0;
             overflow: hidden;
@@ -479,7 +443,6 @@
         
         .advanced-filters-content {
             padding: 16px;
-            background: #1e293b;
             border-radius: 8px;
             margin-top: 12px;
             display: grid;
@@ -501,7 +464,6 @@
         
         .filter-field-input {
             padding: 8px 12px;
-            background: #0f172a;
             border: 1px solid #334155;
             color: #e2e8f0;
             border-radius: 6px;
@@ -510,7 +472,6 @@
         
         .filter-field-input:focus {
             outline: none;
-            border-color: #3b82f6;
         }
     `;
     document.head.appendChild(style);
@@ -855,7 +816,39 @@ VeraChat.prototype.normalizeResults = function(results, source) {
         return normalized;
     });
 };
+    // ============================================================
+    // Add normalization helper functions
+    // ============================================================
 
+    /**
+     * Normalize node data to match standard graph format
+     * This ensures nodes from memory search match the format used by loadGraph()
+     */
+    VeraChat.prototype.normalizeGraphNode = function(node) {
+        return {
+            id: node.id,
+            label: node.label || (node.properties?.text?.substring(0, 30)) || node.id,
+            title: node.title || (node.properties?.text) || node.id,
+            properties: node.properties || {},
+            type: node.type || node.labels || [],
+            color: node.color || '#3b82f6',
+            size: node.size || 25
+        };
+    };
+
+    /**
+     * Normalize edge data to match standard graph format
+     * This ensures edges from memory search match the format used by loadGraph()
+     */
+    VeraChat.prototype.normalizeGraphEdge = function(edge, index = 0) {
+        return {
+            id: edge.id || `edge_${edge.from || edge.start}_${edge.to || edge.end}_${index}`,
+            from: edge.from || edge.start,
+            to: edge.to || edge.end,
+            label: edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO',
+            title: edge.title || edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO'
+        };
+    };
 VeraChat.prototype.buildSearchFilters = function() {
     return {
         limit: this.memoryState.filters.limit,
@@ -990,25 +983,25 @@ VeraChat.prototype.debugSearch = async function() {
                                 class="search-mode-btn ${state.searchMode === 'hybrid' ? 'active' : ''}"
                                 onclick="app.setSearchMode('hybrid')"
                             >
-                                🔀 Hybrid
+                                Hybrid
                             </button>
                             <button 
                                 class="search-mode-btn ${state.searchMode === 'vector' ? 'active' : ''}"
                                 onclick="app.setSearchMode('vector')"
                             >
-                                📊 Vector
+                                Vector
                             </button>
                             <button 
                                 class="search-mode-btn ${state.searchMode === 'graph' ? 'active' : ''}"
                                 onclick="app.setSearchMode('graph')"
                             >
-                                🕸️ Graph
+                                Graph
                             </button>
                             <button 
                                 class="search-mode-btn ${state.searchMode === 'session' ? 'active' : ''}"
                                 onclick="app.setSearchMode('session')"
                             >
-                                📝 Session
+                                Session
                             </button>
                         </div>
                         
@@ -1384,29 +1377,29 @@ VeraChat.prototype.debugSearch = async function() {
                 <div class="detail-section-title">Actions</div>
                 <div class="detail-actions">
                     <button class="action-btn" onclick="app.focusInGraph('${result.id}')">
-                        🎯 Focus in Graph
+                        Focus in Graph
                     </button>
                     <button class="action-btn" onclick="app.loadResultSubgraph('${result.id}')">
-                        🗺️ Load Subgraph
+                        Load Subgraph
                     </button>
                     ${result.text ? `
                         <button class="action-btn" onclick="app.extractFromResult('${result.id}', \`${this.escapeHtml(result.text).replace(/`/g, '\\`')}\`)">
-                            🧠 Extract Entities
+                            Extract Entities
                         </button>
                     ` : ''}
                     <button class="action-btn" onclick="app.copyToClipboard('${result.id}')">
-                        📋 Copy to Clipboard
+                        Copy to Clipboard
                     </button>
                     ${result.metadata?.session_id && result.metadata.session_id !== this.sessionId ? `
                         <button class="action-btn" onclick="app.loadSessionInGraph('${result.metadata.session_id}')">
-                            📊 Load Session Graph
+                            Load Session Graph
                         </button>
                     ` : ''}
                     <button class="action-btn" onclick="app.promoteResult('${result.id}')">
-                        ⬆️ Promote to Long-term
+                        Promote to Long-term
                     </button>
                     <button class="action-btn" onclick="app.viewResultJSON('${result.id}')">
-                        📄 View JSON
+                        View JSON
                     </button>
                 </div>
             </div>
@@ -1415,6 +1408,7 @@ VeraChat.prototype.debugSearch = async function() {
         return html;
     };
     // Load subgraph around a result node
+
     VeraChat.prototype.loadResultSubgraph = async function(nodeId) {
         try {
             this.addSystemMessage(`Loading subgraph around ${nodeId}...`);
@@ -1433,24 +1427,29 @@ VeraChat.prototype.debugSearch = async function() {
             const data = await response.json();
             
             if (data.subgraph && data.subgraph.nodes) {
-                // Add subgraph to existing graph
-                const newNodes = data.subgraph.nodes.map(n => ({
-                    id: n.id,
-                    label: n.properties?.text?.substring(0, 30) || n.id,
-                    title: JSON.stringify(n.properties, null, 2),
-                    color: n.properties?.type === 'extracted_entity' ? '#10b93a' : '#3b82f6',
-                    size: 30,
-                    properties: n.properties
-                }));
+                // Use normalized format for nodes
+                const newNodes = data.subgraph.nodes.map(n => 
+                    this.normalizeGraphNode({
+                        id: n.id,
+                        label: n.properties?.text?.substring(0, 30) || n.id,
+                        title: n.properties?.text || n.id,
+                        properties: n.properties,
+                        type: n.labels,
+                        // Use different color for extracted entities
+                        color: n.properties?.type === 'extracted_entity' ? '#10b981' : '#3b82f6',
+                        size: 25
+                    })
+                );
                 
-                const newEdges = data.subgraph.rels.map((r, idx) => ({
-                    id: `subgraph-edge-${nodeId}-${idx}`,
-                    from: r.start,
-                    to: r.end,
-                    label: r.type || r.properties?.rel,
-                    color: { color: '#f59e0b', highlight: '#fbbf24' },
-                    width: 3
-                }));
+                // Use normalized format for edges
+                const newEdges = data.subgraph.rels.map((r, idx) => 
+                    this.normalizeGraphEdge({
+                        from: r.start,
+                        to: r.end,
+                        label: r.type || r.properties?.rel,
+                        properties: r.properties
+                    }, idx)
+                );
                 
                 // Update network data
                 this.networkInstance.body.data.nodes.update(newNodes);
@@ -1480,7 +1479,9 @@ VeraChat.prototype.debugSearch = async function() {
         });
     };
 
+
     // Load entire session graph
+ 
     VeraChat.prototype.loadSessionInGraph = async function(sessionId) {
         try {
             this.addSystemMessage(`Loading session ${sessionId.substring(0, 8)}... graph...`);
@@ -1489,25 +1490,13 @@ VeraChat.prototype.debugSearch = async function() {
             const data = await response.json();
             
             if (data.nodes && data.edges) {
+                // Use normalized format for nodes
+                const nodes = data.nodes.map(n => this.normalizeGraphNode(n));
+                
+                // Use normalized format for edges
+                const edges = data.edges.map((e, index) => this.normalizeGraphEdge(e, index));
+                
                 // Update network data
-                const nodes = data.nodes.map(n => ({
-                    id: n.id,
-                    label: n.label,
-                    title: n.title,
-                    properties: n.properties,
-                    type: n.type || n.labels,
-                    color: n.color || '#3b82f6',
-                    size: n.size || 25
-                }));
-                
-                const edges = data.edges.map(e => ({
-                    id: e.id || `${e.from}-${e.to}`,
-                    from: e.from,
-                    to: e.to,
-                    label: e.label,
-                    title: e.label
-                }));
-                
                 this.networkInstance.body.data.nodes.update(nodes);
                 this.networkInstance.body.data.edges.update(edges);
                 
@@ -1533,6 +1522,7 @@ VeraChat.prototype.debugSearch = async function() {
             menu.style.display = 'none';
         });
     };
+
 
 
     // ============================================================

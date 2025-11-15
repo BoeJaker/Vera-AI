@@ -11,6 +11,7 @@
 **/Deprecated
 **/deprecated/
 **/lib/
+**/plugins/
 
 **/__pycache__/
 **/*.pyc

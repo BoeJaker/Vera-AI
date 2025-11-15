@@ -77,7 +77,7 @@ height: 100vh;
 }
 
 .header {
-background: var(--bg-surface);
+/* background: var(--bg-surface); */
 padding: 12px 20px;
 border-bottom: 2px solid var(--border);
 display: flex;

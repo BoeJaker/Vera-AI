@@ -42,8 +42,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
 import inspect
 import sys
-
-from Vera.Memory.nlp import NLPExtractor  
+try:
+    from Vera.Memory.nlp import NLPExtractor  
+except:
+    from Memory.nlp import NLPExtractor
+    
 import hashlib
 import time
 from typing import Dict, Any, List

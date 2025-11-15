@@ -127,7 +127,10 @@ async def websocket_chat(websocket: WebSocket, session_id: str):
     await websocket.accept()
     
     if session_id not in sessions:
-        await websocket.close(code=4004, reason="Session not found")
+        try:
+            await websocket.close(code=4004, reason="Session not found")
+        except Exception as e:
+            print(e)
         return
     
     vera = get_or_create_vera(session_id)
