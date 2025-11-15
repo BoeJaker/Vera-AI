@@ -2,6 +2,8 @@
 **client_secrets.json
 **service.json
 
+**.env
+
 **/chroma_store/**/
 **/chroma_db/
 **/archive/**/
@@ -28,6 +30,7 @@
 **/.vscode/
 **/.trash/
 **/.temp/
+**/focus_boards/**
 
 **/saved_html/**/
 # Snyk Security Extension - AI Rules (auto-generated)
