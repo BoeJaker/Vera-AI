@@ -1,5 +1,5 @@
 (() => {
-    initGraph() {
+    function initGraph() {
         const container = document.getElementById('graph');
         const options = {
             physics: {
@@ -100,8 +100,7 @@
             }
         }, 500);
     }
-
-    async loadGraph() {
+    async function loadGraph() {
         if (!this.sessionId) return;
         
         try {
@@ -120,8 +119,8 @@
                 size: n.size || 25
             }));
             
-            this.networkData.edges = data.edges.map(e => ({
-                id: e.id || `${e.from}-${e.to}`,
+            this.networkData.edges = data.edges.map((e, index) => ({
+                id: e.id || `edge_${e.from}_${e.to}_${index}`,
                 from: e.from,
                 to: e.to,
                 label: e.label,
@@ -140,6 +139,9 @@
             document.getElementById('nodeCount').textContent = data.nodes.length;
             document.getElementById('edgeCount').textContent = data.edges.length;
             
+            app.initThemeSettings();
+            window.applyThemeToGraph();
+
             if (window.GraphAddon) {
                 setTimeout(() => {
                     console.log('Updating GraphAddon data...');

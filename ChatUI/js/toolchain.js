@@ -186,6 +186,7 @@
                     }
                 }
                 break;
+<<<<<<< HEAD
         }
     };
 
@@ -226,6 +227,48 @@
         } else if (this.toolchainView === 'history') {
             html += this.renderExecutionHistory();
         }
+=======
+        }
+    };
+
+    VeraChat.prototype.updateToolchainUI = async function() {
+        await this.loadAvailableTools();
+        
+        const container = document.getElementById('tab-toolchain');
+        if (!container || this.activeTab !== 'toolchain') return;
+        
+        if (!this.toolViewMode) this.toolViewMode = 'grid';
+        if (!this.toolchainView) this.toolchainView = 'tools';
+        
+        let html = `
+            <div style="padding: 20px; overflow-y: auto; height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0;">Toolchain Monitor</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="panel-btn ${this.toolchainView === 'tools' ? 'active' : ''}" 
+                                onclick="app.switchToolchainView('tools')">
+                            Tools
+                        </button>
+                        <button class="panel-btn ${this.toolchainView === 'executions' ? 'active' : ''}" 
+                                onclick="app.switchToolchainView('executions')">
+                            Executions
+                        </button>
+                        <button class="panel-btn ${this.toolchainView === 'history' ? 'active' : ''}" 
+                                onclick="app.switchToolchainView('history')">
+                            History
+                        </button>
+                    </div>
+                </div>
+        `;
+        
+        if (this.toolchainView === 'tools') {
+            html += this.renderToolCards();
+        } else if (this.toolchainView === 'executions') {
+            html += this.renderCurrentExecution();
+        } else if (this.toolchainView === 'history') {
+            html += this.renderExecutionHistory();
+        }
+>>>>>>> dev-vera-ollama-fixed
         
         html += `</div>`;
         container.innerHTML = html;
@@ -237,6 +280,7 @@
             }
         }, 0);
     };
+<<<<<<< HEAD
 
     VeraChat.prototype.switchToolchainView = function(view) {
         this.toolchainView = view;
@@ -261,6 +305,92 @@
                             this.currentExecution.status === 'failed' ? '#ef4444' :
                             this.currentExecution.status === 'executing' ? '#3b82f6' : '#f59e0b';
             
+=======
+
+    VeraChat.prototype.switchToolchainView = function(view) {
+        this.toolchainView = view;
+        this.updateToolchainUI();
+    };
+
+VeraChat.prototype.renderCurrentExecution = function() {
+    // Initialize toolchainExecutions if it doesn't exist
+    if (!this.toolchainExecutions) {
+        this.toolchainExecutions = [];
+    }
+    
+    if (!this.currentExecution && this.toolchainExecutions.length === 0) {
+        return `
+            <div style="padding: 20px; text-align: center;">
+                <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">⚙️</div>
+                <p style="color: #94a3b8;">No active toolchain executions.</p>
+                <p style="color: #64748b; font-size: 12px;">Toolchain executions will appear here when tools are used in conversation.</p>
+            </div>
+        `;
+    }
+    
+    let html = '';
+    
+    // Show current execution
+    if (this.currentExecution) {
+        const statusColor = this.currentExecution.status === 'completed' ? '#10b981' :
+                        this.currentExecution.status === 'failed' ? '#ef4444' :
+                        this.currentExecution.status === 'executing' ? '#3b82f6' : '#f59e0b';
+        
+        html += `
+            <div class="tool-card" style="border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                    <div style="font-weight: 600; color: #e2e8f0;">Current Execution</div>
+                    <div style="color: ${statusColor}; font-size: 12px; text-transform: uppercase;">${this.currentExecution.status}</div>
+                </div>
+                <div style="color: #94a3b8; font-size: 13px; margin-bottom: 8px;">${this.escapeHtml(this.currentExecution.query)}</div>
+                ${this.currentExecution.totalSteps ? `<div style="color: #94a3b8; font-size: 12px;">Steps: ${this.currentExecution.steps.length}/${this.currentExecution.totalSteps}</div>` : ''}
+            </div>
+        `;
+        
+        // Show plan if available
+        if (this.currentExecution.plan || this.currentExecution.plan_text) {
+            html += `
+                <div class="tool-container" style="border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 12px;">Execution Plan</div>
+            `;
+            
+            // Show streaming plan text if available
+            if (this.currentExecution.plan_text) {
+                html += `
+                    <div class="tool-card" style="padding: 12px; border-radius: 6px; border-left: 3px solid #60a5fa; margin-bottom: 12px;">
+                        <div id="execution-plan-text" style="color: #cbd5e1; font-size: 12px; line-height: 1.6; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">${this.escapeHtml(this.currentExecution.plan_text)}</div>
+                    </div>
+                `;
+            }
+            
+            // Show structured plan if available
+            if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
+                html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
+                
+                this.currentExecution.plan.forEach((step, i) => {
+                    const toolInfo = this.availableTools && this.availableTools[step.tool];
+                    html += `
+                        <div class="tool-card" style="padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                            <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Step ${i + 1}</div>
+                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                                <div style="color: #e2e8f0; font-size: 13px; font-weight: 600;">${this.escapeHtml(step.tool)}</div>
+                                ${toolInfo ? `<span style="color: #60a5fa; font-size: 11px; cursor: help;" title="${this.escapeHtml(toolInfo.description)}">ℹ️</span>` : ''}
+                            </div>
+                            ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-bottom: 6px; font-style: italic;">${this.escapeHtml(toolInfo.description.substring(0, 80))}${toolInfo.description.length > 80 ? '...' : ''}</div>` : ''}
+                            <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">${this.escapeHtml(step.input)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+            }
+            
+            html += `</div>`;
+        }
+        
+        // Show steps execution
+        if (this.currentExecution.steps && this.currentExecution.steps.length > 0) {
+>>>>>>> dev-vera-ollama-fixed
             html += `
                 <div class="tool-card" style=" border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
@@ -316,6 +446,7 @@
             // Show steps execution
             if (this.currentExecution.steps.length > 0) {
                 html += `
+<<<<<<< HEAD
                     <div class="tool-container" style="border-radius: 8px; padding: 16px;">
                         <div style="font-weight: 600; color: #60a5fa; margin-bottom: 12px;">Step Execution</div>
                         <div style="display: flex; flex-direction: column; gap: 12px;">
@@ -335,6 +466,14 @@
                                         ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-top: 2px;">${this.escapeHtml(toolInfo.description)}</div>` : ''}
                                     </div>
                                     <div style="color: ${stepStatusColor}; font-size: 11px; text-transform: uppercase; white-space: nowrap;">${step.status}</div>
+=======
+                    <div class="tool-card" style="border-radius: 6px; overflow: hidden;">
+                        <div style="padding: 12px; border-left: 4px solid ${stepStatusColor};">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <div>
+                                    <div style="color: #e2e8f0; font-weight: 600;">Step ${step.number}: ${this.escapeHtml(step.toolName)}</div>
+                                    ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-top: 2px;">${this.escapeHtml(toolInfo.description)}</div>` : ''}
+>>>>>>> dev-vera-ollama-fixed
                                 </div>
                                 
                                 <div class="tool-subcard" style=" padding: 8px; border-radius: 4px; margin-bottom: 8px;">
@@ -362,6 +501,7 @@
                                     </div>
                                 ` : ''}
                             </div>
+<<<<<<< HEAD
                         </div>
                     `;
                 });
@@ -376,6 +516,33 @@
                         <div style="font-weight: 600; color: #10b981; margin-bottom: 12px;">✓ Final Result</div>
                         <div style="color: #d1fae5; font-size: 13px; line-height: 1.5; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
                             ${this.escapeHtml(this.currentExecution.finalResult.substring(0, 500))}${this.currentExecution.finalResult.length > 500 ? '...' : ''}
+=======
+                            
+                            <div class="tool-subcard" style="padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                                <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
+                                <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${this.escapeHtml(step.input.substring(0, 200))}${step.input.length > 200 ? '...' : ''}</div>
+                            </div>
+                            
+                            ${step.output ? `
+                                <div class="tool-subcard" style="padding: 8px; border-radius: 4px;">
+                                    <div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">Output:</div>
+                                    <div id="step-output-${step.number}" style="color: #cbd5e1; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto;">${this.escapeHtml(step.output)}</div>
+                                </div>
+                            ` : ''}
+                            
+                            ${step.error ? `
+                                <div style="background: #7f1d1d; padding: 8px; border-radius: 4px; margin-top: 8px;">
+                                    <div style="color: #fca5a5; font-size: 11px; margin-bottom: 4px;">Error:</div>
+                                    <div style="color: #fecaca; font-size: 12px;">${this.escapeHtml(step.error)}</div>
+                                </div>
+                            ` : ''}
+                            
+                            ${step.startTime && step.endTime ? `
+                                <div style="color: #64748b; font-size: 10px; margin-top: 8px;">
+                                    Duration: ${((new Date(step.endTime) - new Date(step.startTime)) / 1000).toFixed(2)}s
+                                </div>
+                            ` : ''}
+>>>>>>> dev-vera-ollama-fixed
                         </div>
                     </div>
                 `;
@@ -394,6 +561,24 @@
                 </div>
             `;
         }
+<<<<<<< HEAD
+=======
+    }
+    
+    return html;
+};
+
+    VeraChat.prototype.renderExecutionHistory = function() {
+        if (!this.toolchainExecutions || this.toolchainExecutions.length === 0) {
+            return `
+                <div style="padding: 20px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">📜</div>
+                    <p style="color: #94a3b8;">No execution history.</p>
+                    <p style="color: #64748b; font-size: 12px;">Past toolchain executions will appear here.</p>
+                </div>
+            `;
+        }
+>>>>>>> dev-vera-ollama-fixed
         
         let html = `
             <div style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
@@ -605,6 +790,7 @@
                     <button class="panel-btn" onclick="app.toggleManualExecution()" style="font-size: 12px;">
                         ${this.showManualExecution ? '✕ Close' : '▶ Execute Tool'}
                     </button>
+<<<<<<< HEAD
                 </div>
                 
                 ${this.showManualExecution ? `
@@ -850,6 +1036,244 @@
                                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                                         <div style="color: ${this.toolResults[tool.name].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
                                             ${this.toolResults[tool.name].success ? '✓ Success' : '✗ Error'}
+=======
+                </div>
+                
+                ${this.showManualExecution ? `
+                    <div class="tool-subcard" style=" border-radius: 6px; padding: 12px;">
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; color: #94a3b8; font-size: 12px; margin-bottom: 6px;">Select Tool:</label>
+                            <select id="manual-tool-select" style="width: 100%; padding: 8px;  color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 13px;">
+                                <option value="">-- Select a tool --</option>
+                                ${tools.map(tool => `
+                                    <option value="${this.escapeHtml(tool.name)}">${this.escapeHtml(tool.name)}</option>
+                                `).join('')}
+                            </select>
+                        </div>
+                        
+                        <div id="tool-description" style="display: none;  padding: 10px; border-radius: 4px; margin-bottom: 12px; border-left: 3px solid #8b5cf6;">
+                            <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Description:</div>
+                            <div id="tool-description-text" style="color: #cbd5e1; font-size: 12px;"></div>
+                        </div>
+                        
+                        <div style="margin-bottom: 12px;">
+                            <label style="display: block; color: #94a3b8; font-size: 12px; margin-bottom: 6px;">Tool Input:</label>
+                            <textarea id="manual-tool-input" 
+                                    placeholder="Enter tool input..." 
+                                    style="width: 100%; min-height: 80px; padding: 8px;  color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 13px; font-family: monospace; resize: vertical;"
+                            ></textarea>
+                        </div>
+                        
+                        <div style="display: flex; gap: 8px;">
+                            <button class="panel-btn" 
+                                    onclick="app.executeManualTool()" 
+                                    style="flex: 1;  padding: 10px;">
+                                🚀 Execute
+                            </button>
+                            <button class="panel-btn" 
+                                    onclick="app.clearManualExecution()" 
+                                    style="background: #64748b;">
+                                Clear
+                            </button>
+                        </div>
+                        
+                        ${this.manualExecutionResult ? `
+                            <div style="margin-top: 12px;  border-radius: 4px; padding: 12px; border-left: 3px solid ${this.manualExecutionResult.success ? '#10b981' : '#ef4444'};">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <div style="color: ${this.manualExecutionResult.success ? '#10b981' : '#ef4444'}; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                                        ${this.manualExecutionResult.success ? '✓ Success' : '✗ Error'}
+                                    </div>
+                                    <div style="color: #64748b; font-size: 10px;">
+                                        ${this.manualExecutionResult.duration}ms
+                                    </div>
+                                </div>
+                                <div style="color: #cbd5e1; font-size: 12px; font-family: monospace; max-height: 200px; overflow-y: auto; white-space: pre-wrap; word-break: break-word;">
+                                    ${this.escapeHtml(this.manualExecutionResult.output)}
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    };
+ VeraChat.prototype.renderToolCards = function() {
+    if (!this.availableTools || Object.keys(this.availableTools).length === 0) {
+        return '<div style="color: #64748b; font-size: 12px; margin-top: 16px;">Loading tools...</div>';
+    }
+    
+    const tools = Object.values(this.availableTools);
+    
+    // Apply search and filters (keep existing code)
+    let filteredTools = tools;
+    
+    if (this.toolSearchQuery) {
+        const query = this.toolSearchQuery.toLowerCase();
+        filteredTools = filteredTools.filter(tool => 
+            tool.name.toLowerCase().includes(query) ||
+            tool.description.toLowerCase().includes(query) ||
+            tool.type.toLowerCase().includes(query)
+        );
+    }
+    
+    if (this.toolTypeFilter && this.toolTypeFilter !== 'all') {
+        filteredTools = filteredTools.filter(tool => 
+            tool.type.toLowerCase() === this.toolTypeFilter.toLowerCase()
+        );
+    }
+    
+    const toolTypes = [...new Set(tools.map(t => t.type))].sort();
+    
+        
+        let html = `
+            <div style="margin-bottom: 16px;">
+                <!-- Search and Filter Bar -->
+                <div style=" border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                        <!-- Search Input -->
+                        <div style="flex: 1; min-width: 250px; position: relative;">
+                            <input type="text" 
+                                id="tool-search" 
+                                placeholder="🔍 Search by name, description, or type..." 
+                                value="${this.escapeHtml(this.toolSearchQuery || '')}"
+                                style="width: 100%; padding: 10px 40px 10px 12px; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; font-size: 13px;">
+                            ${this.toolSearchQuery ? `
+                                <button onclick="app.clearToolSearch()" 
+                                        style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #64748b; cursor: pointer; font-size: 16px; padding: 4px;"
+                                        title="Clear search">✕</button>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Type Filter -->
+                        <div style="position: relative;">
+                            <select id="tool-type-filter" 
+                                    onchange="app.setToolTypeFilter(this.value)"
+                                    style="padding: 10px 35px 10px 12px; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; font-size: 13px; cursor: pointer; appearance: none;">
+                                <option value="all">All Types</option>
+                                ${toolTypes.map(type => `
+                                    <option value="${this.escapeHtml(type)}" ${this.toolTypeFilter === type ? 'selected' : ''}>
+                                        ${this.escapeHtml(type)}
+                                    </option>
+                                `).join('')}
+                            </select>
+                            <div style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: #64748b;">▼</div>
+                        </div>
+                        
+                        <!-- View Toggle -->
+                        <button class="panel-btn" onclick="app.toggleToolView()" style="padding: 10px 16px;">
+                            ${this.toolViewMode === 'grid' ? '📋 List' : '⊞ Grid'}
+                        </button>
+                        
+                        <!-- Results Count -->
+                        <div style="color: #94a3b8; font-size: 13px; white-space: nowrap;">
+                            ${filteredTools.length} of ${tools.length} tools
+                        </div>
+                    </div>
+                    
+                    <!-- Active Filters Display -->
+                    ${this.toolSearchQuery || (this.toolTypeFilter && this.toolTypeFilter !== 'all') ? `
+                        <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #334155; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            <span style="color: #94a3b8; font-size: 12px;">Active filters:</span>
+                            ${this.toolSearchQuery ? `
+                                <span style=" color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                                    Search: "${this.escapeHtml(this.toolSearchQuery)}"
+                                    <button onclick="app.clearToolSearch()" style="background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: 14px;">✕</button>
+                                </span>
+                            ` : ''}
+                            ${this.toolTypeFilter && this.toolTypeFilter !== 'all' ? `
+                                <span style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                                    Type: ${this.escapeHtml(this.toolTypeFilter)}
+                                    <button onclick="app.setToolTypeFilter('all')" style="background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: 14px;">✕</button>
+                                </span>
+                            ` : ''}
+                            <button onclick="app.clearAllToolFilters()" 
+                                    class="panel-btn" 
+                                    style="padding: 4px 10px; font-size: 11px; background: #64748b;">
+                                Clear All
+                            </button>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <!-- Tool Cards Grid/List -->
+                <div id="tool-cards-container" 
+                    style="display: grid; 
+                            grid-template-columns: repeat(auto-fill, minmax(${this.toolViewMode === 'grid' ? '300px' : '100%'}, 1fr)); 
+                            gap: 12px;">
+        `;
+        
+    if (filteredTools.length === 0) {
+        html += `<!-- No tools found message -->`;
+    } else {
+        filteredTools.forEach(tool => {
+            const isExecuting = this.executingTools && this.executingTools[tool.name];
+            const hasResult = this.toolResults && this.toolResults[tool.name];
+            const isExpanded = this.expandedTools && this.expandedTools[tool.name];
+            
+            html += `
+                <div class="tool-card" 
+                    data-tool-name="${this.escapeHtml(tool.name)}" 
+                    data-tool-type="${this.escapeHtml(tool.type)}"
+                    style="border-radius: 8px; padding: 14px; border-left: 4px solid #8b5cf6; transition: all 0.2s; ${isExecuting ? 'opacity: 0.7;' : ''}">
+                    
+                    <!-- Tool Header -->
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                                ${this.escapeHtml(tool.name)}
+                            </div>
+                            <div style="color: #64748b; font-size: 10px; font-family: monospace; margin-bottom: 8px;">
+                                ${this.escapeHtml(tool.type)}
+                            </div>
+                        </div>
+                        <button class="panel-btn" 
+                                onclick="app.toggleToolExpand('${this.escapeHtml(tool.name)}')"
+                                style="padding: 4px 8px; font-size: 11px; min-width: auto;">
+                            ${isExpanded ? '▼' : '▶'}
+                        </button>
+                    </div>
+                    
+                    <!-- Tool Description -->
+                    <div style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                        ${this.escapeHtml(tool.description)}
+                    </div>
+                    
+                    <!-- Expanded Content -->
+                    <div id="tool-expand-${this.escapeHtml(tool.name)}" 
+                        style="display: ${isExpanded ? 'block' : 'none'};">
+                        
+                        <!-- Dynamic Input Form -->
+                        <div id="tool-inputs-${this.escapeHtml(tool.name)}" style="margin-bottom: 10px;">
+                            <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">Loading inputs...</div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                            <button class="panel-btn" 
+                                    onclick="app.executeToolFromCard('${this.escapeHtml(tool.name)}')"
+                                    style="flex: 1; padding: 8px; font-size: 12px;"
+                                    ${isExecuting ? 'disabled' : ''}>
+                                ${isExecuting ? '⏳ Executing...' : '🚀 Execute'}
+                            </button>
+                            <button class="panel-btn" 
+                                    onclick="app.clearToolInput('${this.escapeHtml(tool.name)}')"
+                                    style="background: #64748b; padding: 8px; font-size: 12px;"
+                                    ${isExecuting ? 'disabled' : ''}>
+                                Clear
+                            </button>
+                        </div>
+                        
+                        <!-- Result Area -->
+                        ${hasResult ? `
+                            <div style="background: #0f172a; border-radius: 6px; padding: 10px; border-left: 3px solid ${this.toolResults[tool.name].success ? '#10b981' : '#ef4444'};">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <div style="color: ${this.toolResults[tool.name].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
+                                        ${this.toolResults[tool.name].success ? '✓ Success' : '✗ Error'}
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <div style="color: #64748b; font-size: 9px;">
+                                            ${this.toolResults[tool.name].duration}ms
+>>>>>>> dev-vera-ollama-fixed
                                         </div>
                                         <div style="display: flex; gap: 8px; align-items: center;">
                                             <div style="color: #64748b; font-size: 9px;">
@@ -876,6 +1300,7 @@
                             </button>
                         ` : ''}
                     </div>
+<<<<<<< HEAD
                 `;
             });
         }
@@ -921,6 +1346,162 @@
             return;
         }
         
+=======
+                    
+                    <!-- Quick Execute Button (when collapsed) -->
+                    ${!isExpanded ? `
+                        <button class="panel-btn" 
+                                onclick="app.quickExpandTool('${this.escapeHtml(tool.name)}')"
+                                style="width: 100%; padding: 8px; font-size: 12px;">
+                            ⚡ Quick Execute
+                        </button>
+                    ` : ''}
+                </div>
+            `;
+        });
+    }
+    
+    html += `</div></div>`;
+    
+    return html;
+};
+VeraChat.prototype.loadToolSchema = async function(toolName) {
+    if (!this.toolSchemas) this.toolSchemas = {};
+    
+    // Return cached schema if available
+    if (this.toolSchemas[toolName]) {
+        return this.toolSchemas[toolName];
+    }
+    
+    try {
+        const response = await fetch(`http://llm.int:8888/api/toolchain/${this.sessionId}/tool/${encodeURIComponent(toolName)}/schema`);
+        const schema = await response.json();
+        
+        this.toolSchemas[toolName] = schema;
+        return schema;
+        
+    } catch (error) {
+        console.error('Failed to load tool schema:', error);
+        // Fallback schema
+        return {
+            name: toolName,
+            parameters: [{
+                name: "input",
+                type: "string",
+                description: "Tool input",
+                required: true
+            }]
+        };
+    }
+};
+
+VeraChat.prototype.renderToolInputs = async function(toolName) {
+    const schema = await this.loadToolSchema(toolName);
+    const container = document.getElementById(`tool-inputs-${toolName}`);
+    
+    if (!container) return;
+    
+    let html = '';
+    
+    schema.parameters.forEach(param => {
+        const inputId = `tool-input-${toolName}-${param.name}`;
+        const isRequired = param.required ? '<span style="color: #ef4444;">*</span>' : '';
+        const defaultValue = param.default !== undefined && param.default !== null ? ` (default: ${param.default})` : '';
+        
+        html += `
+            <div style="margin-bottom: 10px;">
+                <label style="display: block; color: #94a3b8; font-size: 11px; margin-bottom: 4px;">
+                    ${this.escapeHtml(param.name)}${isRequired}${defaultValue}
+                </label>
+        `;
+        
+        // Render different input types based on parameter type
+        if (param.type === 'boolean') {
+            html += `
+                <select id="${inputId}" 
+                        style="width: 100%; padding: 8px; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 12px;">
+                    <option value="true"${param.default === true ? ' selected' : ''}>true</option>
+                    <option value="false"${param.default === false ? ' selected' : ''}>false</option>
+                </select>
+            `;
+        } else if (param.type === 'integer' || param.type === 'number') {
+            html += `
+                <input type="number" 
+                       id="${inputId}"
+                       placeholder="${this.escapeHtml(param.description)}"
+                       value="${param.default || ''}"
+                       style="width: 100%; padding: 8px; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 12px;">
+            `;
+        } else if (param.description && param.description.length > 100) {
+            // Long description = textarea
+            html += `
+                <textarea id="${inputId}" 
+                          placeholder="${this.escapeHtml(param.description)}"
+                          style="width: 100%; min-height: 60px; padding: 8px; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 12px; font-family: monospace; resize: vertical;"
+                >${param.default || ''}</textarea>
+            `;
+        } else {
+            // Default to text input
+            html += `
+                <input type="text" 
+                       id="${inputId}"
+                       placeholder="${this.escapeHtml(param.description)}"
+                       value="${param.default || ''}"
+                       style="width: 100%; padding: 8px; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 12px;">
+            `;
+        }
+        
+        if (param.description) {
+            html += `
+                <div style="color: #64748b; font-size: 10px; margin-top: 2px; font-style: italic;">
+                    ${this.escapeHtml(param.description)}
+                </div>
+            `;
+        }
+        
+        html += `</div>`;
+    });
+    
+    container.innerHTML = html;
+};
+    VeraChat.prototype.toggleManualExecution = function() {
+        this.showManualExecution = !this.showManualExecution;
+        this.updateToolchainUI();
+    };
+
+    VeraChat.prototype.clearManualExecution = function() {
+        const input = document.getElementById('manual-tool-input');
+        const select = document.getElementById('manual-tool-select');
+        if (input) input.value = '';
+        if (select) select.value = '';
+        
+        const descDiv = document.getElementById('tool-description');
+        if (descDiv) descDiv.style.display = 'none';
+        
+        this.manualExecutionResult = null;
+        this.updateToolchainUI();
+    };
+
+    VeraChat.prototype.executeManualTool = async function() {
+        const select = document.getElementById('manual-tool-select');
+        const input = document.getElementById('manual-tool-input');
+        
+        if (!select || !input) return;
+        
+        const toolName = select.value;
+        const toolInput = input.value;
+        
+        if (!toolName) {
+            alert('Please select a tool');
+            return;
+        }
+        
+        if (!toolInput.trim()) {
+            alert('Please enter tool input');
+            return;
+        }
+        
+>>>>>>> dev-vera-ollama-fixed
         // Show loading state
         this.manualExecutionResult = {
             success: null,
@@ -933,6 +1514,442 @@
         
         try {
             const response = await fetch(`http://llm.int:8888/api/toolchain/${this.sessionId}/execute-tool?tool_name=${encodeURIComponent(toolName)}&tool_input=${encodeURIComponent(toolInput)}`, {
+<<<<<<< HEAD
+=======
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            this.manualExecutionResult = {
+                success: data.success,
+                output: data.output,
+                duration: Math.round(data.duration_ms),
+                tool_name: data.tool_name,
+                executed_at: data.executed_at
+            };
+            
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            this.manualExecutionResult = {
+                success: false,
+                output: error.message || 'Execution failed',
+                duration: duration
+            };
+        }
+        
+        this.updateToolchainUI();
+    };
+    VeraChat.prototype.executeManualToolStreaming = async function() {
+        const select = document.getElementById('manual-tool-select');
+        const input = document.getElementById('manual-tool-input');
+        
+        if (!select || !input) return;
+        
+        const toolName = select.value;
+        const toolInput = input.value;
+        
+        if (!toolName || !toolInput.trim()) {
+            alert('Please select a tool and enter input');
+            return;
+        }
+        
+        this.manualExecutionResult = {
+            success: null,
+            output: '',
+            duration: 0,
+            streaming: true
+        };
+        this.updateToolchainUI();
+        
+        const startTime = Date.now();
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/toolchain/${this.sessionId}/execute-tool-stream?tool_name=${encodeURIComponent(toolName)}&tool_input=${encodeURIComponent(toolInput)}`, {
+                method: 'POST',
+            });
+            
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            
+            while (true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                
+                const chunk = decoder.decode(value);
+                this.manualExecutionResult.output += chunk;
+                this.manualExecutionResult.duration = Date.now() - startTime;
+                this.updateToolchainUI();
+            }
+            
+            this.manualExecutionResult.success = true;
+            this.manualExecutionResult.streaming = false;
+            
+        } catch (error) {
+            this.manualExecutionResult.success = false;
+            this.manualExecutionResult.output += `\n\nError: ${error.message}`;
+            this.manualExecutionResult.streaming = false;
+        }
+        
+        this.updateToolchainUI();
+    };
+
+    VeraChat.prototype.filterTools = function(query) {
+        this.toolSearchQuery = query;
+        
+        // Only update the cards container, not the whole UI
+        this.updateToolCardsOnly();
+    };
+
+    VeraChat.prototype.updateToolCardsOnly = function() {
+        const container = document.getElementById('tool-cards-container');
+        if (!container) return;
+        
+        const tools = Object.values(this.availableTools);
+        
+        // Apply filters
+        let filteredTools = tools;
+        
+        if (this.toolSearchQuery) {
+            const query = this.toolSearchQuery.toLowerCase();
+            filteredTools = filteredTools.filter(tool => 
+                tool.name.toLowerCase().includes(query) ||
+                tool.description.toLowerCase().includes(query) ||
+                tool.type.toLowerCase().includes(query)
+            );
+        }
+        
+        if (this.toolTypeFilter && this.toolTypeFilter !== 'all') {
+            filteredTools = filteredTools.filter(tool => 
+                tool.type.toLowerCase() === this.toolTypeFilter.toLowerCase()
+            );
+        }
+        
+        // Update results count
+        const tools_count = document.querySelector('[style*="white-space: nowrap"]');
+        if (tools_count) {
+            tools_count.textContent = `${filteredTools.length} of ${tools.length} tools`;
+        }
+        
+        // Update active filters display
+        this.updateActiveFiltersDisplay();
+        
+        // Rebuild cards HTML
+        let cardsHtml = '';
+        
+        if (filteredTools.length === 0) {
+            cardsHtml = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px;  border-radius: 8px;">
+                    <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">🔍</div>
+                    <div style="color: #94a3b8; font-size: 14px; margin-bottom: 8px;">No tools found</div>
+                    <div style="color: #64748b; font-size: 12px;">
+                        ${this.toolSearchQuery ? `Try a different search term or ` : ''}
+                        <button onclick="app.clearAllToolFilters()" style="background: none; border: none; color: #3b82f6; cursor: pointer; text-decoration: underline;">clear filters</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            filteredTools.forEach(tool => {
+                const isExecuting = this.executingTools && this.executingTools[tool.name];
+                const hasResult = this.toolResults && this.toolResults[tool.name];
+                
+                cardsHtml += `
+                    <div class="tool-card" 
+                        data-tool-name="${this.escapeHtml(tool.name)}" 
+                        data-tool-type="${this.escapeHtml(tool.type)}"
+                        style=" border-radius: 8px; padding: 14px; border-left: 4px solid #8b5cf6; transition: all 0.2s; ${isExecuting ? 'opacity: 0.7;' : ''}">
+                        
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                            <div style="flex: 1;">
+                                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                                    ${this.escapeHtml(tool.name)}
+                                </div>
+                                <div style="color: #64748b; font-size: 10px; font-family: monospace; margin-bottom: 8px;">
+                                    ${this.escapeHtml(tool.type)}
+                                </div>
+                            </div>
+                            <button class="panel-btn" 
+                                    onclick="app.toggleToolExpand('${this.escapeHtml(tool.name)}')"
+                                    style="padding: 4px 8px; font-size: 11px; min-width: auto;">
+                                ${this.expandedTools && this.expandedTools[tool.name] ? '▼' : '▶'}
+                            </button>
+                        </div>
+                        
+                        <div style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                            ${this.escapeHtml(tool.description)}
+                        </div>
+                        
+                        <div id="tool-expand-${this.escapeHtml(tool.name)}" 
+                            style="display: ${this.expandedTools && this.expandedTools[tool.name] ? 'block' : 'none'};">
+                            
+                            <div style="margin-bottom: 10px;">
+                                <label style="display: block; color: #94a3b8; font-size: 11px; margin-bottom: 4px;">Input:</label>
+                                <textarea id="tool-input-${this.escapeHtml(tool.name)}" 
+                                        placeholder="Enter tool input..."
+                                        style="width: 100%; min-height: 60px; padding: 8px; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; font-size: 12px; font-family: monospace; resize: vertical;"
+                                        ${isExecuting ? 'disabled' : ''}
+                                ></textarea>
+                            </div>
+                            
+                            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                                <button class="panel-btn" 
+                                        onclick="app.executeToolFromCard('${this.escapeHtml(tool.name)}')"
+                                        style="flex: 1;  padding: 8px; font-size: 12px;"
+                                        ${isExecuting ? 'disabled' : ''}>
+                                    ${isExecuting ? '⏳ Executing...' : '🚀 Execute'}
+                                </button>
+                                <button class="panel-btn" 
+                                        onclick="app.clearToolInput('${this.escapeHtml(tool.name)}')"
+                                        style="background: #64748b; padding: 8px; font-size: 12px;"
+                                        ${isExecuting ? 'disabled' : ''}>
+                                    Clear
+                                </button>
+                            </div>
+                            
+                            ${hasResult ? `
+                                <div style="background: #0f172a; border-radius: 6px; padding: 10px; border-left: 3px solid ${this.toolResults[tool.name].success ? '#10b981' : '#ef4444'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <div style="color: ${this.toolResults[tool.name].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
+                                            ${this.toolResults[tool.name].success ? '✓ Success' : '✗ Error'}
+                                        </div>
+                                        <div style="display: flex; gap: 8px; align-items: center;">
+                                            <div style="color: #64748b; font-size: 9px;">
+                                                ${this.toolResults[tool.name].duration}ms
+                                            </div>
+                                            <button onclick="app.clearToolResult('${this.escapeHtml(tool.name)}')" 
+                                                    style="background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; font-size: 12px;"
+                                                    title="Clear result">✕</button>
+                                        </div>
+                                    </div>
+                                    <div style="color: #cbd5e1; font-size: 11px; font-family: monospace; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.4;">
+                                        ${this.escapeHtml(this.toolResults[tool.name].output)}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        ${!this.expandedTools || !this.expandedTools[tool.name] ? `
+                            <button class="panel-btn" 
+                                    onclick="app.quickExpandTool('${this.escapeHtml(tool.name)}')"
+                                    style="width: 100%; background: #334155; padding: 8px; font-size: 12px;">
+                                ⚡ Quick Execute
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+            });
+        }
+        
+        container.innerHTML = cardsHtml;
+    };
+
+    VeraChat.prototype.updateActiveFiltersDisplay = function() {
+        // Find the parent of tool-cards-container
+        const container = document.getElementById('tool-cards-container');
+        if (!container || !container.parentElement) return;
+        
+        const searchBar = container.parentElement.querySelector('div[style*="border-top"]');
+        if (!searchBar) return;
+        
+        if (this.toolSearchQuery || (this.toolTypeFilter && this.toolTypeFilter !== 'all')) {
+            const filtersHtml = `
+                <span style="color: #94a3b8; font-size: 12px;">Active filters:</span>
+                ${this.toolSearchQuery ? `
+                    <span style=" color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                        Search: "${this.escapeHtml(this.toolSearchQuery)}"
+                        <button onclick="app.clearToolSearch()" style="background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: 14px;">✕</button>
+                    </span>
+                ` : ''}
+                ${this.toolTypeFilter && this.toolTypeFilter !== 'all' ? `
+                    <span style="background: #8b5cf6; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 6px;">
+                        Type: ${this.escapeHtml(this.toolTypeFilter)}
+                        <button onclick="app.setToolTypeFilter('all')" style="background: none; border: none; color: white; cursor: pointer; padding: 0; font-size: 14px;">✕</button>
+                    </span>
+                ` : ''}
+                <button onclick="app.clearAllToolFilters()" 
+                        class="panel-btn" 
+                        style="padding: 4px 10px; font-size: 11px; background: #64748b;">
+                    Clear All
+                </button>
+            `;
+            searchBar.innerHTML = filtersHtml;
+            searchBar.style.display = 'flex';
+        } else {
+            searchBar.style.display = 'none';
+        }
+    };
+
+    VeraChat.prototype.setupToolSearchListener = function() {
+        const searchInput = document.getElementById('tool-search');
+        if (!searchInput) return;
+        
+        searchInput.addEventListener('input', (e) => {
+            this.filterTools(e.target.value);
+        });
+        
+        // Prevent form submission
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+            }
+            if (e.key === 'Escape') {
+                this.clearToolSearch();
+            }
+        });
+    };
+
+    VeraChat.prototype.clearToolSearch = function() {
+        this.toolSearchQuery = '';
+        const searchInput = document.getElementById('tool-search');
+        if (searchInput) {
+            searchInput.value = '';
+        }
+        this.updateToolCardsOnly();
+    };
+
+    VeraChat.prototype.setToolTypeFilter = function(type) {
+        this.toolTypeFilter = type;
+        this.updateToolCardsOnly();
+    };
+
+    VeraChat.prototype.clearAllToolFilters = function() {
+        this.toolSearchQuery = '';
+        this.toolTypeFilter = 'all';
+        
+        const searchInput = document.getElementById('tool-search');
+        if (searchInput) searchInput.value = '';
+        
+        const typeFilter = document.getElementById('tool-type-filter');
+        if (typeFilter) typeFilter.value = 'all';
+        
+        this.updateToolCardsOnly();
+    };
+
+VeraChat.prototype.toggleToolExpand = function(toolName) {
+    if (!this.expandedTools) this.expandedTools = {};
+    this.expandedTools[toolName] = !this.expandedTools[toolName];
+    this.updateToolchainUI();
+    
+    // Load schema after render
+    if (this.expandedTools[toolName]) {
+        setTimeout(() => {
+            this.renderToolInputs(toolName);
+        }, 50);
+    }
+};
+
+VeraChat.prototype.quickExpandTool = function(toolName) {
+    if (!this.expandedTools) this.expandedTools = {};
+    this.expandedTools[toolName] = true;
+    this.updateToolchainUI();
+    
+    setTimeout(async () => {
+        await this.renderToolInputs(toolName);
+        // Focus first input
+        const firstInput = document.querySelector(`#tool-inputs-${toolName} input, #tool-inputs-${toolName} textarea`);
+        if (firstInput) firstInput.focus();
+    }, 50);
+};
+
+    VeraChat.prototype.toggleToolView = function() {
+        this.toolViewMode = this.toolViewMode === 'grid' ? 'list' : 'grid';
+        this.updateToolchainUI();
+    };
+
+    VeraChat.prototype.filterTools = function(query) {
+        this.toolSearchQuery = query;
+        this.updateToolCardsOnly();
+    };
+
+    VeraChat.prototype.clearToolInput = function(toolName) {
+        const input = document.getElementById(`tool-input-${toolName}`);
+        if (input) {
+            input.value = '';
+            input.focus();
+        }
+    };
+
+    VeraChat.prototype.clearToolResult = function(toolName) {
+        if (!this.toolResults) this.toolResults = {};
+        delete this.toolResults[toolName];
+        this.updateToolchainUI();
+    };
+ VeraChat.prototype.executeToolFromCard = async function(toolName) {
+    const schema = this.toolSchemas[toolName];
+    
+    if (!schema) {
+        alert('Tool schema not loaded');
+        return;
+    }
+    
+    // Collect all input values
+    const toolInput = {};
+    let hasError = false;
+    
+    for (const param of schema.parameters) {
+        const inputId = `tool-input-${toolName}-${param.name}`;
+        const input = document.getElementById(inputId);
+        
+        if (!input) continue;
+        
+        let value = input.value.trim();
+        
+        // Validate required fields
+        if (param.required && !value) {
+            alert(`Required field missing: ${param.name}`);
+            input.focus();
+            hasError = true;
+            break;
+        }
+        
+        // Type conversion
+        if (param.type === 'integer') {
+            value = parseInt(value, 10);
+            if (isNaN(value)) value = param.default || 0;
+        } else if (param.type === 'number') {
+            value = parseFloat(value);
+            if (isNaN(value)) value = param.default || 0;
+        } else if (param.type === 'boolean') {
+            value = value === 'true';
+        }
+        
+        // Only include if value is present or required
+        if (value !== '' || param.required) {
+            toolInput[param.name] = value;
+        }
+    }
+    
+    if (hasError) return;
+    
+    // Initialize tracking objects
+    if (!this.executingTools) this.executingTools = {};
+    if (!this.toolResults) this.toolResults = {};
+    
+    // Mark as executing
+    this.executingTools[toolName] = true;
+    delete this.toolResults[toolName];
+    this.updateToolchainUI();
+    
+    const startTime = Date.now();
+    
+    try {
+        // Convert toolInput to query params
+        const params = new URLSearchParams();
+        params.append('tool_name', toolName);
+        params.append('tool_input', JSON.stringify(toolInput));
+        
+        const response = await fetch(
+            `http://llm.int:8888/api/toolchain/${this.sessionId}/execute-tool?${params.toString()}`, 
+            {
+>>>>>>> dev-vera-ollama-fixed
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -26,7 +26,11 @@ import Vera.ChatUI.api.vectorstore_api as vectorstore_api
 import Vera.ChatUI.api.toolchain_api as toolchain_api
 import Vera.ChatUI.api.graph_api as graph_api
 import Vera.ChatUI.api.chat_api as chat_api
+<<<<<<< HEAD
 import Vera.ChatUI.api.orchestrator_api as orchestrator_api
+=======
+# import Vera.ChatUI.api.orchestrator_api as orchestrator_api
+>>>>>>> dev-vera-ollama-fixed
 import Vera.ChatUI.api.memory_api as memory_api
 import Vera.ChatUI.api.proactivefocus_api as proactivefocus_api
 import Vera.ChatUI.api.notebook_api as notebook_api
@@ -70,7 +74,11 @@ app.include_router(chat_api.wsrouter)
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
 app.include_router(toolchain_api.wsrouter)
+<<<<<<< HEAD
 app.include_router(orchestrator_api.router)
+=======
+# app.include_router(orchestrator_api.router)
+>>>>>>> dev-vera-ollama-fixed
 app.include_router(vectorstore_api.router)
 app.include_router(memory_api.router)
 app.include_router(proactivefocus_api.router)

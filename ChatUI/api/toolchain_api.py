@@ -30,6 +30,54 @@ wsrouter = APIRouter(prefix="/ws/toolchain", tags=["wstoolchain"])
 # ============================================================
 # Toolchain Endpoints
 # ============================================================
+<<<<<<< HEAD
+=======
+@router.get("/{session_id}/tool/{tool_name}/schema")
+async def get_tool_schema(session_id: str, tool_name: str):
+    """Get the input schema for a specific tool."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    # Find the tool
+    tool = next((t for t in vera.tools if t.name == tool_name), None)
+    
+    if not tool:
+        raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
+    
+    # Extract schema information
+    schema_info = {
+        "name": tool.name,
+        "description": tool.description if hasattr(tool, "description") else "",
+        "parameters": []
+    }
+    
+    # Get args_schema if available
+    if hasattr(tool, "args_schema") and tool.args_schema:
+        schema = tool.args_schema.schema()
+        
+        for field_name, field_info in schema.get("properties", {}).items():
+            param = {
+                "name": field_name,
+                "type": field_info.get("type", "string"),
+                "description": field_info.get("description", ""),
+                "required": field_name in schema.get("required", []),
+                "default": field_info.get("default")
+            }
+            schema_info["parameters"].append(param)
+    else:
+        # Fallback for tools without schema - single input field
+        schema_info["parameters"] = [{
+            "name": "input",
+            "type": "string",
+            "description": "Tool input",
+            "required": True,
+            "default": None
+        }]
+    
+    return schema_info
+>>>>>>> dev-vera-ollama-fixed
 def create_toolchain_execution(session_id: str, query: str) -> str:
     """Create a new toolchain execution record."""
     execution_id = str(uuid.uuid4())
@@ -342,33 +390,60 @@ async def execute_single_tool(session_id: str, tool_name: str, tool_input: str):
     vera = get_or_create_vera(session_id)
     
     try:
-        # Find the tool
         tool = next((t for t in vera.tools if t.name == tool_name), None)
         
         if not tool:
             raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
         
-        # Execute the tool
         start_time = datetime.utcnow()
         
-        if hasattr(tool, "run") and callable(tool.run):
-            func = tool.run
-        elif hasattr(tool, "func") and callable(tool.func):
-            func = tool.func
-        elif callable(tool):
-            func = tool
-        else:
-            raise ValueError(f"Tool is not callable")
+        # Parse tool_input as JSON if it looks like JSON
+        try:
+            input_data = json.loads(tool_input)
+        except (json.JSONDecodeError, TypeError):
+            # Fallback to string input for simple tools
+            input_data = tool_input
         
-        # Collect output
+        # Execute using LangChain's tool.run() method with proper format
         output = ""
         try:
-            # Try generator first
-            for chunk in func(tool_input):
-                output += str(chunk)
-        except TypeError:
-            # Not a generator, call directly
-            output = str(func(tool_input))
+            # LangChain StructuredTool expects either:
+            # 1. A dict matching the args_schema
+            # 2. A single string (will be converted to dict with single key)
+            
+            if isinstance(input_data, dict):
+                # Use run() with dict - LangChain will handle validation
+                result = tool.run(input_data)
+            else:
+                # For simple string input
+                result = tool.run(input_data)
+            
+            # Handle generator vs direct return
+            if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
+                for chunk in result:
+                    output += str(chunk)
+            else:
+                output = str(result)
+                
+        except Exception as e:
+            # If tool.run() fails, try the underlying function directly
+            logger.warning(f"tool.run() failed, trying direct function call: {e}")
+            
+            if hasattr(tool, "func") and callable(tool.func):
+                func = tool.func
+                
+                if isinstance(input_data, dict):
+                    result = func(**input_data)
+                else:
+                    result = func(input_data)
+                
+                if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
+                    for chunk in result:
+                        output += str(chunk)
+                else:
+                    output = str(result)
+            else:
+                raise
         
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds() * 1000
@@ -385,7 +460,7 @@ async def execute_single_tool(session_id: str, tool_name: str, tool_input: str):
     except Exception as e:
         logger.error(f"Tool execution error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-    
+        
 @router.post("/execute")
 async def execute_toolchain(request: ToolchainRequest):
     """Execute a toolchain with full monitoring."""
