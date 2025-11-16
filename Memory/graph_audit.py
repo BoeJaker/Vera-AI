@@ -8,7 +8,7 @@ import sys
 class Neo4jGraphAuditor:
     def __init__(self, uri, user, password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
-        self.resolutions_file = "graph_audit_resolutions.json"
+        self.resolutions_file = "Output/graph_audit_resolutions.json"
         self.resolutions = self.load_resolutions()
     
     def close(self):
@@ -519,7 +519,7 @@ class Neo4jGraphAuditor:
         except:
             return []
     
-    def generate_audit_report(self, output_file="graph_audit_report.json"):
+    def generate_audit_report(self, output_file="Output/graph_audit_report.json"):
         """Generate a comprehensive audit report"""
         print("Generating audit report...")
         
@@ -869,7 +869,7 @@ if __name__ == "__main__":
         if response in ['y', 'yes']:
             auditor.interactive_resolution()
         
-        print(f"\n✓ Audit completed! Report saved to graph_audit_report.json")
+        print(f"\n✓ Audit completed! Report saved to Output/graph_audit_report.json")
         print(f"✓ Resolutions saved to {auditor.resolutions_file}")
         
     except Exception as e:

@@ -1757,8 +1757,8 @@ class WebCrawlerTools:
             
             # Initialize with integration to agent's memory system
             self.config = WebCrawlerConfig(
-                chroma_path="./crawl_memory_chroma",
-                html_storage_path="./saved_html",
+                chroma_path="./Memory/crawl_memory_chroma",
+                html_storage_path="./Output/saved_html",
                 tech_configs_folder="tech_configs",
                 summarize_model="gemma2",
                 tool_model="gemma3:12b"
@@ -2406,7 +2406,7 @@ def ToolLoader(agent):
     add_n8n_tools(tool_list, agent)
 
     # Add Web Crawler tools
-    add_web_crawler_tools(tool_list, agent)
+    # add_web_crawler_tools(tool_list, agent)
 
     # Add Babelfish tools
     # add_babelfish_tools(tool_list, agent)

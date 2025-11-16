@@ -20,7 +20,7 @@ class ProactiveFocusManager:
         hybrid_memory=None,
         proactive_interval: int = 60*10,
         cpu_threshold: float = 70.0,
-        focus_boards_dir: str = "./Configuration/focus_boards",
+        focus_boards_dir: str = "./Ouput/projects/focus_boards",
         auto_restore: bool = True
     ):
         self.agent = agent

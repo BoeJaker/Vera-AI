@@ -209,10 +209,9 @@ class OllamaConnectionManager:
                 model=model,
                 **kwargs
             )
-
-# --- Ollama API Wrapper ---
+# --- Ollama API Wrapper with Thought Support ---
 class OllamaAPIWrapper(LLM):
-    """Wrapper for Ollama API calls with fallback to local"""
+    """Wrapper for Ollama API calls with fallback to local and thought output support"""
     
     model: str
     temperature: float = 0.7
@@ -244,7 +243,15 @@ class OllamaAPIWrapper(LLM):
             )
             
             if response.status_code == 200:
-                return response.json().get("response", "")
+                response_data = response.json()
+                
+                # Output thought if available (for models like gpt-oss)
+                if "thought" in response_data and response_data["thought"]:
+                    thought = response_data["thought"]
+                    print(f"\n[Thought] {thought}\n", flush=True)
+                    sys.stdout.flush()
+                
+                return response_data.get("response", "")
             else:
                 print(f"[Ollama API] Request failed with status {response.status_code}, falling back to local")
                 return self._fallback_call(prompt, stop, run_manager, **kwargs)
@@ -279,24 +286,50 @@ class OllamaAPIWrapper(LLM):
             if response.status_code == 200:
                 print(f"[Ollama API] Stream connected, receiving data...")
                 chunk_count = 0
+                thought_buffer = []  # Buffer to collect thought chunks
+                
                 for line in response.iter_lines():
                     if line:
-                        # print(f"[DEBUG] Line: {line.decode('utf-8')}", flush=True)
                         try:
                             json_response = json.loads(line)
+                            
+                            # Handle thought content (for models like gpt-oss)
+                            if "thought" in json_response:
+                                thought_chunk = json_response["thought"]
+                                if thought_chunk:
+                                    thought_buffer.append(thought_chunk)
+                                    # Print thought in real-time
+                                    if not thought_buffer[:-1]:  # First chunk
+                                        sys.stdout.write("\n[Thought] ")
+                                    sys.stdout.write(thought_chunk)
+                                    sys.stdout.flush()
+                            
+                            # Handle response content
                             if "response" in json_response:
+                                # If we just finished outputting thought, add newline
+                                if thought_buffer:
+                                    sys.stdout.write("\n\n")
+                                    sys.stdout.flush()
+                                    thought_buffer = []  # Clear buffer
+                                
                                 chunk_text = json_response["response"]
                                 if chunk_text:  # Only yield non-empty chunks
                                     chunk_count += 1
-                                    # print(f"[DEBUG] Chunk {chunk_count}: '{chunk_text}'", flush=True)
                                     # Create a GenerationChunk object like LangChain expects
                                     chunk = GenerationChunk(text=chunk_text)
                                     if run_manager:
                                         run_manager.on_llm_new_token(chunk_text)
                                     yield chunk
+                                    
                         except json.JSONDecodeError as e:
                             print(f"[Ollama API] JSON decode error: {e}")
                             continue
+                            
+                # Final newline if we ended on thought
+                if thought_buffer:
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    
                 print(f"[Ollama API] Stream completed, yielded {chunk_count} chunks")
             else:
                 print(f"[Ollama API] Stream failed with status {response.status_code}, falling back to local")
@@ -348,7 +381,6 @@ class OllamaAPIWrapper(LLM):
     async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
         """Async call - falls back to sync for now"""
         return self._call(prompt, stop, **kwargs)
-
 
 # --- Model Selection ---
 def choose_models_from_installed(ollama_manager: OllamaConnectionManager, MODEL_CONFIG_FILE: str = MODEL_CONFIG_FILE):

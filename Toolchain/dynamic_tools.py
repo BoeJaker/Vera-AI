@@ -286,61 +286,60 @@ class DynamicToolLoader:
         
         return functions
     
-    def auto_load_decorated_tools(self, pattern: str = "*.py") -> List[StructuredTool]:
-        """
-        Automatically load all tools decorated with @tool from the tools directory.
-        
-        Args:
-            pattern: File pattern to search for
-        
-        Returns:
-            List of StructuredTool instances
-        """
-        tool_files = self.discover_tools(pattern)
-        loaded_tools = []
-        
-        for module_name in tool_files:
-            try:
-                # Load the module (which will trigger decorator registration)
-                self.load_tool_module(module_name)
-            except Exception as e:
-                print(f"[Warning] Failed to load tool module '{module_name}': {e}")
-                continue
-        
-        # Convert registered tools to StructuredTool instances
-        for tool_name, tool_info in ToolRegistry.list_tools():
-            try:
-                func = tool_info["function"]
-                
-                # Wrap function to inject agent
-                @wraps(func)
-                def wrapped_func(*args, agent=self.agent, **kwargs):
-                    return func(agent, *args, **kwargs)
-                
-                # Create StructuredTool
-                if tool_info["schema"]:
-                    structured_tool = StructuredTool.from_function(
-                        func=wrapped_func,
-                        name=tool_name,
-                        description=tool_info["description"],
-                        args_schema=tool_info["schema"]
-                    )
-                else:
-                    structured_tool = StructuredTool.from_function(
-                        func=wrapped_func,
-                        name=tool_name,
-                        description=tool_info["description"]
-                    )
-                
-                loaded_tools.append(structured_tool)
-                
-            except Exception as e:
-                print(f"[Warning] Failed to create tool '{tool_name}': {e}")
-                continue
-        
-        return loaded_tools
-
-
+def auto_load_decorated_tools(self, pattern: str = "*.py") -> List[StructuredTool]:
+    """
+    Automatically load all tools decorated with @tool from the tools directory.
+    
+    Args:
+        pattern: File pattern to search for
+    
+    Returns:
+        List of StructuredTool instances
+    """
+    tool_files = self.discover_tools(pattern)
+    loaded_tools = []
+    
+    for module_name in tool_files:
+        try:
+            # Load the module (which will trigger decorator registration)
+            self.load_tool_module(module_name)
+        except Exception as e:
+            print(f"[Warning] Failed to load tool module '{module_name}': {e}")
+            continue
+    
+    # Convert registered tools to StructuredTool instances
+    # FIX: Iterate over the registry items directly, not list_tools()
+    for tool_name, tool_info in ToolRegistry._tools.items():  # FIXED
+        try:
+            func = tool_info["function"]
+            
+            # Wrap function to inject agent
+            @wraps(func)
+            def wrapped_func(*args, agent=self.agent, **kwargs):
+                return func(agent, *args, **kwargs)
+            
+            # Create StructuredTool
+            if tool_info["schema"]:
+                structured_tool = StructuredTool.from_function(
+                    func=wrapped_func,
+                    name=tool_name,
+                    description=tool_info["description"],
+                    args_schema=tool_info["schema"]
+                )
+            else:
+                structured_tool = StructuredTool.from_function(
+                    func=wrapped_func,
+                    name=tool_name,
+                    description=tool_info["description"]
+                )
+            
+            loaded_tools.append(structured_tool)
+            
+        except Exception as e:
+            print(f"[Warning] Failed to create tool '{tool_name}': {e}")
+            continue
+    
+    return loaded_tools
 # ============================================================================
 # DYNAMIC TOOLS CLASS (follows same pattern as other tools)
 # ============================================================================

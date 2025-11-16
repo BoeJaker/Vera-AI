@@ -24,8 +24,8 @@ class WebCrawlerConfig:
     """Centralized configuration for the web crawler system."""
     
     def __init__(self, 
-                 chroma_path: str = "./crawl_memory_chroma",
-                 html_storage_path: str = "./saved_html",
+                 chroma_path: str = "./Memory/crawl_memory_chroma",
+                 html_storage_path: str = "./Output/saved_html",
                  tech_configs_folder: str = "tech_configs",
                  summarize_model: str = "gemma2",
                  tool_model: str = "gemma3:12b"):
@@ -602,8 +602,8 @@ class WebCrawlerToolkit:
         return "\n".join(descriptions)
 
 # Convenience function for easy initialization
-def create_web_crawler_tools(chroma_path: str = "./crawl_memory_chroma",
-                           html_storage_path: str = "./saved_html",
+def create_web_crawler_tools(chroma_path: str = "./Memory/crawl_memory_chroma",
+                           html_storage_path: str = "./Output/saved_html",
                            tech_configs_folder: str = "tech_configs") -> List[BaseTool]:
     """Create and return web crawler tools with custom configuration."""
     config = WebCrawlerConfig(
