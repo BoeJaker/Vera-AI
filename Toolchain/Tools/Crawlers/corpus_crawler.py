@@ -12,7 +12,7 @@ import json
 import re
 from langchain_community.llms import Ollama
 from langchain.tools import BaseTool
-from langchain.callbacks.manager import CallbackManagerForToolUse
+from langchain_core.callbacks import CallbackManager
 from langchain_core.pydantic_v1 import BaseModel, Field
 from typing import Optional, Type, List, Dict, Any, Tuple
 import argparse
@@ -424,8 +424,8 @@ class NavigateWebInput(BaseModel):
 class CrawlWebsiteTool(BaseTool):
     """LangChain tool for crawling websites."""
     
-    name = "crawl_website"
-    description = (
+    name: str = "crawl_website"
+    description: str =  (
         "Crawl a website and store its content in memory. "
         "Extracts text, detects technologies, generates summaries, and enables future retrieval. "
         "Supports both live crawling and Common Crawl fallback."
@@ -438,7 +438,7 @@ class CrawlWebsiteTool(BaseTool):
         self.crawler = WebCrawler(config)
     
     def _run(self, url: str, max_depth: int = 2, use_hybrid: bool = True, 
-             run_manager: Optional[CallbackManagerForToolUse] = None) -> str:
+             run_manager: Optional[CallbackManager] = None) -> str:
         """Execute the crawling operation."""
         try:
             if use_hybrid:
@@ -475,8 +475,8 @@ class CrawlWebsiteTool(BaseTool):
 class QueryMemoryTool(BaseTool):
     """LangChain tool for querying crawled content from memory."""
     
-    name = "query_memory"
-    description = (
+    name: str = "query_memory"
+    description: str = (
         "Query previously crawled website content from memory. "
         "Returns relevant summaries and metadata based on semantic similarity. "
         "Useful for finding specific information across crawled sites."
@@ -489,7 +489,7 @@ class QueryMemoryTool(BaseTool):
         self.memory_manager = MemoryManager(config)
     
     def _run(self, query: str, n_results: int = 5, min_score: float = 0.3,
-             run_manager: Optional[CallbackManagerForToolUse] = None) -> str:
+             run_manager: Optional[CallbackManager] = None) -> str:
         """Execute memory query."""
         try:
             hits = self.memory_manager.recall_from_memory(query, n_results, min_score)
@@ -515,8 +515,8 @@ class QueryMemoryTool(BaseTool):
 class NavigateWebTool(BaseTool):
     """LangChain tool for intelligent web navigation with context awareness."""
     
-    name = "navigate_web"
-    description = (
+    name: str = "navigate_web"
+    description: str = (
         "Navigate the web intelligently based on instructions. "
         "Automatically ensures sufficient context by crawling if needed. "
         "Can answer questions about web content, find specific information, "
@@ -531,7 +531,7 @@ class NavigateWebTool(BaseTool):
         self.crawler = WebCrawler(config)
     
     def _run(self, instruction: str, target_url: str = "", ensure_context: bool = True,
-             run_manager: Optional[CallbackManagerForToolUse] = None) -> str:
+             run_manager: Optional[CallbackManager] = None) -> str:
         """Execute web navigation instruction."""
         try:
             # Extract URLs from instruction if target_url not provided

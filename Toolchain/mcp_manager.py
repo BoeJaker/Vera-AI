@@ -1,17 +1,81 @@
 """
-MCP Docker Server Management Tools
-Enables LLM to create and manage MCP servers in Docker containers for various purposes
-Add this section to your existing tools.py file
+MCP Docker Server Management Tools - Complete with Enhanced Error Handling
 """
 
 import docker
 import json
 import time
 import subprocess
+import os
+import traceback
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool, StructuredTool
 from Vera.Toolchain.schemas import *
+
+# ============================================================================
+# DOCKER AVAILABILITY CHECKER
+# ============================================================================
+
+def check_docker_availability() -> Dict[str, Any]:
+    """
+    Comprehensive Docker availability check with diagnostics.
+    
+    Returns:
+        Dict with 'available', 'error', and 'suggestions' keys
+    """
+    result = {
+        "available": False,
+        "error": None,
+        "suggestions": []
+    }
+    
+    # Check if docker library is installed
+    try:
+        import docker
+    except ImportError:
+        result["error"] = "Docker Python library not installed"
+        result["suggestions"] = [
+            "Install with: pip install docker",
+            "Or: pip install -r requirements.txt"
+        ]
+        return result
+    
+    # Check if Docker daemon is running
+    try:
+        client = docker.from_env()
+        client.ping()
+        result["available"] = True
+        result["docker_version"] = client.version()
+        return result
+    
+    except docker.errors.DockerException as e:
+        result["error"] = f"Docker daemon error: {str(e)}"
+        result["suggestions"] = [
+            "Start Docker daemon: sudo systemctl start docker",
+            "Or on Mac/Windows: Start Docker Desktop",
+            "Check if Docker is running: docker ps"
+        ]
+        return result
+    
+    except PermissionError:
+        result["error"] = "Permission denied accessing Docker"
+        result["suggestions"] = [
+            "Add user to docker group: sudo usermod -aG docker $USER",
+            "Then logout and login again",
+            "Or run with sudo (not recommended)"
+        ]
+        return result
+    
+    except Exception as e:
+        result["error"] = f"Unknown error: {str(e)}"
+        result["suggestions"] = [
+            "Check if Docker is installed: docker --version",
+            "Check if Docker daemon is running: docker ps",
+            "Check Docker socket: ls -la /var/run/docker.sock"
+        ]
+        return result
+
 
 # ============================================================================
 # INPUT SCHEMAS
@@ -211,7 +275,7 @@ CMD ["mcp-server-fetch"]
 
 
 # ============================================================================
-# MCP DOCKER MANAGER
+# COMPLETE MCP DOCKER MANAGER
 # ============================================================================
 
 class MCPDockerManager:
@@ -220,13 +284,24 @@ class MCPDockerManager:
     def __init__(self, agent):
         self.agent = agent
         
-        try:
-            self.docker_client = docker.from_env()
-            self.available = True
-        except Exception as e:
-            print(f"[Warning] Docker not available: {e}")
-            self.docker_client = None
-            self.available = False
+        # Check Docker availability with diagnostics
+        docker_check = check_docker_availability()
+        
+        if docker_check["available"]:
+            try:
+                self.docker_client = docker.from_env()
+                self.available = True
+                self.docker_version = docker_check.get("docker_version", {})
+                print(f"[Info] Docker connected successfully (version: {self.docker_version.get('Version', 'unknown')})")
+            except Exception as e:
+                self._handle_docker_unavailable(str(e), [])
+                return
+        else:
+            self._handle_docker_unavailable(
+                docker_check["error"], 
+                docker_check["suggestions"]
+            )
+            return
         
         # Track created servers
         self.servers: Dict[str, Dict[str, Any]] = {}
@@ -235,6 +310,20 @@ class MCPDockerManager:
         self.network_name = "mcp-network"
         self._ensure_network()
     
+    def _handle_docker_unavailable(self, error: str, suggestions: List[str]):
+        """Handle Docker unavailability with helpful messages."""
+        self.docker_client = None
+        self.available = False
+        
+        print("\n" + "="*60)
+        print("⚠️  DOCKER NOT AVAILABLE")
+        print("="*60)
+        print(f"Error: {error}")
+        print("\nTroubleshooting steps:")
+        for i, suggestion in enumerate(suggestions, 1):
+            print(f"{i}. {suggestion}")
+        print("="*60 + "\n")
+    
     def _ensure_network(self):
         """Ensure MCP Docker network exists."""
         if not self.available:
@@ -242,12 +331,16 @@ class MCPDockerManager:
         
         try:
             self.docker_client.networks.get(self.network_name)
+            print(f"[Info] Using existing Docker network: {self.network_name}")
         except docker.errors.NotFound:
-            self.docker_client.networks.create(
-                self.network_name,
-                driver="bridge"
-            )
-            print(f"[Created Docker network: {self.network_name}]")
+            try:
+                self.docker_client.networks.create(
+                    self.network_name,
+                    driver="bridge"
+                )
+                print(f"[Info] Created Docker network: {self.network_name}")
+            except Exception as e:
+                print(f"[Warning] Failed to create network: {e}")
     
     def _build_or_get_image(self, server_type: str, config: Dict[str, Any]) -> str:
         """Build or retrieve Docker image for MCP server."""
@@ -265,13 +358,14 @@ class MCPDockerManager:
         # Check if image exists
         try:
             self.docker_client.images.get(image_name)
+            print(f"[Info] Using existing image: {image_name}")
             return image_name
         except docker.errors.ImageNotFound:
             pass
         
         # Build image from Dockerfile
         if template["dockerfile"]:
-            print(f"[Building MCP server image: {image_name}]")
+            print(f"[Info] Building MCP server image: {image_name}")
             
             import tempfile
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -279,22 +373,31 @@ class MCPDockerManager:
                 with open(dockerfile_path, 'w') as f:
                     f.write(template["dockerfile"])
                 
-                image, logs = self.docker_client.images.build(
-                    path=tmpdir,
-                    tag=image_name,
-                    rm=True
-                )
+                try:
+                    image, logs = self.docker_client.images.build(
+                        path=tmpdir,
+                        tag=image_name,
+                        rm=True
+                    )
+                    
+                    for log in logs:
+                        if 'stream' in log:
+                            print(log['stream'].strip())
+                    
+                    print(f"[Success] Built image: {image_name}")
+                    return image_name
                 
-                for log in logs:
-                    if 'stream' in log:
-                        print(log['stream'].strip())
-            
-            return image_name
+                except docker.errors.BuildError as e:
+                    raise RuntimeError(f"Failed to build image: {str(e)}")
         
         # Try to pull image
-        print(f"[Pulling MCP server image: {image_name}]")
-        self.docker_client.images.pull(image_name)
-        return image_name
+        print(f"[Info] Pulling MCP server image: {image_name}")
+        try:
+            self.docker_client.images.pull(image_name)
+            print(f"[Success] Pulled image: {image_name}")
+            return image_name
+        except Exception as e:
+            raise RuntimeError(f"Failed to pull image: {str(e)}")
     
     def _prepare_environment(self, server_type: str, config: Dict[str, Any]) -> Dict[str, str]:
         """Prepare environment variables for container."""
@@ -327,7 +430,9 @@ class MCPDockerManager:
             Server information dictionary
         """
         if not self.available:
-            raise RuntimeError("Docker not available")
+            raise RuntimeError(
+                "Docker not available. Please check Docker installation and daemon status."
+            )
         
         # Validate configuration
         template = MCP_SERVER_TEMPLATES.get(server_type)
@@ -373,18 +478,28 @@ class MCPDockerManager:
         # Create container
         ports = config.get("ports", {"3000/tcp": None})
         
-        container = self.docker_client.containers.run(
-            image=image_name,
-            name=container_name,
-            environment=env_vars,
-            volumes=volumes,
-            ports=ports,
-            network=self.network_name,
-            detach=True,
-            restart_policy={"Name": "unless-stopped"}
-        )
+        print(f"[Info] Creating container: {container_name}")
+        
+        try:
+            container = self.docker_client.containers.run(
+                image=image_name,
+                name=container_name,
+                environment=env_vars,
+                volumes=volumes,
+                ports=ports,
+                network=self.network_name,
+                detach=True,
+                restart_policy={"Name": "unless-stopped"}
+            )
+        except docker.errors.ContainerError as e:
+            raise RuntimeError(f"Container failed to start: {str(e)}")
+        except docker.errors.ImageNotFound as e:
+            raise RuntimeError(f"Image not found: {str(e)}")
+        except docker.errors.APIError as e:
+            raise RuntimeError(f"Docker API error: {str(e)}")
         
         # Wait for container to start
+        print("[Info] Waiting for container to start...")
         time.sleep(2)
         container.reload()
         
@@ -419,6 +534,8 @@ class MCPDockerManager:
                 "status": "created"
             }
         )
+        
+        print(f"[Success] Server '{server_name}' created successfully")
         
         return server_info
     
@@ -565,7 +682,7 @@ class MCPDockerManager:
 
 
 # ============================================================================
-# MCP DOCKER TOOLS CLASS
+# COMPLETE MCP DOCKER TOOLS CLASS
 # ============================================================================
 
 class MCPDockerTools:
@@ -574,6 +691,50 @@ class MCPDockerTools:
     def __init__(self, agent):
         self.agent = agent
         self.manager = MCPDockerManager(agent)
+    
+    def check_docker_status(self) -> str:
+        """
+        Check Docker availability and provide diagnostics.
+        
+        Returns detailed information about Docker installation,
+        running status, and troubleshooting steps if needed.
+        """
+        docker_check = check_docker_availability()
+        
+        if docker_check["available"]:
+            version = docker_check.get("docker_version", {})
+            output = [
+                "✓ Docker is available and running",
+                f"Version: {version.get('Version', 'unknown')}",
+                f"API Version: {version.get('ApiVersion', 'unknown')}",
+                f"OS/Arch: {version.get('Os', 'unknown')}/{version.get('Arch', 'unknown')}",
+            ]
+            
+            # Test creating a simple container
+            try:
+                client = docker.from_env()
+                # Try to run a hello-world container
+                result = client.containers.run(
+                    "hello-world",
+                    remove=True,
+                    detach=False
+                )
+                output.append("\n✓ Docker container test: SUCCESS")
+            except Exception as e:
+                output.append(f"\n⚠ Docker container test failed: {str(e)}")
+            
+            return "\n".join(output)
+        else:
+            output = [
+                "✗ Docker is NOT available",
+                f"Error: {docker_check['error']}",
+                "\nTroubleshooting steps:"
+            ]
+            
+            for i, suggestion in enumerate(docker_check['suggestions'], 1):
+                output.append(f"{i}. {suggestion}")
+            
+            return "\n".join(output)
     
     def create_mcp_server(self, server_type: str, server_name: str,
                          config: Dict[str, Any], auto_connect: bool = True) -> str:
@@ -611,25 +772,16 @@ class MCPDockerTools:
         
         - custom: Custom MCP server
           Config: {image: "custom/image:tag", command: ["cmd"], environment: {...}}
-        
-        Examples:
-            # Create filesystem server
-            create_mcp_server(
-                server_type="filesystem",
-                server_name="project_files",
-                config={"allowed_directories": ["/home/user/projects"]},
-                auto_connect=True
-            )
-            
-            # Create GitHub server
-            create_mcp_server(
-                server_type="github",
-                server_name="my_github",
-                config={"github_token": "ghp_xxx", "github_owner": "myusername"}
-            )
         """
         if not self.manager.available:
-            return "[Error] Docker not available. Please install Docker."
+            return (
+                "[Error] Docker not available\n"
+                "Run check_docker_status for diagnostics\n\n"
+                "Quick fixes:\n"
+                "1. Start Docker: sudo systemctl start docker\n"
+                "2. Install Docker: https://docs.docker.com/get-docker/\n"
+                "3. Add user to docker group: sudo usermod -aG docker $USER"
+            )
         
         try:
             result = self.manager.create_server(server_type, server_name, config)
@@ -644,24 +796,13 @@ class MCPDockerTools:
             if result.get('host_port'):
                 output.append(f"Port: {result['host_port']}")
             
-            # Auto-connect if requested
-            if auto_connect and MCP_AVAILABLE:
-                try:
-                    # Get connection details
-                    port = result.get('host_port', '3000')
-                    
-                    # Connect via existing MCP manager
-                    # This assumes you have mcp_manager in your LLMTools
-                    # You'll need to add connection logic here
-                    output.append(f"\n[Auto-connecting to server...]")
-                    output.append(f"Use mcp_call_tool to interact with this server")
-                except Exception as e:
-                    output.append(f"\n[Warning] Auto-connect failed: {e}")
+            if auto_connect:
+                output.append(f"\n[Info] Use mcp_call_tool to interact with this server")
             
             return "\n".join(output)
             
         except Exception as e:
-            return f"[Error] Failed to create server: {str(e)}"
+            return f"[Error] Failed to create server: {str(e)}\n{traceback.format_exc()}"
     
     def control_mcp_server(self, server_name: str, action: str) -> str:
         """
@@ -672,9 +813,6 @@ class MCPDockerTools:
         - stop: Stop a running server
         - restart: Restart a server
         - remove: Stop and remove a server permanently
-        
-        Example:
-            control_mcp_server(server_name="project_files", action="restart")
         """
         if not self.manager.available:
             return "[Error] Docker not available"
@@ -723,10 +861,6 @@ class MCPDockerTools:
         Get logs from an MCP server.
         
         Useful for debugging server issues or monitoring activity.
-        
-        Args:
-            server_name: Name of the server
-            tail: Number of recent log lines to show (default: 100)
         """
         if not self.manager.available:
             return "[Error] Docker not available"
@@ -764,23 +898,31 @@ class MCPDockerTools:
 
 def add_mcp_docker_tools(tool_list: List, agent):
     """
-    Add MCP Docker management tools to the tool list.
+    Add MCP Docker management tools with enhanced error handling.
     
-    Enables LLM to create and manage MCP servers in Docker containers
-    for various purposes (file access, databases, APIs, etc.)
-    
-    Call this in your ToolLoader function:
-        tool_list = ToolLoader(agent)
-        add_mcp_docker_tools(tool_list, agent)
-        return tool_list
+    Enables LLM to create and manage MCP servers in Docker containers.
     """
     
     mcp_docker = MCPDockerTools(agent)
     
+    # Always add the status check tool
+    tool_list.append(
+        StructuredTool.from_function(
+            func=mcp_docker.check_docker_status,
+            name="check_docker_status",
+            description=(
+                "Check if Docker is installed and running. "
+                "Provides diagnostics and troubleshooting steps if Docker is unavailable."
+            ),
+        )
+    )
+    
     if not mcp_docker.manager.available:
-        print("[Info] MCP Docker tools not loaded - Docker not available")
+        print("[Info] MCP Docker tools not fully loaded - Docker not available")
+        print("[Info] Use check_docker_status tool for diagnostics")
         return tool_list
     
+    # Add full toolset if Docker is available
     tool_list.extend([
         StructuredTool.from_function(
             func=mcp_docker.create_mcp_server,
@@ -788,8 +930,7 @@ def add_mcp_docker_tools(tool_list: List, agent):
             description=(
                 "Create a new MCP server in Docker for specific purposes. "
                 "Available types: filesystem, postgres, github, slack, sqlite, "
-                "memory, puppeteer, time, fetch, custom. "
-                "Each server provides specialized tools for different tasks."
+                "memory, puppeteer, time, fetch, custom."
             ),
             args_schema=MCPServerCreateInput
         ),
@@ -797,45 +938,29 @@ def add_mcp_docker_tools(tool_list: List, agent):
         StructuredTool.from_function(
             func=mcp_docker.control_mcp_server,
             name="control_mcp_server",
-            description=(
-                "Control MCP servers: start, stop, restart, or remove. "
-                "Use to manage server lifecycle and resources."
-            ),
+            description="Control MCP servers: start, stop, restart, or remove.",
             args_schema=MCPServerControlInput
         ),
         
         StructuredTool.from_function(
             func=mcp_docker.list_mcp_servers,
             name="list_mcp_servers",
-            description=(
-                "List all MCP servers with their status and details. "
-                "Filter by running, stopped, or all servers."
-            ),
+            description="List all MCP servers with their status and details.",
             args_schema=MCPServerListInput
         ),
         
         StructuredTool.from_function(
             func=mcp_docker.get_mcp_server_logs,
             name="get_mcp_server_logs",
-            description=(
-                "View logs from an MCP server for debugging and monitoring. "
-                "Shows recent activity and error messages."
-            ),
+            description="View logs from an MCP server for debugging.",
             args_schema=MCPServerLogsInput
         ),
         
         StructuredTool.from_function(
             func=mcp_docker.get_server_templates,
             name="list_mcp_templates",
-            description=(
-                "Get information about available MCP server types and their "
-                "required configuration. Use before creating servers."
-            ),
+            description="Get information about available MCP server types.",
         ),
     ])
     
     return tool_list
-
-
-# Required dependencies (add to requirements.txt):
-# docker>=7.0.0

@@ -1743,8 +1743,8 @@ Add this section to your existing tools.py file
 # ============================================================================
 # WEB CRAWLER TOOLS CLASS
 # ============================================================================
-# from Vera.Toolchain.Tools.Crawlers.corpus_crawler import WebCrawlerConfig, WebCrawlerToolkit
-# from Vera.Toolchain.Tools.Crawlers.corpus_crawler import WebPageProcessor
+from Vera.Toolchain.Tools.Crawlers.corpus_crawler import WebCrawlerConfig, WebCrawlerToolkit
+from Vera.Toolchain.Tools.Crawlers.corpus_crawler import WebPageProcessor
 
 class WebCrawlerTools:
     """Advanced web crawling with memory, technology detection, and Common Crawl fallback."""
@@ -2409,7 +2409,7 @@ def ToolLoader(agent):
     # add_web_crawler_tools(tool_list, agent)
 
     # Add Babelfish tools
-    # add_babelfish_tools(tool_list, agent)
+    add_babelfish_tools(tool_list, agent)
 
 
 

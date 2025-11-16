@@ -8,7 +8,10 @@
     // Initialize Modern Features
     // =====================================================================
     
+     
     VeraChat.prototype.initModernFeatures = function() {
+        console.log('🎨 Initializing Modern Features...');
+        
         this.canvasAutoFocus = localStorage.getItem('canvas-auto-focus') !== 'false';
         this.ttsEnabled = localStorage.getItem('tts-enabled') === 'true';
         this.sttActive = false;
@@ -53,12 +56,15 @@
         // Ensure tools are loaded
         this.ensureToolsLoaded();
         
-        this.addControlBar();
+        // Add control bar
+        setTimeout(() => {
+            this.addControlBar();
+        }, 100);
     };
     
     VeraChat.prototype.ensureToolsLoaded = async function() {
         if (this.availableTools && Object.keys(this.availableTools).length > 0) {
-            return; // Already loaded
+            return;
         }
         
         if (this.sessionId && typeof this.loadAvailableTools === 'function') {
@@ -597,42 +603,58 @@
     // =====================================================================
     // Auto-Canvas Streaming
     // =====================================================================
-    
+        
     VeraChat.prototype.checkAndAutoRenderCanvas = function(message) {
         if (!this.canvasAutoFocus) return;
         
         const content = message.content;
+        
+        // Check for code blocks first
         const codeBlockMatch = content.match(/```(\w+)?\n([\s\S]{50,}?)```/);
         if (codeBlockMatch) {
             const language = codeBlockMatch[1] || 'text';
             const code = codeBlockMatch[2];
             
-            if (language === 'mermaid' || code.includes('graph TD') || code.includes('sequenceDiagram')) {
+            // Mermaid diagrams
+            if (language === 'mermaid' || code.includes('graph TD') || code.includes('graph LR') || 
+                code.includes('sequenceDiagram') || code.includes('flowchart')) {
                 this.autoRenderToCanvas('diagram', code, language);
                 return;
             }
             
+            // HTML preview
             if (language === 'html' && code.length > 100) {
                 this.autoRenderToCanvas('preview', code, language);
                 return;
             }
             
-            if (language === 'python' && code.length > 100) {
+            // Python/Jupyter
+            if ((language === 'python' || language === 'py') && code.length > 100) {
                 this.autoRenderToCanvas('jupyter', code, language);
                 return;
             }
             
-            if ((language === 'js' || language === 'javascript') && code.includes('React')) {
+            // JavaScript/React preview
+            if ((language === 'js' || language === 'javascript' || language === 'jsx') && 
+                (code.includes('React') || code.includes('useState') || code.length > 200)) {
                 this.autoRenderToCanvas('preview', code, language);
                 return;
             }
             
+            // SVG
+            if (language === 'svg' || code.includes('<svg')) {
+                this.autoRenderToCanvas('preview', code, language);
+                return;
+            }
+            
+            // Generic code editor for longer code
             if (code.length > 200) {
                 this.autoRenderToCanvas('code', code, language);
                 return;
             }
         }
         
+        // Check for JSON
         if (this.looksLikeJSON(content) && content.length > 100) {
             try {
                 JSON.parse(content);
@@ -641,8 +663,15 @@
             } catch (e) {}
         }
         
-        if (this.looksLikeCSV(content)) {
+        // Check for CSV/TSV
+        if (this.looksLikeCSV(content) && content.split('\n').length > 3) {
             this.autoRenderToCanvas('table', content, 'csv');
+            return;
+        }
+        
+        // Check for Markdown content
+        if (content.includes('# ') && content.length > 200) {
+            this.autoRenderToCanvas('markdown', content, 'markdown');
             return;
         }
     };
@@ -814,30 +843,60 @@
         });
         
         // FIXED: Append to chatMessages container, not individual message
+        // FIXED: Append to chatMessages container, not individual message
         chatMessages.appendChild(menu);
-        
-        // Position relative to message
+
+       // FIXED: Position menu VERY close to message bubble
         setTimeout(() => {
             const messageRect = messageEl.getBoundingClientRect();
-            const chatRect = chatMessages.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
             
-            // Position next to message
-            const top = messageRect.top - chatRect.top + chatMessages.scrollTop;
-            const left = messageRect.right - chatRect.left + 12;
+            // VERY close - only 2px gap
+            const gap = -200;
             
-            menu.style.position = 'absolute';
+            // Use fixed positioning relative to viewport
+            let top = messageRect.top;
+            let left = messageRect.right + gap;
+            
+            // Check if menu goes off the right edge
+            const viewportWidth = window.innerWidth;
+            if (left + menuRect.width > viewportWidth - 10) {
+                // Position on LEFT side of message instead
+                left = messageRect.left - menuRect.width - gap;
+            }
+            
+            // Check if menu goes off LEFT edge
+            if (left < 10) {
+                // Last resort: position at right edge with constrained width
+                left = messageRect.right + gap;
+                menu.style.maxWidth = `${viewportWidth - left - 20}px`;
+            }
+            
+            // Vertical positioning - align with top of message
+            const viewportHeight = window.innerHeight;
+            const availableHeight = viewportHeight - top;
+            
+            if (menuRect.height > availableHeight - 20) {
+                // Menu too tall for space below
+                const maxHeight = viewportHeight - 40;
+                
+                if (menuRect.height > maxHeight) {
+                    // Constrain height and scroll
+                    menu.style.maxHeight = `${maxHeight}px`;
+                    menu.style.overflowY = 'auto';
+                    top = 20;
+                } else {
+                    // Align bottom of menu with bottom of message
+                    top = Math.max(10, messageRect.bottom - menuRect.height);
+                }
+            }
+            
+            menu.style.position = 'fixed';
             menu.style.top = `${top}px`;
             menu.style.left = `${left}px`;
-            menu.style.maxHeight = `${chatRect.height - 40}px`;
+            menu.style.zIndex = '10000';
             
-            // If menu goes off right, position on left side
-            const menuRect = menu.getBoundingClientRect();
-            if (menuRect.right > chatRect.right) {
-                menu.style.left = 'auto';
-                menu.style.right = `${chatRect.right - messageRect.left + 12}px`;
-            }
-        }, 0);
-        
+        }, 50); // Small delay to ensure measurements are accurate
         // Close on click outside
         setTimeout(() => {
             const closeHandler = (e) => {
@@ -1269,4 +1328,700 @@
     };
     
     console.log('🚀 Modern Interactive Chat UI (FIXED) loaded successfully');
+
+    // =====================================================================
+    // Load External Libraries
+    // =====================================================================
+    
+    const loadExternalLibraries = () => {
+        // Load Marked.js for Markdown
+        if (!window.marked) {
+            const markedScript = document.createElement('script');
+            markedScript.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            document.head.appendChild(markedScript);
+        }
+        
+        // Load Highlight.js for syntax highlighting
+        if (!window.hljs) {
+            const hljsScript = document.createElement('script');
+            hljsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
+            document.head.appendChild(hljsScript);
+            
+            const hljsStyle = document.createElement('link');
+            hljsStyle.rel = 'stylesheet';
+            hljsStyle.href = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css';
+            document.head.appendChild(hljsStyle);
+        }
+        
+        // Load Mermaid for diagrams
+        if (!window.mermaid) {
+            const mermaidScript = document.createElement('script');
+            mermaidScript.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+            mermaidScript.onload = () => {
+                window.mermaid.initialize({ 
+                    startOnLoad: false,
+                    theme: 'dark',
+                    themeVariables: {
+                        primaryColor: '#3b82f6',
+                        primaryTextColor: '#e2e8f0',
+                        primaryBorderColor: '#60a5fa',
+                        lineColor: '#475569',
+                        secondaryColor: '#1e293b',
+                        tertiaryColor: '#0f172a'
+                    }
+                });
+            };
+            document.head.appendChild(mermaidScript);
+        }
+    };
+    
+    loadExternalLibraries();
+    
+    // =====================================================================
+    // Initialize Modern Features
+    // =====================================================================
+    
+    // VeraChat.prototype.initModernFeatures = function() {
+    //     console.log('🎨 Initializing Modern Features...');
+        
+    //     this.canvasAutoFocus = localStorage.getItem('canvas-auto-focus') !== 'false';
+    //     this.ttsEnabled = localStorage.getItem('tts-enabled') === 'true';
+    //     this.sttActive = false;
+    //     this.streamingBuffer = '';
+    //     this.lastCanvasCheck = 0;
+        
+    //     // Initialize speech recognition
+    //     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    //         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    //         this.recognition = new SpeechRecognition();
+    //         this.recognition.continuous = false;
+    //         this.recognition.interimResults = true;
+    //         this.recognition.lang = 'en-US';
+            
+    //         this.recognition.onresult = (event) => {
+    //             const transcript = Array.from(event.results)
+    //                 .map(result => result[0].transcript)
+    //                 .join('');
+                
+    //             const textarea = document.getElementById('messageInput');
+    //             if (textarea) {
+    //                 textarea.value = transcript;
+    //                 textarea.dispatchEvent(new Event('input'));
+    //             }
+    //         };
+            
+    //         this.recognition.onend = () => {
+    //             this.sttActive = false;
+    //             this.updateControlBar();
+    //         };
+    //     }
+        
+    //     // Initialize speech synthesis
+    //     this.ttsVoice = null;
+    //     if ('speechSynthesis' in window) {
+    //         speechSynthesis.onvoiceschanged = () => {
+    //             const voices = speechSynthesis.getVoices();
+    //             this.ttsVoice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+    //         };
+    //     }
+        
+    //     // Ensure tools are loaded
+    //     this.ensureToolsLoaded();
+        
+    //     // Add control bar
+    //     setTimeout(() => {
+    //         this.addControlBar();
+    //     }, 100);
+    // };
+    
+    // VeraChat.prototype.ensureToolsLoaded = async function() {
+    //     if (this.availableTools && Object.keys(this.availableTools).length > 0) {
+    //         return;
+    //     }
+        
+    //     if (this.sessionId && typeof this.loadAvailableTools === 'function') {
+    //         await this.loadAvailableTools();
+    //     }
+    // };
+    
+    // =====================================================================
+    // Control Bar - COMPLETELY FIXED
+    // =====================================================================
+    
+    // VeraChat.prototype.addControlBar = function() {
+    //     console.log('🔧 Adding control bar...');
+        
+    //     // Find or create chat container structure
+    //     let chatContainer = document.getElementById('tab-chat');
+    //     if (!chatContainer) {
+    //         console.error('❌ tab-chat container not found!');
+    //         return;
+    //     }
+        
+    //     // Ensure proper structure
+    //     if (!chatContainer.style.display) {
+    //         chatContainer.style.cssText = `
+    //             display: flex;
+    //             flex-direction: column;
+    //             height: 100%;
+    //             overflow: hidden;
+    //         `;
+    //     }
+        
+    //     // Remove existing control bar
+    //     const existing = document.getElementById('chat-control-bar');
+    //     if (existing) {
+    //         console.log('🗑️ Removing existing control bar');
+    //         existing.remove();
+    //     }
+        
+    //     // Create control bar
+    //     const controlBar = document.createElement('div');
+    //     controlBar.id = 'chat-control-bar';
+    //     controlBar.className = 'chat-control-bar';
+    //     controlBar.innerHTML = `
+    //         <div class="control-group">
+    //             <button class="control-btn ${this.canvasAutoFocus ? 'active' : ''}" 
+    //                     id="toggle-canvas-focus"
+    //                     onclick="app.toggleCanvasFocus()"
+    //                     title="Auto-focus canvas for code/diagrams">
+    //                 <span class="control-icon">${this.canvasAutoFocus ? '🎯' : '⏸️'}</span>
+    //                 <span class="control-label">Canvas</span>
+    //             </button>
+                
+    //             <button class="control-btn ${this.ttsEnabled ? 'active' : ''}" 
+    //                     id="toggle-tts"
+    //                     onclick="app.toggleTTS()"
+    //                     title="Read responses aloud">
+    //                 <span class="control-icon">🔊</span>
+    //                 <span class="control-label">TTS</span>
+    //             </button>
+                
+    //             ${this.recognition ? `
+    //             <button class="control-btn ${this.sttActive ? 'active recording' : ''}" 
+    //                     id="toggle-stt"
+    //                     onclick="app.toggleSTT()"
+    //                     title="Voice input">
+    //                 <span class="control-icon">🎤</span>
+    //                 <span class="control-label">Voice</span>
+    //             </button>
+    //             ` : ''}
+                
+    //             <button class="control-btn" 
+    //                     onclick="app.openFileUpload()"
+    //                     title="Upload file">
+    //                 <span class="control-icon">📎</span>
+    //                 <span class="control-label">File</span>
+    //             </button>
+    //         </div>
+            
+    //         <div class="control-status" id="control-status"></div>
+    //     `;
+        
+    //     // Insert at the very top of chat container
+    //     const messages = chatContainer.querySelector('#chatMessages');
+    //     if (messages) {
+    //         console.log('✅ Inserting control bar before chatMessages');
+    //         chatContainer.insertBefore(controlBar, messages);
+            
+    //         // Ensure messages container has proper flex
+    //         messages.style.flex = '1';
+    //         messages.style.overflowY = 'auto';
+    //     } else {
+    //         console.log('⚠️ chatMessages not found, prepending to container');
+    //         chatContainer.insertBefore(controlBar, chatContainer.firstChild);
+    //     }
+        
+    //     console.log('✅ Control bar added successfully');
+        
+    //     // Verify visibility
+    //     setTimeout(() => {
+    //         const check = document.getElementById('chat-control-bar');
+    //         if (check) {
+    //             const rect = check.getBoundingClientRect();
+    //             console.log('📊 Control bar rect:', rect);
+    //             if (rect.height === 0) {
+    //                 console.error('❌ Control bar has zero height - forcing display');
+    //                 check.style.display = 'flex';
+    //                 check.style.minHeight = '60px';
+    //             }
+    //         }
+    //     }, 200);
+    // };
+    
+    // VeraChat.prototype.updateControlBar = function() {
+    //     const canvasBtn = document.getElementById('toggle-canvas-focus');
+    //     const ttsBtn = document.getElementById('toggle-tts');
+    //     const sttBtn = document.getElementById('toggle-stt');
+        
+    //     if (canvasBtn) {
+    //         canvasBtn.className = `control-btn ${this.canvasAutoFocus ? 'active' : ''}`;
+    //         canvasBtn.querySelector('.control-icon').textContent = this.canvasAutoFocus ? '🎯' : '⏸️';
+    //     }
+        
+    //     if (ttsBtn) {
+    //         ttsBtn.className = `control-btn ${this.ttsEnabled ? 'active' : ''}`;
+    //     }
+        
+    //     if (sttBtn) {
+    //         sttBtn.className = `control-btn ${this.sttActive ? 'active recording' : ''}`;
+    //     }
+    // };
+    
+    // VeraChat.prototype.setControlStatus = function(message, duration = 3000) {
+    //     const status = document.getElementById('control-status');
+    //     if (!status) return;
+        
+    //     status.textContent = message;
+    //     status.style.opacity = '1';
+        
+    //     if (duration > 0) {
+    //         setTimeout(() => {
+    //             status.style.opacity = '0';
+    //         }, duration);
+    //     }
+    // };
+    
+    // // Control functions
+    // VeraChat.prototype.toggleCanvasFocus = function() {
+    //     this.canvasAutoFocus = !this.canvasAutoFocus;
+    //     localStorage.setItem('canvas-auto-focus', this.canvasAutoFocus);
+    //     this.updateControlBar();
+    //     this.setControlStatus(
+    //         this.canvasAutoFocus ? '🎯 Canvas auto-focus enabled' : '⏸️ Canvas auto-focus paused'
+    //     );
+    // };
+    
+    // VeraChat.prototype.toggleTTS = function() {
+    //     this.ttsEnabled = !this.ttsEnabled;
+    //     localStorage.setItem('tts-enabled', this.ttsEnabled);
+    //     this.updateControlBar();
+        
+    //     if (this.ttsEnabled) {
+    //         this.setControlStatus('🔊 Text-to-speech enabled');
+    //         this.speakText('Text to speech enabled');
+    //     } else {
+    //         this.setControlStatus('🔇 Text-to-speech disabled');
+    //         if ('speechSynthesis' in window) {
+    //             speechSynthesis.cancel();
+    //         }
+    //     }
+    // };
+    
+    // VeraChat.prototype.speakText = function(text) {
+    //     if (!this.ttsEnabled || !('speechSynthesis' in window)) return;
+        
+    //     speechSynthesis.cancel();
+        
+    //     let cleanText = text
+    //         .replace(/```[\s\S]*?```/g, ' code block ')
+    //         .replace(/`([^`]+)`/g, '$1')
+    //         .replace(/\*\*([^*]+)\*\*/g, '$1')
+    //         .replace(/\*([^*]+)\*/g, '$1')
+    //         .replace(/#{1,6}\s/g, '')
+    //         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    //         .replace(/<[^>]+>/g, '')
+    //         .trim();
+        
+    //     if (cleanText.length === 0) return;
+    //     if (cleanText.length > 500) {
+    //         cleanText = cleanText.substring(0, 497) + '...';
+    //     }
+        
+    //     const utterance = new SpeechSynthesisUtterance(cleanText);
+    //     utterance.voice = this.ttsVoice;
+    //     utterance.rate = 1.0;
+    //     utterance.pitch = 1.0;
+    //     utterance.volume = 1.0;
+        
+    //     speechSynthesis.speak(utterance);
+    // };
+    
+    // VeraChat.prototype.toggleSTT = function() {
+    //     if (!this.recognition) {
+    //         this.setControlStatus('❌ Speech recognition not available');
+    //         return;
+    //     }
+        
+    //     if (this.sttActive) {
+    //         this.recognition.stop();
+    //         this.sttActive = false;
+    //         this.setControlStatus('🎤 Voice input stopped');
+    //     } else {
+    //         try {
+    //             this.recognition.start();
+    //             this.sttActive = true;
+    //             this.setControlStatus('🎤 Listening... Speak now', 0);
+    //         } catch (error) {
+    //             console.error('Speech recognition error:', error);
+    //             this.setControlStatus('❌ Could not start voice input');
+    //         }
+    //     }
+        
+    //     this.updateControlBar();
+    // };
+    
+    // VeraChat.prototype.openFileUpload = function() {
+    //     const input = document.createElement('input');
+    //     input.type = 'file';
+    //     input.multiple = true;
+    //     input.accept = '*/*';
+        
+    //     input.onchange = (e) => {
+    //         const files = Array.from(e.target.files);
+    //         if (files.length > 0) {
+    //             this.handleFileUpload(files);
+    //         }
+    //     };
+        
+    //     input.click();
+    // };
+    
+    // VeraChat.prototype.handleFileUpload = async function(files) {
+    //     this.setControlStatus(`📎 Uploading ${files.length} file(s)...`, 0);
+        
+    //     for (const file of files) {
+    //         await this.uploadFile(file);
+    //     }
+        
+    //     this.setControlStatus(`✅ Uploaded ${files.length} file(s)`);
+    // };
+    
+    // VeraChat.prototype.uploadFile = async function(file) {
+    //     const formData = new FormData();
+    //     formData.append('file', file);
+    //     formData.append('session_id', this.sessionId);
+        
+    //     try {
+    //         const response = await fetch('http://llm.int:8888/api/upload', {
+    //             method: 'POST',
+    //             body: formData
+    //         });
+            
+    //         if (!response.ok) throw new Error('Upload failed');
+            
+    //         const data = await response.json();
+    //         this.addFileMessage(file, data);
+            
+    //     } catch (error) {
+    //         console.error('File upload error:', error);
+    //         this.setControlStatus(`❌ Failed to upload ${file.name}`);
+    //     }
+    // };
+    
+    // VeraChat.prototype.addFileMessage = function(file, uploadData) {
+    //     const fileExt = file.name.split('.').pop().toLowerCase();
+    //     const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(fileExt);
+        
+    //     let content = `📎 Uploaded: **${file.name}**\n`;
+    //     content += `Size: ${this.formatFileSize(file.size)}\n`;
+        
+    //     if (uploadData.file_id) {
+    //         content += `File ID: \`${uploadData.file_id}\`\n`;
+    //     }
+        
+    //     if (isImage && uploadData.url) {
+    //         content += `\n![${file.name}](${uploadData.url})`;
+    //     }
+        
+    //     this.addMessage('system', content);
+    // };
+    
+    // VeraChat.prototype.formatFileSize = function(bytes) {
+    //     if (bytes < 1024) return bytes + ' B';
+    //     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    //     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    // };
+    
+    // =====================================================================
+    // Message Rendering with Inline Rendering
+    // =====================================================================
+    
+    // VeraChat.prototype.renderMessage = function(message) {
+    //     const container = document.getElementById('chatMessages');
+    //     const messageEl = document.createElement('div');
+    //     messageEl.id = message.id;
+    //     messageEl.className = `message ${message.role} modern-message`;
+    //     messageEl.dataset.messageId = message.id;
+    //     messageEl.dataset.messageContent = message.content;
+    //     messageEl.dataset.graphNodeId = message.graph_node_id || `msg_${message.id}`;
+    //     messageEl.dataset.showingSource = 'false';
+        
+    //     // Make clickable
+    //     messageEl.onclick = (e) => {
+    //         if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
+    //             return;
+    //         }
+    //         this.toggleMessageMenu(message.id);
+    //     };
+        
+    //     // Avatar
+    //     const avatar = document.createElement('div');
+    //     avatar.className = 'message-avatar';
+    //     avatar.innerHTML = message.role === 'user' 
+    //         ? '<div class="avatar-circle user-avatar">👤</div>'
+    //         : message.role === 'assistant'
+    //         ? '<div class="avatar-circle assistant-avatar pulse">V</div>'
+    //         : '<div class="avatar-circle system-avatar">ℹ️</div>';
+        
+    //     // Content container
+    //     const contentContainer = document.createElement('div');
+    //     contentContainer.className = 'message-content-container';
+        
+    //     // Header
+    //     const header = document.createElement('div');
+    //     header.className = 'message-header';
+    //     const roleName = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Vera' : 'System';
+    //     const timestamp = this.formatTimestamp(message.timestamp);
+        
+    //     // Add source toggle button
+    //     const hasRenderableContent = this.hasRenderableContent(message.content);
+    //     const sourceToggle = hasRenderableContent ? 
+    //         `<button class="source-toggle-btn" onclick="app.toggleSource('${message.id}'); event.stopPropagation();" title="Toggle source view">
+    //             <span class="source-icon">📝</span>
+    //         </button>` : '';
+        
+    //     header.innerHTML = `
+    //         <span class="message-role">${roleName}</span>
+    //         <span class="message-timestamp">${timestamp}</span>
+    //         ${sourceToggle}
+    //         ${message.role !== 'system' ? '<span class="click-hint">Click for options</span>' : ''}
+    //     `;
+        
+    //     // Content
+    //     const content = document.createElement('div');
+    //     content.className = 'message-content';
+        
+    //     // Rendered view
+    //     const renderedView = document.createElement('div');
+    //     renderedView.className = 'message-rendered';
+    //     renderedView.innerHTML = this.renderMessageContent(message.content);
+        
+    //     // Source view
+    //     const sourceView = document.createElement('pre');
+    //     sourceView.className = 'message-source';
+    //     sourceView.style.display = 'none';
+    //     sourceView.textContent = message.content;
+        
+    //     content.appendChild(renderedView);
+    //     content.appendChild(sourceView);
+        
+    //     // Assemble
+    //     contentContainer.appendChild(header);
+    //     contentContainer.appendChild(content);
+        
+    //     if (message.role !== 'system') {
+    //         messageEl.appendChild(avatar);
+    //     }
+    //     messageEl.appendChild(contentContainer);
+        
+    //     container.appendChild(messageEl);
+        
+    //     // Apply syntax highlighting and mermaid rendering
+    //     setTimeout(() => {
+    //         this.applyRendering(message.id);
+    //     }, 100);
+        
+    //     // Auto-focus canvas if enabled
+    //     if (this.canvasAutoFocus && message.role === 'assistant') {
+    //         this.checkAndAutoRenderCanvas(message);
+    //     }
+        
+    //     // TTS if enabled
+    //     if (this.ttsEnabled && message.role === 'assistant') {
+    //         setTimeout(() => this.speakText(message.content), 500);
+    //     }
+        
+    //     container.scrollTop = container.scrollHeight;
+    // };
+    
+    VeraChat.prototype.hasRenderableContent = function(content) {
+        return content.includes('```') || 
+               content.includes('# ') || 
+               content.includes('## ') ||
+               content.includes('**') ||
+               content.includes('*') ||
+               content.includes('[') ||
+               content.includes('![');
+    };
+    
+    VeraChat.prototype.toggleSource = function(messageId) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+        
+        const showingSource = messageEl.dataset.showingSource === 'true';
+        const renderedView = messageEl.querySelector('.message-rendered');
+        const sourceView = messageEl.querySelector('.message-source');
+        const toggleBtn = messageEl.querySelector('.source-toggle-btn');
+        
+        if (showingSource) {
+            // Show rendered
+            renderedView.style.display = 'block';
+            sourceView.style.display = 'none';
+            messageEl.dataset.showingSource = 'false';
+            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '📝';
+        } else {
+            // Show source
+            renderedView.style.display = 'none';
+            sourceView.style.display = 'block';
+            messageEl.dataset.showingSource = 'true';
+            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '🎨';
+        }
+    };
+    
+    VeraChat.prototype.applyRendering = function(messageId) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+        
+        // Apply syntax highlighting
+        if (window.hljs) {
+            messageEl.querySelectorAll('pre code').forEach((block) => {
+                if (!block.classList.contains('hljs')) {
+                    window.hljs.highlightElement(block);
+                }
+            });
+        }
+        
+        // Render mermaid diagrams
+        if (window.mermaid) {
+            messageEl.querySelectorAll('.mermaid-diagram').forEach((block, index) => {
+                const id = `mermaid-${messageId}-${index}`;
+                block.id = id;
+                try {
+                    window.mermaid.render(id + '-svg', block.textContent).then(result => {
+                        block.innerHTML = result.svg;
+                    }).catch(err => {
+                        console.error('Mermaid render error:', err);
+                        block.innerHTML = `<div class="mermaid-error">Failed to render diagram</div>`;
+                    });
+                } catch (error) {
+                    console.error('Mermaid error:', error);
+                }
+            });
+        }
+    };
+    
+    // VeraChat.prototype.renderMessageContent = function(content) {
+    //     if (typeof content === 'object') {
+    //         content = JSON.stringify(content, null, 2);
+    //     }
+        
+    //     content = String(content);
+        
+    //     // Store code blocks and replace with placeholders
+    //     const codeBlocks = [];
+    //     const mermaidBlocks = [];
+        
+    //     // Extract and process code blocks
+    //     content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+    //         const language = (lang || 'text').toLowerCase();
+    //         const trimmedCode = code.trim();
+            
+    //         // Check if it's a mermaid diagram
+    //         if (language === 'mermaid' || trimmedCode.includes('graph ') || trimmedCode.includes('sequenceDiagram')) {
+    //             const placeholder = `###MERMAID${mermaidBlocks.length}###`;
+    //             mermaidBlocks.push(`<div class="mermaid-diagram">${this.escapeHtml(trimmedCode)}</div>`);
+    //             return placeholder;
+    //         }
+            
+    //         const placeholder = `###CODEBLOCK${codeBlocks.length}###`;
+    //         const highlighted = `<pre><code class="language-${language}">${this.escapeHtml(trimmedCode)}</code></pre>`;
+    //         codeBlocks.push(highlighted);
+    //         return placeholder;
+    //     });
+        
+    //     // Process markdown with marked.js if available
+    //     if (window.marked) {
+    //         try {
+    //             content = window.marked.parse(content);
+    //         } catch (e) {
+    //             console.error('Marked.js error:', e);
+    //             // Fallback to basic markdown
+    //             content = this.basicMarkdown(content);
+    //         }
+    //     } else {
+    //         content = this.basicMarkdown(content);
+    //     }
+        
+    //     // Restore code blocks
+    //     mermaidBlocks.forEach((block, i) => {
+    //         content = content.replace(`###MERMAID${i}###`, block);
+    //     });
+    //     codeBlocks.forEach((block, i) => {
+    //         content = content.replace(`###CODEBLOCK${i}###`, block);
+    //     });
+        
+    //     return content;
+    // };
+    
+    VeraChat.prototype.basicMarkdown = function(content) {
+        // Escape HTML first
+        content = this.escapeHtml(content);
+        
+        // Headers
+        content = content.replace(/^### (.+)$/gm, '<h3 class="msg-h3">$1</h3>');
+        content = content.replace(/^## (.+)$/gm, '<h2 class="msg-h2">$1</h2>');
+        content = content.replace(/^# (.+)$/gm, '<h1 class="msg-h1">$1</h1>');
+        
+        // Bold and italic
+        content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        
+        // Links
+        content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="message-link">$1</a>');
+        
+        // Images
+        content = content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="inline-image" loading="lazy">');
+        
+        // Lists
+        content = content.replace(/^[\*\-\+] (.+)$/gm, '<li class="msg-li">$1</li>');
+        content = content.replace(/(<li[^>]*>.*?<\/li>\n?)+/g, '<ul class="msg-ul">$&</ul>');
+        
+        // Line breaks
+        content = content.replace(/\n/g, '<br>');
+        
+        return content;
+    };
+    
+    VeraChat.prototype.escapeHtml = function(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+    
+    // ... (rest of the functions: checkAndAutoRenderCanvas, toggleMessageMenu, etc. remain the same as before)
+    
+    // Initialize when ready
+
+    // Store the REAL original init only once
+    if (!VeraChat.prototype._originalInit) {
+        console.log('💾 Storing original init function');
+        VeraChat.prototype._originalInit = VeraChat.prototype.init;
+    }
+
+    // Only wrap if we haven't already
+    if (!VeraChat.prototype._modernUIWrapped) {
+        console.log('🔧 Wrapping init function (first time only)');
+        
+        VeraChat.prototype.init = async function() {
+            console.log('🔄 VeraChat.init called');
+            
+            // Call the REAL original init (not a wrapper)
+            const result = await this._originalInit.call(this);
+            
+            // Initialize modern features ONCE
+            console.log('🎨 Calling initModernFeatures');
+            this.initModernFeatures();
+            
+            return result;
+        };
+        
+        // Mark as wrapped
+        VeraChat.prototype._modernUIWrapped = true;
+        console.log('✅ Init wrapper installed');
+    } else {
+        console.log('⏭️ Init already wrapped, skipping');
+}
+    
+    console.log('🚀 Modern Interactive Chat UI loaded successfully');
 })();

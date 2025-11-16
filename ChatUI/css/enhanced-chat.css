@@ -3,12 +3,8 @@
    Fixes: user message alignment, menu positioning
    ===================================================================== */
 
-/* =====================================================================
-   Control Bar (same as before)
-   ===================================================================== */
-
 .chat-control-bar {
-    display: flex;
+    display: absolute !important;
     justify-content: space-between;
     align-items: center;
     padding: 12px 20px;
@@ -16,8 +12,10 @@
     border-bottom: 1px solid #334155;
     position: sticky;
     top: 0;
-    z-index: 100;
+    z-index: 10000;
     backdrop-filter: blur(10px);
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .control-group {
@@ -187,7 +185,9 @@
     background: linear-gradient(180deg, #3b82f6 0%, #8b5cf6 100%);
     opacity: 0;
     transition: opacity 0.3s ease;
+    z-index: 0; /* Behind avatar */
 }
+
 
 /* Accent bar on left for assistant, right for user */
 .message.assistant.modern-message::before {
@@ -196,6 +196,11 @@
 
 .message.user.modern-message::before {
     right: 0;
+}
+.message.system.modern-message::before {
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px; /* Slightly thicker for centered messages */
 }
 
 .modern-message:hover {
@@ -222,8 +227,11 @@
    Avatar System
    ===================================================================== */
 
+
 .message-avatar {
     flex-shrink: 0;
+    position: relative;
+    z-index: 1; /* Ensure avatar doesn't clip the accent line */
 }
 
 .avatar-circle {
@@ -377,8 +385,8 @@
    ===================================================================== */
 
 .message-menu {
-    position: absolute; /* Positioned within #chatMessages */
-    z-index: 1000;
+    position: fixed; /* Fixed to viewport */
+    z-index: 10000;
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
     border: 1px solid #334155;
     border-radius: 16px;
