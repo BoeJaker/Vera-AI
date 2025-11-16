@@ -61,6 +61,8 @@ try:
     from Vera.Agents.reviewer import Reviewer
     from Vera.Agents.planning import Planner
     from Vera.proactive_focus_manager import ProactiveFocusManager
+    from Vera.BackgroundCognition.orchestrator.core import UnifiedOrchestrator, OrchestratorConfig
+    from Vera.BackgroundCognition.orchestrator.tasks import Task, TaskType, TaskPriority, TaskResult
 except Exception as e:
     print(e)
     from Agents.executive_0_9 import executive
@@ -74,6 +76,8 @@ except Exception as e:
     from Agents.reviewer import Reviewer
     from Agents.planning import Planner
     from proactive_focus_manager import ProactiveFocusManager
+    from BackgroundCognition.orchestrator.core import UnifiedOrchestrator, OrchestratorConfig
+    from BackgroundCognition.orchestrator.tasks import Task, TaskType, TaskPriority, TaskResult
 
 # # Initialize both systems
 # memory = HybridMemory(
@@ -583,7 +587,20 @@ class Vera:
 
         # Set callback
         self.focus_manager.proactive_callback = handle_proactive
-    
+
+        # --- Unified Orchestrator ---
+        orchestrator_config = OrchestratorConfig(
+            max_concurrent_tasks=10,
+            enable_auto_scaling=True,
+            docker_pool_size=3,
+            ollama_url=self.ollama_manager.api_url,
+            health_check_interval=30,
+            task_timeout_seconds=300
+        )
+        self.orchestrator = UnifiedOrchestrator(config=orchestrator_config)
+        self.orchestrator_enabled = False  # Will be enabled when ChatUI starts it
+        print("[Vera] Unified Orchestrator initialized (not started)")
+
     # --- Streaming wrapper ---
     def stream_llm(self, llm, prompt):
         sys.stdout.write("\n")
@@ -661,6 +678,102 @@ class Vera:
         self.vector_memory.save_context({"input": user_input}, {"output": llm_output})
         self.vectorstore.persist()
         # self.mem.add_session_memory(self.sess.id, f"input: {user_input}\noutput: {llm_output}", "Thought", {"topic": "decision"}, promote=True)
+
+    # --- Orchestrator Integration Methods ---
+    async def start_orchestrator(self):
+        """Start the unified orchestrator for distributed task execution"""
+        if not self.orchestrator_enabled:
+            await self.orchestrator.start()
+            self.orchestrator_enabled = True
+            print("[Vera] Unified Orchestrator started")
+        return {"status": "success", "message": "Orchestrator started"}
+
+    async def stop_orchestrator(self):
+        """Stop the unified orchestrator"""
+        if self.orchestrator_enabled:
+            await self.orchestrator.stop()
+            self.orchestrator_enabled = False
+            print("[Vera] Unified Orchestrator stopped")
+        return {"status": "success", "message": "Orchestrator stopped"}
+
+    async def submit_tool_task(self, tool_name: str, tool_input: str, priority: str = "NORMAL", wait: bool = False):
+        """Submit a tool execution task to the orchestrator"""
+        if not self.orchestrator_enabled:
+            raise RuntimeError("Orchestrator not running. Call start_orchestrator() first.")
+
+        # Map priority string to enum
+        priority_map = {
+            "CRITICAL": TaskPriority.CRITICAL,
+            "HIGH": TaskPriority.HIGH,
+            "NORMAL": TaskPriority.NORMAL,
+            "LOW": TaskPriority.LOW,
+            "BACKGROUND": TaskPriority.BACKGROUND
+        }
+        task_priority = priority_map.get(priority.upper(), TaskPriority.NORMAL)
+
+        # Create task
+        task = Task(
+            type=TaskType.TOOL_CALL,
+            priority=task_priority,
+            payload={
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+                "tools": self.tools
+            },
+            metadata={"session_id": self.sess.id}
+        )
+
+        # Submit task
+        result = await self.orchestrator.submit_task(task, wait=wait)
+        return result
+
+    async def submit_llm_task(self, model: str, prompt: str, priority: str = "NORMAL", wait: bool = True):
+        """Submit an LLM request task to the orchestrator"""
+        if not self.orchestrator_enabled:
+            raise RuntimeError("Orchestrator not running. Call start_orchestrator() first.")
+
+        # Map priority string to enum
+        priority_map = {
+            "CRITICAL": TaskPriority.CRITICAL,
+            "HIGH": TaskPriority.HIGH,
+            "NORMAL": TaskPriority.NORMAL,
+            "LOW": TaskPriority.LOW,
+            "BACKGROUND": TaskPriority.BACKGROUND
+        }
+        task_priority = priority_map.get(priority.upper(), TaskPriority.NORMAL)
+
+        # Create task
+        task = Task(
+            type=TaskType.LLM_REQUEST,
+            priority=task_priority,
+            payload={
+                "model": model,
+                "prompt": prompt,
+                "url": self.ollama_manager.api_url
+            },
+            metadata={"session_id": self.sess.id}
+        )
+
+        # Submit task
+        result = await self.orchestrator.submit_task(task, wait=wait)
+        return result
+
+    def get_orchestrator_status(self):
+        """Get orchestrator status"""
+        if not self.orchestrator_enabled:
+            return {
+                "enabled": False,
+                "running": False,
+                "message": "Orchestrator not started"
+            }
+
+        return {
+            "enabled": True,
+            "running": self.orchestrator.is_running,
+            "active_tasks": len(self.orchestrator.active_tasks),
+            "queued_tasks": len(self.orchestrator.task_queue),
+            "metrics": self.orchestrator.metrics
+        }
 
 
     # def execute_tool_chain(self, query):

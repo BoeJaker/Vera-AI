@@ -441,6 +441,13 @@
                     </div>
                 </div>
                 <div class="status-card">
+                    <h3>Vera Orchestrator</h3>
+                    <div class="value">
+                        <span class="status-indicator status-stopped" id="vera-orch-status"></span>
+                        <span id="vera-orch-status-text">Stopped</span>
+                    </div>
+                </div>
+                <div class="status-card">
                     <h3>CPU Usage</h3>
                     <div class="value" id="cpu-usage">0%</div>
                 </div>
@@ -526,6 +533,39 @@
                             </thead>
                             <tbody id="dash-task-history"></tbody>
                         </table>
+                    </div>
+
+                    <div class="card">
+                        <h3>Vera Unified Orchestrator</h3>
+                        <div class="grid-2">
+                            <div>
+                                <p style="color: #94a3b8; margin-bottom: 12px;">
+                                    Control Vera's unified orchestrator for distributed task execution.
+                                </p>
+                                <div class="stats-grid" style="margin-top: 12px;">
+                                    <div class="stat-box">
+                                        <div class="stat-label">Status</div>
+                                        <div class="stat-value" style="font-size: 14px;" id="vera-orch-dash-status">Stopped</div>
+                                    </div>
+                                    <div class="stat-box">
+                                        <div class="stat-label">Active Tasks</div>
+                                        <div class="stat-value" id="vera-orch-active-tasks">0</div>
+                                    </div>
+                                    <div class="stat-box">
+                                        <div class="stat-label">Queued Tasks</div>
+                                        <div class="stat-value" id="vera-orch-queued-tasks">0</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 12px; align-items: center; justify-content: center;">
+                                <button class="btn btn-success" onclick="app.startVeraOrchestrator()">
+                                    ▶ Start Orchestrator
+                                </button>
+                                <button class="btn btn-danger" onclick="app.stopVeraOrchestrator()">
+                                    ⏹ Stop Orchestrator
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -965,14 +1005,22 @@
                     }
                     
                     const data = await response.json();
-                    
-                    this.updateStatusIndicator('pool-status', data.local_pool);
-                    document.getElementById('pool-status-text').textContent = 
-                        data.local_pool ? 'Running' : 'Stopped';
-                    
-                    this.updateStatusIndicator('cluster-status', data.cluster_pool);
-                    document.getElementById('cluster-status-text').textContent = 
-                        data.cluster_pool ? 'Active' : 'Inactive';
+
+                    // Legacy pools
+                    const legacyPools = data.legacy_pools || {};
+                    this.updateStatusIndicator('pool-status', legacyPools.local_pool);
+                    document.getElementById('pool-status-text').textContent =
+                        legacyPools.local_pool ? 'Running' : 'Stopped';
+
+                    this.updateStatusIndicator('cluster-status', legacyPools.cluster_pool);
+                    document.getElementById('cluster-status-text').textContent =
+                        legacyPools.cluster_pool ? 'Active' : 'Inactive';
+
+                    // Vera Orchestrator
+                    const veraOrch = data.vera_orchestrator || {};
+                    this.updateStatusIndicator('vera-orch-status', veraOrch.running);
+                    document.getElementById('vera-orch-status-text').textContent =
+                        veraOrch.running ? 'Running' : (veraOrch.enabled ? 'Enabled' : 'Stopped');
                 } catch (error) {
                     console.error('Health check failed:', error.message);
                     // Update UI to show disconnected state
@@ -1025,6 +1073,8 @@
                         </tr>
                     `).join('') || '<tr><td colspan="5" style="text-align: center; color: #94a3b8;">No recent tasks</td></tr>';
 
+                    // Update Vera orchestrator status
+                    await this.updateVeraOrchestratorStatus();
                 } catch (error) {
                     console.error('Dashboard update failed:', error);
                 }
@@ -1248,6 +1298,53 @@
                     }
                 } catch (error) {
                     console.error('Failed to update pool status:', error);
+                }
+            }
+
+            // ==================== Vera Orchestrator Methods ====================
+
+            async startVeraOrchestrator() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/vera/start`, { method: 'POST' });
+                    const data = await response.json();
+                    this.showNotification('Vera Orchestrator started', 'success');
+                    await this.refreshHealth();
+                    await this.updateVeraOrchestratorStatus();
+                } catch (error) {
+                    this.showNotification(`Failed to start Vera Orchestrator: ${error.message}`, 'error');
+                }
+            }
+
+            async stopVeraOrchestrator() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/vera/stop`, { method: 'POST' });
+                    const data = await response.json();
+                    this.showNotification('Vera Orchestrator stopped', 'warning');
+                    await this.refreshHealth();
+                    await this.updateVeraOrchestratorStatus();
+                } catch (error) {
+                    this.showNotification(`Failed to stop Vera Orchestrator: ${error.message}`, 'error');
+                }
+            }
+
+            async updateVeraOrchestratorStatus() {
+                try {
+                    const response = await fetch(`${this.apiUrl}/vera/status`);
+                    const data = await response.json();
+
+                    if (data.orchestrators && data.orchestrators.length > 0) {
+                        const orch = data.orchestrators[0].orchestrator;
+
+                        // Update dashboard status
+                        document.getElementById('vera-orch-dash-status').textContent =
+                            orch.running ? 'Running' : (orch.enabled ? 'Enabled' : 'Stopped');
+                        document.getElementById('vera-orch-active-tasks').textContent =
+                            orch.active_tasks || 0;
+                        document.getElementById('vera-orch-queued-tasks').textContent =
+                            orch.queued_tasks || 0;
+                    }
+                } catch (error) {
+                    console.error('Failed to update Vera orchestrator status:', error);
                 }
             }
 

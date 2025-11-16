@@ -36,6 +36,9 @@ router = APIRouter(prefix="/orchestrator", tags=["orchestrator"])
 # GLOBAL STATE
 # ============================================================================
 
+# Import Vera instances from session management
+from Vera.ChatUI.api.session import vera_instances
+
 class OrchestratorState:
     def __init__(self):
         self.local_pool: Optional[PriorityWorkerPool] = None
@@ -48,6 +51,16 @@ class OrchestratorState:
         self.websocket_connections: List[WebSocket] = []
 
 state = OrchestratorState()
+
+def get_vera_orchestrator(session_id: str = None):
+    """Get the orchestrator from a Vera instance"""
+    if session_id and session_id in vera_instances:
+        return vera_instances[session_id].orchestrator
+    # If no session_id, try to get the first available Vera instance
+    if vera_instances:
+        first_session_id = next(iter(vera_instances))
+        return vera_instances[first_session_id].orchestrator
+    return None
 
 
 # ============================================================================
@@ -206,12 +219,109 @@ async def serve_orchestrator_ui():
 @router.get("/health")
 async def orchestrator_health():
     """Get overall system health status"""
+    # Check Vera's orchestrator status
+    vera_orchestrator_status = {}
+    if vera_instances:
+        first_session = next(iter(vera_instances))
+        vera = vera_instances[first_session]
+        vera_orchestrator_status = {
+            "enabled": vera.orchestrator_enabled,
+            "running": vera.orchestrator.is_running if vera.orchestrator else False,
+            "active_sessions": len(vera_instances)
+        }
+
     return {
         "status": "healthy",
-        "local_pool": state.local_pool is not None and state.local_pool._running,
-        "cluster_pool": state.cluster_pool is not None,
-        "focus_manager": state.focus_manager is not None and state.focus_manager._running,
-        "vera_connected": state.vera_instance is not None
+        "vera_orchestrator": vera_orchestrator_status,
+        "legacy_pools": {
+            "local_pool": state.local_pool is not None and state.local_pool._running,
+            "cluster_pool": state.cluster_pool is not None,
+            "focus_manager": state.focus_manager is not None and state.focus_manager._running,
+        }
+    }
+
+@router.post("/vera/start")
+async def start_vera_orchestrator(session_id: Optional[str] = None):
+    """Start Vera's unified orchestrator"""
+    if not vera_instances:
+        raise HTTPException(status_code=400, detail="No active Vera sessions. Start a session first.")
+
+    # Get the Vera instance
+    if session_id:
+        if session_id not in vera_instances:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        vera = vera_instances[session_id]
+    else:
+        # Use first available session
+        session_id = next(iter(vera_instances))
+        vera = vera_instances[session_id]
+
+    try:
+        result = await vera.start_orchestrator()
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "message": result["message"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/vera/stop")
+async def stop_vera_orchestrator(session_id: Optional[str] = None):
+    """Stop Vera's unified orchestrator"""
+    if not vera_instances:
+        raise HTTPException(status_code=400, detail="No active Vera sessions")
+
+    # Get the Vera instance
+    if session_id:
+        if session_id not in vera_instances:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        vera = vera_instances[session_id]
+    else:
+        # Use first available session
+        session_id = next(iter(vera_instances))
+        vera = vera_instances[session_id]
+
+    try:
+        result = await vera.stop_orchestrator()
+        return {
+            "status": "success",
+            "session_id": session_id,
+            "message": result["message"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/vera/status")
+async def get_vera_orchestrator_status(session_id: Optional[str] = None):
+    """Get status of Vera's unified orchestrator"""
+    if not vera_instances:
+        return {
+            "active_sessions": 0,
+            "orchestrators": []
+        }
+
+    # If session_id provided, get status for that session
+    if session_id:
+        if session_id not in vera_instances:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        vera = vera_instances[session_id]
+        return {
+            "session_id": session_id,
+            "orchestrator": vera.get_orchestrator_status()
+        }
+
+    # Otherwise, get status for all sessions
+    all_status = []
+    for sid, vera in vera_instances.items():
+        all_status.append({
+            "session_id": sid,
+            "orchestrator": vera.get_orchestrator_status()
+        })
+
+    return {
+        "active_sessions": len(vera_instances),
+        "orchestrators": all_status
     }
 
 @router.get("/system/metrics")
