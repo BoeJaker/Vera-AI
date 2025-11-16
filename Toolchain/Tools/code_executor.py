@@ -108,6 +108,17 @@ class TemplateUseInput(BaseModel):
         description="Save generated code to file"
     )
 
+class TemplateListInput(BaseModel):
+    """Input schema for listing code templates."""
+    language: Optional[str] = Field(
+        default=None,
+        description="Filter by programming language"
+    )
+    tags: Optional[List[str]] = Field(
+        default=None,
+        description="Filter by tags"
+    )
+
 
 class CodeRefactorInput(BaseModel):
     """Input schema for code refactoring."""
@@ -1168,7 +1179,7 @@ def add_adhoc_code_tools(tool_list: List, agent):
                 "Filter by language or tags. "
                 "Shows what templates are available for reuse."
             ),
-            args_schema=FileHistoryQueryInput
+            args_schema=TemplateListInput
         ),
         
         StructuredTool.from_function(

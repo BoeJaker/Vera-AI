@@ -40,6 +40,9 @@ import Vera.Toolchain.dynamic_tools as DynamicTools
 from Vera.Toolchain.mcp_manager import *
 from Vera.Toolchain.Tools.code_executor import *
 from Vera.Toolchain.Tools.microcontollers2 import *
+from Vera.Toolchain.Tools.version_manager import *
+from Vera.Toolchain.n8n_tools import *
+
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -2388,6 +2391,8 @@ def ToolLoader(agent):
         ),
     ]
     
+    DynamicTools.add_dynamic_tools(tool_list, agent)
+
     add_ssh_postgres_neo4j_tools(tool_list, agent)
 
     add_mcp_docker_tools(tool_list, agent)
@@ -2396,13 +2401,18 @@ def ToolLoader(agent):
 
     add_microcontroller_control_tools(tool_list, agent)
 
+    add_versioned_file_tools(tool_list, agent)
+
+    add_n8n_tools(tool_list, agent)
+
     # Add Web Crawler tools
-    # add_web_crawler_tools(tool_list, agent)
+    add_web_crawler_tools(tool_list, agent)
 
     # Add Babelfish tools
     # add_babelfish_tools(tool_list, agent)
 
-    DynamicTools.add_dynamic_tools(tool_list, agent)
+
+
     # Add MCP tools if available
     if MCP_AVAILABLE:
         tool_list.extend([

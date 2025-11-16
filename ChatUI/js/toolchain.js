@@ -242,7 +242,103 @@
         this.toolchainView = view;
         this.updateToolchainUI();
     };
-
+// Add this new method to update just a single tool card
+VeraChat.prototype.updateSingleToolCard = function(toolName) {
+    const tool = this.availableTools[toolName];
+    if (!tool) return;
+    
+    const cardElement = document.querySelector(`[data-tool-name="${this.escapeHtml(toolName)}"]`);
+    if (!cardElement) return;
+    
+    const isExecuting = this.executingTools && this.executingTools[toolName];
+    const hasResult = this.toolResults && this.toolResults[toolName];
+    const isExpanded = this.expandedTools && this.expandedTools[toolName];
+    
+    const newCardHtml = `
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+            <div style="flex: 1;">
+                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                    ${this.escapeHtml(tool.name)}
+                </div>
+                <div style="color: #64748b; font-size: 10px; font-family: monospace; margin-bottom: 8px;">
+                    ${this.escapeHtml(tool.type)}
+                </div>
+            </div>
+            <button class="panel-btn" 
+                    onclick="app.toggleToolExpand('${this.escapeHtml(tool.name)}')"
+                    style="padding: 4px 8px; font-size: 11px; min-width: auto;">
+                ${isExpanded ? '▼' : '▶'}
+            </button>
+        </div>
+        
+        <div style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+            ${this.escapeHtml(tool.description)}
+        </div>
+        
+        <div id="tool-expand-${this.escapeHtml(tool.name)}" 
+            style="display: ${isExpanded ? 'block' : 'none'};">
+            
+            <div id="tool-inputs-${this.escapeHtml(tool.name)}" style="margin-bottom: 10px;">
+                <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">Loading inputs...</div>
+            </div>
+            
+            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                <button class="panel-btn" 
+                        onclick="app.executeToolFromCard('${this.escapeHtml(tool.name)}')"
+                        style="flex: 1; padding: 8px; font-size: 12px;"
+                        ${isExecuting ? 'disabled' : ''}>
+                    ${isExecuting ? '⏳ Executing...' : '🚀 Execute'}
+                </button>
+                <button class="panel-btn" 
+                        onclick="app.clearToolInput('${this.escapeHtml(tool.name)}')"
+                        style="background: #64748b; padding: 8px; font-size: 12px;"
+                        ${isExecuting ? 'disabled' : ''}>
+                    Clear
+                </button>
+            </div>
+            
+            ${hasResult ? `
+                <div style="background: #0f172a; border-radius: 6px; padding: 10px; border-left: 3px solid ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'};">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <div style="color: ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
+                            ${this.toolResults[toolName].success ? '✓ Success' : '✗ Error'}
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <div style="color: #64748b; font-size: 9px;">
+                                ${this.toolResults[toolName].duration}ms
+                            </div>
+                            <button onclick="app.clearToolResult('${this.escapeHtml(tool.name)}')" 
+                                    style="background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; font-size: 12px;"
+                                    title="Clear result">✕</button>
+                        </div>
+                    </div>
+                    <div style="color: #cbd5e1; font-size: 11px; font-family: monospace; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.4;">
+                        ${this.escapeHtml(this.toolResults[toolName].output)}
+                    </div>
+                </div>
+            ` : ''}
+        </div>
+        
+        ${!isExpanded ? `
+            <button class="panel-btn" 
+                    onclick="app.quickExpandTool('${this.escapeHtml(tool.name)}')"
+                    style="width: 100%; padding: 8px; font-size: 12px;">
+                ⚡ Quick Execute
+            </button>
+        ` : ''}
+    `;
+    
+    // Update the card's opacity for executing state
+    cardElement.style.opacity = isExecuting ? '0.7' : '1';
+    cardElement.innerHTML = newCardHtml;
+    
+    // If expanded, load the schema
+    if (isExpanded) {
+        setTimeout(() => {
+            this.renderToolInputs(toolName);
+        }, 0);
+    }
+};
 VeraChat.prototype.renderCurrentExecution = function() {
     // Initialize toolchainExecutions if it doesn't exist
     if (!this.toolchainExecutions) {
@@ -1343,31 +1439,23 @@ VeraChat.prototype.renderToolInputs = async function(toolName) {
         this.updateToolCardsOnly();
     };
 
-VeraChat.prototype.toggleToolExpand = function(toolName) {
-    if (!this.expandedTools) this.expandedTools = {};
-    this.expandedTools[toolName] = !this.expandedTools[toolName];
-    this.updateToolchainUI();
-    
-    // Load schema after render
-    if (this.expandedTools[toolName]) {
-        setTimeout(() => {
-            this.renderToolInputs(toolName);
-        }, 50);
-    }
-};
+    VeraChat.prototype.toggleToolExpand = function(toolName) {
+        if (!this.expandedTools) this.expandedTools = {};
+        this.expandedTools[toolName] = !this.expandedTools[toolName];
+        this.updateSingleToolCard(toolName);
+    };
 
-VeraChat.prototype.quickExpandTool = function(toolName) {
-    if (!this.expandedTools) this.expandedTools = {};
-    this.expandedTools[toolName] = true;
-    this.updateToolchainUI();
-    
-    setTimeout(async () => {
-        await this.renderToolInputs(toolName);
-        // Focus first input
-        const firstInput = document.querySelector(`#tool-inputs-${toolName} input, #tool-inputs-${toolName} textarea`);
-        if (firstInput) firstInput.focus();
-    }, 50);
-};
+    VeraChat.prototype.quickExpandTool = function(toolName) {
+        if (!this.expandedTools) this.expandedTools = {};
+        this.expandedTools[toolName] = true;
+        this.updateSingleToolCard(toolName);
+        
+        setTimeout(async () => {
+            await this.renderToolInputs(toolName);
+            const firstInput = document.querySelector(`#tool-inputs-${toolName} input, #tool-inputs-${toolName} textarea`);
+            if (firstInput) firstInput.focus();
+        }, 50);
+    };
 
     VeraChat.prototype.toggleToolView = function() {
         this.toolViewMode = this.toolViewMode === 'grid' ? 'list' : 'grid';
@@ -1380,116 +1468,127 @@ VeraChat.prototype.quickExpandTool = function(toolName) {
     };
 
     VeraChat.prototype.clearToolInput = function(toolName) {
-        const input = document.getElementById(`tool-input-${toolName}`);
-        if (input) {
-            input.value = '';
-            input.focus();
-        }
+        const schema = this.toolSchemas[toolName];
+        if (!schema) return;
+        
+        // Clear all inputs for this tool
+        schema.parameters.forEach(param => {
+            const inputId = `tool-input-${toolName}-${param.name}`;
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.value = param.default || '';
+            }
+        });
+        
+        // Focus first input
+        const firstInput = document.querySelector(`#tool-inputs-${toolName} input, #tool-inputs-${toolName} textarea`);
+        if (firstInput) firstInput.focus();
     };
-
+    
     VeraChat.prototype.clearToolResult = function(toolName) {
         if (!this.toolResults) this.toolResults = {};
         delete this.toolResults[toolName];
-        this.updateToolchainUI();
+        this.updateSingleToolCard(toolName);
     };
- VeraChat.prototype.executeToolFromCard = async function(toolName) {
-    const schema = this.toolSchemas[toolName];
-    
-    if (!schema) {
-        alert('Tool schema not loaded');
-        return;
-    }
-    
-    // Collect all input values
-    const toolInput = {};
-    let hasError = false;
-    
-    for (const param of schema.parameters) {
-        const inputId = `tool-input-${toolName}-${param.name}`;
-        const input = document.getElementById(inputId);
+
+    VeraChat.prototype.executeToolFromCard = async function(toolName) {
+        const schema = this.toolSchemas[toolName];
         
-        if (!input) continue;
-        
-        let value = input.value.trim();
-        
-        // Validate required fields
-        if (param.required && !value) {
-            alert(`Required field missing: ${param.name}`);
-            input.focus();
-            hasError = true;
-            break;
+        if (!schema) {
+            alert('Tool schema not loaded');
+            return;
         }
         
-        // Type conversion
-        if (param.type === 'integer') {
-            value = parseInt(value, 10);
-            if (isNaN(value)) value = param.default || 0;
-        } else if (param.type === 'number') {
-            value = parseFloat(value);
-            if (isNaN(value)) value = param.default || 0;
-        } else if (param.type === 'boolean') {
-            value = value === 'true';
-        }
+        // Collect all input values
+        const toolInput = {};
+        let hasError = false;
         
-        // Only include if value is present or required
-        if (value !== '' || param.required) {
-            toolInput[param.name] = value;
-        }
-    }
-    
-    if (hasError) return;
-    
-    // Initialize tracking objects
-    if (!this.executingTools) this.executingTools = {};
-    if (!this.toolResults) this.toolResults = {};
-    
-    // Mark as executing
-    this.executingTools[toolName] = true;
-    delete this.toolResults[toolName];
-    this.updateToolchainUI();
-    
-    const startTime = Date.now();
-    
-    try {
-        // Convert toolInput to query params
-        const params = new URLSearchParams();
-        params.append('tool_name', toolName);
-        params.append('tool_input', JSON.stringify(toolInput));
-        
-        const response = await fetch(
-            `http://llm.int:8888/api/toolchain/${this.sessionId}/execute-tool?${params.toString()}`, 
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+        for (const param of schema.parameters) {
+            const inputId = `tool-input-${toolName}-${param.name}`;
+            const input = document.getElementById(inputId);
+            
+            if (!input) continue;
+            
+            let value = input.value.trim();
+            
+            // Validate required fields
+            if (param.required && !value) {
+                alert(`Required field missing: ${param.name}`);
+                input.focus();
+                hasError = true;
+                break;
             }
-        );
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            
+            // Type conversion
+            if (param.type === 'integer') {
+                value = parseInt(value, 10);
+                if (isNaN(value)) value = param.default || 0;
+            } else if (param.type === 'number') {
+                value = parseFloat(value);
+                if (isNaN(value)) value = param.default || 0;
+            } else if (param.type === 'boolean') {
+                value = value === 'true';
+            }
+            
+            // Only include if value is present or required
+            if (value !== '' || param.required) {
+                toolInput[param.name] = value;
+            }
         }
         
-        const data = await response.json();
+        if (hasError) return;
         
-        this.toolResults[toolName] = {
-            success: data.success,
-            output: data.output,
-            duration: Math.round(data.duration_ms),
-            executed_at: data.executed_at
-        };
+        // Initialize tracking objects
+        if (!this.executingTools) this.executingTools = {};
+        if (!this.toolResults) this.toolResults = {};
         
-    } catch (error) {
-        const duration = Date.now() - startTime;
-        this.toolResults[toolName] = {
-            success: false,
-            output: error.message || 'Execution failed',
-            duration: duration
-        };
-    } finally {
-        delete this.executingTools[toolName];
-        this.updateToolchainUI();
-    }
-};
+        // Mark as executing and update just this card
+        this.executingTools[toolName] = true;
+        delete this.toolResults[toolName];
+        this.updateSingleToolCard(toolName);
+        
+        const startTime = Date.now();
+        
+        try {
+            // Convert toolInput to query params
+            const params = new URLSearchParams();
+            params.append('tool_name', toolName);
+            params.append('tool_input', JSON.stringify(toolInput));
+            
+            const response = await fetch(
+                `http://llm.int:8888/api/toolchain/${this.sessionId}/execute-tool?${params.toString()}`, 
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                }
+            );
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            this.toolResults[toolName] = {
+                success: data.success,
+                output: data.output,
+                duration: Math.round(data.duration_ms),
+                executed_at: data.executed_at
+            };
+            
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            this.toolResults[toolName] = {
+                success: false,
+                output: error.message || 'Execution failed',
+                duration: duration
+            };
+        } finally {
+            delete this.executingTools[toolName];
+            this.updateSingleToolCard(toolName);
+        }
+    };
 })();
