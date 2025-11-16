@@ -1,0 +1,106 @@
+{
+  "focus": "focus: poetry",
+  "project_id": null,
+  "created_at": "2025-11-02T22:51:11.316749",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "\"Brainstorm 5-10 potential themes or subjects for the poetry collection.\",",
+        "timestamp": "2025-11-02T22:29:13.020900",
+        "metadata": {}
+      },
+      {
+        "note": "\"Write one complete poem (any length) based on one of the brainstormed themes. This serves as a 'seed' poem.\",",
+        "timestamp": "2025-11-02T22:29:13.021485",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research contemporary poets and poetry styles that resonate with the intended tone/subject matter of the project; identify 3-5 to study.\",",
+        "timestamp": "2025-11-02T22:29:13.022125",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a list of 10-15 specific imagery or metaphor ideas related to the chosen theme(s).\",",
+        "timestamp": "2025-11-02T22:29:13.022669",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define the overall desired 'voice' or style for the poetry (e.g., lyrical, narrative, free verse, formal) - write a short paragraph describing it.\"",
+        "timestamp": "2025-11-02T22:29:13.023211",
+        "metadata": {}
+      },
+      {
+        "note": "```json",
+        "timestamp": "2025-11-02T22:48:27.727124",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-02T22:48:27.727848",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 3 potential themes or subjects for the next set of poems, documenting ideas in the 'Ideas' list.\",",
+        "timestamp": "2025-11-02T22:48:27.728438",
+        "metadata": {}
+      },
+      {
+        "note": "\"Draft the first draft of one poem based on the chosen theme, aiming for at least 10 lines.\",",
+        "timestamp": "2025-11-02T22:48:27.729011",
+        "metadata": {}
+      },
+      {
+        "note": "\"Review the 'Ideas' list and prioritize the 9 pending next steps based on feasibility and impact.\",",
+        "timestamp": "2025-11-02T22:48:27.729679",
+        "metadata": {}
+      },
+      {
+        "note": "\"Identify one specific poetic device (e.g., metaphor, alliteration) to focus on incorporating into the drafted poem.\",",
+        "timestamp": "2025-11-02T22:48:27.730315",
+        "metadata": {}
+      },
+      {
+        "note": "\"Schedule 30 minutes for revision of the drafted poem, focusing on clarity, imagery, and the chosen poetic device.\"",
+        "timestamp": "2025-11-02T22:48:27.730957",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-02T22:48:27.731658",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-02T22:48:27.732329",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential themes for the poetry collection. Use the 'DuckDuckGo Web Search' tool to find popular poetry themes and subgenres for inspiration.\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research contemporary poets and styles. Use 'DuckDuckGo Web Search' to find lists of contemporary poets and descriptions of various poetry styles (free verse, sonnet, haiku, etc.).\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Use the 'Query Fast LLM' tool to generate a list of 10-15 imagery or metaphor ideas related to a specific theme (e.g., if the brainstorm yields 'loss', ask for imagery related to loss).\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Use 'Query Deep LLM' to define the desired 'voice' or style for the poetry. Prompt it to write a short paragraph describing a lyrical, narrative, free verse or formal poetic style, based on the theme currently considered.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Deep LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-02T22:35:56.741833",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm potential themes for the poetry collection. Use the 'DuckDuckGo Web Search' tool to find popular poetry themes and subgenres for inspiration.\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research contemporary poets and styles. Use 'DuckDuckGo Web Search' to find lists of contemporary poets and descriptions of various poetry styles (free verse, sonnet, haiku, etc.).\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Use the 'Query Fast LLM' tool to generate a list of 10-15 imagery or metaphor ideas related to a specific theme (e.g., if the brainstorm yields 'loss', ask for imagery related to loss).\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Use 'Query Deep LLM' to define the desired 'voice' or style for the poetry. Prompt it to write a short paragraph describing a lyrical, narrative, free verse or formal poetic style, based on the theme currently considered.\",\n    \"tools\": [\n      \"Query Deep LLM\"\n    ],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      },
+      {
+        "note": "{\"description\": \"Error streaming ideas response: 'run_manager'\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-02T22:51:11.215597",
+        "metadata": {
+          "description": "Error streaming ideas response: 'run_manager'",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762122215950"
+  }
+}

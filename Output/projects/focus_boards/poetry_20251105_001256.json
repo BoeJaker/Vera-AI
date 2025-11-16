@@ -1,0 +1,72 @@
+{
+  "focus": "poetry",
+  "project_id": null,
+  "created_at": "2025-11-05T00:12:56.121709",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-05T00:07:34.588511",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-05T00:07:34.589242",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 5-10 potential themes or subjects for the poetry collection.\",",
+        "timestamp": "2025-11-05T00:07:34.589805",
+        "metadata": {}
+      },
+      {
+        "note": "\"Write a first draft of at least one poem, focusing on a chosen theme (aim for 10-20 lines).\",",
+        "timestamp": "2025-11-05T00:07:34.590474",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research contemporary poets and collections for inspiration and to identify potential stylistic influences.\",",
+        "timestamp": "2025-11-05T00:07:34.591374",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define the desired tone and style for the poetry (e.g., lyrical, narrative, free verse, formal).\",",
+        "timestamp": "2025-11-05T00:07:34.592280",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a basic project outline, including a tentative number of poems and potential sections or groupings.\"",
+        "timestamp": "2025-11-05T00:07:34.593103",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-05T00:07:34.593971",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-05T00:07:34.594715",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential themes for the poetry collection using a web search.\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research contemporary poets and collections to gain inspiration. Focus on identifying stylistic influences and current trends.\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Using the Fast LLM, create a basic project outline with a tentative number of poems (10-15) and suggest 3-4 potential sections/groupings based on common themes.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Using the Fast LLM, define a few potential tones and styles for the poetry collection (lyrical, narrative, free verse, formal) and explain the characteristics of each.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"low\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-05T00:12:56.019676",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Brainstorm potential themes for the poetry collection using a web search.\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research contemporary poets and collections to gain inspiration. Focus on identifying stylistic influences and current trends.\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Using the Fast LLM, create a basic project outline with a tentative number of poems (10-15) and suggest 3-4 potential sections/groupings based on common themes.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Using the Fast LLM, define a few potential tones and styles for the poetry collection (lyrical, narrative, free verse, formal) and explain the characteristics of each.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"low\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762301082979"
+  }
+}
