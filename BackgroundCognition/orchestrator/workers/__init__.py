@@ -2,7 +2,7 @@
 Worker management for the unified orchestrator
 """
 
-from .base import BaseWorker, WorkerStatus, WorkerCapability
+from .base import BaseWorker, WorkerStatus, WorkerCapability, WorkerConfig, WorkerMetrics
 from .registry import WorkerRegistry
 from .docker_worker import DockerWorker, DockerWorkerPool
 from .remote_worker import RemoteWorker
@@ -19,4 +19,6 @@ __all__ = [
     'RemoteWorker',
     'OllamaWorker',
     'LLMAPIWorker',
+    'WorkerConfig',
+    'WorkerMetrics',
 ]
