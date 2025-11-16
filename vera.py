@@ -22,13 +22,22 @@ import requests
 from collections.abc import Iterator
 from urllib.parse import quote_plus, quote
 import asyncio
+import hashlib
 from playwright.async_api import async_playwright
 from langchain_core.outputs import GenerationChunk
 from langchain.llms.base import LLM
 from langchain_core.tools import tool
 from langchain_community.llms import Ollama
-from langchain.agents import initialize_agent, Tool, AgentType
-from langchain.memory import ConversationBufferMemory, VectorStoreRetrieverMemory, CombinedMemory
+from langchain.agents import (
+    initialize_agent, 
+    Tool, 
+    AgentType
+)
+from langchain.memory import (
+    ConversationBufferMemory, 
+    VectorStoreRetrieverMemory, 
+    CombinedMemory
+)
 from langchain.vectorstores import Chroma
 from langchain_community.embeddings import OllamaEmbeddings
 from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
@@ -43,21 +52,43 @@ from langchain.llms.base import LLM
 try:
     from Vera.Agents.executive_0_9 import executive
     from Vera.Memory.memory import *
+    # from Vera.Memory.archive import PostgresArchive, HybridMemoryWithArchive
+
     from Vera.Toolchain.toolchain import ToolChainPlanner # v1 import
     from Vera.Toolchain.tools import ToolLoader
+    from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
+    from Vera.Toolchain.Tools.memory import load_memory_tools
     from Vera.Agents.reviewer import Reviewer
     from Vera.Agents.planning import Planner
     from Vera.proactive_focus_manager import ProactiveFocusManager
-except:
+except Exception as e:
+    print(e)
     from Agents.executive_0_9 import executive
     # sys.path.append(os.path.join(os.path.dirname(__file__), 'Memory'))
     from Memory.memory import *
+    # from Memory.archive import PostgresArchive, HybridMemoryWithArchive
     from Toolchain.toolchain import ToolChainPlanner # v1 import
     from Toolchain.tools import ToolLoader
+    from Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
+    from Toolchain.Tools.memory import load_memory_tools
     from Agents.reviewer import Reviewer
     from Agents.planning import Planner
     from proactive_focus_manager import ProactiveFocusManager
-import hashlib
+
+# # Initialize both systems
+# memory = HybridMemory(
+#     neo4j_uri="bolt://localhost:7687",
+#     neo4j_user="neo4j",
+#     neo4j_password="password",
+#     chroma_dir="./chroma_store"
+# )
+
+# archive = PostgresArchive(
+#     connection_string="postgresql://user:pass@localhost:5432/memory_archive"
+# )
+
+# # Wrap them together
+# integrated = HybridMemoryWithArchive(memory, archive)
 
 #---- Constants ---
 MODEL_CONFIG_FILE = "Configuration/vera_models.json"
@@ -518,6 +549,9 @@ class Vera:
         # Tool setup
         self.toolkit=ToolLoader(self)
         self.tools = self.toolkit + self.playwright_tools
+
+        self.tools.extend(load_memory_tools(self))
+
         print(f"[Vera] Loaded {len(self.tools)} tools.")
         
         # Fast Agent that can handle simple tool queries
@@ -539,7 +573,9 @@ class Vera:
         )
         
         self.toolchain = ToolChainPlanner(self, self.tools)
-                
+        # Replace your toolchain initialization with:
+        integrate_hybrid_planner(self, enable_n8n=True)  # or False
+
         # Define callback to handle proactive thoughts:
         def handle_proactive(thought):
             print(f"Proactive Thought: {thought}")

@@ -6,7 +6,7 @@ Provides backward compatibility while adding new features
 import json
 import logging
 from typing import List, Dict, Any, Generator, Optional
-from Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner, PlanningStrategy, PlanTemplate
+from Vera.Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner, PlanningStrategy, PlanTemplate
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class HybridToolChainPlanner:
         
         # Import the original ToolChainPlanner
         try:
-            from toolchain import ToolChainPlanner as OriginalPlanner
+            from Toolchain.toolchain import ToolChainPlanner as OriginalPlanner
             self.executor = OriginalPlanner(
                 agent, tools, max_steps, default_retries, 
                 default_step_timeout, speculative_workers, max_parallel_steps

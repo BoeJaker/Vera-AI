@@ -34,90 +34,9 @@ except ImportError:
     MCP_AVAILABLE = False
     print("[Warning] MCP not available. Install with: pip install mcp anthropic-mcp-client")
 
-
-# ============================================================================
-# INPUT SCHEMAS - Strongly typed inputs for better LLM understanding
-# ============================================================================
-
-class FilePathInput(BaseModel):
-    """Input schema for file path operations."""
-    path: str = Field(..., description="Full path to the file")
-
-
-class WriteFileInput(BaseModel):
-    """Input schema for writing files."""
-    path: str = Field(..., description="Full path where file should be written")
-    content: str = Field(..., description="Content to write to the file")
-
-
-class CommandInput(BaseModel):
-    """Input schema for shell commands."""
-    command: str = Field(..., description="Shell command to execute")
-
-
-class PythonInput(BaseModel):
-    """Input schema for Python code execution."""
-    code: str = Field(..., description="Python code to execute")
-
-
-class SearchInput(BaseModel):
-    """Input schema for web searches."""
-    query: str = Field(..., description="Search query")
-    max_results: int = Field(default=10, description="Maximum number of results to return")
-    search_engine: str = Field(default="duckduckgo", description="Search engine to use: duckduckgo, google, bing, brave, perplexity")
-
-
-class WebReportInput(BaseModel):
-    """Input schema for comprehensive web search reports."""
-    input_data: str = Field(..., description="Search query or existing search results text")
-    max_results: int = Field(default=5, description="Maximum number of pages to scrape")
-
-
-class LLMQueryInput(BaseModel):
-    """Input schema for LLM queries."""
-    query: str = Field(..., description="Query or prompt for the LLM")
-
-
-class MCPInput(BaseModel):
-    """Input schema for MCP operations."""
-    server_name: str = Field(..., description="Name of the MCP server to use")
-    tool_name: str = Field(..., description="Name of the tool to invoke")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments for the tool")
-
-
-class HTTPInput(BaseModel):
-    """Input schema for HTTP requests."""
-    url: str = Field(..., description="URL to request")
-    method: str = Field(default="GET", description="HTTP method (GET, POST, PUT, DELETE)")
-    headers: Optional[Dict[str, str]] = Field(default=None, description="Request headers")
-    body: Optional[str] = Field(default=None, description="Request body for POST/PUT")
-
-
-class SQLInput(BaseModel):
-    """Input schema for SQLite operations."""
-    db_path: str = Field(..., description="Path to SQLite database")
-    query: str = Field(..., description="SQL query to execute")
-
-
-class GitInput(BaseModel):
-    """Input schema for Git operations."""
-    repo_path: str = Field(default=".", description="Path to git repository")
-    command: str = Field(..., description="Git command (status, log, diff, etc.)")
-    args: str = Field(default="", description="Additional arguments for the command")
-
-
-class CustomToolInput(BaseModel):
-    """Input schema for custom tool operations."""
-    tool_name: str = Field(..., description="Name of the tool file (without .py extension)")
-    function_name: str = Field(..., description="Name of the function to call")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments to pass to the function as key-value pairs")
-
-
-class ToolDiscoveryInput(BaseModel):
-    """Input schema for tool discovery."""
-    pattern: str = Field(default="*", description="Pattern to filter tools (e.g., 'data_*' or '*')")
-
-
+from Vera.Toolchain.Tools.protocols import add_ssh_postgres_neo4j_tools
+from Vera.Toolchain.schemas import *
+import Vera.Toolchain.dynamic_tools as DynamicTools
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -1344,549 +1263,569 @@ class LLMTools:
         return format_json(env_vars)
 
 """
-Dynamic Tool Loading System - Add this to your existing tools.py
-Enables loading tools from external files and decorating functions for auto-discovery
+Integration of Babelfish and WebServer tools into the existing tools.py framework
+Add this section to your tools.py file
 """
 
-import importlib.util
-import inspect
-from pathlib import Path
-from typing import Callable, Optional, Any, Dict, List
-from functools import wraps
-from pydantic import BaseModel, Field, create_model
-
+from typing import Literal, Union
+import threading
 
 # ============================================================================
-# TOOL DECORATOR & REGISTRY
+# BABELFISH TOOLS CLASS
 # ============================================================================
+from Vera.Toolchain.Tools.Babelfish.babelfish import BabelFishTool, WebServerTool
 
-class ToolRegistry:
-    """Global registry for decorated tools."""
-    _tools: Dict[str, Dict[str, Any]] = {}
+class BabelfishTools:
+    """Wrapper for Babelfish multi-protocol communication tools."""
     
-    @classmethod
-    def register(cls, name: str, func: Callable, description: str, 
-                 schema: Optional[type] = None, category: str = "general"):
-        """Register a tool in the global registry."""
-        cls._tools[name] = {
-            "function": func,
-            "description": description,
-            "schema": schema,
-            "category": category,
-            "module": func.__module__
-        }
-    
-    @classmethod
-    def get_tool(cls, name: str) -> Optional[Dict[str, Any]]:
-        """Get a tool by name."""
-        return cls._tools.get(name)
-    
-    @classmethod
-    def list_tools(cls, category: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List all registered tools, optionally filtered by category."""
-        if category:
-            return [
-                {"name": name, **info} 
-                for name, info in cls._tools.items() 
-                if info["category"] == category
-            ]
-        return [{"name": name, **info} for name, info in cls._tools.items()]
-    
-    @classmethod
-    def clear(cls):
-        """Clear all registered tools."""
-        cls._tools.clear()
-
-
-def tool(name: str = None, description: str = None, 
-         schema: type = None, category: str = "general"):
-    """
-    Decorator to register a function as a tool.
-    
-    Usage:
-        @tool(name="my_tool", description="Does something useful")
-        def my_function(agent, param1: str, param2: int = 10):
-            return f"Result: {param1} {param2}"
-    
-    Args:
-        name: Tool name (defaults to function name)
-        description: Tool description (defaults to docstring)
-        schema: Pydantic model for input validation
-        category: Tool category for organization
-    """
-    def decorator(func: Callable) -> Callable:
-        tool_name = name or func.__name__
-        tool_desc = description or func.__doc__ or "No description provided"
-        
-        # Auto-generate schema from function signature if not provided
-        if schema is None:
-            sig = inspect.signature(func)
-            params = {}
-            
-            # Skip 'agent' parameter which is injected
-            for param_name, param in sig.parameters.items():
-                if param_name == 'agent':
-                    continue
-                
-                # Get type annotation
-                param_type = param.annotation if param.annotation != inspect.Parameter.empty else str
-                
-                # Get default value
-                if param.default != inspect.Parameter.empty:
-                    params[param_name] = (param_type, Field(default=param.default))
-                else:
-                    params[param_name] = (param_type, Field(...))
-            
-            # Create dynamic Pydantic model
-            if params:
-                tool_schema = create_model(
-                    f"{tool_name.title()}Input",
-                    **params
-                )
-            else:
-                tool_schema = None
-        else:
-            tool_schema = schema
-        
-        # Register the tool
-        ToolRegistry.register(
-            name=tool_name,
-            func=func,
-            description=tool_desc,
-            schema=tool_schema,
-            category=category
-        )
-        
-        # Add metadata to function
-        func._tool_metadata = {
-            "name": tool_name,
-            "description": tool_desc,
-            "schema": tool_schema,
-            "category": category
-        }
-        
-        return func
-    
-    return decorator
-
-
-# ============================================================================
-# DYNAMIC TOOL LOADER
-# ============================================================================
-
-class DynamicToolLoader:
-    """Loads tools dynamically from Python files in a directory."""
-    
-    def __init__(self, agent, tools_directory: str = "./tools"):
+    def __init__(self, agent):
         self.agent = agent
-        self.tools_directory = Path(tools_directory)
-        self.loaded_modules = {}
         
-        # Create tools directory if it doesn't exist
-        self.tools_directory.mkdir(exist_ok=True)
-        
-        # Create __init__.py if it doesn't exist
-        init_file = self.tools_directory / "__init__.py"
-        if not init_file.exists():
-            init_file.touch()
-    
-    def discover_tools(self, pattern: str = "*.py") -> List[str]:
-        """
-        Discover all Python files in the tools directory.
-        
-        Returns:
-            List of tool file names (without .py extension)
-        """
-        tool_files = []
-        
-        for file_path in self.tools_directory.glob(pattern):
-            if file_path.name.startswith("_"):
-                continue  # Skip private files
-            
-            if file_path.suffix == ".py":
-                tool_files.append(file_path.stem)
-        
-        return sorted(tool_files)
-    
-    def load_tool_module(self, module_name: str) -> Any:
-        """
-        Dynamically load a Python module from the tools directory.
-        
-        Args:
-            module_name: Name of the module (without .py)
-        
-        Returns:
-            Loaded module object
-        """
-        if module_name in self.loaded_modules:
-            return self.loaded_modules[module_name]
-        
-        module_path = self.tools_directory / f"{module_name}.py"
-        
-        if not module_path.exists():
-            raise FileNotFoundError(f"Tool module not found: {module_path}")
-        
-        # Load the module
-        spec = importlib.util.spec_from_file_location(module_name, module_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        
-        # Cache the module
-        self.loaded_modules[module_name] = module
-        
-        return module
-    
-    def get_tool_function(self, module_name: str, function_name: str) -> Callable:
-        """
-        Get a specific function from a tool module.
-        
-        Args:
-            module_name: Name of the tool module
-            function_name: Name of the function in the module
-        
-        Returns:
-            The function object
-        """
-        module = self.load_tool_module(module_name)
-        
-        if not hasattr(module, function_name):
-            raise AttributeError(f"Function '{function_name}' not found in module '{module_name}'")
-        
-        func = getattr(module, function_name)
-        
-        if not callable(func):
-            raise TypeError(f"'{function_name}' in module '{module_name}' is not callable")
-        
-        return func
-    
-    def call_tool_function(self, module_name: str, function_name: str, 
-                          arguments: Dict[str, Any]) -> str:
-        """
-        Call a function from a tool module with arguments.
-        
-        Args:
-            module_name: Name of the tool module
-            function_name: Name of the function
-            arguments: Dictionary of arguments to pass
-        
-        Returns:
-            Function result as string
-        """
+        # Import Babelfish components (lazy to avoid import errors)
         try:
-            func = self.get_tool_function(module_name, function_name)
-            
-            # Check if function expects 'agent' parameter
-            sig = inspect.signature(func)
-            if 'agent' in sig.parameters:
-                result = func(self.agent, **arguments)
-            else:
-                result = func(**arguments)
-            
-            return str(result)
-            
-        except Exception as e:
-            return f"[Tool Execution Error] {str(e)}\n{traceback.format_exc()}"
+            self.babelfish = BabelFishTool()
+            self.webserver = WebServerTool()
+            self.available = True
+        except ImportError:
+            self.babelfish = None
+            self.webserver = None
+            self.available = False
+            print("[Warning] Babelfish module not available")
     
-    def list_tool_functions(self, module_name: str) -> List[Dict[str, Any]]:
+    def protocol_communicate(self, protocol: str, action: str, params: Dict[str, Any]) -> str:
         """
-        List all functions in a tool module.
+        Universal protocol communication via Babelfish.
         
-        Args:
-            module_name: Name of the tool module
+        Supported protocols:
+        - http: HTTP/HTTPS requests
+        - ws: WebSocket connections (persistent)
+        - mqtt: MQTT pub/sub messaging
+        - tcp: Raw TCP sockets (client/server)
+        - udp: UDP datagrams (client/server)
+        - smtp: Email sending via SMTP
         
-        Returns:
-            List of function info dictionaries
+        Common actions by protocol:
+        
+        HTTP:
+        - action: "request" (implied)
+        - params: {method: "GET|POST|PUT|DELETE", url: str, headers: dict, 
+                  data: str, json: dict, timeout: int, verify: bool}
+        
+        WebSocket:
+        - action: "open" -> returns handle
+        - params: {url: str, headers: dict, subprotocols: list}
+        - action: "send" -> params: {url: str, message: str}
+        
+        MQTT:
+        - action: "connect" -> returns handle
+        - params: {host: str, port: int, username: str, password: str, 
+                  subscribe: [topics], tls: dict}
+        - action: "publish" -> params: {handle: str, topic: str, payload: str, qos: int}
+        - action: "subscribe" -> params: {handle: str, topics: list}
+        - action: "disconnect" -> params: {handle: str}
+        
+        TCP:
+        - action: "send" -> params: {host: str, port: int, data: str, data_b64: str}
+        - action: "listen" -> returns handle, params: {host: str, port: int}
+        - action: "close" -> params: {handle: str}
+        
+        UDP:
+        - action: "send" -> params: {host: str, port: int, data: str, expect_response: bool}
+        - action: "listen" -> returns handle, params: {host: str, port: int}
+        - action: "close" -> params: {handle: str}
+        
+        SMTP:
+        - action: "send" -> params: {host: str, port: int, from_addr: str, 
+                  to_addrs: list, message: str, username: str, password: str, tls: bool}
+        
+        Returns JSON result: {"ok": bool, "data": any, "error": str}
         """
-        module = self.load_tool_module(module_name)
+        if not self.available:
+            return json.dumps({"ok": False, "error": "Babelfish not available"})
         
-        functions = []
-        for name, obj in inspect.getmembers(module):
-            if inspect.isfunction(obj) and not name.startswith('_'):
-                # Get function signature
-                sig = inspect.signature(obj)
-                params = [
-                    {
-                        "name": param_name,
-                        "type": str(param.annotation) if param.annotation != inspect.Parameter.empty else "Any",
-                        "default": str(param.default) if param.default != inspect.Parameter.empty else None
-                    }
-                    for param_name, param in sig.parameters.items()
-                    if param_name != 'agent'  # Skip agent parameter
-                ]
-                
-                functions.append({
-                    "name": name,
-                    "docstring": obj.__doc__ or "No description",
-                    "parameters": params,
-                    "has_tool_decorator": hasattr(obj, '_tool_metadata')
-                })
-        
-        return functions
-    
-    def auto_load_decorated_tools(self, pattern: str = "*.py") -> List[StructuredTool]:
-        """
-        Automatically load all tools decorated with @tool from the tools directory.
-        
-        Args:
-            pattern: File pattern to search for
-        
-        Returns:
-            List of StructuredTool instances
-        """
-        tool_files = self.discover_tools(pattern)
-        loaded_tools = []
-        
-        for module_name in tool_files:
-            try:
-                # Load the module (which will trigger decorator registration)
-                self.load_tool_module(module_name)
-            except Exception as e:
-                print(f"[Warning] Failed to load tool module '{module_name}': {e}")
-                continue
-        
-        # Convert registered tools to StructuredTool instances
-        for tool_name, tool_info in ToolRegistry.list_tools():
-            try:
-                func = tool_info["function"]
-                
-                # Wrap function to inject agent
-                @wraps(func)
-                def wrapped_func(*args, **kwargs):
-                    return func(self.agent, *args, **kwargs)
-                
-                # Create StructuredTool
-                if tool_info["schema"]:
-                    structured_tool = StructuredTool.from_function(
-                        func=wrapped_func,
-                        name=tool_name,
-                        description=tool_info["description"],
-                        args_schema=tool_info["schema"]
-                    )
-                else:
-                    structured_tool = StructuredTool.from_function(
-                        func=wrapped_func,
-                        name=tool_name,
-                        description=tool_info["description"]
-                    )
-                
-                loaded_tools.append(structured_tool)
-                
-            except Exception as e:
-                print(f"[Warning] Failed to create tool '{tool_name}': {e}")
-                continue
-        
-        return loaded_tools
-
-
-# ============================================================================
-# ADDITIONAL TOOLS FOR TOOL MANAGEMENT
-# ============================================================================
-
-class DiscoverToolsInput(BaseModel):
-    """Input for discovering tools."""
-    pattern: str = Field(default="*", description="Pattern to filter tools (e.g., 'data_*' or '*')")
-
-
-class CallCustomToolInput(BaseModel):
-    """Input for calling custom tools."""
-    tool_name: str = Field(..., description="Name of the tool file (without .py)")
-    function_name: str = Field(..., description="Function name to call")
-    arguments: Dict[str, Any] = Field(default_factory=dict, description="Arguments as key-value pairs")
-
-
-class ListToolFunctionsInput(BaseModel):
-    """Input for listing functions in a tool."""
-    tool_name: str = Field(..., description="Name of the tool file (without .py)")
-
-
-def add_dynamic_tool_methods(tools_instance: 'LLMTools'):
-    """
-    Add dynamic tool loading methods to existing LLMTools instance.
-    Call this function after creating your LLMTools instance.
-    
-    Usage:
-        tools = LLMTools(agent)
-        add_dynamic_tool_methods(tools)
-    """
-    
-    # Initialize dynamic loader
-    tools_instance.dynamic_loader = DynamicToolLoader(tools_instance.agent)
-    
-    def discover_custom_tools(self, pattern: str = "*") -> str:
-        """
-        Discover available custom tools in the tools directory.
-        Returns a list of tool files and their functions.
-        """
         try:
-            tool_files = self.dynamic_loader.discover_tools(f"{pattern}.py")
+            query = {
+                "protocol": protocol,
+                "action": action,
+                "params": params
+            }
             
-            if not tool_files:
-                return f"No tools found matching pattern '{pattern}'"
+            result = self.babelfish._run(query)
             
-            output = [f"Found {len(tool_files)} custom tool(s):\n"]
-            
-            for tool_name in tool_files:
-                try:
-                    functions = self.dynamic_loader.list_tool_functions(tool_name)
-                    output.append(f"\n📦 {tool_name}.py:")
-                    
-                    for func in functions:
-                        decorator_mark = "🔧" if func["has_tool_decorator"] else "  "
-                        output.append(f"  {decorator_mark} {func['name']}")
-                        output.append(f"      {func['docstring'][:60]}")
-                        
-                        if func['parameters']:
-                            params_str = ", ".join(
-                                f"{p['name']}: {p['type']}" 
-                                for p in func['parameters']
-                            )
-                            output.append(f"      Parameters: {params_str}")
-                    
-                except Exception as e:
-                    output.append(f"  ⚠️  Error loading: {str(e)}")
-            
-            output.append("\n🔧 = Has @tool decorator (auto-loadable)")
-            return "\n".join(output)
-            
-        except Exception as e:
-            return f"[Error] {str(e)}"
-    
-    def call_custom_tool(self, tool_name: str, function_name: str, 
-                        arguments: Dict[str, Any]) -> str:
-        """
-        Call a function from a custom tool file.
-        
-        Example:
-            tool_name: "data_processing"
-            function_name: "clean_csv"
-            arguments: {"file_path": "data.csv", "remove_nulls": true}
-        """
-        try:
-            result = self.dynamic_loader.call_tool_function(
-                tool_name, function_name, arguments
-            )
-            
-            # Store in memory
+            # Store in agent memory
             self.agent.mem.add_session_memory(
                 self.agent.sess.id,
-                f"Called {tool_name}.{function_name}",
-                "custom_tool_call",
-                {"tool": tool_name, "function": function_name, "args": arguments}
+                f"{protocol}:{action}",
+                "babelfish_action",
+                metadata={
+                    "protocol": protocol,
+                    "action": action,
+                    "params_keys": list(params.keys())
+                }
             )
             
             return result
             
         except Exception as e:
-            return f"[Custom Tool Error] {str(e)}"
+            return json.dumps({
+                "ok": False,
+                "error": f"Babelfish error: {str(e)}"
+            })
     
-    def list_tool_functions(self, tool_name: str) -> str:
+    def handle_operations(self, action: str, params: Dict[str, Any]) -> str:
         """
-        List all functions available in a custom tool file.
+        Manage Babelfish connection handles.
+        
+        Actions:
+        - handles/list: List active handles
+          params: {kind: "ws|mqtt|tcp|udp"} (optional filter)
+        
+        - handles/read: Read queued messages from a handle
+          params: {handle: str, max_items: int}
+          Returns messages that arrived on persistent connections
+        
+        - handles/close: Close a handle and clean up
+          params: {handle: str}
+        
+        Handles are used for persistent connections (WebSocket, MQTT, TCP/UDP listeners).
+        After opening such a connection, use the returned handle ID to read messages
+        or perform additional operations.
         """
+        if not self.available:
+            return json.dumps({"ok": False, "error": "Babelfish not available"})
+        
         try:
-            functions = self.dynamic_loader.list_tool_functions(tool_name)
+            query = {
+                "action": action,
+                "params": params
+            }
             
-            output = [f"Functions in {tool_name}.py:\n"]
+            result = self.babelfish._run(query)
             
-            for func in functions:
-                output.append(f"\n📌 {func['name']}")
-                output.append(f"   {func['docstring']}")
-                
-                if func['parameters']:
-                    output.append("   Parameters:")
-                    for param in func['parameters']:
-                        default = f" = {param['default']}" if param['default'] else ""
-                        output.append(f"     - {param['name']}: {param['type']}{default}")
-                
-                if func['has_tool_decorator']:
-                    output.append("   🔧 Auto-loadable with @tool decorator")
+            # Store in memory
+            self.agent.mem.add_session_memory(
+                self.agent.sess.id,
+                action,
+                "babelfish_handle_op",
+                metadata={"action": action}
+            )
             
-            return "\n".join(output)
+            return result
             
         except Exception as e:
-            return f"[Error] {str(e)}"
+            return json.dumps({
+                "ok": False,
+                "error": f"Handle operation error: {str(e)}"
+            })
     
-    def reload_custom_tools(self, _: str = "") -> str:
+    def webserver_control(self, action: str, params: Dict[str, Any]) -> str:
         """
-        Reload all custom tool modules (useful after editing tool files).
+        Control a dynamic FastAPI web server.
+        
+        Actions:
+        
+        - start: Start the web server
+          params: {host: "0.0.0.0", port: 8000, log_level: "info"}
+          Returns: {status: "started", url: "http://host:port"}
+        
+        - add_static: Mount a static file directory
+          params: {route: "/static", folder: "/path/to/folder"}
+          Serves files from folder at the specified route
+        
+        - add_dynamic: Create a dynamic endpoint
+          params: {
+              route: "/api/endpoint",
+              method: "GET|POST|PUT|DELETE",
+              handler: {
+                  type: "json|text|file|python",
+                  
+                  # For type="json":
+                  body: {json: "response"}
+                  
+                  # For type="text":
+                  text: "response text"
+                  
+                  # For type="file":
+                  path: "/path/to/file"
+                  
+                  # For type="python":
+                  code: "return {'dynamic': 'response'}"
+              }
+          }
+        
+        - remove_route: Remove a route (marks as removed, FastAPI limitation)
+          params: {route: "/api/endpoint"}
+        
+        - list_routes: List all registered routes
+          params: {}
+        
+        Use this to create temporary APIs, serve files, or test endpoints.
+        The server runs in a background thread.
         """
+        if not self.available:
+            return json.dumps({"ok": False, "error": "WebServer not available"})
+        
         try:
-            # Clear loaded modules cache
-            self.dynamic_loader.loaded_modules.clear()
+            query = {
+                "action": action,
+                "params": params
+            }
             
-            # Clear tool registry
-            ToolRegistry.clear()
+            result = self.webserver._run(query)
             
-            # Reload all tools
-            tools = self.dynamic_loader.auto_load_decorated_tools()
+            # Store in memory
+            self.agent.mem.add_session_memory(
+                self.agent.sess.id,
+                action,
+                "webserver_action",
+                metadata={
+                    "action": action,
+                    "route": params.get("route", "")
+                }
+            )
             
-            return f"✓ Reloaded {len(tools)} custom tools"
+            return result
             
         except Exception as e:
-            return f"[Reload Error] {str(e)}"
-    
-    # Bind methods to the instance
-    tools_instance.discover_custom_tools = lambda pattern="*": discover_custom_tools(tools_instance, pattern)
-    tools_instance.call_custom_tool = lambda tool_name, function_name, arguments: call_custom_tool(tools_instance, tool_name, function_name, arguments)
-    tools_instance.list_tool_functions = lambda tool_name: list_tool_functions(tools_instance, tool_name)
-    tools_instance.reload_custom_tools = lambda _: reload_custom_tools(tools_instance, _)
+            return json.dumps({
+                "ok": False,
+                "error": f"WebServer error: {str(e)}"
+            })
 
 
-def extend_tool_loader(agent):
+# ============================================================================
+# ADVANCED BABELFISH INTEGRATION (HTTP/3, WebRTC)
+# ============================================================================
+from Vera.Toolchain.Tools.Babelfish.babelfish import Babelfish
+
+class AdvancedBabelfishTools:
     """
-    Extend the ToolLoader function to include dynamic tool management.
-    Add this to the END of your ToolLoader function.
+    Advanced Babelfish carriers: HTTP/3 (QUIC) and WebRTC.
+    Requires: pip install aioquic aiortc
+    """
     
-    Usage in ToolLoader:
-        tool_list = [ ... existing tools ... ]
+    def __init__(self, agent):
+        self.agent = agent
         
-        # Add dynamic tool loading
-        dynamic_tools = extend_tool_loader(agent)
-        tool_list.extend(dynamic_tools)
+        try:
+            self.bf = Babelfish()
+            self.available = True
+        except ImportError:
+            self.bf = None
+            self.available = False
+            print("[Warning] Advanced Babelfish (QUIC/WebRTC) not available")
+    
+    def quic_http3_request(self, url: str, method: str = "GET", 
+                          headers: Optional[Dict[str, str]] = None,
+                          body: Optional[str] = None) -> str:
+        """
+        Make HTTP/3 request over QUIC.
         
+        HTTP/3 provides:
+        - Faster connection establishment (0-RTT)
+        - Better multiplexing than HTTP/2
+        - Improved loss recovery
+        - Better mobile performance
+        
+        Args:
+            url: Target URL (must be https://)
+            method: HTTP method (GET, POST, PUT, DELETE)
+            headers: Optional HTTP headers
+            body: Optional request body
+        
+        Returns JSON with received headers and data.
+        """
+        if not self.available:
+            return json.dumps({"ok": False, "error": "HTTP/3 not available"})
+        
+        try:
+            params = {
+                "url": url,
+                "method": method,
+                "headers": headers or {},
+            }
+            if body:
+                params["body"] = body
+            
+            handle_id = self.bf.open("http3", params)
+            
+            # Read response
+            import time
+            time.sleep(0.5)  # Allow time for response
+            messages = self.bf.receive(handle_id, max_items=100)
+            
+            self.bf.close(handle_id)
+            
+            # Store in memory
+            self.agent.mem.add_session_memory(
+                self.agent.sess.id,
+                url,
+                "http3_request",
+                metadata={"method": method, "url": url}
+            )
+            
+            return json.dumps({
+                "ok": True,
+                "data": {
+                    "handle": handle_id,
+                    "messages": messages
+                }
+            })
+            
+        except Exception as e:
+            return json.dumps({
+                "ok": False,
+                "error": f"HTTP/3 error: {str(e)}"
+            })
+    
+    def webrtc_connect(self, role: str = "offer",
+                      stun: Optional[str] = None,
+                      turn: Optional[str] = None,
+                      turn_username: Optional[str] = None,
+                      turn_password: Optional[str] = None,
+                      label: str = "datachannel") -> str:
+        """
+        Establish WebRTC DataChannel connection.
+        
+        WebRTC provides:
+        - Peer-to-peer communication
+        - NAT traversal via STUN/TURN
+        - Encrypted data channels
+        - Low latency real-time communication
+        
+        Args:
+            role: "offer" (initiator) or "answer" (responder)
+            stun: STUN server URL (e.g., "stun:stun.l.google.com:19302")
+            turn: TURN server URL for NAT traversal
+            turn_username: TURN authentication username
+            turn_password: TURN authentication password
+            label: DataChannel label
+        
+        Note: Requires signaling mechanism (WebSocket, HTTP, etc.)
+        You must implement send_signal and wait_signal callbacks.
+        
+        Returns handle ID for sending/receiving data.
+        """
+        if not self.available:
+            return json.dumps({"ok": False, "error": "WebRTC not available"})
+        
+        try:
+            # This is a scaffold - you need to provide signaling
+            return json.dumps({
+                "ok": False,
+                "error": "WebRTC requires custom signaling implementation. See documentation.",
+                "hint": "Provide send_signal and wait_signal callbacks in params"
+            })
+            
+        except Exception as e:
+            return json.dumps({
+                "ok": False,
+                "error": f"WebRTC error: {str(e)}"
+            })
+
+
+# ============================================================================
+# ADD TO TOOLLOADER FUNCTION
+# ============================================================================
+
+def add_babelfish_tools(tool_list: List, agent):
+    """
+    Add Babelfish multi-protocol communication tools.
+    Call this in your ToolLoader function:
+    
+    tool_list = ToolLoader(agent)
+    add_babelfish_tools(tool_list, agent)
+    return tool_list
+    """
+    
+    bf_tools = BabelfishTools(agent)
+    
+    if not bf_tools.available:
+        print("[Info] Babelfish tools not loaded - module not available")
+        return tool_list
+    
+    # Main Babelfish protocol tool
+    tool_list.append(
+        StructuredTool.from_function(
+            func=bf_tools.protocol_communicate,
+            name="babelfish",
+            description=(
+                "Universal multi-protocol communication tool. "
+                "Supports HTTP/HTTPS, WebSocket, MQTT, TCP, UDP, SMTP. "
+                "Enables persistent connections with handles, pub/sub messaging, "
+                "socket servers, email sending, and more. "
+                "Returns JSON: {ok: bool, data: any, error: str}"
+            ),
+            args_schema=BabelfishProtocolInput
+        )
+    )
+    
+    # Handle management tool
+    tool_list.append(
+        StructuredTool.from_function(
+            func=bf_tools.handle_operations,
+            name="babelfish_handles",
+            description=(
+                "Manage Babelfish connection handles. "
+                "List active connections, read queued messages from persistent connections "
+                "(WebSocket, MQTT, TCP/UDP listeners), or close handles. "
+                "Essential for working with bidirectional protocols."
+            ),
+            args_schema=BabelfishHandleInput
+        )
+    )
+    
+    # WebServer tool
+    tool_list.append(
+        StructuredTool.from_function(
+            func=bf_tools.webserver_control,
+            name="webserver",
+            description=(
+                "Control a dynamic FastAPI web server. "
+                "Start server, mount static directories, create dynamic endpoints "
+                "(JSON, text, file, Python handlers), remove routes, list routes. "
+                "Useful for creating temporary APIs, serving files, or testing. "
+                "Server runs in background thread."
+            ),
+            args_schema=WebServerInput
+        )
+    )
+    
+    # Advanced tools (HTTP/3, WebRTC)
+    adv_tools = AdvancedBabelfishTools(agent)
+    
+    if adv_tools.available:
+        tool_list.extend([
+            StructuredTool.from_function(
+                func=adv_tools.quic_http3_request,
+                name="http3_request",
+                description=(
+                    "Make HTTP/3 request over QUIC protocol. "
+                    "Faster than HTTP/2, better multiplexing, 0-RTT connection. "
+                    "Ideal for modern APIs and mobile networks."
+                ),
+                args_schema=HTTPInput
+            ),
+            StructuredTool.from_function(
+                func=adv_tools.webrtc_connect,
+                name="webrtc_connect",
+                description=(
+                    "Establish WebRTC DataChannel for peer-to-peer communication. "
+                    "Supports STUN/TURN for NAT traversal, encrypted channels, "
+                    "low-latency real-time data transfer. Requires signaling setup."
+                ),
+                args_schema=SearchInput  # Reuse for basic params
+            ),
+        ])
+    
+    return tool_list
+
+# Required dependencies for Babelfish (add to requirements.txt):
+# fastapi>=0.104.0
+# uvicorn>=0.24.0
+# websockets>=12.0
+# paho-mqtt>=1.6.1
+# requests>=2.31.0
+# # Optional for advanced features:
+# aioquic>=0.9.21
+# aiortc>=1.6.0
+
+# ============================================================================
+# ADD TO TOOLLOADER FUNCTION
+# ============================================================================
+
+def add_web_crawler_tools(tool_list: List, agent):
+    """
+    Add web crawler tools to the tool list.
+    
+    Provides:
+    - Web crawling with technology detection
+    - Semantic search over crawled content
+    - Intelligent web navigation
+    - Common Crawl fallback for blocked sites
+    
+    Call this in ToolLoader:
+        tool_list = ToolLoader(agent)
+        add_web_crawler_tools(tool_list, agent)
         return tool_list
     """
-    tools = LLMTools(agent)
-    add_dynamic_tool_methods(tools)
     
-    # Create tools for managing custom tools
-    management_tools = [
-        StructuredTool.from_function(
-            func=tools.discover_custom_tools,
-            name="discover_tools",
-            description="Discover and list available custom tools in the tools directory. Shows functions and their parameters.",
-            args_schema=DiscoverToolsInput
-        ),
-        StructuredTool.from_function(
-            func=tools.call_custom_tool,
-            name="call_custom_tool",
-            description="Call a function from a custom tool file. Provide tool name, function name, and arguments.",
-            args_schema=CallCustomToolInput
-        ),
-        StructuredTool.from_function(
-            func=tools.list_tool_functions,
-            name="list_tool_functions",
-            description="List all functions in a specific custom tool file with their parameters.",
-            args_schema=ListToolFunctionsInput
-        ),
-        StructuredTool.from_function(
-            func=tools.reload_custom_tools,
-            name="reload_tools",
-            description="Reload all custom tool modules. Use after editing tool files.",
-        ),
-    ]
+    web_tools = WebCrawlerTools(agent)
     
-    # Auto-load decorated tools from tools directory
-    try:
-        auto_loaded = tools.dynamic_loader.auto_load_decorated_tools()
-        print(f"[Info] Auto-loaded {len(auto_loaded)} custom tools with @tool decorator")
-        management_tools.extend(auto_loaded)
-    except Exception as e:
-        print(f"[Warning] Failed to auto-load custom tools: {e}")
+    if not web_tools.available:
+        print("[Info] Web Crawler tools not loaded - module not available")
+        return tool_list
     
-    return management_tools
+    tool_list.extend([
+        StructuredTool.from_function(
+            func=web_tools.crawl_website,
+            name="crawl_website",
+            description=(
+                "Crawl website and store content in searchable memory. "
+                "Detects technologies, generates AI summaries, saves HTML. "
+                "Falls back to Common Crawl archives if blocked. "
+                "Use for deep web research, documentation mining, tech stack analysis."
+            ),
+            args_schema=WebCrawlInput
+        ),
+        
+        StructuredTool.from_function(
+            func=web_tools.query_crawl_memory,
+            name="query_crawl_memory",
+            description=(
+                "Search previously crawled website content using semantic similarity. "
+                "Returns relevant pages with summaries and URLs. "
+                "Perfect for finding specific documentation, answering questions "
+                "about crawled sites, or discovering related content."
+            ),
+            args_schema=WebMemoryQueryInput
+        ),
+        
+        StructuredTool.from_function(
+            func=web_tools.navigate_web_intelligent,
+            name="navigate_web_smart",
+            description=(
+                "AI-powered web navigation and research assistant. "
+                "Understands natural language instructions, auto-crawls if needed, "
+                "synthesizes information from multiple pages. "
+                "Use for complex web research tasks and intelligent content discovery."
+            ),
+            args_schema=WebNavigateInput
+        ),
+        
+        StructuredTool.from_function(
+            func=web_tools.detect_technologies,
+            name="detect_web_technologies",
+            description=(
+                "Detect technologies used on a website. "
+                "Identifies frameworks, libraries, analytics, CMS systems. "
+                "Analyzes HTML, scripts, and resources for technology fingerprints."
+            ),
+            args_schema=WebTechDetectInput
+        ),
+        
+        StructuredTool.from_function(
+            func=web_tools.list_crawled_sites,
+            name="list_crawled_sites",
+            description=(
+                "List recently crawled websites with metadata. "
+                "Shows URLs, technologies detected, crawl depth, and timestamps."
+            ),
+            args_schema=SearchInput  # Reuse existing schema
+        ),
+    ])
+    
+    return tool_list
 
 
+
+# Required dependencies for Web Crawler (add to requirements.txt):
+# beautifulsoup4>=4.12.0
+# chromadb>=0.4.0
+# sentence-transformers>=2.2.0
+# warcio>=1.7.4
+# langchain>=0.1.0
+# langchain-community>=0.0.1
 
 # ============================================================================
 # TOOL LOADER - Creates LangChain Tool instances
@@ -2089,6 +2028,15 @@ def ToolLoader(agent):
         ),
     ]
     
+    add_ssh_postgres_neo4j_tools(tool_list, agent)
+
+    # Add Web Crawler tools
+    # add_web_crawler_tools(tool_list, agent)
+
+    # Add Babelfish tools
+    # add_babelfish_tools(tool_list, agent)
+
+    DynamicTools.add_dynamic_tools(tool_list, agent)
     # Add MCP tools if available
     if MCP_AVAILABLE:
         tool_list.extend([

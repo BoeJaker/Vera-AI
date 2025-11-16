@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 LangChain Tools: Fully Featured "Babelfish" Multi-Protocol Communicator
 and a Flexible Dynamic Webserver Tool (FastAPI).
@@ -77,7 +79,6 @@ Special Layer 5 capabilities allow you to create **multi-modal VPNs**, routing t
 Your goal is to **choose the appropriate protocols, combine layers, and perform actions** to achieve communication, data access, or tunneling objectives. You can also **explore new protocols or create multi-modal solutions** as needed.
 
 """
-from __future__ import annotations
 
 import asyncio
 import base64
@@ -661,8 +662,8 @@ class BabelFishTool(BaseTool):
       - action: "handles/close" -> {handle: str}
     """
 
-    name = "babelfish_tool"
-    description = (
+    name: str = "babelfish_tool"
+    description: str = (
         "Communicate using HTTP, WebSocket, MQTT, TCP, UDP, SMTP. "
         "Supports persistent listeners with handles; read/drain events; publish/send; TLS and auth options. "
         "Input must be JSON: {protocol, action, params}. Use action 'handles/list'|'handles/read'|'handles/close' for handle ops."
@@ -777,8 +778,8 @@ class WebServerTool(BaseTool):
       - list_routes: {}
     """
 
-    name = "web_server_tool"
-    description = (
+    name: str = "web_server_tool"
+    description: str = (
         "Start a FastAPI server and add/remove routes at runtime. "
         "Mount static folders, create JSON/HTML/file routes or code-backed routes."
     )
@@ -962,8 +963,6 @@ DISCLAIMER: This is a scaffold with minimal happy-path logic for clarity.
 Hardening (timeouts, reconnects, flow control, backpressure, certificate
 pinning, etc.) is marked as TODO.
 """
-from __future__ import annotations
-
 import asyncio
 import json
 import uuid

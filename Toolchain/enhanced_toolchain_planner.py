@@ -102,7 +102,7 @@ class EnhancedToolChainPlanner:
     Integrates with n8n and supports multiple planning strategies.
     """
     
-    def __init__(self, agent, tools: List[Any], enable_n8n: bool = False, n8n_url: str = "http://localhost:5678"):
+    def __init__(self, agent, tools: List[Any], enable_n8n: bool = True, n8n_url: str = "http://localhost:5678"):
         self.agent = agent
         self.deep_llm = agent.deep_llm
         self.fast_llm = agent.fast_llm
