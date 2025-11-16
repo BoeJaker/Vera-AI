@@ -1088,3 +1088,205 @@ class ESP32Tools:
             device_name: Name of registered device
             endpoint: API endpoint to query
             timeout: Request timeout
+        
+        Example:
+            query_device_data("workshop_monitor", "/data")
+        """
+        if not device_name:
+            # List all devices
+            if not self.manager.devices:
+                return "No devices registered"
+            
+            output = ["Registered Devices:\n"]
+            for name, info in self.manager.devices.items():
+                output.append(f"{name}: {info['base_url']}")
+            return "\n".join(output)
+        
+        result = self.manager.query_wifi_device(device_name, endpoint, timeout)
+        
+        if "error" in result:
+            return f"[Error] {result['error']}"
+        
+        return json.dumps(result, indent=2)
+    
+    def send_device_command(self, device_name: str, command: str) -> str:
+        """
+        Send command to a WiFi device.
+        
+        Controls the ESP32 remotely via HTTP.
+        
+        Args:
+            device_name: Name of registered device
+            command: Command to send
+        
+        Example:
+            send_device_command("workshop_monitor", "START_SCAN")
+        """
+        result = self.manager.send_command_to_device(device_name, command)
+        
+        if "error" in result:
+            return f"[Error] {result['error']}"
+        
+        return json.dumps(result, indent=2)
+    
+    def start_continuous_monitoring(self, port: str = None, baud_rate: int = 115200) -> str:
+        """
+        Start continuous background monitoring of serial data.
+        
+        Runs in background thread, collecting data from ESP32.
+        Data is queued and can be accessed later.
+        
+        Args:
+            port: Serial port (auto-detect if None)
+            baud_rate: Serial baud rate
+        
+        Example:
+            start_continuous_monitoring()
+        """
+        success = self.manager.start_serial_listener(port, baud_rate)
+        
+        if success:
+            return f"✓ Started continuous monitoring on {port or 'auto-detected port'}\nData will be collected in background"
+        else:
+            return "[Error] Failed to start monitoring - no device detected"
+
+
+# ============================================================================
+# ADD TO TOOLLOADER FUNCTION
+# ============================================================================
+
+def add_esp32_tools(tool_list: List, agent):
+    """
+    Add ESP32 and microcontroller development tools.
+    
+    Enables LLM to:
+    - Generate ESP32 code for specific tasks
+    - Flash code to devices
+    - Communicate over Serial/USB
+    - Setup WiFi devices with HTTP servers
+    - Query and control devices remotely
+    - Monitor data continuously
+    
+    Supports Arduino, MicroPython, and ESP-IDF.
+    Communication via Serial, HTTP, WebSocket, and MQTT.
+    
+    Requirements:
+    - esptool.py: pip install esptool
+    - arduino-cli: https://arduino.github.io/arduino-cli/
+    - pyserial: pip install pyserial
+    
+    Call in ToolLoader:
+        add_esp32_tools(tool_list, agent)
+    """
+    
+    esp32_tools = ESP32Tools(agent)
+    
+    tool_list.extend([
+        StructuredTool.from_function(
+            func=esp32_tools.generate_esp32_code,
+            name="generate_esp32_code",
+            description=(
+                "Generate complete ESP32 code for a specific task. "
+                "LLM designs the program based on task description. "
+                "Supports Arduino, MicroPython, various communication methods. "
+                "Example: 'Monitor WiFi networks and report SSIDs'"
+            ),
+            args_schema=ESP32CodeGenerateInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.flash_esp32_device,
+            name="flash_esp32_device",
+            description=(
+                "Flash code to ESP32 device via USB. "
+                "Auto-detects device, compiles Arduino sketches. "
+                "Uploads and runs the code on the microcontroller."
+            ),
+            args_schema=ESP32FlashInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.communicate_serial,
+            name="communicate_serial",
+            description=(
+                "Communicate with ESP32 over Serial/USB. "
+                "Send commands and receive data from device. "
+                "Use for reading sensor data, controlling device, debugging."
+            ),
+            args_schema=SerialCommunicateInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.setup_wifi_device,
+            name="setup_wifi_device",
+            description=(
+                "Generate WiFi-enabled ESP32 code with HTTP server. "
+                "Device connects to WiFi and exposes REST API. "
+                "Enables remote control and data collection."
+            ),
+            args_schema=WiFiDeviceSetupInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.list_serial_devices,
+            name="list_serial_devices",
+            description=(
+                "List all serial ports. "
+                "Helps identify which port ESP32 is connected to. "
+                "Shows device descriptions and hardware IDs."
+            ),
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.register_wifi_device,
+            name="register_wifi_device",
+            description=(
+                "Register WiFi-enabled ESP32 for easy access. "
+                "After flashing WiFi code, register device with IP. "
+                "Enables querying and controlling via device name."
+            ),
+            args_schema=WiFiDeviceSetupInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.query_device_data,
+            name="query_device_data",
+            description=(
+                "Query data from registered WiFi device. "
+                "Get sensor readings, status, or any data over HTTP. "
+                "Returns JSON data from device."
+            ),
+            args_schema=DeviceDataQueryInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.send_device_command,
+            name="send_device_command",
+            description=(
+                "Send command to WiFi device. "
+                "Control ESP32 remotely: start/stop tasks, configure settings. "
+                "Works with registered WiFi devices."
+            ),
+            args_schema=DeviceDataQueryInput
+        ),
+        
+        StructuredTool.from_function(
+            func=esp32_tools.start_continuous_monitoring,
+            name="start_continuous_monitoring",
+            description=(
+                "Start background monitoring of serial data. "
+                "Continuously collects data from ESP32 in background thread. "
+                "Useful for long-running data collection."
+            ),
+            args_schema=SerialCommunicateInput
+        ),
+    ])
+    
+    return tool_list
+
+
+# Required dependencies (add to requirements.txt):
+# pyserial>=3.5
+# requests>=2.31.0
+# esptool  # Install: pip install esptool
+# adafruit-ampy  # For MicroPython: pip install adafruit-ampy
