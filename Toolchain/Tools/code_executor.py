@@ -16,6 +16,8 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 import docker
 from datetime import datetime
+from langchain_core.tools import tool, StructuredTool
+from Vera.Toolchain.schemas import *
 
 # ============================================================================
 # INPUT SCHEMAS

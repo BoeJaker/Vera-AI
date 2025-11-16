@@ -37,6 +37,9 @@ except ImportError:
 from Vera.Toolchain.Tools.protocols import add_ssh_postgres_neo4j_tools
 from Vera.Toolchain.schemas import *
 import Vera.Toolchain.dynamic_tools as DynamicTools
+from Vera.Toolchain.mcp_manager import *
+from Vera.Toolchain.Tools.code_executor import *
+from Vera.Toolchain.Tools.microcontollers2 import *
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -2386,6 +2389,12 @@ def ToolLoader(agent):
     ]
     
     add_ssh_postgres_neo4j_tools(tool_list, agent)
+
+    add_mcp_docker_tools(tool_list, agent)
+    
+    add_adhoc_code_tools(tool_list, agent)
+
+    add_microcontroller_control_tools(tool_list, agent)
 
     # Add Web Crawler tools
     # add_web_crawler_tools(tool_list, agent)

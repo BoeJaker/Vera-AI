@@ -1,667 +1,781 @@
 """
-MCP Docker Server Management with Custom Template Creation
-Enables LLM to create, customize, and manage MCP server templates
+MCP Docker Server Management Tools
+Enables LLM to create and manage MCP servers in Docker containers for various purposes
+Add this section to your existing tools.py file
 """
 
 import docker
 import json
 import time
 import subprocess
-import yaml
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
-from pathlib import Path
+from langchain_core.tools import tool, StructuredTool
+from Vera.Toolchain.schemas import *
 
 # ============================================================================
-# ADDITIONAL INPUT SCHEMAS
+# INPUT SCHEMAS
 # ============================================================================
 
-class MCPTemplateCreateInput(BaseModel):
-    """Input schema for creating custom MCP templates."""
-    template_name: str = Field(..., description="Unique name for this template")
-    description: str = Field(..., description="Description of what this server does")
-    dockerfile: str = Field(..., description="Complete Dockerfile content")
-    required_config: List[str] = Field(
-        default_factory=list,
-        description="List of required config keys"
-    )
-    env_mapping: Dict[str, str] = Field(
+class MCPServerCreateInput(BaseModel):
+    """Input schema for creating MCP servers."""
+    server_type: Literal[
+        "filesystem", "postgres", "github", "slack", "sqlite", 
+        "memory", "puppeteer", "time", "fetch", "custom"
+    ] = Field(..., description="Type of MCP server to create")
+    server_name: str = Field(..., description="Unique name for this server instance")
+    config: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Map config keys to environment variables"
+        description="Server-specific configuration (paths, credentials, etc.)"
     )
-    default_ports: Dict[str, int] = Field(
-        default_factory=dict,
-        description="Default port mappings"
-    )
-
-
-class MCPServerCodeInput(BaseModel):
-    """Input schema for generating MCP server code."""
-    server_name: str = Field(..., description="Name for the MCP server")
-    language: Literal["python", "typescript", "javascript"] = Field(
-        default="python",
-        description="Programming language for the server"
-    )
-    description: str = Field(
-        ..., 
-        description="Description of what tools/capabilities the server should provide"
-    )
-    tools: List[Dict[str, Any]] = Field(
-        default_factory=list,
-        description="List of tool definitions with names, descriptions, and parameters"
+    auto_connect: bool = Field(
+        default=True,
+        description="Automatically connect to server after creation"
     )
 
 
-class MCPTemplateListInput(BaseModel):
-    """Input schema for listing templates."""
-    category: Optional[str] = Field(
-        default=None,
-        description="Filter by category (built-in, custom, all)"
+class MCPServerControlInput(BaseModel):
+    """Input schema for controlling MCP servers."""
+    server_name: str = Field(..., description="Name of the MCP server")
+    action: Literal["start", "stop", "restart", "remove"] = Field(
+        ..., description="Action to perform"
     )
+
+
+class MCPServerListInput(BaseModel):
+    """Input schema for listing MCP servers."""
+    status_filter: Optional[Literal["running", "stopped", "all"]] = Field(
+        default="all",
+        description="Filter by server status"
+    )
+
+
+class MCPServerLogsInput(BaseModel):
+    """Input schema for viewing server logs."""
+    server_name: str = Field(..., description="Name of the MCP server")
+    tail: int = Field(default=100, description="Number of log lines to show")
 
 
 # ============================================================================
-# TEMPLATE PERSISTENCE
+# MCP SERVER TEMPLATES
 # ============================================================================
 
-class MCPTemplateManager:
-    """Manages MCP server templates (built-in and custom)."""
-    
-    def __init__(self, templates_dir: str = "./mcp_templates"):
-        self.templates_dir = Path(templates_dir)
-        self.templates_dir.mkdir(exist_ok=True)
-        
-        # Load built-in templates
-        self.templates = MCP_SERVER_TEMPLATES.copy()
-        
-        # Load custom templates
-        self._load_custom_templates()
-    
-    def _load_custom_templates(self):
-        """Load custom templates from disk."""
-        template_file = self.templates_dir / "custom_templates.json"
-        
-        if template_file.exists():
-            try:
-                with open(template_file, 'r') as f:
-                    custom = json.load(f)
-                    self.templates.update(custom)
-                print(f"[Loaded {len(custom)} custom MCP templates]")
-            except Exception as e:
-                print(f"[Warning] Failed to load custom templates: {e}")
-    
-    def save_template(self, template_name: str, template_data: Dict[str, Any]):
-        """Save a custom template to disk."""
-        # Add to in-memory templates
-        self.templates[template_name] = template_data
-        
-        # Load existing custom templates
-        template_file = self.templates_dir / "custom_templates.json"
-        custom = {}
-        
-        if template_file.exists():
-            with open(template_file, 'r') as f:
-                custom = json.load(f)
-        
-        # Add new template
-        custom[template_name] = template_data
-        
-        # Save back to disk
-        with open(template_file, 'w') as f:
-            json.dump(custom, f, indent=2)
-        
-        print(f"[Saved custom template: {template_name}]")
-    
-    def list_templates(self, category: Optional[str] = None) -> Dict[str, Dict]:
-        """List templates, optionally filtered by category."""
-        if category == "built-in":
-            return {k: v for k, v in MCP_SERVER_TEMPLATES.items()}
-        elif category == "custom":
-            return {k: v for k, v in self.templates.items() 
-                   if k not in MCP_SERVER_TEMPLATES}
-        else:
-            return self.templates.copy()
-    
-    def get_template(self, template_name: str) -> Optional[Dict[str, Any]]:
-        """Get a specific template."""
-        return self.templates.get(template_name)
-    
-    def delete_template(self, template_name: str) -> bool:
-        """Delete a custom template."""
-        if template_name in MCP_SERVER_TEMPLATES:
-            return False  # Can't delete built-in templates
-        
-        if template_name not in self.templates:
-            return False
-        
-        # Remove from memory
-        del self.templates[template_name]
-        
-        # Update file
-        template_file = self.templates_dir / "custom_templates.json"
-        if template_file.exists():
-            with open(template_file, 'r') as f:
-                custom = json.load(f)
-            
-            if template_name in custom:
-                del custom[template_name]
-            
-            with open(template_file, 'w') as f:
-                json.dump(custom, f, indent=2)
-        
-        return True
-
-
-# ============================================================================
-# MCP SERVER CODE GENERATOR
-# ============================================================================
-
-class MCPServerCodeGenerator:
-    """Generates MCP server implementations in various languages."""
-    
-    PYTHON_TEMPLATE = '''"""
-{description}
-
-Generated MCP Server using the Model Context Protocol SDK.
-"""
-from mcp.server import Server
-from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
-import asyncio
-from typing import Any
-
-# Create server instance
-server = Server("{server_name}")
-
-{tool_implementations}
-
-async def main():
-    """Run the MCP server."""
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            server.create_initialization_options()
-        )
-
-if __name__ == "__main__":
-    asyncio.run(main())
-'''
-
-    TYPESCRIPT_TEMPLATE = '''/**
- * {description}
- * 
- * Generated MCP Server using the Model Context Protocol SDK.
- */
-import {{ Server }} from "@modelcontextprotocol/sdk/server/index.js";
-import {{ StdioServerTransport }} from "@modelcontextprotocol/sdk/server/stdio.js";
-import {{
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
-}} from "@modelcontextprotocol/sdk/types.js";
-
-// Create server instance
-const server = new Server(
-  {{
-    name: "{server_name}",
-    version: "1.0.0",
-  }},
-  {{
-    capabilities: {{
-      tools: {{}},
-    }},
-  }}
-);
-
-{tool_implementations}
-
-// Start server
-const transport = new StdioServerTransport();
-await server.connect(transport);
-'''
-
-    @staticmethod
-    def generate_python_tool(tool_def: Dict[str, Any]) -> str:
-        """Generate Python code for a single tool."""
-        name = tool_def.get("name", "unnamed_tool")
-        description = tool_def.get("description", "No description")
-        parameters = tool_def.get("parameters", {})
-        
-        # Generate parameter parsing
-        param_code = []
-        for param_name, param_info in parameters.items():
-            param_type = param_info.get("type", "str")
-            param_code.append(f'    {param_name} = arguments.get("{param_name}")')
-        
-        param_str = "\n".join(param_code) if param_code else "    pass"
-        
-        return f'''
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """List available tools."""
-    return [
-        Tool(
-            name="{name}",
-            description="{description}",
-            inputSchema={{
-                "type": "object",
-                "properties": {json.dumps(parameters, indent=16)},
-                "required": {list(parameters.keys())}
-            }}
-        )
-    ]
-
-@server.call_tool()
-async def call_tool(name: str, arguments: Any) -> list[TextContent]:
-    """Handle tool execution."""
-    if name == "{name}":
-{param_str}
-        
-        # TODO: Implement tool logic here
-        result = f"Executed {name} with arguments: {{arguments}}"
-        
-        return [TextContent(type="text", text=result)]
-    else:
-        raise ValueError(f"Unknown tool: {{name}}")
-'''
-
-    @staticmethod
-    def generate_typescript_tool(tool_def: Dict[str, Any]) -> str:
-        """Generate TypeScript code for a single tool."""
-        name = tool_def.get("name", "unnamed_tool")
-        description = tool_def.get("description", "No description")
-        parameters = tool_def.get("parameters", {})
-        
-        return f'''
-// Register tool: {name}
-server.setRequestHandler(ListToolsRequestSchema, async () => ({{
-  tools: [
-    {{
-      name: "{name}",
-      description: "{description}",
-      inputSchema: {{
-        type: "object",
-        properties: {json.dumps(parameters, indent=8)},
-        required: {json.dumps(list(parameters.keys()))}
-      }}
-    }}
-  ]
-}}));
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {{
-  if (request.params.name === "{name}") {{
-    const args = request.params.arguments;
-    
-    // TODO: Implement tool logic here
-    const result = `Executed {name} with arguments: ${{JSON.stringify(args)}}`;
-    
-    return {{
-      content: [{{ type: "text", text: result }}]
-    }};
-  }}
-  
-  throw new Error(`Unknown tool: ${{request.params.name}}`);
-}});
-'''
-
-    @classmethod
-    def generate_server_code(cls, server_name: str, language: str, 
-                           description: str, tools: List[Dict[str, Any]]) -> str:
-        """Generate complete MCP server code."""
-        if language == "python":
-            tool_code = "\n".join([
-                cls.generate_python_tool(tool) for tool in tools
-            ])
-            return cls.PYTHON_TEMPLATE.format(
-                server_name=server_name,
-                description=description,
-                tool_implementations=tool_code
-            )
-        
-        elif language in ["typescript", "javascript"]:
-            tool_code = "\n".join([
-                cls.generate_typescript_tool(tool) for tool in tools
-            ])
-            return cls.TYPESCRIPT_TEMPLATE.format(
-                server_name=server_name,
-                description=description,
-                tool_implementations=tool_code
-            )
-        
-        else:
-            raise ValueError(f"Unsupported language: {language}")
-    
-    @classmethod
-    def generate_dockerfile(cls, language: str, server_name: str) -> str:
-        """Generate Dockerfile for the server."""
-        if language == "python":
-            return f'''FROM python:3.11-slim
-
+MCP_SERVER_TEMPLATES = {
+    "filesystem": {
+        "image": "mcp/filesystem:latest",
+        "description": "File system access server - read/write files and directories",
+        "required_config": ["allowed_directories"],
+        "dockerfile": """
+FROM node:18-alpine
 WORKDIR /app
-
-# Install MCP SDK
-RUN pip install --no-cache-dir mcp
-
-# Copy server code
-COPY {server_name}.py .
-
-# Run server
-CMD ["python", "{server_name}.py"]
-'''
-        
-        elif language in ["typescript", "javascript"]:
-            return f'''FROM node:18-alpine
-
+RUN npm install -g @modelcontextprotocol/server-filesystem
+EXPOSE 3000
+CMD ["mcp-server-filesystem"]
+""",
+        "env_mapping": {
+            "allowed_directories": "ALLOWED_DIRECTORIES"
+        }
+    },
+    
+    "postgres": {
+        "image": "mcp/postgres:latest",
+        "description": "PostgreSQL database access server - query and manage databases",
+        "required_config": ["connection_string"],
+        "dockerfile": """
+FROM node:18-alpine
 WORKDIR /app
-
-# Install MCP SDK
-RUN npm install -g @modelcontextprotocol/sdk
-
-# Copy server code
-COPY {server_name}.{language[:2]} .
-COPY package.json .
-
-RUN npm install
-
-# Run server
-CMD ["node", "{server_name}.{language[:2]}"]
-'''
-        
-        else:
-            raise ValueError(f"Unsupported language: {language}")
+RUN npm install -g @modelcontextprotocol/server-postgres
+EXPOSE 3000
+CMD ["mcp-server-postgres"]
+""",
+        "env_mapping": {
+            "connection_string": "DATABASE_URL"
+        }
+    },
+    
+    "github": {
+        "image": "mcp/github:latest",
+        "description": "GitHub API access server - manage repos, issues, PRs",
+        "required_config": ["github_token"],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-github
+EXPOSE 3000
+CMD ["mcp-server-github"]
+""",
+        "env_mapping": {
+            "github_token": "GITHUB_TOKEN",
+            "github_owner": "GITHUB_OWNER"
+        }
+    },
+    
+    "slack": {
+        "image": "mcp/slack:latest",
+        "description": "Slack API access server - send messages, manage channels",
+        "required_config": ["slack_token"],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-slack
+EXPOSE 3000
+CMD ["mcp-server-slack"]
+""",
+        "env_mapping": {
+            "slack_token": "SLACK_TOKEN",
+            "slack_team_id": "SLACK_TEAM_ID"
+        }
+    },
+    
+    "sqlite": {
+        "image": "mcp/sqlite:latest",
+        "description": "SQLite database access server - query local databases",
+        "required_config": ["database_path"],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-sqlite
+EXPOSE 3000
+CMD ["mcp-server-sqlite"]
+""",
+        "env_mapping": {
+            "database_path": "DATABASE_PATH"
+        }
+    },
+    
+    "memory": {
+        "image": "mcp/memory:latest",
+        "description": "In-memory knowledge graph server - store and query information",
+        "required_config": [],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-memory
+EXPOSE 3000
+CMD ["mcp-server-memory"]
+""",
+        "env_mapping": {}
+    },
+    
+    "puppeteer": {
+        "image": "mcp/puppeteer:latest",
+        "description": "Browser automation server - web scraping and testing",
+        "required_config": [],
+        "dockerfile": """
+FROM node:18
+WORKDIR /app
+RUN apt-get update && apt-get install -y chromium
+RUN npm install -g @modelcontextprotocol/server-puppeteer
+EXPOSE 3000
+CMD ["mcp-server-puppeteer"]
+""",
+        "env_mapping": {}
+    },
+    
+    "time": {
+        "image": "mcp/time:latest",
+        "description": "Time and timezone utilities server",
+        "required_config": [],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-time
+EXPOSE 3000
+CMD ["mcp-server-time"]
+""",
+        "env_mapping": {}
+    },
+    
+    "fetch": {
+        "image": "mcp/fetch:latest",
+        "description": "HTTP fetch server - make web requests",
+        "required_config": [],
+        "dockerfile": """
+FROM node:18-alpine
+WORKDIR /app
+RUN npm install -g @modelcontextprotocol/server-fetch
+EXPOSE 3000
+CMD ["mcp-server-fetch"]
+""",
+        "env_mapping": {}
+    },
+    
+    "custom": {
+        "image": None,
+        "description": "Custom MCP server with user-provided configuration",
+        "required_config": ["image", "command"],
+        "dockerfile": None,
+        "env_mapping": {}
+    }
+}
 
 
 # ============================================================================
-# ENHANCED MCP DOCKER TOOLS CLASS
+# MCP DOCKER MANAGER
 # ============================================================================
 
-class MCPDockerToolsEnhanced(MCPDockerTools):
-    """Enhanced MCP Docker tools with template creation."""
+class MCPDockerManager:
+    """Manages MCP servers running in Docker containers."""
     
     def __init__(self, agent):
-        super().__init__(agent)
-        self.template_manager = MCPTemplateManager()
-        self.code_generator = MCPServerCodeGenerator()
+        self.agent = agent
         
-        # Update manager templates
-        self.manager.template_manager = self.template_manager
+        try:
+            self.docker_client = docker.from_env()
+            self.available = True
+        except Exception as e:
+            print(f"[Warning] Docker not available: {e}")
+            self.docker_client = None
+            self.available = False
+        
+        # Track created servers
+        self.servers: Dict[str, Dict[str, Any]] = {}
+        
+        # Network for MCP servers
+        self.network_name = "mcp-network"
+        self._ensure_network()
     
-    def create_mcp_template(self, template_name: str, description: str,
-                           dockerfile: str, required_config: List[str] = None,
-                           env_mapping: Dict[str, str] = None,
-                           default_ports: Dict[str, int] = None) -> str:
-        """
-        Create a custom MCP server template.
+    def _ensure_network(self):
+        """Ensure MCP Docker network exists."""
+        if not self.available:
+            return
         
-        Templates define reusable server configurations that can be
-        instantiated multiple times with different configurations.
+        try:
+            self.docker_client.networks.get(self.network_name)
+        except docker.errors.NotFound:
+            self.docker_client.networks.create(
+                self.network_name,
+                driver="bridge"
+            )
+            print(f"[Created Docker network: {self.network_name}]")
+    
+    def _build_or_get_image(self, server_type: str, config: Dict[str, Any]) -> str:
+        """Build or retrieve Docker image for MCP server."""
+        template = MCP_SERVER_TEMPLATES.get(server_type)
+        
+        if not template:
+            raise ValueError(f"Unknown server type: {server_type}")
+        
+        # Custom server type
+        if server_type == "custom":
+            return config.get("image")
+        
+        image_name = template["image"]
+        
+        # Check if image exists
+        try:
+            self.docker_client.images.get(image_name)
+            return image_name
+        except docker.errors.ImageNotFound:
+            pass
+        
+        # Build image from Dockerfile
+        if template["dockerfile"]:
+            print(f"[Building MCP server image: {image_name}]")
+            
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdir:
+                dockerfile_path = os.path.join(tmpdir, "Dockerfile")
+                with open(dockerfile_path, 'w') as f:
+                    f.write(template["dockerfile"])
+                
+                image, logs = self.docker_client.images.build(
+                    path=tmpdir,
+                    tag=image_name,
+                    rm=True
+                )
+                
+                for log in logs:
+                    if 'stream' in log:
+                        print(log['stream'].strip())
+            
+            return image_name
+        
+        # Try to pull image
+        print(f"[Pulling MCP server image: {image_name}]")
+        self.docker_client.images.pull(image_name)
+        return image_name
+    
+    def _prepare_environment(self, server_type: str, config: Dict[str, Any]) -> Dict[str, str]:
+        """Prepare environment variables for container."""
+        template = MCP_SERVER_TEMPLATES.get(server_type, {})
+        env_mapping = template.get("env_mapping", {})
+        
+        env_vars = {}
+        
+        for config_key, env_key in env_mapping.items():
+            if config_key in config:
+                env_vars[env_key] = str(config[config_key])
+        
+        # Add any additional env vars from config
+        if "environment" in config:
+            env_vars.update(config["environment"])
+        
+        return env_vars
+    
+    def create_server(self, server_type: str, server_name: str, 
+                     config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create and start an MCP server in Docker.
         
         Args:
-            template_name: Unique name for this template
-            description: What this server type does
-            dockerfile: Complete Dockerfile content
-            required_config: List of required configuration keys
-            env_mapping: Map config keys to environment variables
-            default_ports: Default port mappings
+            server_type: Type of MCP server
+            server_name: Unique name for this instance
+            config: Server-specific configuration
         
-        Example:
-            create_mcp_template(
-                template_name="redis_cache",
-                description="Redis caching server for MCP",
-                dockerfile='''
-                FROM redis:alpine
-                COPY redis.conf /usr/local/etc/redis/redis.conf
-                CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]
-                ''',
-                required_config=["max_memory"],
-                env_mapping={"max_memory": "REDIS_MAXMEMORY"}
-            )
+        Returns:
+            Server information dictionary
         """
-        template_data = {
-            "image": f"mcp/{template_name}:latest",
-            "description": description,
-            "dockerfile": dockerfile,
-            "required_config": required_config or [],
-            "env_mapping": env_mapping or {},
-            "default_ports": default_ports or {"3000/tcp": None}
+        if not self.available:
+            raise RuntimeError("Docker not available")
+        
+        # Validate configuration
+        template = MCP_SERVER_TEMPLATES.get(server_type)
+        if not template:
+            raise ValueError(f"Unknown server type: {server_type}")
+        
+        required = template.get("required_config", [])
+        missing = [key for key in required if key not in config]
+        if missing:
+            raise ValueError(f"Missing required config: {', '.join(missing)}")
+        
+        # Check if server already exists
+        container_name = f"mcp-{server_name}"
+        try:
+            existing = self.docker_client.containers.get(container_name)
+            return {
+                "status": "exists",
+                "message": f"Server '{server_name}' already exists",
+                "container_id": existing.id,
+                "state": existing.status
+            }
+        except docker.errors.NotFound:
+            pass
+        
+        # Build or get image
+        image_name = self._build_or_get_image(server_type, config)
+        
+        # Prepare environment
+        env_vars = self._prepare_environment(server_type, config)
+        
+        # Prepare volumes
+        volumes = {}
+        if "volumes" in config:
+            for vol in config["volumes"]:
+                host_path = vol.get("host")
+                container_path = vol.get("container")
+                if host_path and container_path:
+                    volumes[host_path] = {
+                        "bind": container_path,
+                        "mode": vol.get("mode", "rw")
+                    }
+        
+        # Create container
+        ports = config.get("ports", {"3000/tcp": None})
+        
+        container = self.docker_client.containers.run(
+            image=image_name,
+            name=container_name,
+            environment=env_vars,
+            volumes=volumes,
+            ports=ports,
+            network=self.network_name,
+            detach=True,
+            restart_policy={"Name": "unless-stopped"}
+        )
+        
+        # Wait for container to start
+        time.sleep(2)
+        container.reload()
+        
+        # Get port mapping
+        port_bindings = container.attrs['NetworkSettings']['Ports']
+        host_port = None
+        if '3000/tcp' in port_bindings and port_bindings['3000/tcp']:
+            host_port = port_bindings['3000/tcp'][0]['HostPort']
+        
+        # Store server info
+        server_info = {
+            "name": server_name,
+            "type": server_type,
+            "container_id": container.id,
+            "container_name": container_name,
+            "status": container.status,
+            "host_port": host_port,
+            "config": config,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S")
         }
         
-        self.template_manager.save_template(template_name, template_data)
+        self.servers[server_name] = server_info
         
         # Store in agent memory
         self.agent.mem.add_session_memory(
             self.agent.sess.id,
-            template_name,
-            "mcp_template",
-            metadata={"description": description, "type": "custom"}
+            server_name,
+            "mcp_server",
+            metadata={
+                "type": server_type,
+                "container_id": container.id,
+                "status": "created"
+            }
         )
         
-        return f"✓ Created custom MCP template: {template_name}\n{description}"
+        return server_info
     
-    def generate_mcp_server(self, server_name: str, language: str,
-                           description: str, tools: List[Dict[str, Any]]) -> str:
+    def control_server(self, server_name: str, action: str) -> Dict[str, Any]:
         """
-        Generate complete MCP server implementation code.
-        
-        The LLM can create custom MCP servers by describing the tools
-        they should provide. This generates working server code in
-        Python or TypeScript/JavaScript.
+        Control an MCP server (start, stop, restart, remove).
         
         Args:
-            server_name: Name for the server
-            language: "python", "typescript", or "javascript"
-            description: What the server does
-            tools: List of tool definitions with structure:
-                [{
-                    "name": "tool_name",
-                    "description": "what it does",
-                    "parameters": {
-                        "param1": {"type": "string", "description": "..."},
-                        "param2": {"type": "number", "description": "..."}
-                    }
-                }]
+            server_name: Name of the server
+            action: Action to perform
         
-        Example:
-            generate_mcp_server(
-                server_name="weather_service",
-                language="python",
-                description="MCP server for weather information",
-                tools=[{
-                    "name": "get_weather",
-                    "description": "Get current weather for a location",
-                    "parameters": {
-                        "location": {
-                            "type": "string",
-                            "description": "City name or coordinates"
-                        },
-                        "units": {
-                            "type": "string",
-                            "description": "imperial or metric"
-                        }
-                    }
-                }]
-            )
+        Returns:
+            Result dictionary
         """
+        if not self.available:
+            raise RuntimeError("Docker not available")
+        
+        container_name = f"mcp-{server_name}"
+        
         try:
-            # Generate server code
-            server_code = self.code_generator.generate_server_code(
-                server_name, language, description, tools
-            )
+            container = self.docker_client.containers.get(container_name)
+        except docker.errors.NotFound:
+            return {
+                "status": "error",
+                "message": f"Server '{server_name}' not found"
+            }
+        
+        try:
+            if action == "start":
+                container.start()
+                message = f"Started server '{server_name}'"
             
-            # Generate Dockerfile
-            dockerfile = self.code_generator.generate_dockerfile(language, server_name)
+            elif action == "stop":
+                container.stop()
+                message = f"Stopped server '{server_name}'"
             
-            # Create directory structure
-            server_dir = Path("./mcp_servers") / server_name
-            server_dir.mkdir(parents=True, exist_ok=True)
+            elif action == "restart":
+                container.restart()
+                message = f"Restarted server '{server_name}'"
             
-            # Save files
-            ext = "py" if language == "python" else "ts" if language == "typescript" else "js"
-            server_file = server_dir / f"{server_name}.{ext}"
-            docker_file = server_dir / "Dockerfile"
+            elif action == "remove":
+                container.stop()
+                container.remove()
+                if server_name in self.servers:
+                    del self.servers[server_name]
+                message = f"Removed server '{server_name}'"
             
-            with open(server_file, 'w') as f:
-                f.write(server_code)
-            
-            with open(docker_file, 'w') as f:
-                f.write(dockerfile)
-            
-            # Generate package.json for Node.js
-            if language in ["typescript", "javascript"]:
-                package_json = {
-                    "name": server_name,
-                    "version": "1.0.0",
-                    "type": "module",
-                    "dependencies": {
-                        "@modelcontextprotocol/sdk": "^0.5.0"
-                    }
+            else:
+                return {
+                    "status": "error",
+                    "message": f"Unknown action: {action}"
                 }
-                with open(server_dir / "package.json", 'w') as f:
-                    json.dump(package_json, f, indent=2)
             
-            # Create README
-            readme = f"""# {server_name}
-
-{description}
-
-## Generated MCP Server
-
-This server was automatically generated and provides the following tools:
-
-{chr(10).join([f"- **{t['name']}**: {t['description']}" for t in tools])}
-
-## Building
-```bash
-docker build -t mcp/{server_name}:latest .
-```
-
-## Running
-```bash
-docker run -p 3000:3000 mcp/{server_name}:latest
-```
-
-## Using with MCP Client
-
-Use `create_mcp_server` with server_type="custom" and the appropriate configuration.
-"""
-            with open(server_dir / "README.md", 'w') as f:
-                f.write(readme)
-            
-            # Store in memory
+            # Update memory
             self.agent.mem.add_session_memory(
                 self.agent.sess.id,
-                server_name,
-                "mcp_generated_server",
-                metadata={
-                    "language": language,
-                    "tools": [t["name"] for t in tools],
-                    "path": str(server_dir)
-                }
+                f"{action}:{server_name}",
+                "mcp_server_control",
+                metadata={"action": action, "server": server_name}
             )
             
+            return {
+                "status": "success",
+                "message": message,
+                "server": server_name,
+                "action": action
+            }
+        
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Failed to {action} server: {str(e)}"
+            }
+    
+    def list_servers(self, status_filter: str = "all") -> List[Dict[str, Any]]:
+        """
+        List all MCP servers.
+        
+        Args:
+            status_filter: Filter by status (running, stopped, all)
+        
+        Returns:
+            List of server information dictionaries
+        """
+        if not self.available:
+            return []
+        
+        servers = []
+        
+        # Get all containers with mcp- prefix
+        containers = self.docker_client.containers.list(
+            all=True,
+            filters={"name": "mcp-"}
+        )
+        
+        for container in containers:
+            name = container.name.replace("mcp-", "")
+            status = container.status
+            
+            # Apply filter
+            if status_filter == "running" and status != "running":
+                continue
+            elif status_filter == "stopped" and status == "running":
+                continue
+            
+            # Get server info
+            server_info = self.servers.get(name, {})
+            
+            servers.append({
+                "name": name,
+                "type": server_info.get("type", "unknown"),
+                "container_id": container.id[:12],
+                "status": status,
+                "created": container.attrs['Created'],
+                "ports": container.ports
+            })
+        
+        return servers
+    
+    def get_logs(self, server_name: str, tail: int = 100) -> str:
+        """
+        Get logs from an MCP server.
+        
+        Args:
+            server_name: Name of the server
+            tail: Number of log lines to retrieve
+        
+        Returns:
+            Log output as string
+        """
+        if not self.available:
+            return "[Error] Docker not available"
+        
+        container_name = f"mcp-{server_name}"
+        
+        try:
+            container = self.docker_client.containers.get(container_name)
+            logs = container.logs(tail=tail, timestamps=True)
+            return logs.decode('utf-8')
+        except docker.errors.NotFound:
+            return f"[Error] Server '{server_name}' not found"
+        except Exception as e:
+            return f"[Error] Failed to get logs: {str(e)}"
+
+
+# ============================================================================
+# MCP DOCKER TOOLS CLASS
+# ============================================================================
+
+class MCPDockerTools:
+    """Tools for managing MCP servers in Docker."""
+    
+    def __init__(self, agent):
+        self.agent = agent
+        self.manager = MCPDockerManager(agent)
+    
+    def create_mcp_server(self, server_type: str, server_name: str,
+                         config: Dict[str, Any], auto_connect: bool = True) -> str:
+        """
+        Create a new MCP server in Docker for a specific purpose.
+        
+        Available server types:
+        
+        - filesystem: File system access (read/write files)
+          Config: {allowed_directories: ["/path/to/dir"]}
+        
+        - postgres: PostgreSQL database access
+          Config: {connection_string: "postgresql://user:pass@host/db"}
+        
+        - github: GitHub API access
+          Config: {github_token: "ghp_...", github_owner: "username"}
+        
+        - slack: Slack API access
+          Config: {slack_token: "xoxb-...", slack_team_id: "T..."}
+        
+        - sqlite: SQLite database access
+          Config: {database_path: "/path/to/db.sqlite"}
+        
+        - memory: In-memory knowledge graph
+          Config: {} (no config needed)
+        
+        - puppeteer: Browser automation and web scraping
+          Config: {} (no config needed)
+        
+        - time: Time and timezone utilities
+          Config: {} (no config needed)
+        
+        - fetch: HTTP fetch utilities
+          Config: {} (no config needed)
+        
+        - custom: Custom MCP server
+          Config: {image: "custom/image:tag", command: ["cmd"], environment: {...}}
+        
+        Examples:
+            # Create filesystem server
+            create_mcp_server(
+                server_type="filesystem",
+                server_name="project_files",
+                config={"allowed_directories": ["/home/user/projects"]},
+                auto_connect=True
+            )
+            
+            # Create GitHub server
+            create_mcp_server(
+                server_type="github",
+                server_name="my_github",
+                config={"github_token": "ghp_xxx", "github_owner": "myusername"}
+            )
+        """
+        if not self.manager.available:
+            return "[Error] Docker not available. Please install Docker."
+        
+        try:
+            result = self.manager.create_server(server_type, server_name, config)
+            
             output = [
-                f"✓ Generated MCP Server: {server_name}",
-                f"Language: {language}",
-                f"Location: {server_dir}",
-                f"\nGenerated files:",
-                f"  - {server_file.name}",
-                f"  - Dockerfile",
+                f"✓ MCP Server Created: {server_name}",
+                f"Type: {server_type}",
+                f"Container ID: {result['container_id'][:12]}",
+                f"Status: {result['status']}"
             ]
             
-            if language in ["typescript", "javascript"]:
-                output.append("  - package.json")
+            if result.get('host_port'):
+                output.append(f"Port: {result['host_port']}")
             
-            output.extend([
-                "  - README.md",
-                f"\nImplemented {len(tools)} tools:",
-            ])
-            
-            for tool in tools:
-                output.append(f"  ✓ {tool['name']}: {tool['description']}")
-            
-            output.extend([
-                f"\nTo use this server:",
-                f"1. cd {server_dir}",
-                f"2. docker build -t mcp/{server_name}:latest .",
-                f"3. Use create_mcp_server with server_type='custom'"
-            ])
+            # Auto-connect if requested
+            if auto_connect and MCP_AVAILABLE:
+                try:
+                    # Get connection details
+                    port = result.get('host_port', '3000')
+                    
+                    # Connect via existing MCP manager
+                    # This assumes you have mcp_manager in your LLMTools
+                    # You'll need to add connection logic here
+                    output.append(f"\n[Auto-connecting to server...]")
+                    output.append(f"Use mcp_call_tool to interact with this server")
+                except Exception as e:
+                    output.append(f"\n[Warning] Auto-connect failed: {e}")
             
             return "\n".join(output)
             
         except Exception as e:
-            return f"[Error] Failed to generate server: {str(e)}\n{traceback.format_exc()}"
+            return f"[Error] Failed to create server: {str(e)}"
     
-    def list_mcp_templates(self, category: Optional[str] = None) -> str:
+    def control_mcp_server(self, server_name: str, action: str) -> str:
         """
-        List available MCP server templates.
+        Control an MCP server (start, stop, restart, remove).
+        
+        Actions:
+        - start: Start a stopped server
+        - stop: Stop a running server
+        - restart: Restart a server
+        - remove: Stop and remove a server permanently
+        
+        Example:
+            control_mcp_server(server_name="project_files", action="restart")
+        """
+        if not self.manager.available:
+            return "[Error] Docker not available"
+        
+        result = self.manager.control_server(server_name, action)
+        
+        if result["status"] == "success":
+            return f"✓ {result['message']}"
+        else:
+            return f"[Error] {result['message']}"
+    
+    def list_mcp_servers(self, status_filter: str = "all") -> str:
+        """
+        List all MCP servers.
         
         Args:
-            category: Filter by "built-in", "custom", or "all"
+            status_filter: Filter by status (running, stopped, all)
         
-        Shows all template types that can be used with create_mcp_server.
+        Returns:
+            Formatted list of servers
         """
-        templates = self.template_manager.list_templates(category)
+        if not self.manager.available:
+            return "[Error] Docker not available"
         
-        if not templates:
-            return f"No templates found (category: {category or 'all'})"
+        servers = self.manager.list_servers(status_filter)
         
-        output = [f"MCP Server Templates ({len(templates)}):\n"]
+        if not servers:
+            return f"No MCP servers found (filter: {status_filter})"
         
-        # Separate built-in and custom
-        built_in = {k: v for k, v in templates.items() if k in MCP_SERVER_TEMPLATES}
-        custom = {k: v for k, v in templates.items() if k not in MCP_SERVER_TEMPLATES}
+        output = [f"MCP Servers ({len(servers)}):\n"]
         
-        if built_in and (not category or category == "built-in"):
-            output.append("🔧 Built-in Templates:")
-            for name, template in built_in.items():
-                output.append(f"\n  {name}")
-                output.append(f"    {template['description']}")
-                required = template.get('required_config', [])
-                if required:
-                    output.append(f"    Required: {', '.join(required)}")
-        
-        if custom and (not category or category == "custom"):
-            output.append("\n\n📝 Custom Templates:")
-            for name, template in custom.items():
-                output.append(f"\n  {name}")
-                output.append(f"    {template['description']}")
-                required = template.get('required_config', [])
-                if required:
-                    output.append(f"    Required: {', '.join(required)}")
+        for server in servers:
+            status_icon = "🟢" if server["status"] == "running" else "🔴"
+            output.append(f"{status_icon} {server['name']}")
+            output.append(f"   Type: {server['type']}")
+            output.append(f"   Status: {server['status']}")
+            output.append(f"   Container: {server['container_id']}")
+            if server.get('ports'):
+                output.append(f"   Ports: {server['ports']}")
+            output.append("")
         
         return "\n".join(output)
     
-    def delete_mcp_template(self, template_name: str) -> str:
+    def get_mcp_server_logs(self, server_name: str, tail: int = 100) -> str:
         """
-        Delete a custom MCP template.
+        Get logs from an MCP server.
         
-        Note: Built-in templates cannot be deleted.
+        Useful for debugging server issues or monitoring activity.
+        
+        Args:
+            server_name: Name of the server
+            tail: Number of recent log lines to show (default: 100)
         """
-        if self.template_manager.delete_template(template_name):
-            return f"✓ Deleted custom template: {template_name}"
-        elif template_name in MCP_SERVER_TEMPLATES:
-            return f"[Error] Cannot delete built-in template: {template_name}"
-        else:
-            return f"[Error] Template not found: {template_name}"
+        if not self.manager.available:
+            return "[Error] Docker not available"
+        
+        logs = self.manager.get_logs(server_name, tail)
+        return f"Logs for {server_name} (last {tail} lines):\n\n{logs}"
+    
+    def get_server_templates(self) -> str:
+        """
+        Get information about available MCP server templates.
+        
+        Shows what server types are available and what configuration
+        they require.
+        """
+        output = ["Available MCP Server Templates:\n"]
+        
+        for server_type, template in MCP_SERVER_TEMPLATES.items():
+            output.append(f"📦 {server_type}")
+            output.append(f"   {template['description']}")
+            
+            required = template.get('required_config', [])
+            if required:
+                output.append(f"   Required config: {', '.join(required)}")
+            else:
+                output.append("   No configuration required")
+            
+            output.append("")
+        
+        return "\n".join(output)
 
 
 # ============================================================================
-# UPDATE ADD FUNCTION
+# ADD TO TOOLLOADER FUNCTION
 # ============================================================================
 
 def add_mcp_docker_tools(tool_list: List, agent):
     """
-    Add MCP Docker management tools with custom template creation.
+    Add MCP Docker management tools to the tool list.
     
-    Enables LLM to:
-    - Create custom MCP server templates
-    - Generate complete MCP server implementations
-    - Build and deploy servers in Docker
-    - Manage server lifecycle
+    Enables LLM to create and manage MCP servers in Docker containers
+    for various purposes (file access, databases, APIs, etc.)
+    
+    Call this in your ToolLoader function:
+        tool_list = ToolLoader(agent)
+        add_mcp_docker_tools(tool_list, agent)
+        return tool_list
     """
     
-    mcp_docker = MCPDockerToolsEnhanced(agent)
+    mcp_docker = MCPDockerTools(agent)
     
     if not mcp_docker.manager.available:
         print("[Info] MCP Docker tools not loaded - Docker not available")
@@ -672,59 +786,20 @@ def add_mcp_docker_tools(tool_list: List, agent):
             func=mcp_docker.create_mcp_server,
             name="create_mcp_server",
             description=(
-                "Create a new MCP server in Docker from templates. "
+                "Create a new MCP server in Docker for specific purposes. "
                 "Available types: filesystem, postgres, github, slack, sqlite, "
-                "memory, puppeteer, time, fetch, custom, and any user-created templates."
+                "memory, puppeteer, time, fetch, custom. "
+                "Each server provides specialized tools for different tasks."
             ),
             args_schema=MCPServerCreateInput
-        ),
-        
-        StructuredTool.from_function(
-            func=mcp_docker.create_mcp_template,
-            name="create_mcp_template",
-            description=(
-                "Create a reusable MCP server template. "
-                "Define a Dockerfile and configuration for a new server type. "
-                "Templates can be instantiated multiple times with different configs."
-            ),
-            args_schema=MCPTemplateCreateInput
-        ),
-        
-        StructuredTool.from_function(
-            func=mcp_docker.generate_mcp_server,
-            name="generate_mcp_server",
-            description=(
-                "Generate complete MCP server implementation code in Python or TypeScript. "
-                "Describe the tools you want and the LLM creates working server code. "
-                "Generates Dockerfile, server code, and build instructions."
-            ),
-            args_schema=MCPServerCodeInput
-        ),
-        
-        StructuredTool.from_function(
-            func=mcp_docker.list_mcp_templates,
-            name="list_mcp_templates",
-            description=(
-                "List all available MCP server templates (built-in and custom). "
-                "Shows what templates can be used to create servers."
-            ),
-            args_schema=MCPTemplateListInput
-        ),
-        
-        StructuredTool.from_function(
-            func=mcp_docker.delete_mcp_template,
-            name="delete_mcp_template",
-            description=(
-                "Delete a custom MCP template. Built-in templates cannot be deleted."
-            ),
-            args_schema=LLMQueryInput  # Reuse existing schema
         ),
         
         StructuredTool.from_function(
             func=mcp_docker.control_mcp_server,
             name="control_mcp_server",
             description=(
-                "Control MCP servers: start, stop, restart, or remove."
+                "Control MCP servers: start, stop, restart, or remove. "
+                "Use to manage server lifecycle and resources."
             ),
             args_schema=MCPServerControlInput
         ),
@@ -733,7 +808,8 @@ def add_mcp_docker_tools(tool_list: List, agent):
             func=mcp_docker.list_mcp_servers,
             name="list_mcp_servers",
             description=(
-                "List all MCP servers with status and details."
+                "List all MCP servers with their status and details. "
+                "Filter by running, stopped, or all servers."
             ),
             args_schema=MCPServerListInput
         ),
@@ -742,10 +818,24 @@ def add_mcp_docker_tools(tool_list: List, agent):
             func=mcp_docker.get_mcp_server_logs,
             name="get_mcp_server_logs",
             description=(
-                "View logs from an MCP server for debugging."
+                "View logs from an MCP server for debugging and monitoring. "
+                "Shows recent activity and error messages."
             ),
             args_schema=MCPServerLogsInput
+        ),
+        
+        StructuredTool.from_function(
+            func=mcp_docker.get_server_templates,
+            name="list_mcp_templates",
+            description=(
+                "Get information about available MCP server types and their "
+                "required configuration. Use before creating servers."
+            ),
         ),
     ])
     
     return tool_list
+
+
+# Required dependencies (add to requirements.txt):
+# docker>=7.0.0

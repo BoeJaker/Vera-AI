@@ -698,7 +698,11 @@ async def websocket_focus(websocket: WebSocket, session_id: str):
             await websocket.send_json({"type": "error", "message": "Invalid session"})
         except Exception:
             pass
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            # websocket already closed — safe to ignore
+            pass
         return
 
     vera = get_or_create_vera(session_id)

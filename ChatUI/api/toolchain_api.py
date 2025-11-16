@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import logging
 from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocket
 
 # ============================================================
 # Global state references — adjust to your actual app context

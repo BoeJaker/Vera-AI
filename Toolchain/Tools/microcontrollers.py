@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field
 from queue import Queue
 import asyncio
 import websockets
+from langchain_core.tools import tool, StructuredTool
+from Vera.Toolchain.schemas import *
 
 # ============================================================================
 # INPUT SCHEMAS
