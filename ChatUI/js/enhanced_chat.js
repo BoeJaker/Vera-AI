@@ -1,14 +1,14 @@
 // =====================================================================
-// Modern Interactive Chat UI - FIXED VERSION
-// Fixes: alignment, graph focus, menu positioning, tools
+// Modern Interactive Chat UI - INTEGRATED VERSION
+// Fixes: alignment, graph focus, menu positioning, tools, wider bubbles
+// All duplicate functions merged with improved logging
 // =====================================================================
 
 (() => {
     // =====================================================================
-    // Initialize Modern Features
+    // Initialize Modern Features - INTEGRATED
     // =====================================================================
     
-     
     VeraChat.prototype.initModernFeatures = function() {
         console.log('🎨 Initializing Modern Features...');
         
@@ -73,64 +73,242 @@
     };
     
     // =====================================================================
-    // Control Bar
+    // Control Bar - INTEGRATED WITH ENHANCED LOGGING
     // =====================================================================
     
     VeraChat.prototype.addControlBar = function() {
-        const chatContainer = document.getElementById('tab-chat');
-        if (!chatContainer) return;
+        console.log('🔧 Adding control bar...');
         
+        let chatContainer = document.getElementById('tab-chat');
+        if (!chatContainer) {
+            console.error('❌ tab-chat container not found!');
+            return;
+        }
+        
+        // Ensure proper structure
+        if (!chatContainer.style.display) {
+            chatContainer.style.cssText = `
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                overflow: hidden;
+            `;
+        }
+        
+        // Remove existing control bar
         const existing = document.getElementById('chat-control-bar');
         if (existing) existing.remove();
         
+        // Create sleek control bar
         const controlBar = document.createElement('div');
         controlBar.id = 'chat-control-bar';
-        controlBar.className = 'chat-control-bar';
+        controlBar.className = 'chat-control-bar-sleek';
         controlBar.innerHTML = `
-            <div class="control-group">
-                <button class="control-btn ${this.canvasAutoFocus ? 'active' : ''}" 
+            <div class="control-group-sleek">
+                <button class="ctrl-btn ${this.canvasAutoFocus ? 'active' : ''}" 
                         id="toggle-canvas-focus"
                         onclick="app.toggleCanvasFocus()"
-                        title="Auto-focus canvas for code/diagrams">
-                    <span class="control-icon">${this.canvasAutoFocus ? '🎯' : '⏸️'}</span>
-                    <span class="control-label">Canvas</span>
+                        title="Auto-focus canvas">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
                 </button>
                 
-                <button class="control-btn ${this.ttsEnabled ? 'active' : ''}" 
+                <button class="ctrl-btn ${this.ttsEnabled ? 'active' : ''}" 
                         id="toggle-tts"
                         onclick="app.toggleTTS()"
-                        title="Read responses aloud">
-                    <span class="control-icon">🔊</span>
-                    <span class="control-label">TTS</span>
+                        title="Text-to-speech">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+                        <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                    </svg>
                 </button>
                 
                 ${this.recognition ? `
-                <button class="control-btn ${this.sttActive ? 'active recording' : ''}" 
+                <button class="ctrl-btn ${this.sttActive ? 'active recording' : ''}" 
                         id="toggle-stt"
                         onclick="app.toggleSTT()"
                         title="Voice input">
-                    <span class="control-icon">🎤</span>
-                    <span class="control-label">Voice</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="23"/>
+                        <line x1="8" y1="23" x2="16" y2="23"/>
+                    </svg>
                 </button>
                 ` : ''}
                 
-                <button class="control-btn" 
+                <button class="ctrl-btn" 
                         onclick="app.openFileUpload()"
                         title="Upload file">
-                    <span class="control-icon">📎</span>
-                    <span class="control-label">File</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                    </svg>
+                </button>
+                
+                <div class="ctrl-divider"></div>
+                
+                <button class="ctrl-btn" 
+                        onclick="app.clearChat()"
+                        title="Clear chat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+                
+                <button class="ctrl-btn" 
+                        onclick="app.exportChat()"
+                        title="Export chat">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
                 </button>
             </div>
             
-            <div class="control-status" id="control-status"></div>
+            <div class="control-status-sleek" id="control-status"></div>
         `;
         
+        // Insert at the top of chat container
         const messages = chatContainer.querySelector('#chatMessages');
         if (messages) {
             chatContainer.insertBefore(controlBar, messages);
+            messages.style.flex = '1';
+            messages.style.overflowY = 'auto';
+        } else {
+            chatContainer.insertBefore(controlBar, chatContainer.firstChild);
+        }
+        
+        console.log('✅ Sleek control bar added');
+    };
+
+    // Update the updateControlBar method to work with new structure
+    VeraChat.prototype.updateControlBar = function() {
+        const canvasBtn = document.getElementById('toggle-canvas-focus');
+        const ttsBtn = document.getElementById('toggle-tts');
+        const sttBtn = document.getElementById('toggle-stt');
+        
+        if (canvasBtn) {
+            canvasBtn.className = `ctrl-btn ${this.canvasAutoFocus ? 'active' : ''}`;
+        }
+        
+        if (ttsBtn) {
+            ttsBtn.className = `ctrl-btn ${this.ttsEnabled ? 'active' : ''}`;
+        }
+        
+        if (sttBtn) {
+            sttBtn.className = `ctrl-btn ${this.sttActive ? 'active recording' : ''}`;
         }
     };
-    
+
+    // ============================================================================
+    // CSS - Add this or replace existing control bar styles
+    // ============================================================================
+
+    const sleekControlBarStyles = `
+    /* Sleek Control Bar */
+    .chat-control-bar-sleek {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 12px;
+        background: var(--panel-bg, #1e293b);
+        border-bottom: 1px solid var(--border, #334155);
+        min-height: 32px;
+        flex-shrink: 0;
+    }
+
+    .control-group-sleek {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .ctrl-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        color: var(--text-muted, #94a3b8);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .ctrl-btn:hover {
+        background: var(--bg, #0f172a);
+        border-color: var(--border, #334155);
+        color: var(--text, #e2e8f0);
+    }
+
+    .ctrl-btn.active {
+        background: var(--accent, #3b82f6);
+        border-color: var(--accent, #3b82f6);
+        color: white;
+    }
+
+    .ctrl-btn.active:hover {
+        background: var(--accent-hover, #2563eb);
+        border-color: var(--accent-hover, #2563eb);
+    }
+
+    .ctrl-btn.recording {
+        animation: pulse-recording 1.5s ease-in-out infinite;
+    }
+
+    .ctrl-btn svg {
+        flex-shrink: 0;
+    }
+
+    .ctrl-divider {
+        width: 1px;
+        height: 16px;
+        background: var(--border, #334155);
+        margin: 0 4px;
+    }
+
+    .control-status-sleek {
+        font-size: 11px;
+        color: var(--text-muted, #94a3b8);
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 200px;
+    }
+
+    @keyframes pulse-recording {
+        0%, 100% { 
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+        }
+        50% { 
+            box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+            background: #ef4444;
+        }
+    }
+
+    /* Override old control bar styles if present */
+    .chat-control-bar {
+        display: none !important;
+    }
+    `;
+
+    // Inject styles
+    if (!document.getElementById('sleek-control-bar-styles')) {
+        const style = document.createElement('style');
+        style.id = 'sleek-control-bar-styles';
+        style.textContent = sleekControlBarStyles;
+        document.head.appendChild(style);
+    }
     VeraChat.prototype.updateControlBar = function() {
         const canvasBtn = document.getElementById('toggle-canvas-focus');
         const ttsBtn = document.getElementById('toggle-tts');
@@ -164,7 +342,10 @@
         }
     };
     
-    // Control functions
+    // =====================================================================
+    // Control Functions
+    // =====================================================================
+    
     VeraChat.prototype.toggleCanvasFocus = function() {
         this.canvasAutoFocus = !this.canvasAutoFocus;
         localStorage.setItem('canvas-auto-focus', this.canvasAutoFocus);
@@ -218,7 +399,102 @@
         
         speechSynthesis.speak(utterance);
     };
-    
+    // NEW METHOD: Speak text as it streams in
+    VeraChat.prototype.speakStreamingText = function(fullText) {
+        if (!this.ttsEnabled || !('speechSynthesis' in window)) return;
+        
+        // Initialize tracking on first call
+        if (!this.ttsSpokenLength) this.ttsSpokenLength = 0;
+        
+        // Get only the NEW text since last spoken
+        const newText = fullText.substring(this.ttsSpokenLength);
+        
+        if (newText.length < 40) {
+            // Wait for more text to accumulate
+            return;
+        }
+        
+        // Find the last complete sentence in the new text
+        const sentenceEnd = Math.max(
+            newText.lastIndexOf('. '),
+            newText.lastIndexOf('! '),
+            newText.lastIndexOf('? '),
+            newText.lastIndexOf('\n\n')
+        );
+        
+        if (sentenceEnd === -1) {
+            // No complete sentence yet, wait for more
+            return;
+        }
+        
+        // Speak up to the end of the last complete sentence
+        const textToSpeak = newText.substring(0, sentenceEnd + 1);
+        
+        // Clean the text (remove markdown/code)
+        let cleanText = textToSpeak
+            .replace(/```[\s\S]*?```/g, ' code block ')
+            .replace(/`([^`]+)`/g, '$1')
+            .replace(/\*\*([^*]+)\*\*/g, '$1')
+            .replace(/\*([^*]+)\*/g, '$1')
+            .replace(/#{1,6}\s/g, '')
+            .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+            .replace(/<[^>]+>/g, '')
+            .trim();
+        
+        if (cleanText.length === 0) {
+            this.ttsSpokenLength += textToSpeak.length;
+            return;
+        }
+        
+        // Update tracking BEFORE speaking
+        this.ttsSpokenLength += textToSpeak.length;
+        
+        // Speak it
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.voice = this.ttsVoice;
+        utterance.rate = 1.1; // Slightly faster for streaming
+        utterance.pitch = 1.0;
+        utterance.volume = 1.0;
+        
+        console.log('🔊 Speaking chunk:', cleanText.substring(0, 50) + '...');
+        speechSynthesis.speak(utterance);
+    };
+
+    // NEW METHOD: Speak remaining text when streaming completes
+    VeraChat.prototype.finalizeTTS = function(fullText) {
+        if (!this.ttsEnabled || !('speechSynthesis' in window)) return;
+        if (!this.ttsSpokenLength) this.ttsSpokenLength = 0;
+        
+        // Speak any remaining text
+        const remainingText = fullText.substring(this.ttsSpokenLength);
+        
+        if (remainingText.trim().length > 0) {
+            let cleanText = remainingText
+                .replace(/```[\s\S]*?```/g, ' code block ')
+                .replace(/`([^`]+)`/g, '$1')
+                .replace(/\*\*([^*]+)\*\*/g, '$1')
+                .replace(/\*([^*]+)\*/g, '$1')
+                .replace(/#{1,6}\s/g, '')
+                .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                .replace(/<[^>]+>/g, '')
+                .trim();
+            
+            if (cleanText.length > 0) {
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                utterance.voice = this.ttsVoice;
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
+                utterance.volume = 1.0;
+                
+                console.log('🔊 Finalizing TTS:', cleanText.substring(0, 50) + '...');
+                speechSynthesis.speak(utterance);
+            }
+        }
+        
+        // Reset for next message
+        this.ttsSpokenLength = 0;
+    };
+
     VeraChat.prototype.toggleSTT = function() {
         if (!this.recognition) {
             this.setControlStatus('❌ Speech recognition not available');
@@ -316,7 +592,7 @@
     };
     
     // =====================================================================
-    // FIXED: Message Rendering with Proper Alignment
+    // Message Rendering - INTEGRATED WITH SOURCE VIEW
     // =====================================================================
     
     VeraChat.prototype.renderMessage = function(message) {
@@ -325,8 +601,9 @@
         messageEl.id = message.id;
         messageEl.className = `message ${message.role} modern-message`;
         messageEl.dataset.messageId = message.id;
-        messageEl.dataset.messageContent = message.content; // For graph matching
+        messageEl.dataset.messageContent = message.content;
         messageEl.dataset.graphNodeId = message.graph_node_id || `msg_${message.id}`;
+        messageEl.dataset.showingSource = 'false';
         
         // Make clickable
         messageEl.onclick = (e) => {
@@ -354,16 +631,38 @@
         header.className = 'message-header';
         const roleName = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Vera' : 'System';
         const timestamp = this.formatTimestamp(message.timestamp);
+        
+        // Add source toggle button if content has renderable elements
+        const hasRenderableContent = this.hasRenderableContent(message.content);
+        const sourceToggle = hasRenderableContent ? 
+            `<button class="source-toggle-btn" onclick="app.toggleSource('${message.id}'); event.stopPropagation();" title="Toggle source view">
+                <span class="source-icon">📝</span>
+            </button>` : '';
+        
         header.innerHTML = `
             <span class="message-role">${roleName}</span>
             <span class="message-timestamp">${timestamp}</span>
+            ${sourceToggle}
             ${message.role !== 'system' ? '<span class="click-hint">Click for options</span>' : ''}
         `;
         
         // Content
         const content = document.createElement('div');
         content.className = 'message-content';
-        content.innerHTML = this.renderMessageContent(message.content);
+        
+        // Rendered view
+        const renderedView = document.createElement('div');
+        renderedView.className = 'message-rendered';
+        renderedView.innerHTML = this.renderMessageContent(message.content);
+        
+        // Source view
+        const sourceView = document.createElement('pre');
+        sourceView.className = 'message-source';
+        sourceView.style.display = 'none';
+        sourceView.textContent = message.content;
+        
+        content.appendChild(renderedView);
+        content.appendChild(sourceView);
         
         // Assemble
         contentContainer.appendChild(header);
@@ -376,21 +675,186 @@
         
         container.appendChild(messageEl);
         
+        // Apply syntax highlighting and mermaid rendering
+        setTimeout(() => {
+            this.applyRendering(message.id);
+        }, 100);
+        
         // Auto-focus canvas if enabled
         if (this.canvasAutoFocus && message.role === 'assistant') {
             this.checkAndAutoRenderCanvas(message);
         }
         
-        // TTS if enabled
-        if (this.ttsEnabled && message.role === 'assistant') {
-            setTimeout(() => this.speakText(message.content), 500);
-        }
-        
         container.scrollTop = container.scrollHeight;
     };
+    VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+
+        // Find the rendered view (modern UI structure)
+        const renderedView = messageEl.querySelector('.message-rendered');
+
+        if (renderedView) {
+            // Use modern rendering with all features
+            renderedView.innerHTML = this.renderMessageContent(content);
+            
+            // Apply syntax highlighting to any new code blocks
+            if (window.hljs) {
+                renderedView.querySelectorAll('pre code:not(.hljs)').forEach((block) => {
+                    window.hljs.highlightElement(block);
+                });
+            }
+        } else {
+            // Fallback: update content container directly
+            const contentContainer = messageEl.querySelector('.message-content');
+            if (contentContainer) {
+                contentContainer.innerHTML = this.renderMessageContent(content);
+            }
+        }
+
+        // Add/update streaming indicator
+        const contentContainer = messageEl.querySelector('.message-content');
+        if (contentContainer) {
+            let indicator = contentContainer.querySelector('.streaming-indicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.className = 'streaming-indicator';
+                indicator.style.cssText = `
+                    color: var(--accent);
+                    font-size: 12px;
+                    margin-top: 8px;
+                    padding: 4px 8px;
+                    background: rgba(var(--accent-rgb), 0.1);
+                    border-radius: 4px;
+                    display: inline-block;
+                    animation: pulse 1.5s ease-in-out infinite;
+                `;
+                indicator.innerHTML = '<span style="display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-right: 6px;"></span>Streaming...';
+                contentContainer.appendChild(indicator);
+            }
+        }
+
+        // Auto-scroll if near bottom
+        const container = document.getElementById('chatMessages');
+        if (container) {
+            const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+            if (isScrolledToBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+        };
+
+        // Add pulse animation for streaming indicator
+        if (!document.getElementById('streaming-indicator-styles')) {
+        const style = document.createElement('style');
+        style.id = 'streaming-indicator-styles';
+        style.textContent = `
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+        `;
+        document.head.appendChild(style);
+        }
+    VeraChat.prototype.hasRenderableContent = function(content) {
+        return content.includes('```') || 
+               content.includes('# ') || 
+               content.includes('## ') ||
+               content.includes('**') ||
+               content.includes('*') ||
+               content.includes('[') ||
+               content.includes('![');
+    };
+    
+    VeraChat.prototype.toggleSource = function(messageId) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+        
+        const showingSource = messageEl.dataset.showingSource === 'true';
+        const renderedView = messageEl.querySelector('.message-rendered');
+        const sourceView = messageEl.querySelector('.message-source');
+        const toggleBtn = messageEl.querySelector('.source-toggle-btn');
+        
+        if (showingSource) {
+            // Show rendered
+            renderedView.style.display = 'block';
+            sourceView.style.display = 'none';
+            messageEl.dataset.showingSource = 'false';
+            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '📝';
+        } else {
+            // Show source
+            renderedView.style.display = 'none';
+            sourceView.style.display = 'block';
+            messageEl.dataset.showingSource = 'true';
+            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '🎨';
+        }
+    };
+    
+    
+    VeraChat.prototype.applyRendering = function(messageId) {
+        const messageEl = document.getElementById(messageId);
+        if (!messageEl) return;
+        
+        // Apply syntax highlighting
+        if (window.hljs) {
+            messageEl.querySelectorAll('pre code:not(.hljs)').forEach((block) => {
+                window.hljs.highlightElement(block);
+            });
+        }
+        
+        // Render mermaid diagrams
+        if (window.mermaid) {
+            messageEl.querySelectorAll('.mermaid-diagram').forEach((block, index) => {
+                // Skip if already rendered
+                if (block.querySelector('svg')) return;
+                
+                const id = `mermaid-${messageId}-${index}`;
+                const mermaidCode = block.textContent.trim();
+                
+                console.log('🎨 Rendering Mermaid:', mermaidCode.substring(0, 50));
+                
+                try {
+                    // Use the async render API
+                    window.mermaid.render(id + '-svg', mermaidCode).then(result => {
+                        block.innerHTML = result.svg;
+                        console.log('✅ Mermaid rendered successfully');
+                    }).catch(err => {
+                        console.error('❌ Mermaid render error:', err);
+                        block.innerHTML = `
+                            <div class="mermaid-error" style="
+                                padding: 12px;
+                                background: rgba(239, 68, 68, 0.1);
+                                border: 1px solid #ef4444;
+                                border-radius: 6px;
+                                color: #ef4444;
+                                font-family: monospace;
+                                font-size: 12px;
+                            ">
+                                <div style="font-weight: bold; margin-bottom: 8px;">⚠️ Mermaid Render Error</div>
+                                <pre style="margin: 0; white-space: pre-wrap;">${err.message}</pre>
+                            </div>
+                        `;
+                    });
+                } catch (error) {
+                    console.error('❌ Mermaid error:', error);
+                    block.innerHTML = `
+                        <div class="mermaid-error" style="
+                            padding: 12px;
+                            background: rgba(239, 68, 68, 0.1);
+                            border: 1px solid #ef4444;
+                            border-radius: 6px;
+                            color: #ef4444;
+                        ">Failed to initialize mermaid</div>
+                    `;
+                }
+            });
+        }
+    };
+
+
     
     // =====================================================================
-    // Content Rendering (same as before)
+    // Content Rendering - INTEGRATED WITH ADVANCED FEATURES
     // =====================================================================
     
     VeraChat.prototype.renderMessageContent = function(content) {
@@ -401,6 +865,7 @@
         content = String(content);
         
         const codeBlocks = [];
+        const mermaidBlocks = [];
         const inlineCodes = [];
         const links = [];
         const images = [];
@@ -417,15 +882,40 @@
             return placeholder;
         });
         
-        // Extract code blocks
+        // Extract code blocks with mermaid detection
+        
+        // Extract code blocks with mermaid detection
         content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-            const language = lang || 'text';
+            const language = (lang || 'text').toLowerCase().trim();
             const trimmedCode = code.trim();
+            
+            // More precise mermaid detection
+            const isMermaid = (
+                language === 'mermaid' ||
+                /^graph\s+(TD|TB|BT|RL|LR)/i.test(trimmedCode) ||
+                /^flowchart\s+(TD|TB|BT|RL|LR)/i.test(trimmedCode) ||
+                /^sequenceDiagram/i.test(trimmedCode) ||
+                /^classDiagram/i.test(trimmedCode) ||
+                /^stateDiagram/i.test(trimmedCode) ||
+                /^erDiagram/i.test(trimmedCode) ||
+                /^gantt/i.test(trimmedCode) ||
+                /^pie/i.test(trimmedCode)
+            );
+            
+            if (isMermaid) {
+                const placeholder = `###MERMAID${mermaidBlocks.length}###`;
+                // Don't escape HTML for mermaid - it needs the raw text
+                mermaidBlocks.push(`<div class="mermaid-diagram">${trimmedCode}</div>`);
+                return placeholder;
+            }
+            
             const placeholder = `###CODEBLOCK${codeBlocks.length}###`;
             const rendered = this.renderSpecialFormat(language, trimmedCode);
             codeBlocks.push(rendered);
             return placeholder;
         });
+
+
         
         // Extract inline code
         content = content.replace(/`([^`]+)`/g, (match, code) => {
@@ -456,6 +946,7 @@
         
         // Restore elements
         images.forEach((img, i) => content = content.replace(`###IMAGE${i}###`, img));
+        mermaidBlocks.forEach((block, i) => content = content.replace(`###MERMAID${i}###`, block));
         codeBlocks.forEach((block, i) => content = content.replace(`###CODEBLOCK${i}###`, block));
         inlineCodes.forEach((code, i) => content = content.replace(`###INLINECODE${i}###`, code));
         links.forEach((link, i) => content = content.replace(`###LINK${i}###`, link));
@@ -705,7 +1196,7 @@
     };
     
     // =====================================================================
-    // FIXED: Message Menu with Proper Positioning & Tools
+    // Message Menu with Proper Positioning & Tools
     // =====================================================================
     
     VeraChat.prototype.toggleMessageMenu = async function(messageId) {
@@ -761,7 +1252,7 @@
             ]
         });
         
-        // Tools section - FIXED
+        // Tools section
         if (this.availableTools && Object.keys(this.availableTools).length > 0) {
             const toolItems = Object.values(this.availableTools).slice(0, 8).map(tool => ({
                 label: tool.name,
@@ -783,7 +1274,6 @@
                 items: toolItems
             });
         } else {
-            // Show loading or empty state
             sections.push({
                 title: 'Run Tool',
                 icon: '🔧',
@@ -842,51 +1332,40 @@
             });
         });
         
-        // FIXED: Append to chatMessages container, not individual message
-        // FIXED: Append to chatMessages container, not individual message
+        // Append to chatMessages container
         chatMessages.appendChild(menu);
 
-       // FIXED: Position menu VERY close to message bubble
+        // Position menu VERY close to message bubble
         setTimeout(() => {
             const messageRect = messageEl.getBoundingClientRect();
             const menuRect = menu.getBoundingClientRect();
             
-            // VERY close - only 2px gap
-            const gap = -200;
+            const gap = 5;
             
-            // Use fixed positioning relative to viewport
             let top = messageRect.top;
             let left = messageRect.right + gap;
             
-            // Check if menu goes off the right edge
             const viewportWidth = window.innerWidth;
             if (left + menuRect.width > viewportWidth - 10) {
-                // Position on LEFT side of message instead
                 left = messageRect.left - menuRect.width - gap;
             }
             
-            // Check if menu goes off LEFT edge
             if (left < 10) {
-                // Last resort: position at right edge with constrained width
                 left = messageRect.right + gap;
                 menu.style.maxWidth = `${viewportWidth - left - 20}px`;
             }
             
-            // Vertical positioning - align with top of message
             const viewportHeight = window.innerHeight;
             const availableHeight = viewportHeight - top;
             
             if (menuRect.height > availableHeight - 20) {
-                // Menu too tall for space below
                 const maxHeight = viewportHeight - 40;
                 
                 if (menuRect.height > maxHeight) {
-                    // Constrain height and scroll
                     menu.style.maxHeight = `${maxHeight}px`;
                     menu.style.overflowY = 'auto';
                     top = 20;
                 } else {
-                    // Align bottom of menu with bottom of message
                     top = Math.max(10, messageRect.bottom - menuRect.height);
                 }
             }
@@ -896,7 +1375,8 @@
             menu.style.left = `${left}px`;
             menu.style.zIndex = '10000';
             
-        }, 50); // Small delay to ensure measurements are accurate
+        }, 50);
+        
         // Close on click outside
         setTimeout(() => {
             const closeHandler = (e) => {
@@ -922,7 +1402,7 @@
     };
     
     // =====================================================================
-    // FIXED: Graph Focus with Better Node Matching
+    // Graph Focus with Better Node Matching
     // =====================================================================
     
     VeraChat.prototype.focusMessageInGraph = async function(message) {
@@ -940,22 +1420,18 @@
                 return;
             }
             
-            // Try multiple matching strategies
             let node = null;
             
-            // Strategy 1: Direct graph_node_id match
             if (message.graph_node_id) {
                 node = this.networkData.nodes.find(n => n.id === message.graph_node_id);
             }
             
-            // Strategy 2: Match by message ID in properties
             if (!node) {
                 node = this.networkData.nodes.find(n => 
                     n.properties && n.properties.message_id === message.id
                 );
             }
             
-            // Strategy 3: Match by content + role
             if (!node && message.content) {
                 const contentStart = message.content.substring(0, 100);
                 const role = message.role === 'user' ? 'Query' : 'Response';
@@ -963,20 +1439,17 @@
                 node = this.networkData.nodes.find(n => {
                     if (!n.properties) return false;
                     
-                    // Check if it's a Query or Response node
                     const isRightType = n.type === role || 
                                        n.labels === role ||
                                        (n.properties.type && n.properties.type === role);
                     
                     if (!isRightType) return false;
                     
-                    // Check if content matches
                     const nodeContent = n.properties.content || n.properties.text || n.properties.query || '';
                     return nodeContent.includes(contentStart) || contentStart.includes(nodeContent.substring(0, 100));
                 });
             }
             
-            // Strategy 4: Query Neo4j directly
             if (!node && this.sessionId) {
                 try {
                     const role = message.role === 'user' ? 'Query' : 'Response';
@@ -1319,29 +1792,23 @@
         this.setControlStatus('🗑️ Message deleted');
     };
     
-    // Initialize modern features when chat loads
-    const originalInit = VeraChat.prototype.init;
-    VeraChat.prototype.init = async function() {
-        const result = await originalInit.call(this);
-        this.initModernFeatures();
-        return result;
+    VeraChat.prototype.escapeHtml = function(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     };
     
-    console.log('🚀 Modern Interactive Chat UI (FIXED) loaded successfully');
-
     // =====================================================================
     // Load External Libraries
     // =====================================================================
     
     const loadExternalLibraries = () => {
-        // Load Marked.js for Markdown
         if (!window.marked) {
             const markedScript = document.createElement('script');
             markedScript.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
             document.head.appendChild(markedScript);
         }
         
-        // Load Highlight.js for syntax highlighting
         if (!window.hljs) {
             const hljsScript = document.createElement('script');
             hljsScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js';
@@ -1353,7 +1820,6 @@
             document.head.appendChild(hljsStyle);
         }
         
-        // Load Mermaid for diagrams
         if (!window.mermaid) {
             const mermaidScript = document.createElement('script');
             mermaidScript.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
@@ -1378,650 +1844,33 @@
     loadExternalLibraries();
     
     // =====================================================================
-    // Initialize Modern Features
+    // Initialize - ONE-TIME WRAPPER
     // =====================================================================
     
-    // VeraChat.prototype.initModernFeatures = function() {
-    //     console.log('🎨 Initializing Modern Features...');
-        
-    //     this.canvasAutoFocus = localStorage.getItem('canvas-auto-focus') !== 'false';
-    //     this.ttsEnabled = localStorage.getItem('tts-enabled') === 'true';
-    //     this.sttActive = false;
-    //     this.streamingBuffer = '';
-    //     this.lastCanvasCheck = 0;
-        
-    //     // Initialize speech recognition
-    //     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-    //         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    //         this.recognition = new SpeechRecognition();
-    //         this.recognition.continuous = false;
-    //         this.recognition.interimResults = true;
-    //         this.recognition.lang = 'en-US';
-            
-    //         this.recognition.onresult = (event) => {
-    //             const transcript = Array.from(event.results)
-    //                 .map(result => result[0].transcript)
-    //                 .join('');
-                
-    //             const textarea = document.getElementById('messageInput');
-    //             if (textarea) {
-    //                 textarea.value = transcript;
-    //                 textarea.dispatchEvent(new Event('input'));
-    //             }
-    //         };
-            
-    //         this.recognition.onend = () => {
-    //             this.sttActive = false;
-    //             this.updateControlBar();
-    //         };
-    //     }
-        
-    //     // Initialize speech synthesis
-    //     this.ttsVoice = null;
-    //     if ('speechSynthesis' in window) {
-    //         speechSynthesis.onvoiceschanged = () => {
-    //             const voices = speechSynthesis.getVoices();
-    //             this.ttsVoice = voices.find(v => v.lang.startsWith('en')) || voices[0];
-    //         };
-    //     }
-        
-    //     // Ensure tools are loaded
-    //     this.ensureToolsLoaded();
-        
-    //     // Add control bar
-    //     setTimeout(() => {
-    //         this.addControlBar();
-    //     }, 100);
-    // };
-    
-    // VeraChat.prototype.ensureToolsLoaded = async function() {
-    //     if (this.availableTools && Object.keys(this.availableTools).length > 0) {
-    //         return;
-    //     }
-        
-    //     if (this.sessionId && typeof this.loadAvailableTools === 'function') {
-    //         await this.loadAvailableTools();
-    //     }
-    // };
-    
-    // =====================================================================
-    // Control Bar - COMPLETELY FIXED
-    // =====================================================================
-    
-    // VeraChat.prototype.addControlBar = function() {
-    //     console.log('🔧 Adding control bar...');
-        
-    //     // Find or create chat container structure
-    //     let chatContainer = document.getElementById('tab-chat');
-    //     if (!chatContainer) {
-    //         console.error('❌ tab-chat container not found!');
-    //         return;
-    //     }
-        
-    //     // Ensure proper structure
-    //     if (!chatContainer.style.display) {
-    //         chatContainer.style.cssText = `
-    //             display: flex;
-    //             flex-direction: column;
-    //             height: 100%;
-    //             overflow: hidden;
-    //         `;
-    //     }
-        
-    //     // Remove existing control bar
-    //     const existing = document.getElementById('chat-control-bar');
-    //     if (existing) {
-    //         console.log('🗑️ Removing existing control bar');
-    //         existing.remove();
-    //     }
-        
-    //     // Create control bar
-    //     const controlBar = document.createElement('div');
-    //     controlBar.id = 'chat-control-bar';
-    //     controlBar.className = 'chat-control-bar';
-    //     controlBar.innerHTML = `
-    //         <div class="control-group">
-    //             <button class="control-btn ${this.canvasAutoFocus ? 'active' : ''}" 
-    //                     id="toggle-canvas-focus"
-    //                     onclick="app.toggleCanvasFocus()"
-    //                     title="Auto-focus canvas for code/diagrams">
-    //                 <span class="control-icon">${this.canvasAutoFocus ? '🎯' : '⏸️'}</span>
-    //                 <span class="control-label">Canvas</span>
-    //             </button>
-                
-    //             <button class="control-btn ${this.ttsEnabled ? 'active' : ''}" 
-    //                     id="toggle-tts"
-    //                     onclick="app.toggleTTS()"
-    //                     title="Read responses aloud">
-    //                 <span class="control-icon">🔊</span>
-    //                 <span class="control-label">TTS</span>
-    //             </button>
-                
-    //             ${this.recognition ? `
-    //             <button class="control-btn ${this.sttActive ? 'active recording' : ''}" 
-    //                     id="toggle-stt"
-    //                     onclick="app.toggleSTT()"
-    //                     title="Voice input">
-    //                 <span class="control-icon">🎤</span>
-    //                 <span class="control-label">Voice</span>
-    //             </button>
-    //             ` : ''}
-                
-    //             <button class="control-btn" 
-    //                     onclick="app.openFileUpload()"
-    //                     title="Upload file">
-    //                 <span class="control-icon">📎</span>
-    //                 <span class="control-label">File</span>
-    //             </button>
-    //         </div>
-            
-    //         <div class="control-status" id="control-status"></div>
-    //     `;
-        
-    //     // Insert at the very top of chat container
-    //     const messages = chatContainer.querySelector('#chatMessages');
-    //     if (messages) {
-    //         console.log('✅ Inserting control bar before chatMessages');
-    //         chatContainer.insertBefore(controlBar, messages);
-            
-    //         // Ensure messages container has proper flex
-    //         messages.style.flex = '1';
-    //         messages.style.overflowY = 'auto';
-    //     } else {
-    //         console.log('⚠️ chatMessages not found, prepending to container');
-    //         chatContainer.insertBefore(controlBar, chatContainer.firstChild);
-    //     }
-        
-    //     console.log('✅ Control bar added successfully');
-        
-    //     // Verify visibility
-    //     setTimeout(() => {
-    //         const check = document.getElementById('chat-control-bar');
-    //         if (check) {
-    //             const rect = check.getBoundingClientRect();
-    //             console.log('📊 Control bar rect:', rect);
-    //             if (rect.height === 0) {
-    //                 console.error('❌ Control bar has zero height - forcing display');
-    //                 check.style.display = 'flex';
-    //                 check.style.minHeight = '60px';
-    //             }
-    //         }
-    //     }, 200);
-    // };
-    
-    // VeraChat.prototype.updateControlBar = function() {
-    //     const canvasBtn = document.getElementById('toggle-canvas-focus');
-    //     const ttsBtn = document.getElementById('toggle-tts');
-    //     const sttBtn = document.getElementById('toggle-stt');
-        
-    //     if (canvasBtn) {
-    //         canvasBtn.className = `control-btn ${this.canvasAutoFocus ? 'active' : ''}`;
-    //         canvasBtn.querySelector('.control-icon').textContent = this.canvasAutoFocus ? '🎯' : '⏸️';
-    //     }
-        
-    //     if (ttsBtn) {
-    //         ttsBtn.className = `control-btn ${this.ttsEnabled ? 'active' : ''}`;
-    //     }
-        
-    //     if (sttBtn) {
-    //         sttBtn.className = `control-btn ${this.sttActive ? 'active recording' : ''}`;
-    //     }
-    // };
-    
-    // VeraChat.prototype.setControlStatus = function(message, duration = 3000) {
-    //     const status = document.getElementById('control-status');
-    //     if (!status) return;
-        
-    //     status.textContent = message;
-    //     status.style.opacity = '1';
-        
-    //     if (duration > 0) {
-    //         setTimeout(() => {
-    //             status.style.opacity = '0';
-    //         }, duration);
-    //     }
-    // };
-    
-    // // Control functions
-    // VeraChat.prototype.toggleCanvasFocus = function() {
-    //     this.canvasAutoFocus = !this.canvasAutoFocus;
-    //     localStorage.setItem('canvas-auto-focus', this.canvasAutoFocus);
-    //     this.updateControlBar();
-    //     this.setControlStatus(
-    //         this.canvasAutoFocus ? '🎯 Canvas auto-focus enabled' : '⏸️ Canvas auto-focus paused'
-    //     );
-    // };
-    
-    // VeraChat.prototype.toggleTTS = function() {
-    //     this.ttsEnabled = !this.ttsEnabled;
-    //     localStorage.setItem('tts-enabled', this.ttsEnabled);
-    //     this.updateControlBar();
-        
-    //     if (this.ttsEnabled) {
-    //         this.setControlStatus('🔊 Text-to-speech enabled');
-    //         this.speakText('Text to speech enabled');
-    //     } else {
-    //         this.setControlStatus('🔇 Text-to-speech disabled');
-    //         if ('speechSynthesis' in window) {
-    //             speechSynthesis.cancel();
-    //         }
-    //     }
-    // };
-    
-    // VeraChat.prototype.speakText = function(text) {
-    //     if (!this.ttsEnabled || !('speechSynthesis' in window)) return;
-        
-    //     speechSynthesis.cancel();
-        
-    //     let cleanText = text
-    //         .replace(/```[\s\S]*?```/g, ' code block ')
-    //         .replace(/`([^`]+)`/g, '$1')
-    //         .replace(/\*\*([^*]+)\*\*/g, '$1')
-    //         .replace(/\*([^*]+)\*/g, '$1')
-    //         .replace(/#{1,6}\s/g, '')
-    //         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    //         .replace(/<[^>]+>/g, '')
-    //         .trim();
-        
-    //     if (cleanText.length === 0) return;
-    //     if (cleanText.length > 500) {
-    //         cleanText = cleanText.substring(0, 497) + '...';
-    //     }
-        
-    //     const utterance = new SpeechSynthesisUtterance(cleanText);
-    //     utterance.voice = this.ttsVoice;
-    //     utterance.rate = 1.0;
-    //     utterance.pitch = 1.0;
-    //     utterance.volume = 1.0;
-        
-    //     speechSynthesis.speak(utterance);
-    // };
-    
-    // VeraChat.prototype.toggleSTT = function() {
-    //     if (!this.recognition) {
-    //         this.setControlStatus('❌ Speech recognition not available');
-    //         return;
-    //     }
-        
-    //     if (this.sttActive) {
-    //         this.recognition.stop();
-    //         this.sttActive = false;
-    //         this.setControlStatus('🎤 Voice input stopped');
-    //     } else {
-    //         try {
-    //             this.recognition.start();
-    //             this.sttActive = true;
-    //             this.setControlStatus('🎤 Listening... Speak now', 0);
-    //         } catch (error) {
-    //             console.error('Speech recognition error:', error);
-    //             this.setControlStatus('❌ Could not start voice input');
-    //         }
-    //     }
-        
-    //     this.updateControlBar();
-    // };
-    
-    // VeraChat.prototype.openFileUpload = function() {
-    //     const input = document.createElement('input');
-    //     input.type = 'file';
-    //     input.multiple = true;
-    //     input.accept = '*/*';
-        
-    //     input.onchange = (e) => {
-    //         const files = Array.from(e.target.files);
-    //         if (files.length > 0) {
-    //             this.handleFileUpload(files);
-    //         }
-    //     };
-        
-    //     input.click();
-    // };
-    
-    // VeraChat.prototype.handleFileUpload = async function(files) {
-    //     this.setControlStatus(`📎 Uploading ${files.length} file(s)...`, 0);
-        
-    //     for (const file of files) {
-    //         await this.uploadFile(file);
-    //     }
-        
-    //     this.setControlStatus(`✅ Uploaded ${files.length} file(s)`);
-    // };
-    
-    // VeraChat.prototype.uploadFile = async function(file) {
-    //     const formData = new FormData();
-    //     formData.append('file', file);
-    //     formData.append('session_id', this.sessionId);
-        
-    //     try {
-    //         const response = await fetch('http://llm.int:8888/api/upload', {
-    //             method: 'POST',
-    //             body: formData
-    //         });
-            
-    //         if (!response.ok) throw new Error('Upload failed');
-            
-    //         const data = await response.json();
-    //         this.addFileMessage(file, data);
-            
-    //     } catch (error) {
-    //         console.error('File upload error:', error);
-    //         this.setControlStatus(`❌ Failed to upload ${file.name}`);
-    //     }
-    // };
-    
-    // VeraChat.prototype.addFileMessage = function(file, uploadData) {
-    //     const fileExt = file.name.split('.').pop().toLowerCase();
-    //     const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(fileExt);
-        
-    //     let content = `📎 Uploaded: **${file.name}**\n`;
-    //     content += `Size: ${this.formatFileSize(file.size)}\n`;
-        
-    //     if (uploadData.file_id) {
-    //         content += `File ID: \`${uploadData.file_id}\`\n`;
-    //     }
-        
-    //     if (isImage && uploadData.url) {
-    //         content += `\n![${file.name}](${uploadData.url})`;
-    //     }
-        
-    //     this.addMessage('system', content);
-    // };
-    
-    // VeraChat.prototype.formatFileSize = function(bytes) {
-    //     if (bytes < 1024) return bytes + ' B';
-    //     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    //     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    // };
-    
-    // =====================================================================
-    // Message Rendering with Inline Rendering
-    // =====================================================================
-    
-    // VeraChat.prototype.renderMessage = function(message) {
-    //     const container = document.getElementById('chatMessages');
-    //     const messageEl = document.createElement('div');
-    //     messageEl.id = message.id;
-    //     messageEl.className = `message ${message.role} modern-message`;
-    //     messageEl.dataset.messageId = message.id;
-    //     messageEl.dataset.messageContent = message.content;
-    //     messageEl.dataset.graphNodeId = message.graph_node_id || `msg_${message.id}`;
-    //     messageEl.dataset.showingSource = 'false';
-        
-    //     // Make clickable
-    //     messageEl.onclick = (e) => {
-    //         if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
-    //             return;
-    //         }
-    //         this.toggleMessageMenu(message.id);
-    //     };
-        
-    //     // Avatar
-    //     const avatar = document.createElement('div');
-    //     avatar.className = 'message-avatar';
-    //     avatar.innerHTML = message.role === 'user' 
-    //         ? '<div class="avatar-circle user-avatar">👤</div>'
-    //         : message.role === 'assistant'
-    //         ? '<div class="avatar-circle assistant-avatar pulse">V</div>'
-    //         : '<div class="avatar-circle system-avatar">ℹ️</div>';
-        
-    //     // Content container
-    //     const contentContainer = document.createElement('div');
-    //     contentContainer.className = 'message-content-container';
-        
-    //     // Header
-    //     const header = document.createElement('div');
-    //     header.className = 'message-header';
-    //     const roleName = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Vera' : 'System';
-    //     const timestamp = this.formatTimestamp(message.timestamp);
-        
-    //     // Add source toggle button
-    //     const hasRenderableContent = this.hasRenderableContent(message.content);
-    //     const sourceToggle = hasRenderableContent ? 
-    //         `<button class="source-toggle-btn" onclick="app.toggleSource('${message.id}'); event.stopPropagation();" title="Toggle source view">
-    //             <span class="source-icon">📝</span>
-    //         </button>` : '';
-        
-    //     header.innerHTML = `
-    //         <span class="message-role">${roleName}</span>
-    //         <span class="message-timestamp">${timestamp}</span>
-    //         ${sourceToggle}
-    //         ${message.role !== 'system' ? '<span class="click-hint">Click for options</span>' : ''}
-    //     `;
-        
-    //     // Content
-    //     const content = document.createElement('div');
-    //     content.className = 'message-content';
-        
-    //     // Rendered view
-    //     const renderedView = document.createElement('div');
-    //     renderedView.className = 'message-rendered';
-    //     renderedView.innerHTML = this.renderMessageContent(message.content);
-        
-    //     // Source view
-    //     const sourceView = document.createElement('pre');
-    //     sourceView.className = 'message-source';
-    //     sourceView.style.display = 'none';
-    //     sourceView.textContent = message.content;
-        
-    //     content.appendChild(renderedView);
-    //     content.appendChild(sourceView);
-        
-    //     // Assemble
-    //     contentContainer.appendChild(header);
-    //     contentContainer.appendChild(content);
-        
-    //     if (message.role !== 'system') {
-    //         messageEl.appendChild(avatar);
-    //     }
-    //     messageEl.appendChild(contentContainer);
-        
-    //     container.appendChild(messageEl);
-        
-    //     // Apply syntax highlighting and mermaid rendering
-    //     setTimeout(() => {
-    //         this.applyRendering(message.id);
-    //     }, 100);
-        
-    //     // Auto-focus canvas if enabled
-    //     if (this.canvasAutoFocus && message.role === 'assistant') {
-    //         this.checkAndAutoRenderCanvas(message);
-    //     }
-        
-    //     // TTS if enabled
-    //     if (this.ttsEnabled && message.role === 'assistant') {
-    //         setTimeout(() => this.speakText(message.content), 500);
-    //     }
-        
-    //     container.scrollTop = container.scrollHeight;
-    // };
-    
-    VeraChat.prototype.hasRenderableContent = function(content) {
-        return content.includes('```') || 
-               content.includes('# ') || 
-               content.includes('## ') ||
-               content.includes('**') ||
-               content.includes('*') ||
-               content.includes('[') ||
-               content.includes('![');
-    };
-    
-    VeraChat.prototype.toggleSource = function(messageId) {
-        const messageEl = document.getElementById(messageId);
-        if (!messageEl) return;
-        
-        const showingSource = messageEl.dataset.showingSource === 'true';
-        const renderedView = messageEl.querySelector('.message-rendered');
-        const sourceView = messageEl.querySelector('.message-source');
-        const toggleBtn = messageEl.querySelector('.source-toggle-btn');
-        
-        if (showingSource) {
-            // Show rendered
-            renderedView.style.display = 'block';
-            sourceView.style.display = 'none';
-            messageEl.dataset.showingSource = 'false';
-            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '📝';
-        } else {
-            // Show source
-            renderedView.style.display = 'none';
-            sourceView.style.display = 'block';
-            messageEl.dataset.showingSource = 'true';
-            if (toggleBtn) toggleBtn.querySelector('.source-icon').textContent = '🎨';
-        }
-    };
-    
-    VeraChat.prototype.applyRendering = function(messageId) {
-        const messageEl = document.getElementById(messageId);
-        if (!messageEl) return;
-        
-        // Apply syntax highlighting
-        if (window.hljs) {
-            messageEl.querySelectorAll('pre code').forEach((block) => {
-                if (!block.classList.contains('hljs')) {
-                    window.hljs.highlightElement(block);
-                }
-            });
-        }
-        
-        // Render mermaid diagrams
-        if (window.mermaid) {
-            messageEl.querySelectorAll('.mermaid-diagram').forEach((block, index) => {
-                const id = `mermaid-${messageId}-${index}`;
-                block.id = id;
-                try {
-                    window.mermaid.render(id + '-svg', block.textContent).then(result => {
-                        block.innerHTML = result.svg;
-                    }).catch(err => {
-                        console.error('Mermaid render error:', err);
-                        block.innerHTML = `<div class="mermaid-error">Failed to render diagram</div>`;
-                    });
-                } catch (error) {
-                    console.error('Mermaid error:', error);
-                }
-            });
-        }
-    };
-    
-    // VeraChat.prototype.renderMessageContent = function(content) {
-    //     if (typeof content === 'object') {
-    //         content = JSON.stringify(content, null, 2);
-    //     }
-        
-    //     content = String(content);
-        
-    //     // Store code blocks and replace with placeholders
-    //     const codeBlocks = [];
-    //     const mermaidBlocks = [];
-        
-    //     // Extract and process code blocks
-    //     content = content.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
-    //         const language = (lang || 'text').toLowerCase();
-    //         const trimmedCode = code.trim();
-            
-    //         // Check if it's a mermaid diagram
-    //         if (language === 'mermaid' || trimmedCode.includes('graph ') || trimmedCode.includes('sequenceDiagram')) {
-    //             const placeholder = `###MERMAID${mermaidBlocks.length}###`;
-    //             mermaidBlocks.push(`<div class="mermaid-diagram">${this.escapeHtml(trimmedCode)}</div>`);
-    //             return placeholder;
-    //         }
-            
-    //         const placeholder = `###CODEBLOCK${codeBlocks.length}###`;
-    //         const highlighted = `<pre><code class="language-${language}">${this.escapeHtml(trimmedCode)}</code></pre>`;
-    //         codeBlocks.push(highlighted);
-    //         return placeholder;
-    //     });
-        
-    //     // Process markdown with marked.js if available
-    //     if (window.marked) {
-    //         try {
-    //             content = window.marked.parse(content);
-    //         } catch (e) {
-    //             console.error('Marked.js error:', e);
-    //             // Fallback to basic markdown
-    //             content = this.basicMarkdown(content);
-    //         }
-    //     } else {
-    //         content = this.basicMarkdown(content);
-    //     }
-        
-    //     // Restore code blocks
-    //     mermaidBlocks.forEach((block, i) => {
-    //         content = content.replace(`###MERMAID${i}###`, block);
-    //     });
-    //     codeBlocks.forEach((block, i) => {
-    //         content = content.replace(`###CODEBLOCK${i}###`, block);
-    //     });
-        
-    //     return content;
-    // };
-    
-    VeraChat.prototype.basicMarkdown = function(content) {
-        // Escape HTML first
-        content = this.escapeHtml(content);
-        
-        // Headers
-        content = content.replace(/^### (.+)$/gm, '<h3 class="msg-h3">$1</h3>');
-        content = content.replace(/^## (.+)$/gm, '<h2 class="msg-h2">$1</h2>');
-        content = content.replace(/^# (.+)$/gm, '<h1 class="msg-h1">$1</h1>');
-        
-        // Bold and italic
-        content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-        content = content.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-        
-        // Links
-        content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="message-link">$1</a>');
-        
-        // Images
-        content = content.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="inline-image" loading="lazy">');
-        
-        // Lists
-        content = content.replace(/^[\*\-\+] (.+)$/gm, '<li class="msg-li">$1</li>');
-        content = content.replace(/(<li[^>]*>.*?<\/li>\n?)+/g, '<ul class="msg-ul">$&</ul>');
-        
-        // Line breaks
-        content = content.replace(/\n/g, '<br>');
-        
-        return content;
-    };
-    
-    VeraChat.prototype.escapeHtml = function(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    };
-    
-    // ... (rest of the functions: checkAndAutoRenderCanvas, toggleMessageMenu, etc. remain the same as before)
-    
-    // Initialize when ready
-
-    // Store the REAL original init only once
     if (!VeraChat.prototype._originalInit) {
         console.log('💾 Storing original init function');
         VeraChat.prototype._originalInit = VeraChat.prototype.init;
     }
 
-    // Only wrap if we haven't already
     if (!VeraChat.prototype._modernUIWrapped) {
         console.log('🔧 Wrapping init function (first time only)');
         
         VeraChat.prototype.init = async function() {
             console.log('🔄 VeraChat.init called');
             
-            // Call the REAL original init (not a wrapper)
             const result = await this._originalInit.call(this);
             
-            // Initialize modern features ONCE
             console.log('🎨 Calling initModernFeatures');
             this.initModernFeatures();
             
             return result;
         };
         
-        // Mark as wrapped
         VeraChat.prototype._modernUIWrapped = true;
         console.log('✅ Init wrapper installed');
     } else {
         console.log('⏭️ Init already wrapped, skipping');
-}
+    }
     
-    console.log('🚀 Modern Interactive Chat UI loaded successfully');
+    console.log('🚀 Modern Interactive Chat UI (INTEGRATED) loaded successfully');
 })();

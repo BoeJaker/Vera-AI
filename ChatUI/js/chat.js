@@ -1,3 +1,4 @@
+// Chat.js
 (() => {
     class VeraChat {
         constructor() {
@@ -55,6 +56,7 @@
                 { id: 'canvas', label: 'Canvas', columnId: 2 },
                 { id: 'toolchain', label: 'Toolchain', columnId: 2 },
                 { id: 'focus', label: 'Proactive Focus', columnId: 2 },
+                { id: 'training', label: 'Training', columnId: 2 },
                 { id: 'orchestration', label: 'Orchestration', columnId: 2 },
                 { id: 'analytics', label: 'Analytics', columnId: 2 },
                 { id: 'files', label: 'Files', columnId: 2 },
@@ -69,10 +71,15 @@
         
         async init() {
             try {
+                if (window.updateStartupStatus) {
+                    window.updateStartupStatus('Starting session');
+                }
                 const response = await fetch('http://llm.int:8888/api/session/start', { method: 'POST' });
                 const data = await response.json();
                 this.sessionId = data.session_id;
-                
+                if (window.updateStartupStatus) {
+                    window.updateStartupStatus('Building interface');
+                }
                 document.getElementById('sessionInfo').textContent = `Session: ${this.sessionId}`;
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator connected"></span>Connected';
                 
@@ -95,7 +102,13 @@
                 // Set initial active tabs (this will also set up event listeners)
                 this.activateTab('chat', 1);
                 this.activateTab('graph', 2);
-                
+                if (app.initThemeSettings) {
+                    app.initThemeSettings();
+                }
+                if (window.applyThemeToGraph) {
+                    window.applyThemeToGraph();
+                    console.log('Initial theme applied');
+                }
                 this.addSystemMessage('Vera connected and ready!');
                 
                 if (this.useWebSocket) {
@@ -109,9 +122,15 @@
                 this.addSystemMessage('Connection failed. Running in offline mode.');
                 this.veraRobot.setState('error');
             }
-            
-            // DON'T add event listeners here - they're added in activateTab when the chat tab is shown
-        }
+            VeraChat.prototype.initModernFeatures()
+            // Hide overlay when ready
+            setTimeout(() => {
+                if (window.hideStartupOverlay) {
+                    window.hideStartupOverlay();
+                }
+            }, 500);
+                // DON'T add event listeners here - they're added in activateTab when the chat tab is shown
+            }
 
         createColumn() {
             const mainContent = document.getElementById('mainContent');
@@ -127,27 +146,23 @@
                 resizer.dataset.resizerId = id - 1;
                 mainContent.appendChild(resizer);
             }
-            // const header = document.getElementById('header');
-            // const statusIndicator = document.createElement('div');
-            // statusIndicator.innerHTML = `
-            //     <span style="padding: 6px 12px; background: ${this.focusRunning ? '#10b981' : '#6b7280'}; color: white; border-radius: 6px; font-size: 12px; font-weight: 600;">
-            //         ${this.focusRunning ? '● RUNNING' : '○ STOPPED'}
-            //     </span>`;
-            // header.appendChild(statusIndicator);
 
-            const column = document.createElement('div');
+        const column = document.createElement('div');
             column.className = 'column';
             column.dataset.columnId = id;
             column.innerHTML = `
                 <div class="column-header">
+                    <div class="column-header-left">
+                        <button class="column-btn" onclick="app.toggleColumnFullscreen(${id})" title="Toggle fullscreen">
+                            <span class="fullscreen-icon" data-column-fs="${id}">⛶</span>
+                        </button>
+                        <button class="column-btn" onclick="app.addColumn()" title="Add new column">
+                            ➕ Add
+                        </button>
+                    </div>
                     <span class="column-title" data-column-title="${id}">Column ${id}</span>
-
-                        ${this.columns.length >= 1 ? `<button class="column-btn" onclick="app.addColumn()" style="padding: 6px 12px; font-size: 12px;">
-                            ➕ Add Column
-                        </button>` : ''}
-
                     <div class="column-controls">
-                        ${this.columns.length >= 2 ? `<button class="column-btn" onclick="app.removeColumn(${id})">✕ Remove</button>` : ''}
+                        ${this.columns.length >= 2 ? `<button class="column-btn" onclick="app.removeColumn(${id})" title="Remove column">✕</button>` : ''}
                     </div>
                 </div>
                 <div class="tabs-container">
@@ -246,6 +261,7 @@
                 this.updateScrollIndicators(tabBar, leftIndicator, rightIndicator);
             }
         }
+
         getTabContent(tabId) {
             switch(tabId) {
                 case 'chat':
@@ -292,9 +308,9 @@
                 case 'notebook':
                     return `
                         <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                            <div style="padding: 16px; background: #0f172a; border-bottom: 1px solid #334155;">
+                            <div style="padding: 16px; background: var(--bg); border-bottom: 1px solid #334155;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                    <h2 style="color: #60a5fa; margin: 0;">📓 Notebook</h2>
+                                    <h2 style=" margin: 0;">📓 Notebook</h2>
                                     <div style="display: flex; gap: 8px;">
                                         <button class="panel-btn" onclick="app.createNotebook()">+ New Notebook</button>
                                         <button class="panel-btn" onclick="app.loadNotebooks()">🔄 Refresh</button>
@@ -302,14 +318,14 @@
                                 </div>
                                 <div style="display: flex; gap: 8px;">
                                     <select id="notebook-selector" onchange="app.switchNotebook(this.value)" 
-                                            style="flex: 1; padding: 8px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
+                                            style="flex: 1; padding: 8px; background: var(--panel-bg); border: 1px solid #334155; color: #e2e8f0; border-radius: 4px;">
                                         <option value="">Select a notebook...</option>
                                     </select>
                                     <button class="panel-btn" onclick="app.deleteCurrentNotebook()" id="delete-notebook-btn" disabled>🗑️</button>
                                 </div>
                             </div>
                             <div style="display: flex; flex: 1; overflow: hidden;">
-                                <div id="notes-sidebar" style="width: 300px; background: #1e293b; border-right: 1px solid #334155; overflow-y: auto; padding: 12px;">
+                                <div id="notes-sidebar" style="width: 300px; background: var(--bg); border-right: 1px solid #334155; overflow-y: auto; padding: 12px;">
                                     <div style="margin-bottom: 12px;">
                                         <button class="panel-btn" onclick="app.createNote()" style="width: 100%;">+ New Note</button>
                                     </div>
@@ -338,8 +354,6 @@
                         </div>
                     `;
 
-                // Also update the toolchain case to match what toolchain.js expects:
-
                 case 'toolchain':
                     return `
                         <div id="toolchain" style="padding: 20px; overflow-y: auto; height: 100%;">
@@ -347,8 +361,6 @@
                             <p style="color: #94a3b8;">Loading toolchain...</p>
                         </div>
                     `;
-
-                // And update the memory case:
 
                 case 'memory':
                     return `
@@ -360,8 +372,186 @@
                     `;
                     
                 case 'orchestration':
-                    return `<div id="tab-orchestration" style="padding: 20px;"><h2 style="margin-bottom: 16px;">🎻 Orchestration</h2><p style="color: #94a3b8;">Orchestration coming soon...</p></div>`;
-                    
+                    return `
+                        <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+                            <div style="padding: 16px; background: var(--bg); border-bottom: 1px solid #334155;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                    <h2 style="margin: 0;">🎻 Task Orchestrator</h2>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="panel-btn" onclick="app.refreshOrchestrator()">🔄 Refresh</button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Status Cards -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
+                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Local Pool</div>
+                                        <div style="font-size: 20px; font-weight: bold;">
+                                            <span id="orch-pool-indicator" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px;"></span>
+                                            <span id="orch-pool-status">Stopped</span>
+                                        </div>
+                                    </div>
+                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">CPU Usage</div>
+                                        <div style="font-size: 20px; font-weight: bold;" id="orch-cpu">0%</div>
+                                    </div>
+                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Queue Size</div>
+                                        <div style="font-size: 20px; font-weight: bold;" id="orch-queue">0</div>
+                                    </div>
+                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
+                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Active Workers</div>
+                                        <div style="font-size: 20px; font-weight: bold;"><span id="orch-workers-active">0</span>/<span id="orch-workers-total">0</span></div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Navigation Tabs -->
+                                <div style="display: flex; gap: 8px; margin-top: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                                    <button class="orch-nav-btn active" data-panel="dashboard" onclick="app.switchOrchPanel('dashboard')">📊 Dashboard</button>
+                                    <button class="orch-nav-btn" data-panel="pool" onclick="app.switchOrchPanel('pool')">🏭 Pool</button>
+                                    <button class="orch-nav-btn" data-panel="tasks" onclick="app.switchOrchPanel('tasks')">📋 Tasks</button>
+                                    <button class="orch-nav-btn" data-panel="monitor" onclick="app.switchOrchPanel('monitor')">📈 Monitor</button>
+                                </div>
+                            </div>
+                            
+                            <div style="flex: 1; overflow-y: auto; padding: 16px;">
+                                <!-- Dashboard Panel -->
+                                <div id="orch-panel-dashboard" class="orch-panel">
+                                    <h3 style="color: var(--accent); margin-bottom: 16px;">System Overview</h3>
+                                    
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Tasks Completed</div>
+                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-dash-completed">0</div>
+                                        </div>
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Worker Utilization</div>
+                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-dash-util">0%</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                        <h4 style="color: var(--text); margin-bottom: 12px;">Recent Tasks</h4>
+                                        <div id="orch-dash-tasks" style="max-height: 300px; overflow-y: auto;">
+                                            <p style="color: var(--text-muted); text-align: center;">No recent tasks</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Pool Panel -->
+                                <div id="orch-panel-pool" class="orch-panel" style="display: none;">
+                                    <h3 style="color: var(--accent); margin-bottom: 16px;">Worker Pool Control</h3>
+                                    
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                            <h4 style="color: var(--text); margin-bottom: 12px;">Configuration</h4>
+                                            <div style="margin-bottom: 12px;">
+                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Worker Count</label>
+                                                <input type="number" id="orch-worker-count" value="4" min="1" max="32" 
+                                                    style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                                            </div>
+                                            <div style="margin-bottom: 12px;">
+                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">CPU Threshold (%)</label>
+                                                <input type="number" id="orch-cpu-threshold" value="85" min="50" max="100"
+                                                    style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                                            </div>
+                                            <button class="panel-btn" onclick="app.initializePool()">Initialize Pool</button>
+                                        </div>
+                                        
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                            <h4 style="color: var(--text); margin-bottom: 12px;">Controls</h4>
+                                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                                <button class="panel-btn" onclick="app.startPool()">▶ Start Pool</button>
+                                                <button class="panel-btn" onclick="app.pausePool()">⏸ Pause Pool</button>
+                                                <button class="panel-btn" onclick="app.resumePool()">▶ Resume Pool</button>
+                                                <button class="panel-btn" onclick="app.stopPool()">⏹ Stop Pool</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Tasks Panel -->
+                                <div id="orch-panel-tasks" class="orch-panel" style="display: none;">
+                                    <h3 style="color: var(--accent); margin-bottom: 16px;">Task Management</h3>
+                                    
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                            <h4 style="color: var(--text); margin-bottom: 12px;">Submit Task</h4>
+                                            <div style="margin-bottom: 12px;">
+                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Task Name</label>
+                                                <select id="orch-task-name" style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                                                    <option>Loading tasks...</option>
+                                                </select>
+                                            </div>
+                                            <div style="margin-bottom: 12px;">
+                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Priority</label>
+                                                <select id="orch-task-priority" style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
+                                                    <option value="NORMAL">Normal</option>
+                                                    <option value="HIGH">High</option>
+                                                    <option value="CRITICAL">Critical</option>
+                                                </select>
+                                            </div>
+                                            <div style="margin-bottom: 12px;">
+                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Payload (JSON)</label>
+                                                <textarea id="orch-task-payload" style="width: 100%; height: 100px; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: monospace;">{"example": "data"}</textarea>
+                                            </div>
+                                            <button class="panel-btn" onclick="app.submitTask()">Submit Task</button>
+                                        </div>
+                                        
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                            <h4 style="color: var(--text); margin-bottom: 12px;">Registered Tasks</h4>
+                                            <div id="orch-registered-tasks" style="max-height: 300px; overflow-y: auto;">
+                                                <p style="color: var(--text-muted);">Loading...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                            <h4 style="color: var(--text); margin: 0;">Task History</h4>
+                                            <button class="panel-btn" onclick="app.refreshTaskHistory()">🔄 Refresh</button>
+                                        </div>
+                                        <div id="orch-task-history" style="max-height: 400px; overflow-y: auto;">
+                                            <p style="color: var(--text-muted); text-align: center;">No task history</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Monitor Panel -->
+                                <div id="orch-panel-monitor" class="orch-panel" style="display: none;">
+                                    <h3 style="color: var(--accent); margin-bottom: 16px;">System Monitor</h3>
+                                    
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">CPU Usage</div>
+                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-cpu">0%</div>
+                                            <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden;">
+                                                <div id="orch-cpu-bar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Memory</div>
+                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-memory">0%</div>
+                                            <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden;">
+                                                <div id="orch-memory-bar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
+                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Processes</div>
+                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-processes">0</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
+                                        <h4 style="color: var(--text); margin-bottom: 12px;">Top Processes</h4>
+                                        <div id="orch-processes-list" style="max-height: 400px; overflow-y: auto;">
+                                            <p style="color: var(--text-muted); text-align: center;">Loading...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
                 case 'analytics':
                     return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📈 Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;
                     
@@ -448,12 +638,11 @@
             }
 
             if (tabId === 'orchestration') {
-            //     fetch("orchestratior.html")
-            //     .then(response => response.text())
-            //     .then(html => {
-            //         document.getElementById("tab-orchestration").innerHTML = html;
-            //     })
-            //     .catch(err => console.error("Error loading HTML:", err));
+                setTimeout(() => {
+                    if (this.initOrchestrator) {
+                        this.initOrchestrator();
+                    }
+                }, 50);
             }
     
             if (tabId === 'notebook') {
@@ -499,30 +688,30 @@
             }
                             
             if (tabId === 'focus') {
-            console.log('=== FOCUS TAB ACTIVATED ===');
-            console.log('this.activeTab:', this.activeTab);
-            console.log('updateFocusUI exists?', typeof this.updateFocusUI);
-            console.log('loadFocusStatus exists?', typeof this.loadFocusStatus);
-            
-            setTimeout(() => {
-                console.log('Focus timeout fired');
-                console.log('Container exists?', !!document.getElementById('tab-focus'));
+                console.log('=== FOCUS TAB ACTIVATED ===');
+                console.log('this.activeTab:', this.activeTab);
+                console.log('updateFocusUI exists?', typeof this.updateFocusUI);
+                console.log('loadFocusStatus exists?', typeof this.loadFocusStatus);
                 
-                if (this.updateFocusUI) {
-                    console.log('Calling updateFocusUI...');
-                    this.updateFocusUI();
-                } else {
-                    console.log('updateFocusUI not found!');
-                }
-                
-                if (this.loadFocusStatus) {
-                    console.log('Calling loadFocusStatus...');
-                    this.loadFocusStatus();
-                } else {
-                    console.log('loadFocusStatus not found!');
-                }
-            }, 50);
-        }
+                setTimeout(() => {
+                    console.log('Focus timeout fired');
+                    console.log('Container exists?', !!document.getElementById('tab-focus'));
+                    
+                    if (this.updateFocusUI) {
+                        console.log('Calling updateFocusUI...');
+                        this.updateFocusUI();
+                    } else {
+                        console.log('updateFocusUI not found!');
+                    }
+                    
+                    if (this.loadFocusStatus) {
+                        console.log('Calling loadFocusStatus...');
+                        this.loadFocusStatus();
+                    } else {
+                        console.log('loadFocusStatus not found!');
+                    }
+                }, 50);
+            }
         }
 
         initDragAndDrop() {
@@ -615,6 +804,7 @@
             
             console.log(`Moved ${tabId} from column ${fromColumnId} to ${toColumnId}`);
         }
+
         initColumnResizers() {
             document.querySelectorAll('.column-resizer').forEach(resizer => {
                 let isResizing = false;
@@ -855,45 +1045,7 @@
             // console.log('Test button clicked');
             app.initThemeSettings();
             window.applyThemeToGraph();
-            // const panel = document.getElementById('property-panel');
-            // console.log('Panel element:', panel);
-            // panel.classList.add('active');
-            // console.log('Panel classes:', panel.className);
-            
-            // const content = document.getElementById('panel-content');
-            // content.innerHTML = '<div style="padding: 20px;"><h3 style="color: #60a5fa;">Test Panel</h3><p>If you see this, the panel HTML/CSS is working correctly!</p></div>';
         }            
-
-
-        // Update the existing switchTab method:
-        // switchTab(tabName) {
-        //     this.activeTab = tabName;
-            
-        //     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-        //     document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-        //     event.target.classList.add('active');
-        //     document.getElementById(`tab-${tabName}`).classList.add('active');
-            
-        //     if (tabName === 'graph' && this.networkInstance) {
-        //         setTimeout(() => this.networkInstance.redraw(), 100);
-        //     }
-            
-        //     if (tabName === 'toolchain') {
-        //         this.updateToolchainUI();
-        //     }
-            
-        //     if (tabName === 'proactive-focus') {
-        //         this.loadFocusStatus();
-        //     }
-            
-        //     if (tabName === 'memory') {
-        //         this.loadMemoryData();
-        //     }
-        //     if (tabName === 'notebook') {
-        //         this.loadNotebooks();
-        //     }
-        // }
 
         toggleFullscreen(panel) {
             const chatPanel = document.getElementById('chatPanel');
@@ -976,55 +1128,184 @@
             };
         }
         
+        
         handleWebSocketMessage(data) {
             this.veraRobot.setState('thinking');
+            
             if (data.type === 'chunk') {
                 if (!this.currentStreamingMessageId) {
                     this.currentStreamingMessageId = `msg-${Date.now()}`;
                     this.addMessage('assistant', '', this.currentStreamingMessageId);
+                    
+                    // Reset TTS tracking for new message
+                    if (this.ttsEnabled) {
+                        this.ttsSpokenLength = 0;
+                    }
                 }
                 
                 const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
                 if (message) {
                     message.content += data.content;
                     this.updateStreamingMessageContent(this.currentStreamingMessageId, message.content);
+                    
+                    // *** STREAMING TTS ***
+                    if (typeof this.speakStreamingText === 'function') {
+                        this.speakStreamingText(message.content);
+                    }
                 }
             } else if (data.type === 'complete') {
                 this.veraRobot.setState('idle');
+                
+                if (this.currentStreamingMessageId) {
+                    const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
+                    if (message) {
+                        const messageEl = document.getElementById(this.currentStreamingMessageId);
+                        
+                        // Remove streaming indicator
+                        if (messageEl) {
+                            const indicator = messageEl.querySelector('.streaming-indicator');
+                            if (indicator) indicator.remove();
+                        }
+                        
+                        // IMPORTANT: Do final render with modern features
+                        const renderedView = messageEl.querySelector('.message-rendered');
+                        if (renderedView && typeof this.renderMessageContent === 'function') {
+                            renderedView.innerHTML = this.renderMessageContent(message.content);
+                        }
+                        
+                        // Apply rendering (syntax highlighting + mermaid)
+                        if (typeof this.applyRendering === 'function') {
+                            setTimeout(() => {
+                                this.applyRendering(this.currentStreamingMessageId);
+                            }, 100);
+                        }
+                        
+                        // Auto-canvas check
+                        if (this.canvasAutoFocus && typeof this.checkAndAutoRenderCanvas === 'function') {
+                            setTimeout(() => {
+                                this.checkAndAutoRenderCanvas(message);
+                            }, 200);
+                        }
+                        
+                        // *** FINALIZE TTS ***
+                        if (typeof this.finalizeTTS === 'function') {
+                            setTimeout(() => {
+                                this.finalizeTTS(message.content);
+                            }, 300);
+                        }
+                    }
+                }
+                
                 this.currentStreamingMessageId = null;
                 this.processing = false;
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('messageInput').disabled = false;
-                document.getElementById('messageInput').focus();
+                
+                // Re-enable input and restore focus
+                const sendBtn = document.getElementById('sendBtn');
+                const messageInput = document.getElementById('messageInput');
+                
+                if (sendBtn) sendBtn.disabled = false;
+                if (messageInput) {
+                    messageInput.disabled = false;
+                    setTimeout(() => {
+                        if (messageInput && document.activeElement !== messageInput) {
+                            messageInput.focus();
+                        }
+                    }, 100);
+                }
+                
                 this.loadGraph();
             } else if (data.type === 'error') {
                 this.veraRobot.setState('error');
                 this.addSystemMessage(`Error: ${data.error}`);
+                
+                if (this.currentStreamingMessageId) {
+                    const messageEl = document.getElementById(this.currentStreamingMessageId);
+                    if (messageEl) {
+                        const indicator = messageEl.querySelector('.streaming-indicator');
+                        if (indicator) indicator.remove();
+                    }
+                }
+                
                 this.currentStreamingMessageId = null;
                 this.processing = false;
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('messageInput').disabled = false;
+                
+                const sendBtn = document.getElementById('sendBtn');
+                const messageInput = document.getElementById('messageInput');
+                if (sendBtn) sendBtn.disabled = false;
+                if (messageInput) {
+                    messageInput.disabled = false;
+                    messageInput.focus();
+                }
             }
+        }
+
+        
+        // NEW METHOD: Detect code blocks in message content
+        detectCodeBlocksInMessage(content) {
+            const blocks = [];
+            const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+            let match;
+            
+            while ((match = codeBlockRegex.exec(content)) !== null) {
+                blocks.push({
+                    lang: match[1] || 'plaintext',
+                    code: match[2].trim()
+                });
+            }
+            
+            return blocks;
         }
         
         updateStreamingMessageContent(messageId, content) {
             const messageEl = document.getElementById(messageId);
             if (!messageEl) return;
             
-            const contentEl = messageEl.querySelector('.message-content');
-            if (contentEl) {
-                // Update the first word before displaying
-                const updatedContent = content.replace(/^(\w+)/, '**Agent: $1**');
-                contentEl.innerHTML = this.parseMessageContent(updatedContent);
-                
-                const container = document.getElementById('chatMessages');
+            // Use the message-content div, NOT the inner rendered div
+            const contentContainer = messageEl.querySelector('.message-content');
+            if (!contentContainer) return;
+            
+            // Check if we have modern UI structure (with message-rendered div)
+            let renderedView = contentContainer.querySelector('.message-rendered');
+            
+            if (renderedView) {
+                // MODERN UI: Update the rendered view
+                if (typeof this.renderMessageContent === 'function') {
+                    // Use modern renderMessageContent (has mermaid, advanced features)
+                    renderedView.innerHTML = this.renderMessageContent(content);
+                } else {
+                    // Fallback to basic if modern not loaded yet
+                    renderedView.innerHTML = this.parseMessageContent(content);
+                }
+            } else {
+                // BASIC UI: Just update the content directly
+                if (typeof this.renderMessageContent === 'function') {
+                    contentContainer.innerHTML = this.renderMessageContent(content);
+                } else {
+                    const updatedContent = content.replace(/^(\w+)/, '**Agent: $1**');
+                    contentContainer.innerHTML = this.parseMessageContent(updatedContent);
+                }
+            }
+            
+            // Add/update streaming indicator
+            let indicator = contentContainer.querySelector('.streaming-indicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.className = 'streaming-indicator';
+                indicator.style.cssText = 'color: #60a5fa; font-size: 12px; margin-top: 8px; padding: 4px 8px; background: rgba(59, 130, 246, 0.1); border-radius: 4px; display: inline-block;';
+                indicator.textContent = '● Streaming...';
+                contentContainer.appendChild(indicator);
+            }
+            
+            // Auto-scroll if near bottom
+            const container = document.getElementById('chatMessages');
+            if (container) {
                 const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
-                
                 if (isScrolledToBottom) {
                     container.scrollTop = container.scrollHeight;
                 }
             }
-        }
+        };
+
         
         async sendMessageViaWebSocket(message) {
             this.veraRobot.setState('thinking');
@@ -1044,178 +1325,158 @@
             }
         }
         
-        initGraph() {
-            // const themeName = localStorage.getItem('theme') || 'default';
-            // const theme = themes[themeName].graph;
-            const container = document.getElementById('graph');
-            const options = {
-                physics: {
-                    enabled: true,
-                    barnesHut: {
-                        gravitationalConstant: -9000,
-                        centralGravity: 0.06,
-                        springLength: 300,
-                        springConstant: 0.01,
-                        damping: 0.62
-                    },
-                    stabilization: {
-                        enabled: true,
-                        iterations: 200
-                    }
-                },
-                interaction: {
-                    hover: true,
-                    navigationButtons: false,
-                    zoomView: true,
-                    dragView: true,
-                    keyboard: { enabled: true }
-                },
-                // edges: {
-                //     smooth: { enabled: true, type: 'dynamic' },
-                //     font: { color: theme.nodeFont || '#ffffff', strokeWidth: 0, size: 12 },
-                //     color: { color: theme.edgeColor || '#ffffff', highlight: '#ffaa00' },
-                //     width: 2,
-                //     arrows: { to: { enabled: true, scaleFactor: 1.0 } }
-                //     },
-
-                // nodes: {
-                // color: {
-                //     background: '#3b82f6',
-                //     border: '#1e293b',
-                //     highlight: { background: '#60a5fa', border: '#ffffff' }
-                // },
-                // font: { color: '#ffffff' }
-                // }
-
-                edges: {
-                    smooth: { enabled: true, type: 'dynamic' },
-                    // color: { color: '#ffffff', hover: '#ffaa00' },
-                    font:  {color: '#ffffff', strokeWidth: 0, size: 12 },
-                    width: 2,
-                    arrows: { to: { enabled: true, scaleFactor: 1.0 } }
-                },
-                nodes: {
-                    color: {
-                        border: '#60a5fa',
-                        highlight: { border: '#60a5fa' }
-                    },
-                    font: { color: '#fff', size: 13 }
-                }
-            };
+        // initGraph() {
+        //     const container = document.getElementById('graph');
+        //     const options = {
+        //         physics: {
+        //             enabled: true,
+        //             barnesHut: {
+        //                 gravitationalConstant: -9000,
+        //                 centralGravity: 0.06,
+        //                 springLength: 300,
+        //                 springConstant: 0.01,
+        //                 damping: 0.62
+        //             },
+        //             stabilization: {
+        //                 enabled: true,
+        //                 iterations: 200
+        //             }
+        //         },
+        //         interaction: {
+        //             hover: true,
+        //             navigationButtons: false,
+        //             zoomView: true,
+        //             dragView: true,
+        //             keyboard: { enabled: true }
+        //         },
+        //         edges: {
+        //             smooth: { enabled: true, type: 'dynamic' },
+        //             font:  {color: '#ffffff', strokeWidth: 0, size: 12 },
+        //             width: 2,
+        //             arrows: { to: { enabled: true, scaleFactor: 1.0 } }
+        //         },
+        //         nodes: {
+        //             color: {
+        //                 border: '#60a5fa',
+        //                 highlight: { border: '#60a5fa' }
+        //             },
+        //             font: { color: '#fff', size: 13 }
+        //         }
+        //     };
             
-            this.networkInstance = new vis.Network(container, this.networkData, options);
-            window.network = this.networkInstance;
+        //     this.networkInstance = new vis.Network(container, this.networkData, options);
+        //     window.network = this.networkInstance;
             
-            console.log('Network created:', !!this.networkInstance);
+        //     console.log('Network created:', !!this.networkInstance);
             
-            // Initialize GraphAddon first
-            setTimeout(() => {
-                console.log('Checking for GraphAddon...');
-                if (window.GraphAddon) {
-                    console.log('GraphAddon found, initializing...');
-                    window.GraphAddon.init({});
-                    console.log('GraphAddon initialized');
+        //     // Initialize GraphAddon first
+        //     setTimeout(() => {
+        //         console.log('Checking for GraphAddon...');
+        //         if (window.GraphAddon) {
+        //             console.log('GraphAddon found, initializing...');
+        //             window.GraphAddon.init({});
+        //             console.log('GraphAddon initialized');
                     
-                    // Wait a bit more for GraphAddon to fully set up
-                    setTimeout(() => {
-                        console.log('Setting up our click handler...');
+        //             // Wait a bit more for GraphAddon to fully set up
+        //             setTimeout(() => {
+        //                 console.log('Setting up our click handler...');
                         
-                        // Remove GraphAddon's click handler and add our own
-                        this.networkInstance.off("click");
+        //                 // Remove GraphAddon's click handler and add our own
+        //                 this.networkInstance.off("click");
                         
-                        this.networkInstance.on("click", (params) => {
-                            console.log('=== OUR CLICK HANDLER ===');
-                            console.log('Nodes clicked:', params.nodes);
+        //                 this.networkInstance.on("click", (params) => {
+        //                     console.log('=== OUR CLICK HANDLER ===');
+        //                     console.log('Nodes clicked:', params.nodes);
                             
-                            if (params.nodes.length > 0) {
-                                const nodeId = params.nodes[0];
-                                console.log('Opening panel for node:', nodeId);
+        //                     if (params.nodes.length > 0) {
+        //                         const nodeId = params.nodes[0];
+        //                         console.log('Opening panel for node:', nodeId);
                                 
-                                // Force open the panel
-                                const panel = document.getElementById('property-panel');
-                                panel.classList.add('active');
-                                panel.style.right = '0';
-                                console.log('Panel forced open, classes:', panel.className);
+        //                         // Force open the panel
+        //                         const panel = document.getElementById('property-panel');
+        //                         panel.classList.add('active');
+        //                         panel.style.right = '0';
+        //                         console.log('Panel forced open, classes:', panel.className);
                                 
-                                // Call GraphAddon to populate content
-                                if (window.GraphAddon && window.GraphAddon.showNodeDetails) {
-                                    window.GraphAddon.showNodeDetails(nodeId, true);
-                                    console.log('Content populated');
-                                }
-                            } else if (params.edges.length > 0) {
-                                // Handle edge clicks
-                                const panel = document.getElementById('property-panel');
-                                panel.classList.add('active');
+        //                         // Call GraphAddon to populate content
+        //                         if (window.GraphAddon && window.GraphAddon.showNodeDetails) {
+        //                             window.GraphAddon.showNodeDetails(nodeId, true);
+        //                             console.log('Content populated');
+        //                         }
+        //                     } else if (params.edges.length > 0) {
+        //                         // Handle edge clicks
+        //                         const panel = document.getElementById('property-panel');
+        //                         panel.classList.add('active');
                                 
-                                if (window.GraphAddon && window.GraphAddon.showEdgeDetails) {
-                                    window.GraphAddon.showEdgeDetails(params.edges[0]);
-                                }
-                            } else {
-                                // Clicking empty space - close panel
-                                const panel = document.getElementById('property-panel');
-                                panel.classList.remove('active');
-                                console.log('Panel closed');
-                            }
-                        });
+        //                         if (window.GraphAddon && window.GraphAddon.showEdgeDetails) {
+        //                             window.GraphAddon.showEdgeDetails(params.edges[0]);
+        //                         }
+        //                     } else {
+        //                         // Clicking empty space - close panel
+        //                         const panel = document.getElementById('property-panel');
+        //                         panel.classList.remove('active');
+        //                         console.log('Panel closed');
+        //                     }
+        //                 });
                         
-                        console.log('Click handler installed');
-                    }, 1000);
-                } else {
-                    console.error('GraphAddon not available! Is graph-addon.js loaded?');
-                }
-            }, 500);
-        }
+        //                 console.log('Click handler installed');
+        //             }, 1000);
+        //         } else {
+        //             console.error('GraphAddon not available! Is graph-addon.js loaded?');
+        //         }
+        //     }, 500);
+        // }
         
-        async loadGraph() {
-            if (!this.sessionId) return;
+        // async loadGraph() {
+        //     if (!this.sessionId) return;
             
-            try {
-                const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
-                const data = await response.json();
+        //     try {
+        //         const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
+        //         const data = await response.json();
                 
-                console.log('Graph data received:', data.nodes.length, 'nodes', data.edges.length, 'edges');
+        //         console.log('Graph data received:', data.nodes.length, 'nodes', data.edges.length, 'edges');
                 
-                this.networkData.nodes = data.nodes.map(n => ({
-                    id: n.id,
-                    label: n.label,
-                    title: n.title,
-                    properties: n.properties,
-                    type: n.type || n.labels,
-                    color: n.color || '#3b82f6',
-                    size: n.size || 25
-                }));
+        //         this.networkData.nodes = data.nodes.map(n => ({
+        //             id: n.id,
+        //             label: n.label,
+        //             title: n.title,
+        //             properties: n.properties,
+        //             type: n.type || n.labels,
+        //             color: n.color || '#3b82f6',
+        //             size: n.size || 25
+        //         }));
                 
-                this.networkData.edges = data.edges.map((e, index) => ({
-                    id: e.id || `edge_${e.from}_${e.to}_${index}`,
-                    from: e.from,
-                    to: e.to,
-                    label: e.label,
-                    title: e.label
-                }));
+        //         this.networkData.edges = data.edges.map((e, index) => ({
+        //             id: e.id || `edge_${e.from}_${e.to}_${index}`,
+        //             from: e.from,
+        //             to: e.to,
+        //             label: e.label,
+        //             title: e.label
+        //         }));
                 
-                if (this.networkInstance) {
-                    this.networkInstance.setData(this.networkData);
+        //         if (this.networkInstance) {
+        //             this.networkInstance.setData(this.networkData);
                     
-                    setTimeout(() => {
-                        this.networkInstance.redraw();
-                        this.networkInstance.fit();
-                    }, 100);
-                }
+        //             setTimeout(() => {
+        //                 this.networkInstance.redraw();
+        //                 this.networkInstance.fit();
+        //             }, 100);
+        //         }
                 
-                document.getElementById('nodeCount').textContent = data.nodes.length;
-                document.getElementById('edgeCount').textContent = data.edges.length;
+        //         document.getElementById('nodeCount').textContent = data.nodes.length;
+        //         document.getElementById('edgeCount').textContent = data.edges.length;
                 
-                if (window.GraphAddon) {
-                    setTimeout(() => {
-                        console.log('Updating GraphAddon data...');
-                        window.GraphAddon.buildNodesData();
-                        window.GraphAddon.initializeFilters();
-                    }, 500);
-                }
-            } catch (error) {
-                console.error('Graph load error:', error);
-            }
-        }
+        //         if (window.GraphAddon) {
+        //             setTimeout(() => {
+        //                 console.log('Updating GraphAddon data...');
+        //                 window.GraphAddon.buildNodesData();
+        //                 window.GraphAddon.initializeFilters();
+        //             }, 500);
+        //         }
+        //     } catch (error) {
+        //         console.error('Graph load error:', error);
+        //     }
+        // }
         
         async sendMessage() {
             const input = document.getElementById('messageInput');
@@ -1409,8 +1670,14 @@
             messageEl.appendChild(content);
             
             container.appendChild(messageEl);
-            const block = { lang: app.detectLanguage, code: message.content };
-            app.attachCanvasButtonsToMessage(messageEl, block.lang, block.code, message.id);
+            
+            // Detect and attach canvas buttons for code blocks
+            const codeBlocks = this.detectCodeBlocksInMessage(message.content);
+            if (codeBlocks.length > 0) {
+                const block = codeBlocks[0]; // Use first code block
+                this.attachCanvasButtonsToMessage(messageEl, block.lang, block.code, message.id);
+            }
+            
             container.scrollTop = container.scrollHeight;
         }
         
@@ -1461,192 +1728,265 @@
                 this.networkInstance.moveTo({ scale: scale * 0.8 });
             }
         }
+        toggleColumnFullscreen(columnId) {
+            const column = document.querySelector(`.column[data-column-id="${columnId}"]`);
+            if (!column) return;
+            
+            const isFullscreen = column.classList.contains('column-fullscreen');
+            const icon = document.querySelector(`.fullscreen-icon[data-column-fs="${columnId}"]`);
+            
+            // Remove fullscreen from all columns first
+            document.querySelectorAll('.column').forEach(col => {
+                col.classList.remove('column-fullscreen');
+                const colId = col.dataset.columnId;
+                const colIcon = document.querySelector(`.fullscreen-icon[data-column-fs="${colId}"]`);
+                if (colIcon) colIcon.textContent = '⛶';
+            });
+            
+            // Hide/show resizers
+            document.querySelectorAll('.column-resizer').forEach(resizer => {
+                resizer.style.display = isFullscreen ? '' : 'none';
+            });
+            
+            if (!isFullscreen) {
+                // Enter fullscreen
+                column.classList.add('column-fullscreen');
+                if (icon) icon.textContent = '⛶ Exit';
+                
+                // Hide other columns
+                document.querySelectorAll('.column').forEach(col => {
+                    if (col.dataset.columnId !== String(columnId)) {
+                        col.style.display = 'none';
+                    }
+                });
+                
+                // Redraw graph if it's in this column
+                setTimeout(() => {
+                    if (this.networkInstance) {
+                        this.networkInstance.redraw();
+                        this.networkInstance.fit();
+                    }
+                }, 100);
+            } else {
+                // Exit fullscreen
+                if (icon) icon.textContent = '⛶';
+                
+                // Show all columns
+                document.querySelectorAll('.column').forEach(col => {
+                    col.style.display = '';
+                    col.style.flex = '1';
+                });
+                
+                // Show resizers
+                document.querySelectorAll('.column-resizer').forEach(resizer => {
+                    resizer.style.display = '';
+                });
+                
+                // Redraw graph
+                setTimeout(() => {
+                    if (this.networkInstance) {
+                        this.networkInstance.redraw();
+                        this.networkInstance.fit();
+                    }
+                }, 100);
+            }
+        }
 
     }
+
     class FloatingPanel {
-    constructor(options) {
-        this.id = options.id || `floating-panel-${Date.now()}`;
-        this.title = options.title || "Panel";
-        this.content = options.content || "";
-        this.container = options.container || document.body;
+        constructor(options) {
+            this.id = options.id || `floating-panel-${Date.now()}`;
+            this.title = options.title || "Panel";
+            this.content = options.content || "";
+            this.container = options.container || document.body;
 
-        this.isFloating = false;
-        this.createPanel();
-        this.initDrag();
-        this.restoreState();
-    }
-
-    createPanel() {
-        this.panel = document.createElement("div");
-        this.panel.className = "floating-panel";
-        this.panel.innerHTML = `
-        <div class="fp-header">
-            <span class="fp-title">${this.title}</span>
-            <button class="fp-toggle" title="Pop out / Dock">⇕</button>
-        </div>
-        <div class="fp-content">${this.content}</div>
-        `;
-
-        // Scoped style for panels only
-        const style = document.createElement("style");
-        style.textContent = `
-        .floating-panel {
-            background: rgba(30,30,30,0.96);
-            color: #fff;
-            border: 1px solid #555;
-            border-radius: 0.5rem;
-            width: 300px;
-            max-width: 90vw;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-            font-family: sans-serif;
-            margin: 0.5rem 0;
-            position: relative;
-        }
-        .floating-panel.floating {
-            position: fixed !important;
-            width: 300px;
-            height: auto;
-            z-index: 9999;
-            cursor: grab;
-        }
-        .fp-header {
-            background: #444;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.3rem 0.5rem;
-            border-bottom: 1px solid #555;
-            cursor: grab;
-            border-radius: 0.5rem 0.5rem 0 0;
-        }
-        .fp-toggle {
-            background: #666;
-            color: white;
-            border: none;
-            border-radius: 0.3rem;
-            cursor: pointer;
-            padding: 0.2rem 0.4rem;
-        }
-        .fp-content {
-            padding: 0.5rem;
-        }
-        `;
-        document.head.appendChild(style);
-
-        this.container.appendChild(this.panel);
-
-        this.toggleBtn = this.panel.querySelector(".fp-toggle");
-        this.toggleBtn.addEventListener("click", () => {
-        if (this.isFloating) this.dock();
-        else this.float();
-        });
-    }
-
-    initDrag() {
-        const header = this.panel.querySelector(".fp-header");
-        let isDragging = false;
-        let offsetX = 0, offsetY = 0;
-
-        header.addEventListener("mousedown", (e) => {
-        if (!this.isFloating) return;
-        isDragging = true;
-        const rect = this.panel.getBoundingClientRect();
-        offsetX = e.clientX - rect.left;
-        offsetY = e.clientY - rect.top;
-        this.panel.style.cursor = "grabbing";
-        e.preventDefault();
-        });
-
-        document.addEventListener("mousemove", (e) => {
-        if (!isDragging) return;
-        // Compute new position but keep within screen
-        let x = e.clientX - offsetX;
-        let y = e.clientY - offsetY;
-
-        const panelRect = this.panel.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        // keep fully visible
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
-        if (x + panelRect.width > vw) x = vw - panelRect.width;
-        if (y + panelRect.height > vh) y = vh - panelRect.height;
-
-        this.panel.style.left = `${x}px`;
-        this.panel.style.top = `${y}px`;
-        this.panel.style.bottom = "";
-        this.panel.style.right = "";
-        });
-
-        document.addEventListener("mouseup", () => {
-        if (isDragging) {
-            isDragging = false;
-            this.panel.style.cursor = "grab";
-            this.savePosition();
-        }
-        });
-    }
-
-    float() {
-        document.body.appendChild(this.panel);
-        this.panel.classList.add("floating");
-        this.isFloating = true;
-        this.toggleBtn.textContent = "⇓";
-        this.restorePosition();
-
-        // Default if no stored pos
-        if (!this.panel.style.left && !this.panel.style.top) {
-        this.panel.style.left = "calc(100vw - 320px)";
-        this.panel.style.top = "80vh";
+            this.isFloating = false;
+            this.createPanel();
+            this.initDrag();
+            this.restoreState();
         }
 
-        localStorage.setItem(`${this.id}-floating`, "true");
-    }
+        createPanel() {
+            this.panel = document.createElement("div");
+            this.panel.className = "floating-panel";
+            this.panel.innerHTML = `
+            <div class="fp-header">
+                <span class="fp-title">${this.title}</span>
+                <button class="fp-toggle" title="Pop out / Dock">⇕</button>
+            </div>
+            <div class="fp-content">${this.content}</div>
+            `;
 
-    dock() {
-        this.container.appendChild(this.panel);
-        this.panel.classList.remove("floating");
-        this.panel.style.left = "";
-        this.panel.style.top = "";
-        this.panel.style.bottom = "";
-        this.panel.style.right = "";
-        this.isFloating = false;
-        this.toggleBtn.textContent = "⇕";
-        localStorage.setItem(`${this.id}-floating`, "false");
-    }
+            // Scoped style for panels only
+            const style = document.createElement("style");
+            style.textContent = `
+            .floating-panel {
+                background: rgba(30,30,30,0.96);
+                color: #fff;
+                border: 1px solid #555;
+                border-radius: 0.5rem;
+                width: 300px;
+                max-width: 90vw;
+                box-shadow: 0 0 10px rgba(0,0,0,0.5);
+                font-family: sans-serif;
+                margin: 0.5rem 0;
+                position: relative;
+            }
+            .floating-panel.floating {
+                position: fixed !important;
+                width: 300px;
+                height: auto;
+                z-index: 9999;
+                cursor: grab;
+            }
+            .fp-header {
+                background: #444;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 0.3rem 0.5rem;
+                border-bottom: 1px solid #555;
+                cursor: grab;
+                border-radius: 0.5rem 0.5rem 0 0;
+            }
+            .fp-toggle {
+                background: #666;
+                color: white;
+                border: none;
+                border-radius: 0.3rem;
+                cursor: pointer;
+                padding: 0.2rem 0.4rem;
+            }
+            .fp-content {
+                padding: 0.5rem;
+            }
+            `;
+            document.head.appendChild(style);
 
-    savePosition() {
-        if (!this.isFloating) return;
-        localStorage.setItem(`${this.id}-pos`, JSON.stringify({
-        left: this.panel.style.left,
-        top: this.panel.style.top
-        }));
-    }
+            this.container.appendChild(this.panel);
 
-    restorePosition() {
-        const saved = localStorage.getItem(`${this.id}-pos`);
-        if (saved) {
-        const { left, top } = JSON.parse(saved);
-        this.panel.style.left = left;
-        this.panel.style.top = top;
+            this.toggleBtn = this.panel.querySelector(".fp-toggle");
+            this.toggleBtn.addEventListener("click", () => {
+                if (this.isFloating) this.dock();
+                else this.float();
+            });
+        }
+
+        initDrag() {
+            const header = this.panel.querySelector(".fp-header");
+            let isDragging = false;
+            let offsetX = 0, offsetY = 0;
+
+            header.addEventListener("mousedown", (e) => {
+                if (!this.isFloating) return;
+                isDragging = true;
+                const rect = this.panel.getBoundingClientRect();
+                offsetX = e.clientX - rect.left;
+                offsetY = e.clientY - rect.top;
+                this.panel.style.cursor = "grabbing";
+                e.preventDefault();
+            });
+
+            document.addEventListener("mousemove", (e) => {
+                if (!isDragging) return;
+                // Compute new position but keep within screen
+                let x = e.clientX - offsetX;
+                let y = e.clientY - offsetY;
+
+                const panelRect = this.panel.getBoundingClientRect();
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+
+                // keep fully visible
+                if (x < 0) x = 0;
+                if (y < 0) y = 0;
+                if (x + panelRect.width > vw) x = vw - panelRect.width;
+                if (y + panelRect.height > vh) y = vh - panelRect.height;
+
+                this.panel.style.left = `${x}px`;
+                this.panel.style.top = `${y}px`;
+                this.panel.style.bottom = "";
+                this.panel.style.right = "";
+            });
+
+            document.addEventListener("mouseup", () => {
+                if (isDragging) {
+                    isDragging = false;
+                    this.panel.style.cursor = "grab";
+                    this.savePosition();
+                }
+            });
+        }
+
+        float() {
+            document.body.appendChild(this.panel);
+            this.panel.classList.add("floating");
+            this.isFloating = true;
+            this.toggleBtn.textContent = "⇓";
+            this.restorePosition();
+
+            // Default if no stored pos
+            if (!this.panel.style.left && !this.panel.style.top) {
+                this.panel.style.left = "calc(100vw - 320px)";
+                this.panel.style.top = "80vh";
+            }
+
+            localStorage.setItem(`${this.id}-floating`, "true");
+        }
+
+        dock() {
+            this.container.appendChild(this.panel);
+            this.panel.classList.remove("floating");
+            this.panel.style.left = "";
+            this.panel.style.top = "";
+            this.panel.style.bottom = "";
+            this.panel.style.right = "";
+            this.isFloating = false;
+            this.toggleBtn.textContent = "⇕";
+            localStorage.setItem(`${this.id}-floating`, "false");
+        }
+
+        savePosition() {
+            if (!this.isFloating) return;
+            localStorage.setItem(`${this.id}-pos`, JSON.stringify({
+                left: this.panel.style.left,
+                top: this.panel.style.top
+            }));
+        }
+
+        restorePosition() {
+            const saved = localStorage.getItem(`${this.id}-pos`);
+            if (saved) {
+                const { left, top } = JSON.parse(saved);
+                this.panel.style.left = left;
+                this.panel.style.top = top;
+            }
+        }
+
+        restoreState() {
+            const isFloating = localStorage.getItem(`${this.id}-floating`) === "true";
+            if (isFloating) this.float();
         }
     }
-
-    restoreState() {
-        const isFloating = localStorage.getItem(`${this.id}-floating`) === "true";
-        if (isFloating) this.float();
-    }
-    }
-
 
     window.VeraChat = VeraChat;
     window.app = new VeraChat();
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const fullscreenColumn = document.querySelector('.column-fullscreen');
+            if (fullscreenColumn && window.app) {
+                const columnId = parseInt(fullscreenColumn.dataset.columnId);
+                window.app.toggleColumnFullscreen(columnId);
+            }
+        }
+    });
     const notesPanel = new FloatingPanel({
-    id: "notesPanel",
-    title: "Quick Notes",
-    content: `<textarea style="width:100%;height:100px"></textarea>`,
-    container:  document.getElementById("tab-memory") //document.body  // make sure container is visible
+        id: "notesPanel",
+        title: "Quick Notes",
+        content: `<textarea style="width:100%;height:100px"></textarea>`,
+        container: document.getElementById("tab-memory")
     });
 
     // Float it immediately so it appears on screen

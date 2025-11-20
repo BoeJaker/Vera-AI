@@ -1,10 +1,11 @@
 (() => {
     // ============================================================
-    // Enhanced Memory Integration Module
+    // Enhanced Memory Integration Module - THEME-AWARE
     // Advanced search, filtering, and detailed result viewing
+    // Now uses CSS variables from theme.js
     // ============================================================
 
-    // Add comprehensive CSS
+    // Add comprehensive CSS using theme variables
     const style = document.createElement('style');
     style.textContent = `
         .memory-search-container {
@@ -12,6 +13,7 @@
             flex-direction: column;
             gap: 16px;
             padding: 16px;
+            background: var(--bg);
             border-radius: 8px;
             margin-bottom: 16px;
         }
@@ -30,18 +32,18 @@
         .search-input {
             width: 100%;
             padding: 12px 40px 12px 16px;
-            background: #1e293b;
-            border: 2px solid #334155;
+            background: var(--panel-bg);
+            border: 2px solid var(--border);
             border-radius: 8px;
-            color: #e2e8f0;
+            color: var(--text);
             font-size: 14px;
             transition: all 0.2s;
         }
         
         .search-input:focus {
             outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-muted);
         }
         
         .search-clear-btn {
@@ -51,7 +53,7 @@
             transform: translateY(-50%);
             background: transparent;
             border: none;
-            color: #64748b;
+            color: var(--text-dim);
             cursor: pointer;
             padding: 4px 8px;
             border-radius: 4px;
@@ -59,8 +61,8 @@
         }
         
         .search-clear-btn:hover {
-            background: #334155;
-            color: #e2e8f0;
+            background: var(--border);
+            color: var(--text);
         }
         
         .search-controls {
@@ -73,7 +75,7 @@
         .search-mode-group {
             display: flex;
             gap: 4px;
-            background: #1e293b;
+            background: var(--panel-bg);
             padding: 4px;
             border-radius: 6px;
         }
@@ -81,12 +83,23 @@
         .search-mode-btn {
             padding: 8px 16px;
             border: none;
-            color: #94a3b8;
+            background: transparent;
+            color: var(--text-muted);
             cursor: pointer;
             border-radius: 4px;
             font-size: 13px;
             font-weight: 500;
             transition: all 0.2s;
+        }
+        
+        .search-mode-btn:hover {
+            background: var(--hover);
+            color: var(--text);
+        }
+        
+        .search-mode-btn.active {
+            background: var(--accent);
+            color: white;
         }
         
         .filter-section {
@@ -99,13 +112,13 @@
             display: flex;
             gap: 4px;
             align-items: center;
-            background: #1e293b;
+            background: var(--panel-bg);
             padding: 4px 12px;
             border-radius: 6px;
         }
         
         .filter-label {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 12px;
             font-weight: 500;
         }
@@ -113,7 +126,7 @@
         .filter-select {
             background: transparent;
             border: none;
-            color: #e2e8f0;
+            color: var(--text);
             font-size: 13px;
             cursor: pointer;
             padding: 4px 8px;
@@ -121,13 +134,13 @@
         }
         
         .filter-select:hover {
-            background: #334155;
+            background: var(--border);
         }
         
         .filter-input {
             background: transparent;
-            border: 1px solid #334155;
-            color: #e2e8f0;
+            border: 1px solid var(--border);
+            color: var(--text);
             font-size: 13px;
             padding: 4px 8px;
             border-radius: 4px;
@@ -139,19 +152,19 @@
             justify-content: space-between;
             align-items: center;
             padding: 12px 16px;
-            background: #1e293b;
+            background: var(--panel-bg);
             border-radius: 8px;
             margin-bottom: 12px;
         }
         
         .results-title {
-            color: #e2e8f0;
+            color: var(--text);
             font-weight: 600;
             font-size: 14px;
         }
         
         .results-stats {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 12px;
         }
         
@@ -161,8 +174,8 @@
         }
         
         .result-card {
-            background: #0f172a;
-            border: 1px solid #334155;
+            background: var(--bg);
+            border: 1px solid var(--border);
             border-radius: 8px;
             margin-bottom: 12px;
             overflow: hidden;
@@ -170,12 +183,12 @@
         }
         
         .result-card:hover {
-            border-color: #3b82f6;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.1);
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px var(--accent-muted);
         }
         
         .result-card.expanded {
-            border-color: #3b82f6;
+            border-color: var(--accent);
         }
         
         .result-header {
@@ -195,16 +208,16 @@
         .result-type-badge {
             display: inline-block;
             padding: 2px 8px;
-            background: #1e293b;
+            background: var(--panel-bg);
             border-radius: 4px;
             font-size: 11px;
             font-weight: 600;
-            color: #60a5fa;
+            color: var(--accent);
             margin-bottom: 8px;
         }
         
         .result-text {
-            color: #e2e8f0;
+            color: var(--text);
             font-size: 14px;
             line-height: 1.5;
             margin-bottom: 8px;
@@ -221,7 +234,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 12px;
-            color: #64748b;
+            color: var(--text-dim);
             font-size: 11px;
         }
         
@@ -231,7 +244,7 @@
         }
         
         .result-metadata-key {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-weight: 600;
         }
         
@@ -244,7 +257,7 @@
         .expand-btn {
             background: transparent;
             border: none;
-            color: #64748b;
+            color: var(--text-dim);
             cursor: pointer;
             padding: 4px;
             border-radius: 4px;
@@ -258,13 +271,13 @@
         }
         
         .expand-btn:hover {
-            background: #1e293b;
-            color: #e2e8f0;
+            background: var(--panel-bg);
+            color: var(--text);
         }
         
         .expand-btn.expanded {
             transform: rotate(180deg);
-            color: #3b82f6;
+            color: var(--accent);
         }
         
         .result-details {
@@ -279,7 +292,7 @@
         
         .result-details-content {
             padding: 0 16px 16px 16px;
-            border-top: 1px solid #334155;
+            border-top: 1px solid var(--border);
         }
         
         .detail-section {
@@ -287,7 +300,7 @@
         }
         
         .detail-section-title {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
@@ -302,19 +315,19 @@
         }
         
         .detail-item {
-            background: #1e293b;
+            background: var(--panel-bg);
             padding: 12px;
             border-radius: 6px;
         }
         
         .detail-item-label {
-            color: #64748b;
+            color: var(--text-dim);
             font-size: 11px;
             margin-bottom: 4px;
         }
         
         .detail-item-value {
-            color: #e2e8f0;
+            color: var(--text);
             font-size: 13px;
             word-break: break-word;
         }
@@ -328,6 +341,9 @@
         
         .action-btn {
             padding: 8px 16px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            color: var(--text);
             border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
@@ -336,20 +352,35 @@
             align-items: center;
             gap: 6px;
         }
+        
+        .action-btn:hover {
+            background: var(--hover);
+            border-color: var(--accent);
+        }
+        
+        .action-btn.primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        
+        .action-btn.primary:hover {
+            background: var(--hover);
+        }
           
         .loading-spinner {
             display: flex;
             justify-content: center;
             align-items: center;
             padding: 40px;
-            color: #64748b;
+            color: var(--text-dim);
         }
         
         .spinner {
             width: 40px;
             height: 40px;
-            border: 4px solid #334155;
-            border-top-color: #3b82f6;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -361,7 +392,7 @@
         .empty-state {
             text-align: center;
             padding: 60px 20px;
-            color: #64748b;
+            color: var(--text-dim);
         }
         
         .empty-state-icon {
@@ -374,7 +405,7 @@
             font-size: 16px;
             font-weight: 600;
             margin-bottom: 8px;
-            color: #94a3b8;
+            color: var(--text-muted);
         }
         
         .empty-state-text {
@@ -393,9 +424,9 @@
         
         .pagination-btn {
             padding: 8px 16px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            color: #e2e8f0;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            color: var(--text);
             border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
@@ -403,8 +434,8 @@
         }
         
         .pagination-btn:hover:not(:disabled) {
-            background: #334155;
-            border-color: #3b82f6;
+            background: var(--border);
+            border-color: var(--accent);
         }
         
         .pagination-btn:disabled {
@@ -413,15 +444,16 @@
         }
         
         .pagination-info {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 13px;
             padding: 0 16px;
         }
         
         .advanced-filters-toggle {
             padding: 8px 16px;
-            border: 1px solid #334155;
-            color: #94a3b8;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
             border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
@@ -429,6 +461,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
+        }
+        
+        .advanced-filters-toggle:hover {
+            background: var(--hover);
+            border-color: var(--accent);
+            color: var(--text);
         }
 
         .advanced-filters {
@@ -442,6 +480,7 @@
         }
         
         .advanced-filters-content {
+            background: var(--panel-bg);
             padding: 16px;
             border-radius: 8px;
             margin-top: 12px;
@@ -457,21 +496,33 @@
         }
         
         .filter-field-label {
-            color: #94a3b8;
+            color: var(--text-muted);
             font-size: 12px;
             font-weight: 600;
         }
         
         .filter-field-input {
             padding: 8px 12px;
-            border: 1px solid #334155;
-            color: #e2e8f0;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
             border-radius: 6px;
             font-size: 13px;
         }
         
         .filter-field-input:focus {
             outline: none;
+            border-color: var(--accent);
+        }
+        
+        .label-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: var(--accent-muted);
+            color: var(--text);
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
         }
     `;
     document.head.appendChild(style);
@@ -1040,7 +1091,7 @@ VeraChat.prototype.debugSearch = async function() {
                                     step="0.1"
                                     style="width: 100%;"
                                 >
-                                <span style="color: #94a3b8; font-size: 11px;">${(state.filters.minConfidence * 100).toFixed(0)}%</span>
+                                <span style="color: var(--text-muted); font-size: 11px;">${(state.filters.minConfidence * 100).toFixed(0)}%</span>
                             </div>
                             
                             <div class="filter-field">
@@ -1193,8 +1244,14 @@ VeraChat.prototype.debugSearch = async function() {
 
     VeraChat.prototype.renderResultCard = function(result, index) {
         const isExpanded = this.memoryState.expandedResults.has(result.id);
-        const confidenceColor = (result.confidence || 0) > 0.8 ? '#10b981' : 
-                               (result.confidence || 0) > 0.5 ? '#f59e0b' : '#ef4444';
+        
+        // Theme-aware confidence colors using getComputedStyle
+        let confidenceColor = 'var(--text-muted)';
+        if (result.confidence !== undefined) {
+            if (result.confidence > 0.8) confidenceColor = 'var(--success)';
+            else if (result.confidence > 0.5) confidenceColor = 'var(--warning)';
+            else confidenceColor = 'var(--danger)';
+        }
         
         return `
             <div class="result-card ${isExpanded ? 'expanded' : ''}" id="result-${result.id}">
@@ -1257,7 +1314,7 @@ VeraChat.prototype.debugSearch = async function() {
             html += `
                 <div class="detail-section">
                     <div class="detail-section-title">Full Text</div>
-                    <div style="background: #1e293b; padding: 16px; border-radius: 6px; color: #e2e8f0; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">
+                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 6px; color: var(--text); line-height: 1.6; white-space: pre-wrap; word-break: break-word;">
                         ${this.escapeHtml(result.text || result.displayText || '')}
                     </div>
                 </div>
@@ -1269,20 +1326,20 @@ VeraChat.prototype.debugSearch = async function() {
             html += `
                 <div class="detail-section">
                     <div class="detail-section-title">Relationship</div>
-                    <div style="background: #1e293b; padding: 16px; border-radius: 6px;">
+                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 6px;">
                         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                            <div style="background: #3b82f6; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
+                            <div style="background: var(--accent); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
                                 ${this.escapeHtml(result.head)}
                             </div>
-                            <div style="color: #94a3b8; font-weight: 600;">
+                            <div style="color: var(--text-muted); font-weight: 600;">
                                 —[ ${this.escapeHtml(result.relation)} ]→
                             </div>
-                            <div style="background: #8b5cf6; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
+                            <div style="background: var(--accent-muted); color: white; padding: 8px 16px; border-radius: 6px; font-weight: 600;">
                                 ${this.escapeHtml(result.tail)}
                             </div>
                         </div>
                         ${result.context ? `
-                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #334155; color: #94a3b8; font-style: italic; font-size: 13px;">
+                            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-muted); font-style: italic; font-size: 13px;">
                                 Context: "${this.escapeHtml(result.context)}"
                             </div>
                         ` : ''}
@@ -1530,17 +1587,20 @@ VeraChat.prototype.debugSearch = async function() {
     // ============================================================
 
     VeraChat.prototype.getSourceColor = function(source) {
+        // Return theme-aware colors
         const colors = {
-            'vector': '#3b82f6',
-            'graph': '#8b5cf6',
-            'hybrid': '#06b6d4',
-            'session': '#10b981',
-            'long_term': '#f59e0b',
-            'entity': '#ec4899',
-            'relationship': '#6366f1',
-            'graph_node': '#8b5cf6'
+            'vector': 'var(--accent)',
+            'graph': 'var(--accent-muted)',
+            'hybrid': 'var(--accent)',
+            'session': 'var(--success)',
+            'long_term': 'var(--warning)',
+            'entity': 'var(--accent)',
+            'relationship': 'var(--accent-muted)',
+            'graph_node': 'var(--accent-muted)',
+            'session_entity': 'var(--success)',
+            'session_relationship': 'var(--success)'
         };
-        return colors[source] || '#64748b';
+        return colors[source] || 'var(--text-dim)';
     };
 
     VeraChat.prototype.getSourceIcon = function(source) {
@@ -1552,7 +1612,9 @@ VeraChat.prototype.debugSearch = async function() {
             'long_term': '💾',
             'entity': '🏷️',
             'relationship': '🔗',
-            'graph_node': '⬢'
+            'graph_node': '⬢',
+            'session_entity': '🏷️',
+            'session_relationship': '🔗'
         };
         return icons[source] || '📌';
     };
@@ -1891,12 +1953,12 @@ VeraChat.prototype.debugSearch = async function() {
         content.innerHTML = `
             <div style="padding: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                    <h3 style="color: #60a5fa; margin: 0;">Result JSON</h3>
+                    <h3 style="color: var(--accent); margin: 0;">Result JSON</h3>
                     <button class="panel-btn" onclick="app.copyToClipboard('${resultId}')">
                         📋 Copy
                     </button>
                 </div>
-                <pre style="background: #0f172a; padding: 16px; border-radius: 6px; color: #e2e8f0; overflow-x: auto; font-size: 12px; line-height: 1.5;">${this.escapeHtml(JSON.stringify(result, null, 2))}</pre>
+                <pre style="background: var(--bg); padding: 16px; border-radius: 6px; color: var(--text); overflow-x: auto; font-size: 12px; line-height: 1.5;">${this.escapeHtml(JSON.stringify(result, null, 2))}</pre>
             </div>
         `;
     };
@@ -2011,6 +2073,6 @@ VeraChat.prototype.debugSearch = async function() {
         }, 100);
     }
     
-    console.log('Enhanced memory UI module loaded. Call app.initializeMemoryUI() to manually initialize.');
+    console.log('Enhanced memory UI module loaded (THEME-AWARE). Call app.initializeMemoryUI() to manually initialize.');
 
 })();

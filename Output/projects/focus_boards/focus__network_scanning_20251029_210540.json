@@ -1,0 +1,32 @@
+{
+  "focus": "focus: network scanning",
+  "project_id": null,
+  "created_at": "2025-10-29T21:05:40.443113",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "Error streaming ideas response: cannot access local variable 'response' where it is not associated with a value",
+        "timestamp": "2025-10-29T21:05:09.491557",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"Error streaming ideas response: cannot access local variable 'response' where it is not associated with a value\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-10-29T21:05:40.339846",
+        "metadata": {
+          "description": "Error streaming ideas response: cannot access local variable 'response' where it is not associated with a value",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1761771792785"
+  }
+}

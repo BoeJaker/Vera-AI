@@ -1,0 +1,72 @@
+{
+  "focus": "focus: poetry",
+  "project_id": null,
+  "created_at": "2025-11-04T23:43:06.838279",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-04T23:42:32.050202",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-04T23:42:32.050733",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define the scope of the poetry project: Will it be writing original poems, analyzing existing poems, or a combination? Document this clearly.\",",
+        "timestamp": "2025-11-04T23:42:32.051245",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm potential themes or prompts for poems. List at least 5 initial ideas to get creative juices flowing.\",",
+        "timestamp": "2025-11-04T23:42:32.051732",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research and select a poetic form to experiment with (e.g., sonnet, haiku, free verse). Document the chosen form and its rules.\",",
+        "timestamp": "2025-11-04T23:42:32.052287",
+        "metadata": {}
+      },
+      {
+        "note": "\"Write a draft of at least one short poem, even if it's rough. Focus on getting something – anything – down on 'paper'.\",",
+        "timestamp": "2025-11-04T23:42:32.052762",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a 'mood board' or collection of images/words that inspire the project's overall aesthetic and feeling.\"",
+        "timestamp": "2025-11-04T23:42:32.053280",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-04T23:42:32.053783",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-04T23:42:32.054287",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"Error streaming ideas response: 'run_manager'\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-04T23:43:06.737137",
+        "metadata": {
+          "description": "Error streaming ideas response: 'run_manager'",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762299460587"
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "focus": "focus poetry",
+  "project_id": null,
+  "created_at": "2025-11-05T22:17:40.426241",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "\"Define the scope of 'focus poetry'. What sub-genres, themes, or forms will be prioritized (e.g., haiku, free verse, nature, love)?\",",
+        "timestamp": "2025-11-05T21:48:39.845000",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research and compile a small collection (5-10 poems) of existing 'focus poetry' examples to serve as inspiration and establish a baseline.\",",
+        "timestamp": "2025-11-05T21:48:39.845597",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm potential themes or prompts for original 'focus poetry' creation. Add these to the 'Ideas' list.\",",
+        "timestamp": "2025-11-05T21:48:39.846104",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a 'Progress' tracking system - outline what constitutes 'completion' for the project (e.g., number of poems written, style established, collection size).\",",
+        "timestamp": "2025-11-05T21:48:39.846730",
+        "metadata": {}
+      },
+      {
+        "note": "\"Start drafting the first 'focus poem' based on one of the brainstormed themes/prompts. Document any challenges in the 'Issues' list.\"",
+        "timestamp": "2025-11-05T21:48:39.847265",
+        "metadata": {}
+      },
+      {
+        "note": "```json",
+        "timestamp": "2025-11-05T22:10:09.167166",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-05T22:10:09.167220",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define specific 'focus' themes for the poetry (e.g., nature, loss, city life) to narrow the project scope and guide content creation.\",",
+        "timestamp": "2025-11-05T22:10:09.167234",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm at least 10 potential poem titles or starting lines based on the chosen 'focus' themes; add these to the 'Ideas' list.\",",
+        "timestamp": "2025-11-05T22:10:09.167307",
+        "metadata": {}
+      },
+      {
+        "note": "\"Draft the first complete poem, focusing on adhering to a chosen poetic form (e.g., haiku, sonnet, free verse) to establish a baseline for style.\",",
+        "timestamp": "2025-11-05T22:10:09.167331",
+        "metadata": {}
+      },
+      {
+        "note": "\"Review the '9 next steps pending' list and prioritize the top 3 based on dependency and ease of completion; document the revised list.\",",
+        "timestamp": "2025-11-05T22:10:09.167346",
+        "metadata": {}
+      },
+      {
+        "note": "\"Identify 3 poets whose work exemplifies 'focus' and 'form' and analyze one poem from each for structural and thematic elements; add insights to 'Ideas'.\"",
+        "timestamp": "2025-11-05T22:10:09.167389",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-05T22:10:09.168145",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-05T22:10:09.168177",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [],
+    "actions": [
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Define the scope of 'focus poetry'. Use web search to explore different sub-genres, themes, and forms commonly associated with focused poetic styles (e.g., minimalism, imagism, haiku).\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research and compile a small collection of existing 'focus poetry' examples. Search for well-known poems fitting minimalist or imagist styles.\\\",\\n    \\\"tools\\\": [\\\"DuckDuckGo Web Search\\\"],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential themes or prompts for original 'focus poetry'. Generate a list of 5-10 ideas and add them to the 'ideas' list.\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Create a 'Progress' tracking system. Define clear criteria for project completion (e.g., number of poems, style guide).\\\",\\n    \\\"tools\\\": [\\\"Query Fast LLM\\\"],\\n    \\\"priority\\\": \\\"medium\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-05T21:53:49.639622",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Define the scope of 'focus poetry'. Use web search to explore different sub-genres, themes, and forms commonly associated with focused poetic styles (e.g., minimalism, imagism, haiku).\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research and compile a small collection of existing 'focus poetry' examples. Search for well-known poems fitting minimalist or imagist styles.\",\n    \"tools\": [\"DuckDuckGo Web Search\"],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Brainstorm potential themes or prompts for original 'focus poetry'. Generate a list of 5-10 ideas and add them to the 'ideas' list.\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Create a 'Progress' tracking system. Define clear criteria for project completion (e.g., number of poems, style guide).\",\n    \"tools\": [\"Query Fast LLM\"],\n    \"priority\": \"medium\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      },
+      {
+        "note": "{\"description\": \"```json\\n[\\n  {\\n    \\\"description\\\": \\\"Define the scope of 'focus poetry' using web search. Explore different sub-genres, themes, and forms (e.g., minimalism, imagism, haiku) to understand the range of possibilities.\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Research and compile a small collection of existing 'focus poetry' examples. Focus on minimalist and imagist styles to get a baseline for the project.\\\",\\n    \\\"tools\\\": [\\n      \\\"DuckDuckGo Web Search\\\"\\n    ],\\n    \\\"priority\\\": \\\"high\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Brainstorm potential themes or prompts for original 'focus poetry'. Generate a list of 5-10 ideas and add them to the 'ideas' list.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  },\\n  {\\n    \\\"description\\\": \\\"Create a 'Progress' tracking system. Define clear criteria for project completion (e.g., number of poems, style guide) and document it.\\\",\\n    \\\"tools\\\": [\\n      \\\"Query Fast LLM\\\"\\n    ],\\n    \\\"priority\\\": \\\"medium\\\"\\n  }\\n]\\n```\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-05T22:17:40.324617",
+        "metadata": {
+          "description": "```json\n[\n  {\n    \"description\": \"Define the scope of 'focus poetry' using web search. Explore different sub-genres, themes, and forms (e.g., minimalism, imagism, haiku) to understand the range of possibilities.\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Research and compile a small collection of existing 'focus poetry' examples. Focus on minimalist and imagist styles to get a baseline for the project.\",\n    \"tools\": [\n      \"DuckDuckGo Web Search\"\n    ],\n    \"priority\": \"high\"\n  },\n  {\n    \"description\": \"Brainstorm potential themes or prompts for original 'focus poetry'. Generate a list of 5-10 ideas and add them to the 'ideas' list.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  },\n  {\n    \"description\": \"Create a 'Progress' tracking system. Define clear criteria for project completion (e.g., number of poems, style guide) and document it.\",\n    \"tools\": [\n      \"Query Fast LLM\"\n    ],\n    \"priority\": \"medium\"\n  }\n]\n```",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762378344249"
+  }
+}

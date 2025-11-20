@@ -1,6 +1,107 @@
+/**
+ * Graph initialization with integrated GraphLoader
+ * Shows the V-unfurl animation during loading and when graph is empty
+ */
+
 (() => {
-    function initGraph() {
+    // Store loader reference
+    let graphLoader = null;
+    let isDataLoading = false;
+
+    /**
+     * Initialize the graph loader in the container
+     * Call this early, before initGraph()
+     */
+    function initGraphLoader() {
         const container = document.getElementById('graph');
+        if (!container) {
+            console.warn('Graph container not found for loader');
+            return null;
+        }
+
+        // Create loader if it doesn't exist
+        if (!graphLoader && typeof GraphLoader !== 'undefined') {
+            graphLoader = new GraphLoader(container, {
+                nodeCount: 14,
+                baseRadius: 80,
+                rotationSpeed: 0.003,
+                text: 'Initializing Graph',
+                introDuration: 2.5,
+                width: Math.min(300, container.clientWidth || 300),
+                height: Math.min(300, container.clientHeight || 300)
+            });
+            console.log('GraphLoader initialized');
+        }
+
+        return graphLoader;
+    }
+
+    /**
+     * Show the graph loader with optional message
+     */
+    function showGraphLoader(message = 'Loading Graph') {
+        if (!graphLoader) {
+            initGraphLoader();
+        }
+        if (graphLoader) {
+            graphLoader.show(message);
+        }
+    }
+
+    /**
+     * Hide the graph loader (only if we have data)
+     */
+    function hideGraphLoader(force = false) {
+        if (graphLoader) {
+            // Only hide if forced OR if we're not in a loading/empty state
+            if (force || !isDataLoading) {
+                graphLoader.hide();
+            }
+        }
+    }
+
+    /**
+     * Check if graph has data and show/hide loader accordingly
+     */
+    function updateLoaderVisibility(nodeCount = 0, edgeCount = 0) {
+        if (nodeCount === 0 && edgeCount === 0) {
+            showGraphLoader('No data in graph');
+        } else {
+            hideGraphLoader(true);
+        }
+    }
+
+    /**
+     * Check current graph state and show loader if empty
+     */
+    function checkGraphState(networkData) {
+        const nodeCount = networkData?.nodes?.length || 0;
+        const edgeCount = networkData?.edges?.length || 0;
+        updateLoaderVisibility(nodeCount, edgeCount);
+    }
+
+    // Expose functions globally
+    window.graphLoaderUtils = {
+        init: initGraphLoader,
+        show: showGraphLoader,
+        hide: hideGraphLoader,
+        updateVisibility: updateLoaderVisibility,
+        checkState: checkGraphState,
+        setLoading: (loading) => { isDataLoading = loading; },
+        get instance() { return graphLoader; },
+        get isLoading() { return isDataLoading; }
+    };
+
+    /**
+     * Enhanced initGraph with loader integration
+     */
+    VeraChat.prototype.initGraph = function() {
+        const container = document.getElementById('graph');
+        
+        // Initialize and show loader immediately
+        initGraphLoader();
+        showGraphLoader('Initializing Graph');
+        
         const options = {
             physics: {
                 enabled: true,
@@ -18,14 +119,14 @@
             },
             interaction: {
                 hover: true,
-                navigationButtons: true,
+                navigationButtons: false,
                 zoomView: true,
-                dragView: true
+                dragView: true,
+                keyboard: { enabled: true }
             },
             edges: {
                 smooth: { enabled: true, type: 'dynamic' },
-                // color: { color: '#ffffff', hover: '#ffaa00' },
-                font:  {color: '#ffffff', strokeWidth: 0, size: 12 },
+                font: { color: '#ffffff', strokeWidth: 0, size: 12 },
                 width: 2,
                 arrows: { to: { enabled: true, scaleFactor: 1.0 } }
             },
@@ -43,7 +144,32 @@
         
         console.log('Network created:', !!this.networkInstance);
         
-        // Initialize GraphAddon first
+        // Apply theme when network is first stabilized
+        this.networkInstance.once('stabilizationIterationsDone', () => {
+            console.log('Initial network stabilized, applying theme...');
+            
+            // Check if we have data - if not, keep loader visible
+            const nodeCount = this.networkData.nodes?.length || 0;
+            const edgeCount = this.networkData.edges?.length || 0;
+            
+            if (nodeCount === 0 && edgeCount === 0) {
+                // No data yet, show "empty" state - keep loader visible
+                showGraphLoader('Waiting for data');
+            } else {
+                // We have data, hide loader
+                hideGraphLoader(true);
+            }
+            
+            if (app.initThemeSettings) {
+                app.initThemeSettings();
+            }
+            if (window.applyThemeToGraph) {
+                window.applyThemeToGraph();
+                console.log('Initial theme applied');
+            }
+        });
+        
+        // Initialize GraphAddon
         setTimeout(() => {
             console.log('Checking for GraphAddon...');
             if (window.GraphAddon) {
@@ -51,11 +177,9 @@
                 window.GraphAddon.init({});
                 console.log('GraphAddon initialized');
                 
-                // Wait a bit more for GraphAddon to fully set up
                 setTimeout(() => {
                     console.log('Setting up our click handler...');
                     
-                    // Remove GraphAddon's click handler and add our own
                     this.networkInstance.off("click");
                     
                     this.networkInstance.on("click", (params) => {
@@ -66,19 +190,16 @@
                             const nodeId = params.nodes[0];
                             console.log('Opening panel for node:', nodeId);
                             
-                            // Force open the panel
                             const panel = document.getElementById('property-panel');
                             panel.classList.add('active');
                             panel.style.right = '0';
                             console.log('Panel forced open, classes:', panel.className);
                             
-                            // Call GraphAddon to populate content
                             if (window.GraphAddon && window.GraphAddon.showNodeDetails) {
                                 window.GraphAddon.showNodeDetails(nodeId, true);
                                 console.log('Content populated');
                             }
                         } else if (params.edges.length > 0) {
-                            // Handle edge clicks
                             const panel = document.getElementById('property-panel');
                             panel.classList.add('active');
                             
@@ -86,7 +207,6 @@
                                 window.GraphAddon.showEdgeDetails(params.edges[0]);
                             }
                         } else {
-                            // Clicking empty space - close panel
                             const panel = document.getElementById('property-panel');
                             panel.classList.remove('active');
                             console.log('Panel closed');
@@ -100,14 +220,39 @@
             }
         }, 500);
     }
-    async function loadGraph() {
-        if (!this.sessionId) return;
+
+
+    /**
+     * Enhanced loadGraph with loader integration
+     */
+    VeraChat.prototype.loadGraph = async function() { 
+        if (!this.sessionId) {
+            // No session, show waiting state
+            showGraphLoader('No session active');
+            return;
+        }
+        
+        // Mark as loading and show loader
+        isDataLoading = true;
+        showGraphLoader('Loading Graph');
         
         try {
             const response = await fetch(`http://llm.int:8888/api/graph/session/${this.sessionId}`);
             const data = await response.json();
             
             console.log('Graph data received:', data.nodes.length, 'nodes', data.edges.length, 'edges');
+            
+            // Check if we got empty data
+            if (data.nodes.length === 0 && data.edges.length === 0) {
+                isDataLoading = false;
+                showGraphLoader('No data in graph');
+                document.getElementById('nodeCount').textContent = '0';
+                document.getElementById('edgeCount').textContent = '0';
+                return;
+            }
+            
+            // Update loader text while processing
+            showGraphLoader('Processing nodes');
             
             this.networkData.nodes = data.nodes.map(n => ({
                 id: n.id,
@@ -128,19 +273,33 @@
             }));
             
             if (this.networkInstance) {
+                showGraphLoader('Rendering graph');
+                
                 this.networkInstance.setData(this.networkData);
                 
                 setTimeout(() => {
                     this.networkInstance.redraw();
                     this.networkInstance.fit();
+                    
+                    // Hide loader after rendering - we have data now
+                    setTimeout(() => {
+                        isDataLoading = false;
+                        hideGraphLoader(true);
+                        
+                        console.log('Applying theme to graph...');
+                        if (app.initThemeSettings) {
+                            app.initThemeSettings();
+                        }
+                        if (window.applyThemeToGraph) {
+                            window.applyThemeToGraph();
+                            console.log('Theme applied');
+                        }
+                    }, 300);
                 }, 100);
             }
             
             document.getElementById('nodeCount').textContent = data.nodes.length;
             document.getElementById('edgeCount').textContent = data.edges.length;
-            
-            app.initThemeSettings();
-            window.applyThemeToGraph();
 
             if (window.GraphAddon) {
                 setTimeout(() => {
@@ -151,6 +310,69 @@
             }
         } catch (error) {
             console.error('Graph load error:', error);
+            isDataLoading = false;
+            
+            // Show error state in loader
+            showGraphLoader('Error loading graph');
         }
     }
+
+    /**
+     * Reload graph data - useful for refresh button
+     */
+    VeraChat.prototype.reloadGraph = async function() {
+        showGraphLoader('Refreshing graph');
+        await this.loadGraph();
+    }
+
+    /**
+     * Clear graph and show loader
+     */
+    VeraChat.prototype.clearGraph = function() {
+        if (this.networkInstance) {
+            this.networkData.nodes = [];
+            this.networkData.edges = [];
+            this.networkInstance.setData(this.networkData);
+        }
+        
+        document.getElementById('nodeCount').textContent = '0';
+        document.getElementById('edgeCount').textContent = '0';
+        
+        // Show empty state
+        showGraphLoader('Graph cleared');
+    }
+
+    /**
+     * Add nodes to graph - shows loader during update if graph was empty
+     */
+    VeraChat.prototype.addNodesToGraph = function(nodes, edges) {
+        const wasEmpty = (this.networkData.nodes?.length || 0) === 0;
+        
+        if (wasEmpty) {
+            showGraphLoader('Adding nodes');
+        }
+        
+        // Add new nodes and edges
+        if (nodes && nodes.length > 0) {
+            this.networkData.nodes = [...(this.networkData.nodes || []), ...nodes];
+        }
+        if (edges && edges.length > 0) {
+            this.networkData.edges = [...(this.networkData.edges || []), ...edges];
+        }
+        
+        if (this.networkInstance) {
+            this.networkInstance.setData(this.networkData);
+            
+            setTimeout(() => {
+                // Only hide if we now have data
+                if (this.networkData.nodes.length > 0) {
+                    hideGraphLoader(true);
+                }
+            }, 200);
+        }
+        
+        document.getElementById('nodeCount').textContent = this.networkData.nodes.length;
+        document.getElementById('edgeCount').textContent = this.networkData.edges.length;
+    }
+
 })();

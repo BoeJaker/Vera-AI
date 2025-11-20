@@ -1,0 +1,123 @@
+{
+  "focus": "focus: poetry",
+  "project_id": null,
+  "created_at": "2025-11-04T21:45:03.952182",
+  "board": {
+    "progress": [],
+    "next_steps": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-04T20:52:00.029565",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-04T20:52:00.030081",
+        "metadata": {}
+      },
+      {
+        "note": "\"Brainstorm 5-10 potential themes or concepts for poems to explore. Document these in the 'Ideas' list.\",",
+        "timestamp": "2025-11-04T20:52:00.030641",
+        "metadata": {}
+      },
+      {
+        "note": "\"Write a first draft of at least one poem, focusing on a single theme from the brainstorming session. (Add to 'Progress' once complete).\",",
+        "timestamp": "2025-11-04T20:52:00.031118",
+        "metadata": {}
+      },
+      {
+        "note": "\"Research examples of poetry related to chosen themes. Focus on style and technique for inspiration. (Document findings in 'Ideas')\",",
+        "timestamp": "2025-11-04T20:52:00.031716",
+        "metadata": {}
+      },
+      {
+        "note": "\"Define a 'done' criteria for this poetry project. How many poems? What level of polish? Add to 'Ideas'.\",",
+        "timestamp": "2025-11-04T20:52:00.032252",
+        "metadata": {}
+      },
+      {
+        "note": "\"Create a 'Issues' list entry for 'potential writer's block' and brainstorm 3 potential solutions (e.g., free writing, prompts, different environment).\"",
+        "timestamp": "2025-11-04T20:52:00.032823",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-04T20:52:00.033364",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-04T20:52:00.033902",
+        "metadata": {}
+      },
+      {
+        "note": "Error streaming ideas response: 'run_manager'",
+        "timestamp": "2025-11-04T21:45:03.829992",
+        "metadata": {}
+      }
+    ],
+    "issues": [],
+    "ideas": [
+      {
+        "note": "```json",
+        "timestamp": "2025-11-04T21:35:14.953161",
+        "metadata": {}
+      },
+      {
+        "note": "[",
+        "timestamp": "2025-11-04T21:35:14.953284",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Theme Exploration via Sensory Detail:** Choose one brainstormed theme and freewrite for 10 minutes, focusing *only* on sensory details (sight, sound, smell, taste, touch) related to that theme. This will generate rich imagery for a poem.\",",
+        "timestamp": "2025-11-04T21:35:14.953306",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Found Poetry Exercise:**  Scan a non-poetry text (news article, scientific report, even instructions) and 'mine' it for lines or phrases that resonate with a chosen theme. Arrange these found fragments into a poem - this bypasses initial writer's block and offers a unique starting point.\",",
+        "timestamp": "2025-11-04T21:35:14.953335",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Poetic Form Challenge:** Select a traditional poetic form (haiku, sonnet, villanelle, etc.) and attempt to write a first draft poem within that structure, even if the result is imperfect. This provides constraints that can stimulate creativity.\",",
+        "timestamp": "2025-11-04T21:35:14.953362",
+        "metadata": {}
+      },
+      {
+        "note": "\"**'What If?' Prompt Series:** Take one theme and generate 5 'What if?' questions related to it. For example, if the theme is 'loss', questions could be 'What if loss was a color?', 'What if loss had a scent?', 'What if loss could be bartered?'.  Answer each question with a short verse.\",",
+        "timestamp": "2025-11-04T21:35:14.953386",
+        "metadata": {}
+      },
+      {
+        "note": "\"**Reverse Engineering Inspiration:** Find a poem you admire *loosely* related to one of your themes. Instead of directly imitating it, identify *what* makes it effective (e.g., use of metaphor, rhythm, imagery). Then, deliberately apply *different* techniques to explore the same theme in your own work.\"",
+        "timestamp": "2025-11-04T21:35:14.953410",
+        "metadata": {}
+      },
+      {
+        "note": "]",
+        "timestamp": "2025-11-04T21:35:14.953431",
+        "metadata": {}
+      },
+      {
+        "note": "```",
+        "timestamp": "2025-11-04T21:35:14.953450",
+        "metadata": {}
+      }
+    ],
+    "actions": [
+      {
+        "note": "{\"description\": \"Error streaming ideas response: 'run_manager'\", \"tools\": [], \"priority\": \"medium\"}",
+        "timestamp": "2025-11-04T21:45:03.845056",
+        "metadata": {
+          "description": "Error streaming ideas response: 'run_manager'",
+          "tools": [],
+          "priority": "medium"
+        }
+      }
+    ],
+    "completed": []
+  },
+  "metadata": {
+    "session_id": "sess_1762289224891"
+  }
+}

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GraphLoader Demo</title>
+    <style>
+        /* Simulated theme variables (from your theme.js) */
+        :root {
+            --bg: #0f172a;
+            --bg-surface: #0f172a;
+            --panel-bg: #1e293b;
+            --text: #e2e8f0;
+            --accent: #3b82f6;
+            --accent-muted: #8b5cf6;
+            --border: #334155;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        h1 {
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        h2 {
+            color: var(--accent);
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .demo-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .demo-card-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .demo-card-header h3 {
+            font-size: 0.9rem;
+            color: var(--text);
+        }
+
+        .demo-card-body {
+            height: 300px;
+            position: relative;
+        }
+
+        .controls {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        button:hover {
+            opacity: 0.8;
+        }
+
+        button.secondary {
+            background: var(--border);
+        }
+
+        .theme-switcher {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .theme-btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.8rem;
+        }
+
+        .theme-btn.active {
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .code-example {
+            background: #0a0f1a;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 2rem;
+            overflow-x: auto;
+        }
+
+        .code-example pre {
+            color: #94a3b8;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        .code-example .keyword { color: #c678dd; }
+        .code-example .string { color: #98c379; }
+        .code-example .comment { color: #5c6370; }
+        .code-example .method { color: #61afef; }
+    </style>
+</head>
+<body>
+    <h1>GraphLoader Component</h1>
+    <h2>Theme-aware 3D graph loading animation for VeraChat</h2>
+
+    <!-- Theme Switcher Demo -->
+    <div class="theme-switcher">
+        <button class="theme-btn active" onclick="setTheme('default')">Default</button>
+        <button class="theme-btn" onclick="setTheme('terminal')">Terminal</button>
+        <button class="theme-btn" onclick="setTheme('sunset')">Sunset</button>
+        <button class="theme-btn" onclick="setTheme('pixel')">Pixel Art</button>
+        <button class="theme-btn" onclick="setTheme('retro')">Retro Gaming</button>
+    </div>
+
+    <div class="demo-grid">
+        <!-- Intro Animation Demo -->
+        <div class="demo-card">
+            <div class="demo-card-header">
+                <h3>✨ V-Shape Intro Animation</h3>
+                <div class="controls">
+                    <button onclick="loader1.show('Loading graph...')">Replay</button>
+                    <button class="secondary" onclick="loader1.hide()">Hide</button>
+                </div>
+            </div>
+            <div class="demo-card-body" id="container1"></div>
+        </div>
+
+        <!-- Custom Config -->
+        <div class="demo-card">
+            <div class="demo-card-header">
+                <h3>⚙️ Custom Config (20 nodes)</h3>
+                <div class="controls">
+                    <button onclick="loader2.show('Processing...')">Replay</button>
+                    <button class="secondary" onclick="loader2.hide()">Hide</button>
+                </div>
+            </div>
+            <div class="demo-card-body" id="container2"></div>
+        </div>
+
+        <!-- No Intro -->
+        <div class="demo-card">
+            <div class="demo-card-header">
+                <h3>⏭️ No Intro (instant sphere)</h3>
+                <div class="controls">
+                    <button onclick="loader3.show()">Show</button>
+                    <button class="secondary" onclick="loader3.hide()">Hide</button>
+                </div>
+            </div>
+            <div class="demo-card-body" id="container3"></div>
+        </div>
+
+        <!-- Overlay Demo -->
+        <div class="demo-card">
+            <div class="demo-card-header">
+                <h3>🌐 Full-Screen Overlay</h3>
+                <div class="controls">
+                    <button onclick="showOverlayDemo()">Show Overlay</button>
+                </div>
+            </div>
+            <div class="demo-card-body" style="display: flex; align-items: center; justify-content: center; color: var(--text); opacity: 0.5;">
+                <p>Click "Show Overlay" to see full-screen mode<br><small>(auto-hides after 4s)</small></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Code Examples -->
+    <div class="code-example">
+        <pre><span class="comment">// 1. Basic usage - drop into any container (includes V intro by default)</span>
+<span class="keyword">const</span> loader = <span class="keyword">new</span> GraphLoader(<span class="string">'#my-container'</span>);
+loader.<span class="method">show</span>(<span class="string">'Loading graph...'</span>);
+loader.<span class="method">hide</span>();
+
+<span class="comment">// 2. With custom options</span>
+<span class="keyword">const</span> loader = <span class="keyword">new</span> GraphLoader(<span class="string">'#container'</span>, {
+    nodeCount: <span class="string">20</span>,
+    baseRadius: <span class="string">120</span>,
+    rotationSpeed: <span class="string">0.005</span>,
+    showText: <span class="string">true</span>,
+    showProgress: <span class="string">true</span>,
+    text: <span class="string">'Initializing...'</span>,
+    introEnabled: <span class="string">true</span>,        <span class="comment">// V-shape unfurl intro (default: true)</span>
+    introDuration: <span class="string">2.5</span>         <span class="comment">// Seconds for intro animation</span>
+});
+
+<span class="comment">// 3. Disable intro for instant sphere</span>
+<span class="keyword">const</span> loader = <span class="keyword">new</span> GraphLoader(<span class="string">'#container'</span>, {
+    introEnabled: <span class="string">false</span>
+});
+
+<span class="comment">// 4. Full-screen overlay (static methods)</span>
+GraphLoader.<span class="method">showOverlay</span>(<span class="string">'Loading application...'</span>);
+GraphLoader.<span class="method">setOverlayText</span>(<span class="string">'Almost ready...'</span>);
+GraphLoader.<span class="method">hideOverlay</span>();
+
+<span class="comment">// 5. Update text dynamically</span>
+loader.<span class="method">setText</span>(<span class="string">'Processing nodes...'</span>);
+
+<span class="comment">// 6. Clean up when done</span>
+loader.<span class="method">destroy</span>();</pre>
+    </div>
+
+    <div class="code-example">
+        <pre><span class="comment">// Integration with VeraChat</span>
+<span class="comment">// Add to your index.html:</span>
+&lt;script src=<span class="string">"js/js/polygon.js"</span>&gt;&lt;/script&gt;
+
+<span class="comment">// Use in your app:</span>
+<span class="keyword">class</span> VeraChat {
+    <span class="method">showLoading</span>() {
+        <span class="keyword">if</span> (!<span class="keyword">this</span>.loader) {
+            <span class="keyword">this</span>.loader = <span class="keyword">new</span> GraphLoader(<span class="string">'#graph'</span>, {
+                text: <span class="string">'Loading knowledge graph'</span>
+            });
+        }
+        <span class="keyword">this</span>.loader.<span class="method">show</span>();
+    }
+    
+    <span class="method">hideLoading</span>() {
+        <span class="keyword">this</span>.loader?.<span class="method">hide</span>();
+    }
+}</pre>
+    </div>
+
+    <script src="js/polygon.js"></script>
+    <script>
+        // Initialize demo loaders
+        
+        // Default with V-shape intro
+        const loader1 = new GraphLoader('#container1', {
+            text: 'Loading graph',
+            introDuration: 2.5
+        });
+        loader1.show();
+
+        // More nodes with slower intro
+        const loader2 = new GraphLoader('#container2', {
+            nodeCount: 20,
+            baseRadius: 90,
+            rotationSpeed: 0.004,
+            text: 'Processing',
+            introDuration: 3
+        });
+
+        // No intro - instant sphere
+        const loader3 = new GraphLoader('#container3', {
+            nodeCount: 10,
+            introEnabled: false,
+            showText: false,
+            showProgress: false
+        });
+
+        // Overlay demo
+        function showOverlayDemo() {
+            GraphLoader.showOverlay('Initializing VeraChat...');
+            
+            setTimeout(() => {
+                GraphLoader.setOverlayText('Connecting to Neo4j...');
+            }, 1200);
+            
+            setTimeout(() => {
+                GraphLoader.setOverlayText('Building knowledge graph...');
+            }, 2400);
+            
+            setTimeout(() => {
+                GraphLoader.setOverlayText('Ready!');
+            }, 3500);
+            
+            setTimeout(() => {
+                GraphLoader.hideOverlay();
+            }, 4000);
+        }
+
+        // Theme switcher
+        const themes = {
+            default: {
+                '--bg': '#0f172a',
+                '--panel-bg': '#1e293b',
+                '--text': '#e2e8f0',
+                '--accent': '#3b82f6',
+                '--accent-muted': '#8b5cf6',
+                '--border': '#334155'
+            },
+            terminal: {
+                '--bg': '#000',
+                '--panel-bg': '#000',
+                '--text': '#00ff66',
+                '--accent': '#00ff66',
+                '--accent-muted': '#00aa44',
+                '--border': '#00aa44'
+            },
+            sunset: {
+                '--bg': '#2b1a2f',
+                '--panel-bg': '#593964',
+                '--text': '#ffd8a8',
+                '--accent': '#ff6f61',
+                '--accent-muted': '#ffa07a',
+                '--border': '#7e5a7e'
+            },
+            pixel: {
+                '--bg': '#0d0d1a',
+                '--panel-bg': '#29144b',
+                '--text': '#66f0ff',
+                '--accent': '#ff33cc',
+                '--accent-muted': '#9b00ff',
+                '--border': '#440066'
+            },
+            retro: {
+                '--bg': '#000',
+                '--panel-bg': '#000',
+                '--text': '#00ffcc',
+                '--accent': '#ff0077',
+                '--accent-muted': '#ff3794',
+                '--border': '#00ffcc'
+            }
+        };
+
+        function setTheme(name) {
+            const theme = themes[name];
+            if (!theme) return;
+
+            Object.entries(theme).forEach(([key, value]) => {
+                document.documentElement.style.setProperty(key, value);
+            });
+
+            // Update active button
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent.toLowerCase().includes(name));
+            });
+            
+            // Replay visible loaders to show new theme colors
+            if (loader1.isVisible) loader1.show();
+        }
+    </script>
+</body>
+</html>

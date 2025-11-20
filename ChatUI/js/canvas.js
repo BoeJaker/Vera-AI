@@ -20,7 +20,7 @@ VeraChat.prototype.initCanvasTab = function () {
         flex-direction: column;
         height: 100%;
         overflow: hidden;
-        background: #0f172a;
+        // background: #0f172a;
         color: #e2e8f0;
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     `;
@@ -29,7 +29,7 @@ VeraChat.prototype.initCanvasTab = function () {
     const header = document.createElement('div');
     header.style.cssText = `
         padding: 12px 16px;
-        background: #1e293b;
+        // background:  var(--panel-bg);
         border-bottom: 1px solid #334155;
         display: flex;
         align-items: center;
@@ -37,7 +37,7 @@ VeraChat.prototype.initCanvasTab = function () {
         flex-shrink: 0;
     `;
     header.innerHTML = `
-        <span style="font-size: 18px; color: #60a5fa;">🧩 Canvas</span>
+        <span style="font-size: 24px;;">🧩 Canvas</span>
         <select id="canvasMode" class="panel-btn" style="padding: 6px 12px;">
             <option value="code">Code Editor</option>
             <option value="markdown">Markdown</option>
@@ -70,7 +70,7 @@ VeraChat.prototype.initCanvasTab = function () {
     controls.id = 'canvas-controls';
     controls.style.cssText = `
         padding: 12px 16px;
-        background: #1e293b;
+        // background:  var(--panel-bg);
         border-top: 1px solid #334155;
         display: flex;
         gap: 8px;
@@ -166,7 +166,7 @@ VeraChat.prototype.initCodeEditor = function() {
         padding: 12px;
         border: 1px solid #334155;
         border-radius: 6px;
-        background: #1e293b;
+        background: var(--panel-bg);
         color: #f1f5f9;
         font-size: 14px;
         line-height: 1.5;
@@ -179,7 +179,7 @@ VeraChat.prototype.initCodeEditor = function() {
     preview.id = 'code-preview';
     preview.style.cssText = `
         margin-top: 12px;
-        background: #1e293b;
+        background: var(--panel-bg);
         border-radius: 6px;
         padding: 12px;
         border: 1px solid #334155;
@@ -269,7 +269,7 @@ VeraChat.prototype.initMarkdownViewer = function() {
     editorPane.style.cssText = `display: flex; flex-direction: column;`;
     editorPane.innerHTML = `
         <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Markdown Source</div>
-        <textarea id="md-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+        <textarea id="md-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
     `;
     wrapper.appendChild(editorPane);
     
@@ -278,7 +278,7 @@ VeraChat.prototype.initMarkdownViewer = function() {
     previewPane.style.cssText = `display: flex; flex-direction: column;`;
     previewPane.innerHTML = `
         <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Preview</div>
-        <div id="md-preview" style="flex: 1; padding: 16px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; overflow: auto; line-height: 1.6;"></div>
+        <div id="md-preview" style="flex: 1; padding: 16px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); overflow: auto; line-height: 1.6;"></div>
     `;
     wrapper.appendChild(previewPane);
     
@@ -323,7 +323,7 @@ VeraChat.prototype.initMarkdownViewer = function() {
 
     controls.querySelector('#exportMdHtml').addEventListener('click', async () => {
         await renderMarkdown();
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;line-height:1.6;}code{background:#f4f4f4;padding:2px 6px;border-radius:3px;}pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto;}pre code{background:none;padding:0;}</style></head><body>${preview.innerHTML}</body></html>`;
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:20px;line-height:1.6;}code{background: var(--panel-bg);padding:2px 6px;border-radius:3px;}pre{background:#f4f4f4;padding:12px;border-radius:6px;overflow-x:auto;}pre code{background:none;padding:0;}</style></head><body>${preview.innerHTML}</body></html>`;
         this.downloadFile(html, 'markdown-export.html');
     });
 
@@ -404,7 +404,7 @@ VeraChat.prototype.renderJupyterNotebook = async function(notebook, container) {
     const header = document.createElement('div');
     header.style.cssText = `
         padding: 16px;
-        background: #1e293b;
+        background:  var(--panel-bg);
         border-radius: 6px;
         margin-bottom: 16px;
         border: 1px solid #334155;
@@ -433,7 +433,7 @@ VeraChat.prototype.renderJupyterNotebook = async function(notebook, container) {
             margin-bottom: 12px;
             border: 1px solid #334155;
             border-radius: 6px;
-            background: #1e293b;
+            background:  var(--panel-bg);
             overflow: hidden;
         `;
 
@@ -710,7 +710,7 @@ VeraChat.prototype.initHTMLPreview = function() {
     wrapper.innerHTML = `
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">HTML/CSS/JS</div>
-            <textarea id="html-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+            <textarea id="html-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
         </div>
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Preview</div>
@@ -761,11 +761,11 @@ VeraChat.prototype.initJSONViewer = function() {
     wrapper.innerHTML = `
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">JSON Input</div>
-            <textarea id="json-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+            <textarea id="json-editor" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
         </div>
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Formatted / Tree View</div>
-            <div id="json-preview" style="flex: 1; border: 1px solid #334155; border-radius: 6px; background: #1e293b; overflow: auto; padding: 12px;"></div>
+            <div id="json-preview" style="flex: 1; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); overflow: auto; padding: 12px;"></div>
         </div>
     `;
     content.appendChild(wrapper);
@@ -832,7 +832,7 @@ VeraChat.prototype.initDiagramViewer = function() {
     wrapper.innerHTML = `
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Mermaid Code</div>
-            <textarea id="mermaid-editor" placeholder="graph TD\nA[Start] --> B[End]" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+            <textarea id="mermaid-editor" placeholder="graph TD\nA[Start] --> B[End]" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
         </div>
         <div style="display: flex; flex-direction: column;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Diagram</div>
@@ -895,9 +895,9 @@ VeraChat.prototype.initTableViewer = function() {
     content.innerHTML = `
         <div style="margin-bottom: 12px;">
             <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">CSV / TSV / JSON Data</div>
-            <textarea id="table-data" placeholder="Paste CSV, TSV, or JSON array here..." style="width: 100%; height: 150px; resize: vertical; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+            <textarea id="table-data" placeholder="Paste CSV, TSV, or JSON array here..." style="width: 100%; height: 150px; resize: vertical; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
         </div>
-        <div id="table-display" style="overflow: auto; border: 1px solid #334155; border-radius: 6px; background: #1e293b;"></div>
+        <div id="table-display" style="overflow: auto; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg);"></div>
     `;
 
     controls.innerHTML = `
@@ -974,14 +974,14 @@ VeraChat.prototype.initDiffViewer = function() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; height: 100%;">
             <div style="display: flex; flex-direction: column;">
                 <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Original</div>
-                <textarea id="diff-original" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+                <textarea id="diff-original" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
             </div>
             <div style="display: flex; flex-direction: column;">
                 <div style="margin-bottom: 8px; font-weight: bold; color: #94a3b8;">Modified</div>
-                <textarea id="diff-modified" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
+                <textarea id="diff-modified" style="flex: 1; resize: none; padding: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); color: #f1f5f9; font-size: 14px; line-height: 1.5; font-family: inherit;"></textarea>
             </div>
         </div>
-        <div id="diff-result" style="margin-top: 12px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; padding: 12px; max-height: 200px; overflow: auto; display: none;"></div>
+        <div id="diff-result" style="margin-top: 12px; border: 1px solid #334155; border-radius: 6px; background:  var(--panel-bg); padding: 12px; max-height: 200px; overflow: auto; display: none;"></div>
     `;
 
     controls.innerHTML = `
