@@ -1,120 +1,64 @@
 (() => {
-  // --- Define themes with comprehensive graph styling ---
+  // ============================================
+  // VERACHAT THEME SYSTEM v2.0
+  // ============================================
+
+  // --- Base CSS (shared across all themes) ---
+  const baseCSS = `
+    :root {
+      --radius-sm: 6px;
+      --radius-md: 8px;
+      --radius-lg: 10px;
+      --radius-xl: 12px;
+      --transition-fast: 0.15s ease;
+      --transition-normal: 0.3s ease;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      height: 100vh;
+      overflow: hidden;
+      margin: 0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Scrollbar defaults */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--hover); }
+  `;
+
+  // --- Theme Definitions ---
   const themes = {
     default: {
+      name: 'Default Dark',
+      variables: {
+        '--bg': '#0f172a',
+        '--bg-surface': '#0f172a',
+        '--panel-bg': '#1e293b',
+        '--text': '#e2e8f0',
+        '--text-secondary': '#94a3b8',
+        '--accent': '#3b82f6',
+        '--accent-muted': '#3b82f6cc',
+        '--border': '#334155',
+        '--border-subtle': '#2d3a4f',
+        '--hover': '#475569',
+        '--text-inverted': '#000000',
+        '--user-bg': '#1e3a8a',
+      },
+      fonts: [],
       css: `
-        :root {
-          --bg: #0f172a;
-          --bg-surface: #0f172a;
-          --panel-bg: #1e293b;
-          --text: #e2e8f0;
-          --accent: #3b82f6;
-          --border: #334155;
-          --hover: #475569;
-          --text-inverted: #000000;
-        }
-        
         body {
-          background: var(--bg);
-          color: var(--text);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          height: 100vh;
-          overflow: hidden;
         }
-
-        a { color: var(--accent); }
-        h1, h2, h3 { color: var(--accent); }
-        button { color: var(--text-inverted); }
-        select { color: var(--text-inverted); }
-        input { color: var(--text-inverted); background: var(--bg-surface); }
-        textarea { color: var(--text-inverted); background: var(--bg-surface); }
-
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .tab-content {
-          background: var(--bg);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-
+        
         .chat-panel, .graph-panel {
-          background: var(--panel-bg);
-          border-color: var(--border);
           box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
-        }
-
-        #chatMessages { 
-          background: var(--panel-bg); 
-          color: var(--text); 
-        }
-        
-        .message-content { 
-          background: var(--bg); 
-          color: var(--text); 
-          padding: 12px 16px; 
-          border-radius: 8px; 
-        }
-        
-        .message.user .message-content { background: #1e3a8a; }
-        .send-btn { background: var(--accent); color: white; }
-        #messageInput { background: var(--panel-bg); color: var(--text); border: 1px solid var(--border); }
-        ::-webkit-scrollbar-thumb { background: var(--border); }
-        
-        .toolchain-box {
-          background: var(--panel-bg);
-          color: var(--text);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }
-        .action-btn{
-          color: var(--text)
         }
       `,
       graph: {
@@ -129,122 +73,139 @@
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
       }
     },
-    
-    terminal: {
+
+    modernPro: {
+      name: 'Modern Professional',
+      variables: {
+        '--bg': '#18181b',
+        '--bg-surface': '#27272a',
+        '--panel-bg': '#1f1f23',
+        '--text': '#fafafa',
+        '--text-secondary': '#a1a1aa',
+        '--accent': '#6366f1',
+        '--accent-muted': '#6366f1cc',
+        '--border': '#3f3f46',
+        '--border-subtle': '#2e2e33',
+        '--hover': '#4f46e5',
+        '--text-inverted': '#ffffff',
+        '--success': '#22c55e',
+        '--warning': '#f59e0b',
+        '--error': '#ef4444',
+        '--user-bg': 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+      },
+      fonts: ['Inter:wght@400;500;600'],
       css: `
-        :root {
-          --bg: #000;
-          --bg-surface: #000;
-          --text: #00ff66;
-          --user-text: #00ffaa;
-          --panel-bg: #000;
-          --border: #00aa44;
-          --accent: #00ff66;
-          --accent-muted: #00ff66b0 ;
-          --caret: #00ff66;
-          --text-inverted: #000000;
+        body {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 14px;
+          line-height: 1.6;
         }
 
-        body {
-          background: var(--bg);
+        h1, h2, h3 { 
           color: var(--text);
-          font-family: "Fira Code", monospace;
+          font-weight: 600;
+          letter-spacing: -0.02em;
+        }
+
+        button {
+          font-family: 'Inter', sans-serif;
+          font-weight: 500;
+        }
+
+        button:hover {
+          transform: translateY(-1px);
+        }
+
+        .message.user .message-content {
+          background: var(--user-bg);
+          border: none;
+          color: white;
+        }
+
+        .message.assistant .message-avatar {
+          background: linear-gradient(135deg, var(--accent) 0%, var(--hover) 100%);
+          border: none;
+          color: white;
+        }
+
+        input:focus, textarea:focus {
+          outline: none;
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+
+        .send-btn:hover {
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .tool-card:hover {
+          border-color: var(--border);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .search-result-item:hover {
+          border-color: var(--accent);
+        }
+
+        /* Status indicators */
+        .status-success { color: var(--success); }
+        .status-warning { color: var(--warning); }
+        .status-error { color: var(--error); }
+      `,
+      graph: {
+        nodeBorder: '#6366f1',
+        nodeBackground: '#27272a',
+        nodeHighlight: '#818cf8',
+        nodeFont: '#fafafa',
+        nodeFontSize: 13,
+        edgeColor: '#52525b',
+        edgeHighlight: '#6366f1',
+        background: '#18181b',
+        fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      }
+    },
+
+    terminal: {
+      name: 'Terminal',
+      variables: {
+        '--bg': '#000000',
+        '--bg-surface': '#000000',
+        '--panel-bg': '#000000',
+        '--text': '#00ff66',
+        '--text-secondary': '#00aa44',
+        '--accent': '#00ff66',
+        '--accent-muted': '#00ff66b0',
+        '--border': '#00aa44',
+        '--border-subtle': '#004422',
+        '--hover': '#003300',
+        '--text-inverted': '#000000',
+        '--user-text': '#00ffaa',
+        '--caret': '#00ff66',
+      },
+      fonts: [],
+      css: `
+        body {
+          font-family: "Fira Code", "Consolas", monospace;
           letter-spacing: 0.02em;
           line-height: 1.4;
         }
 
-        h1, h2, h3 { color: var(--accent); }
-        
-        button {
+        button, select, input, textarea {
           font-family: "Fira Code", monospace;
-          color: var(--text-inverted);
-          background: var(--panel-bg)
         }
-        select {
-          font-family: "Fira Code", monospace;
-          background: var(--bg);
-          color: var(--text-inverted);
-        }
-        input {
-          font-family: "Fira Code", monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        textarea {
-          font-family: "Fira Code", monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .tab-content {
-          background: var(--bg);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        memory-content{
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
+
         .chat-panel, .graph-panel {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
           box-shadow: none;
-          padding: 12px;
           font-family: "Fira Code", monospace;
           font-size: 13px;
         }
 
         #chatMessages {
-          background: var(--panel-bg);
-          color: var(--text);
           display: block;
           white-space: pre-wrap;
           font-family: "Fira Code", monospace;
           font-size: 13px;
           line-height: 1.4;
-          padding: 12px;
-          overflow-y: auto;
-          max-height: 100%;
         }
 
         .message {
@@ -253,37 +214,24 @@
           padding: 0;
         }
 
-        .message.user .message-content {
-          color: var(--user-text);
-        }
-
         .message-content {
           display: inline;
           background: none !important;
-          border: none;
+          border: none !important;
           padding: 0;
           margin: 0;
           font-family: "Fira Code", monospace;
           font-size: 13px;
-          line-height: 1.4;
         }
 
-        .input-area {
-          background: var(--panel-bg);
-          border-top: 1px solid var(--border);
-          padding: 8px;
+        .message.user .message-content {
+          color: var(--user-text);
         }
 
         #messageInput {
-          width: 100%;
-          background: var(--panel-bg);
-          color: var(--text);
-          border: 1px solid var(--border);
           font-family: "Fira Code", monospace;
           font-size: 13px;
           caret-color: var(--caret);
-          resize: none;
-          padding: 6px 8px;
         }
 
         #messageInput::placeholder {
@@ -294,8 +242,6 @@
           background: #002200;
           color: var(--text);
           border: 1px solid var(--border);
-          font-family: "Fira Code", monospace;
-          padding: 6px 12px;
           text-transform: uppercase;
         }
 
@@ -303,49 +249,11 @@
           background: #003300;
         }
 
-        #graph { background: var(--panel-bg); }
-
         ::-webkit-scrollbar-thumb { background: #004400; }
 
         @keyframes blink {
           0%, 50% { opacity: 1; }
           50.1%, 100% { opacity: 0; }
-        }
-
-        #messageInput:focus::after {
-          content: "_";
-          display: inline-block;
-          animation: blink 1s infinite;
-          color: var(--caret);
-        }
-        
-        .toolchain-box {
-          background: var(--panel-bg);
-          color: var(--text);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        
-        .search-result-item{
-          background: var(--panel-bg)
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }
-        .action-btn{
-          color: var(--text)
         }
       `,
       graph: {
@@ -362,127 +270,48 @@
     },
 
     darkNewspaper: {
+      name: 'Dark Newspaper',
+      variables: {
+        '--bg': '#111111',
+        '--bg-surface': '#111111',
+        '--panel-bg': '#141414',
+        '--text': '#e8e6e3',
+        '--text-secondary': '#a8a6a3',
+        '--accent': '#f5f5f5',
+        '--accent-muted': '#f5f5f5d5',
+        '--border': '#333333',
+        '--border-subtle': '#222222',
+        '--hover': '#555555',
+        '--text-inverted': '#000000',
+      },
+      fonts: ['Playfair+Display:wght@400;700', 'Crimson+Text:wght@400;600'],
       css: `
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Crimson+Text:wght@400;600&display=swap');
-        
-        :root {
-          --bg: #111;
-          --bg-surface: #111;
-          --panel-bg: #141414;
-          --text: #e8e6e3;
-          --accent: #f5f5f5;
-          --accent-muted: #f5f5f5d5;
-          --border: #333;
-          --hover: #555;
-          --text-inverted: #000000;
-        }
-
         body {
-          background: var(--bg);
-          color: var(--text);
-          font-family: 'Crimson Text', serif;
+          font-family: 'Crimson Text', Georgia, serif;
           line-height: 1.8;
           font-size: 16px;
           text-rendering: optimizeLegibility;
         }
 
         h1, h2, h3 { 
-          color: var(--accent); 
           font-family: 'Playfair Display', serif;
         }
 
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .tab-content {
-          background: var(--bg);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
         button {
           font-family: 'Playfair Display', serif;
-          color: var(--text-inverted);
-          background: var(--panel-bg)
-        }
-        
-        select {
-          font-family: 'Playfair Display', serif;
-          background: var(--bg);
-          color: var(--text-inverted);
-        }
-        
-        input {
-          font-family: 'Crimson Text', serif;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        textarea {
-          font-family: 'Crimson Text', serif;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        memory-content{
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-          border-left: 4px solid var(--accent);
-        }
-        
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .chat-panel, .graph-panel {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          box-shadow: inset 0 0 10px rgba(255,255,255,0.05);
         }
 
-        #chatMessages {
-          background: var(--bg);
-          color: var(--text);
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
+        select {
+          font-family: 'Playfair Display', serif;
+        }
+
+        input, textarea {
+          font-family: 'Crimson Text', serif;
         }
 
         .message-content {
           background: #181818;
-          color: var(--text);
           border-left: 3px solid #555;
-          padding: 14px 18px;
           font-family: 'Playfair Display', serif;
         }
 
@@ -491,10 +320,14 @@
           border-left-color: #666;
         }
 
+        #chatMessages {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
         #messageInput {
           background: #1a1a1a;
-          color: #f0f0f0;
-          border: 1px solid #333;
           font-family: 'Crimson Text', serif;
         }
 
@@ -510,6 +343,10 @@
           border-color: #777;
         }
 
+        .tool-card {
+          border-left: 4px solid var(--accent);
+        }
+
         body::before {
           content: "";
           position: fixed;
@@ -519,34 +356,6 @@
           pointer-events: none;
           z-index: 9999;
         }
-        
-        .toolchain-box {
-          background: var(--panel-bg);
-          color: var(--text);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        .search-result-item{
-          background: var(--panel-bg)
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }
-        .action-btn{
-          color: var(--text)
-        }
       `,
       graph: {
         nodeBorder: '#e8e6e3',
@@ -554,143 +363,55 @@
         nodeHighlight: '#f5f5f5',
         nodeFont: '#e8e6e3',
         nodeFontSize: 15,
-        edgeColor: '#b9b9b9ff',
+        edgeColor: '#b9b9b9',
         edgeHighlight: '#e8e6e3',
         background: '#111111',
-        fontFamily: '"Crimson Text", "Georgia", serif'
+        fontFamily: '"Crimson Text", Georgia, serif'
       }
     },
 
     pixelArt: {
+      name: 'Pixel Art',
+      variables: {
+        '--bg': '#0d0d1a',
+        '--bg-surface': '#2a2a55',
+        '--panel-bg': '#29144b',
+        '--text': '#66f0ff',
+        '--text-secondary': '#4488aa',
+        '--accent': '#ff33cc',
+        '--accent-muted': '#ff33ccad',
+        '--border': '#440066',
+        '--border-subtle': '#330055',
+        '--hover': '#9b00ff',
+        '--text-inverted': '#000000',
+        '--user-text': '#ff77ff',
+      },
+      fonts: ['Press+Start+2P'],
       css: `
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-
-        :root {
-          --bg: #0d0d1a;
-          --bg-surface: #2a2a55ff;
-          --panel-bg: #29144bff;
-          --text: #66f0ff;
-          --accent: #ff33cc;
-          --accent-muted: #ff33ccad;
-          --hover: #9b00ff;
-          --border: #440066;
-          --user-text: #ff77ff;
-          --text-inverted: #000000;
-        }
-
         body {
-          background: var(--bg);
-          color: var(--text);
           font-family: 'Press Start 2P', monospace;
           font-size: 12px;
           image-rendering: pixelated;
           letter-spacing: 0.05em;
-          transition: background 0.3s, color 0.3s;
+        }
+
+        button, select, input, textarea {
+          font-family: 'Press Start 2P', monospace;
         }
 
         h1, h2, h3 {
-          color: var(--accent);
           text-shadow: 2px 2px #000;
         }
-        
-        button {
-          font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--panel-bg)
-        }
-        
-        select {
-          font-family: 'Press Start 2P', monospace;
-          background: var(--bg);
-          color: var(--text-inverted);
-        }
-        
-        input {
-          font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        textarea {
-          font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        a {
-          color: var(--accent);
-          text-decoration: underline;
-        }
-        
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        memory-content{
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
 
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
         .chat-panel, .graph-panel {
-          background: var(--bg);
           border: 2px solid var(--border);
           box-shadow: 0 0 12px var(--accent);
-          padding: 12px;
-          overflow: hidden;
           image-rendering: pixelated;
         }
 
         #chatMessages {
-          background: var(--bg);
-          color: var(--text);
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          overflow-y: auto;
           font-size: 12px;
           line-height: 1.2;
-        }
-
-        .message {
-          display: flex;
-          gap: 8px;
-          align-items: flex-start;
         }
 
         .message-avatar {
@@ -698,11 +419,7 @@
           height: 28px;
           background: #220022;
           border: 2px solid var(--accent);
-          color: var(--accent);
           font-size: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           text-shadow: 0 0 4px var(--accent);
         }
 
@@ -715,8 +432,6 @@
         .message-content {
           background: rgba(0,0,0,0.6);
           border: 2px solid var(--accent);
-          color: var(--text);
-          padding: 10px 12px;
           border-radius: 4px;
           line-height: 1.2;
           text-shadow: 0 0 4px var(--text);
@@ -728,22 +443,10 @@
           text-shadow: 0 0 4px var(--user-text);
         }
 
-        .input-area {
-          background: var(--panel-bg);
-          border-top: 2px solid var(--border);
-          padding: 10px;
-        }
-
         #messageInput {
-          width: 100%;
           background: #110022;
-          color: var(--text);
           border: 2px solid var(--accent);
-          font-family: 'Press Start 2P', monospace;
-          padding: 10px;
           font-size: 11px;
-          resize: none;
-          outline: none;
           caret-color: var(--accent);
           text-transform: uppercase;
         }
@@ -756,11 +459,7 @@
           background: #220033;
           color: var(--accent);
           border: 2px solid var(--accent);
-          font-family: 'Press Start 2P', monospace;
           text-transform: uppercase;
-          padding: 10px 16px;
-          cursor: pointer;
-          transition: all 0.2s ease;
         }
 
         .send-btn:hover {
@@ -768,11 +467,7 @@
           color: #fff;
           box-shadow: 0 0 12px var(--accent);
         }
-        .tab-content {
-          background: var(--bg);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
+
         #graph {
           background: repeating-linear-gradient(
             to bottom,
@@ -783,21 +478,12 @@
           image-rendering: pixelated;
         }
 
-        ::-webkit-scrollbar {
-          width: 8px;
-        }
-
-        ::-webkit-scrollbar-thumb {
-          background: var(--accent);
-          border-radius: 2px;
-        }
-
         @keyframes neonFlicker {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.95; }
           25%, 75% { opacity: 0.97; }
         }
-        
+
         body {
           animation: neonFlicker 0.1s infinite;
         }
@@ -816,34 +502,6 @@
           z-index: 9999;
           image-rendering: pixelated;
         }
-        
-        .toolchain-box {
-          background: var(--panel-bg);
-          color: var(--text);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        .search-result-item{
-          background: var(--panel-bg)
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }  
-        .action-btn{
-          color: var(--text)
-        } 
       `,
       graph: {
         nodeBorder: '#ff33cc',
@@ -861,136 +519,48 @@
     },
 
     retroGaming: {
+      name: 'Retro Gaming',
+      variables: {
+        '--bg': '#000000',
+        '--bg-surface': '#000000',
+        '--panel-bg': '#000000',
+        '--text': '#00ffcc',
+        '--text-secondary': '#00aa88',
+        '--accent': '#ff0077',
+        '--accent-muted': '#ca4a86b4',
+        '--border': '#00ffcc',
+        '--border-subtle': '#007766',
+        '--hover': '#ff3794',
+        '--text-inverted': '#ff0077',
+        '--user-text': '#ff3794',
+      },
+      fonts: ['Press+Start+2P'],
       css: `
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        header {
+          background: var(--bg);
+        }
 
-        :root {
-          --bg: #000;
-          --bg-surface: #000;
-          --panel-bg: #000;
-          --text: #00ffcc;
-          --accent: #ff0077;
-          --accent-muted: #ca4a86b4;
-          --hover: #ff3794ff;
-          --border: #00ffcc;
-          --user-text: #ff3794ff;
-          --text-inverted: #ff0077;
-        }
-        header{
-          background: var(--bg)
-        }
         body {
           background: radial-gradient(circle at center, #101010 0%, #000 100%);
-          color: var(--text);
           font-family: 'Press Start 2P', monospace;
           font-size: 11px;
           text-transform: uppercase;
           image-rendering: pixelated;
         }
 
-        button {
+        button, select, input, textarea {
           font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--panel-bg)
-        }
-        
-        select {
-          font-family: 'Press Start 2P', monospace;
-          background: var(--bg);
-          color: var(--text-inverted);
-        }
-        
-        input {
-          font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        textarea {
-          font-family: 'Press Start 2P', monospace;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        a {
-          color: var(--accent);
-          text-decoration: underline;
-        }
-        
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        .tab-content {
-          background: var(--bg);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        memory-content{
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
         }
 
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
         .chat-panel, .graph-panel {
-          background: var(--bg);
           border: 2px solid var(--border);
           box-shadow: 0 0 12px var(--accent);
-          padding: 12px;
-          overflow: hidden;
           image-rendering: pixelated;
         }
 
         #chatMessages {
-          background: var(--bg);
-          color: var(--text);
-          padding: 16px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          overflow-y: auto;
           font-size: 12px;
           line-height: 1.2;
-        }
-
-        .message {
-          display: flex;
-          gap: 8px;
-          align-items: flex-start;
         }
 
         .message-avatar {
@@ -998,11 +568,7 @@
           height: 28px;
           background: #220022;
           border: 2px solid var(--accent);
-          color: var(--accent);
           font-size: 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
           text-shadow: 0 0 4px var(--accent);
         }
 
@@ -1015,8 +581,6 @@
         .message-content {
           background: rgba(0,0,0,0.6);
           border: 2px solid var(--accent);
-          color: var(--text);
-          padding: 10px 12px;
           border-radius: 4px;
           line-height: 1.2;
           text-shadow: 0 0 4px var(--text);
@@ -1029,43 +593,16 @@
         }
 
         .input-area {
-          background: var(--panel-bg);
           border-top: 2px solid var(--border);
-          padding: 10px;
         }
-        memory-content{
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
+
         @keyframes crtFlicker {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.98; }
         }
-        body { animation: crtFlicker 0.1s infinite; }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        .search-result-item{
-          background: var(--panel-bg)
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }
-        .action-btn{
-          color: var(--text)
+
+        body {
+          animation: crtFlicker 0.1s infinite;
         }
       `,
       graph: {
@@ -1084,119 +621,37 @@
     },
 
     sunsetGlow: {
+      name: 'Sunset Glow',
+      variables: {
+        '--bg': '#2b1a2f',
+        '--bg-surface': '#3e2a45',
+        '--panel-bg': '#593964',
+        '--text': '#ffd8a8',
+        '--text-secondary': '#ccaa88',
+        '--accent': '#ff6f61',
+        '--accent-muted': '#ff6f61cc',
+        '--border': '#7e5a7e',
+        '--border-subtle': '#5e3a5e',
+        '--hover': '#ffa07a',
+        '--text-inverted': '#ffffff',
+        '--user-text': '#ffb347',
+      },
+      fonts: ['Share+Tech+Mono'],
       css: `
-        @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-        
-        :root {
-          --bg: #2b1a2f;
-          --bg-surface: #3e2a45;
-          --panel-bg: #593964;
-          --text: #ffd8a8;
-          --accent: #ff6f61;
-          --accent-muted: #ff6f61;
-          --hover: #ffa07a;
-          --border: #7e5a7e;
-          --user-text: #ffb347;
-          --text-inverted: #ffffffff;
-        }
-
         body {
-          background: var(--bg);
-          color: var(--text);
           font-family: 'Share Tech Mono', 'Segoe UI', sans-serif;
-          height: 100vh;
-          overflow: hidden;
-          transition: background 0.3s, color 0.3s;
         }
 
-        a { color: var(--accent); }
-
-        h1, h2, h3 { color: var(--accent); }
-
-        button {
+        button, select, input, textarea {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: var(--text-inverted);
-          background: var(--panel-bg)
-        }
-        
-        select {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: var(--bg);
-          color: var(--text-inverted);
-        }
-        
-        input {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
-        }
-        
-        textarea {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          color: var(--text-inverted);
-          background: var(--bg-surface);
         }
 
-        .tab.active {
-          background: var(--accent);
-          color: var(--text-inverted);
-          font-weight: bold;
-        }
-        memory-content{
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-        .memoryQuery {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        
-        .focusContent {
-          background: var(--panel-bg);
-          border-radius: 8px;
-          padding: 16px;
-        }
-
-        .tool-card {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-subcard {
-          background: var(--bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
-        .tool-container {
-          background: var(--panel-bg);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 12px;
-        }
-        
         .chat-panel, .graph-panel {
-          background: var(--bg);
-          border: 1px solid var(--border);
           box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
-        }
-
-        #chatMessages {
-          background: var(--bg);
-          color: var(--text);
         }
 
         .message-content {
           background: rgba(255, 200, 160, 0.1);
-          color: var(--text);
-          padding: 12px 16px;
-          border-radius: 8px;
           border-left: 3px solid var(--border);
         }
 
@@ -1206,57 +661,8 @@
           color: var(--user-text);
         }
 
-        .send-btn {
-          background: var(--accent);
-          color: white;
-          border-radius: 6px;
-        }
-
-        #messageInput {
-          background: var(--panel-bg);
-          color: var(--text);
-          border: 1px solid var(--border);
-          transition: border 0.2s;
-        }
-
         #messageInput:focus {
           border-color: var(--accent);
-        }
-
-        ::-webkit-scrollbar-thumb { 
-          background: var(--border); 
-        }
-
-        .chat-panel, .graph-panel, #messageInput {
-          transition: background 0.3s, color 0.3s, border 0.3s;
-        }
-        
-        .toolchain-box {
-          background: var(--panel-bg);
-          color: var(--text);
-          border-radius: 8px;
-          padding: 16px;
-          border-left: 4px solid var(--accent);
-        }
-        .tool-type-filter{
-          background: var(--panel-bg)
-          color: var(--text)
-        }
-        .search-result-item{
-          background: var(--panel-bg)
-        }
-        .graph-stats{
-            background: var(--bg);
-            color: var(--text);
-        }
-        .memory-search-container{
-            background: var(--bg);
-        }
-        .advanced-filters-content{
-          background: var(--panel-bg);
-        }
-        .action-btn{
-          color: var(--text)
         }
       `,
       graph: {
@@ -1273,494 +679,802 @@
     }
   };
 
-  // --- Apply theme to graph ---
-  const applyThemeToGraph = (themeName) => {
-    if (!window.network) {
-      console.log('Network not ready, will retry...');
-      return;
+  // --- Theme Manager Class ---
+  class ThemeManager {
+    constructor() {
+      this.currentTheme = null;
+      this.styleEl = null;
+      this.fontEl = null;
+      this.listeners = new Set();
+      this._hooked = false;
     }
-    
-    const theme = themes[themeName];
-    if (!theme) return;
 
-    const graphConfig = theme.graph;
+    init() {
+      // Create style element for theme CSS
+      this.styleEl = document.createElement('style');
+      this.styleEl.setAttribute('data-theme-style', '');
+      document.head.appendChild(this.styleEl);
 
-    console.log('Applying theme to graph:', themeName, graphConfig);
+      // Create link element for Google Fonts
+      this.fontEl = document.createElement('link');
+      this.fontEl.rel = 'stylesheet';
+      document.head.appendChild(this.fontEl);
 
-    // Update network options
-    window.network.setOptions({
-      nodes: {
-        shape: graphConfig.nodeShape || 'dot',
-        size: 25,
-        color: {
-          border: graphConfig.nodeBorder,
-          background: graphConfig.nodeBackground,
-          highlight: {
-            border: graphConfig.nodeHighlight,
-            background: graphConfig.nodeBackground
-          },
-          hover: {
-            border: graphConfig.nodeHighlight,
-            background: graphConfig.nodeBackground
-          }
-        },
-        font: {
-          color: graphConfig.nodeFont,
-          size: graphConfig.nodeFontSize,
-          face: graphConfig.fontFamily
-        },
-        borderWidth: 2,
-        borderWidthSelected: 3
-      },
-      edges: {
-        color: {
-          color: graphConfig.edgeColor,
-          highlight: graphConfig.edgeHighlight,
-          hover: graphConfig.edgeHighlight
-        },
-        width: graphConfig.edgeWidth || 2,
-        font: {
-          color: graphConfig.nodeFont,
-          size: graphConfig.nodeFontSize - 2,
-          face: graphConfig.fontFamily,
-          strokeWidth: 0
-        },
-        smooth: {
-          enabled: true,
-          type: 'dynamic'
-        }
+      // Load saved theme or default
+      const savedTheme = localStorage.getItem('theme') || 'default';
+      this.apply(savedTheme);
+
+      // Watch for network ready to apply graph theme
+      this._watchForNetwork();
+    }
+
+    apply(themeName) {
+      const theme = themes[themeName];
+      if (!theme) {
+        console.warn(`Theme "${themeName}" not found, using default`);
+        return this.apply('default');
       }
-    });
 
-    // Update background
-    window.network.body.container.style.background = graphConfig.background;
+      this.currentTheme = themeName;
+      localStorage.setItem('theme', themeName);
 
-    // Update existing nodes to use theme colors
-    try {
-      const nodes = window.network.body.data.nodes.get();
-      const nodeUpdates = nodes.map(node => ({
-        id: node.id,
-        color: {
-          border: graphConfig.nodeBorder,
-          background: graphConfig.nodeBackground,
-          highlight: {
-            border: graphConfig.nodeHighlight,
-            background: graphConfig.nodeBackground
-          },
-          hover: {
-            border: graphConfig.nodeHighlight,
-            background: graphConfig.nodeBackground
-          }
-        },
-        font: {
-          color: graphConfig.nodeFont,
-          size: graphConfig.nodeFontSize,
-          face: graphConfig.fontFamily
-        }
-      }));
-      
-      window.network.body.data.nodes.update(nodeUpdates);
-      console.log(`Updated ${nodeUpdates.length} nodes`);
-    } catch (e) {
-      console.warn('Error updating nodes:', e);
-    }
-
-    // Update edges
-    try {
-      const edges = window.network.body.data.edges.get();
-      const edgeUpdates = edges.map(edge => ({
-        id: edge.id,
-        color: {
-          color: graphConfig.edgeColor,
-          highlight: graphConfig.edgeHighlight,
-          hover: graphConfig.edgeHighlight
-        },
-        width: graphConfig.edgeWidth || 2,
-        font: {
-          color: graphConfig.nodeFont,
-          size: graphConfig.nodeFontSize - 2,
-          face: graphConfig.fontFamily
-        }
-      }));
-      
-      window.network.body.data.edges.update(edgeUpdates);
-      console.log(`Updated ${edgeUpdates.length} edges`);
-    } catch (e) {
-      console.warn('Error updating edges:', e);
-    }
-
-    window.network.redraw();
-  };
-
-  // --- Apply custom colors to graph ---
-  const applyCustomColorsToGraph = (colors) => {
-    if (!window.network) return;
-
-    console.log('Applying custom colors:', colors);
-
-    window.network.setOptions({
-      nodes: {
-        color: {
-          border: colors.nodeBorder,
-          background: colors.nodeBackground,
-          highlight: {
-            border: colors.nodeHighlight,
-            background: colors.nodeBackground
-          },
-          hover: {
-            border: colors.nodeHighlight,
-            background: colors.nodeBackground
-          }
-        },
-        font: {
-          color: colors.nodeFont,
-          size: colors.fontSize
-        }
-      },
-      edges: {
-        color: {
-          color: colors.edgeColor,
-          highlight: colors.edgeColor,
-          hover: colors.edgeColor
-        },
-        font: {
-          color: colors.nodeFont,
-          size: colors.fontSize - 2
-        }
+      // Load Google Fonts if needed
+      if (theme.fonts?.length) {
+        const fontUrl = `https://fonts.googleapis.com/css2?${theme.fonts.map(f => `family=${f}`).join('&')}&display=swap`;
+        this.fontEl.href = fontUrl;
+      } else {
+        this.fontEl.href = '';
       }
-    });
 
-    window.network.body.container.style.background = colors.background;
+      // Build and apply CSS
+      const variablesCSS = Object.entries(theme.variables)
+        .map(([key, value]) => `${key}: ${value};`)
+        .join('\n        ');
 
-    // Update all nodes
-    try {
-      const nodes = window.network.body.data.nodes.get();
-      const nodeUpdates = nodes.map(node => ({
-        id: node.id,
-        color: {
-          border: colors.nodeBorder,
-          background: colors.nodeBackground,
-          highlight: {
-            border: colors.nodeHighlight,
-            background: colors.nodeBackground
-          }
-        },
-        font: {
-          color: colors.nodeFont,
-          size: colors.fontSize
+      this.styleEl.textContent = `
+        :root {
+          ${variablesCSS}
         }
-      }));
-      window.network.body.data.nodes.update(nodeUpdates);
-    } catch (e) {
-      console.warn('Error updating nodes:', e);
+        ${baseCSS}
+        ${this._getCommonComponentCSS()}
+        ${theme.css || ''}
+      `;
+
+      // Apply to graph if available
+      this._applyToGraph(theme);
+
+      // Notify listeners
+      this.listeners.forEach(fn => fn(themeName, theme));
+
+      console.log(`Theme applied: ${theme.name}`);
     }
 
-    // Update all edges
-    try {
-      const edges = window.network.body.data.edges.get();
-      const edgeUpdates = edges.map(edge => ({
-        id: edge.id,
-        color: {
-          color: colors.edgeColor,
-          highlight: colors.edgeColor,
-          hover: colors.edgeColor
-        },
-        font: {
-          color: colors.nodeFont,
-          size: colors.fontSize - 2
+    _getCommonComponentCSS() {
+      return `
+        /* === Base Elements === */
+        body {
+          background: var(--bg);
+          color: var(--text);
         }
-      }));
-      window.network.body.data.edges.update(edgeUpdates);
-    } catch (e) {
-      console.warn('Error updating edges:', e);
-    }
 
-    window.network.redraw();
-  };
-
-  // --- Initialize theme settings ---
-  VeraChat.prototype.initThemeSettings = function () {
-    if (document.querySelector("#themeMenu")) return;
-
-    const savedTheme = localStorage.getItem("theme") || "default";
-
-    // Create style element
-    const styleEl = document.querySelector('style[data-theme-style]') || document.createElement("style");
-    styleEl.setAttribute("data-theme-style", "");
-    document.head.appendChild(styleEl);
-    if (themes[savedTheme]) {
-      styleEl.textContent = themes[savedTheme].css;
-    } else {
-      console.warn(`Theme "${savedTheme}" not found. Falling back to default theme.`);
-      styleEl.textContent = themes["default"].css;
-    }
-
-    // Create menu
-    const menu = document.createElement("div");
-    menu.id = "themeMenu";
-
-    menu.innerHTML = `
-      <style>
-        #themeMenu {
-          background: rgba(0,0,0,0.85);
-          color: white;
-          padding: 1rem;
-          border-radius: 0.6rem;
-          font-family: sans-serif;
-          font-size: 0.9rem;
-          width: 16rem;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        a { 
+          color: var(--accent); 
+          text-decoration: none;
+          transition: color var(--transition-fast);
         }
-        #themeMenu select, #themeMenu input, #themeMenu button {
-          background: #222;
-          color: white;
-          border: 1px solid #444;
-          border-radius: 0.3rem;
-          padding: 0.4rem;
-          margin-top: 0.3rem;
-          font-size: 0.85rem;
+        a:hover { color: var(--hover); }
+
+        h1, h2, h3 { color: var(--accent); }
+
+        /* === Form Elements === */
+        button {
+          color: var(--text-inverted);
+          background: var(--accent);
+          border: none;
+          border-radius: var(--radius-sm);
+          padding: 8px 16px;
+          cursor: pointer;
+          transition: background var(--transition-fast), transform var(--transition-fast);
+        }
+        button:hover { background: var(--hover); }
+
+        input, textarea, select {
+          color: var(--text);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          padding: 10px 14px;
+          transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        input:focus, textarea:focus, select:focus {
+          outline: none;
+          border-color: var(--accent);
+        }
+
+        /* === Tabs === */
+        .tab {
+          background: transparent;
+          color: var(--text-secondary);
+          border: none;
+          padding: 10px 16px;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+        .tab:hover {
+          color: var(--text);
+          background: var(--bg-surface);
+        }
+        .tab.active {
+          background: var(--accent);
+          color: var(--text-inverted);
+          font-weight: bold;
+          border-radius: var(--radius-sm);
+        }
+        .tab-content {
+          background: var(--bg);
+          color: var(--text);
+        }
+
+        /* === Panels === */
+        .chat-panel, .graph-panel {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-xl);
+        }
+
+        /* === Messages === */
+        #chatMessages {
+          background: var(--panel-bg);
+          color: var(--text);
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .message {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+        }
+
+        .message-avatar {
+          width: 32px;
+          height: 32px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 600;
+          font-size: 12px;
+          color: var(--text-secondary);
+          flex-shrink: 0;
+        }
+
+        .message-content {
+          background: var(--bg-surface);
+          color: var(--text);
+          padding: 12px 16px;
+          border-radius: var(--radius-md);
+          border: 1px solid var(--border-subtle);
+          line-height: 1.6;
+          max-width: 85%;
+        }
+
+        .message.user .message-content {
+          background: var(--user-bg, var(--accent));
+          border: none;
+          color: var(--text-inverted);
+          margin-left: auto;
+        }
+
+        /* === Input Area === */
+        .input-area {
+          background: var(--panel-bg);
+          border-top: 1px solid var(--border-subtle);
+          padding: 12px 16px;
+        }
+
+        #messageInput {
           width: 100%;
-          box-sizing: border-box;
+          background: var(--bg-surface);
+          color: var(--text);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 12px 16px;
+          font-size: 14px;
+          resize: none;
         }
-        #themeMenu button:hover { background: #333; cursor: pointer; }
-        #themeMenu label { font-size: 0.75rem; opacity: 0.8; margin-top: 0.5rem; display: block; }
-        #themeMenu .row { margin-top: 0.5rem; }
-        #themeMenu.floating {
-          position: fixed;
-          z-index: 999999;
-          resize: both;
-          overflow: auto;
-          cursor: grab;
-        }
-        #themeMenu.dragging { opacity: 0.8; cursor: grabbing; }
-        #themeMenu h4 {
-          margin: 0 0 0.8rem 0;
-          font-size: 1.1rem;
-          text-align: center;
-          border-bottom: 1px solid #444;
-          padding-bottom: 0.5rem;
-        }
-        #themeMenu .section {
-          margin-top: 1rem;
-          padding-top: 0.8rem;
-          border-top: 1px solid #333;
-        }
-        #themeMenu .section-title {
-          font-size: 0.8rem;
-          opacity: 0.6;
-          text-transform: uppercase;
-          margin-bottom: 0.5rem;
-        }
-      </style>
 
-      <h4>🎨 Theme Settings</h4>
+        #messageInput::placeholder {
+          color: var(--text-secondary);
+        }
+
+        .send-btn {
+          background: var(--accent);
+          color: var(--text-inverted);
+          border: none;
+          border-radius: var(--radius-md);
+          padding: 12px 20px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all var(--transition-fast);
+        }
+        .send-btn:hover {
+          background: var(--hover);
+        }
+
+        /* === Cards & Containers === */
+        .tool-card,
+        .tool-container,
+        .toolchain-box,
+        .memoryQuery,
+        .focusContent,
+        .memory-content {
+          background: var(--panel-bg);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 16px;
+          transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+        }
+
+        .memoryQuery,
+        .toolchain-box {
+          border-left: 4px solid var(--accent);
+        }
+
+        .tool-subcard {
+          background: var(--bg);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 12px;
+        }
+
+        .tool-type-filter {
+          background: var(--bg-surface);
+          color: var(--text);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+        }
+
+        .search-result-item {
+          background: var(--bg-surface);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 12px;
+          transition: border-color var(--transition-fast);
+        }
+
+        /* === Utilities === */
+        .graph-stats,
+        .memory-search-container {
+          background: var(--bg);
+          color: var(--text);
+        }
+
+        .advanced-filters-content {
+          background: var(--panel-bg);
+          border: 1px solid var(--border-subtle);
+          border-radius: var(--radius-md);
+          padding: 16px;
+        }
+
+        .action-btn {
+          color: var(--text);
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          padding: 8px 14px;
+          border-radius: var(--radius-sm);
+          transition: all var(--transition-fast);
+        }
+        .action-btn:hover {
+          background: var(--hover);
+          color: var(--text-inverted);
+        }
+
+        #graph {
+          background: var(--bg);
+        }
+      `;
+    }
+
+    _applyToGraph(theme) {
+      if (!window.network?.body?.data) return;
+
+      const g = theme.graph;
+
+      // Set network options
+      window.network.setOptions({
+        nodes: {
+          shape: g.nodeShape || 'dot',
+          size: 25,
+          borderWidth: 2,
+          borderWidthSelected: 3,
+          color: {
+            border: g.nodeBorder,
+            background: g.nodeBackground,
+            highlight: { border: g.nodeHighlight, background: g.nodeBackground },
+            hover: { border: g.nodeHighlight, background: g.nodeBackground }
+          },
+          font: { 
+            color: g.nodeFont, 
+            size: g.nodeFontSize, 
+            face: g.fontFamily 
+          }
+        },
+        edges: {
+          width: g.edgeWidth || 2,
+          color: {
+            color: g.edgeColor,
+            highlight: g.edgeHighlight,
+            hover: g.edgeHighlight
+          },
+          font: { 
+            color: g.nodeFont, 
+            size: g.nodeFontSize - 2, 
+            face: g.fontFamily,
+            strokeWidth: 0
+          },
+          smooth: { enabled: true, type: 'dynamic' }
+        }
+      });
+
+      // Update container background
+      window.network.body.container.style.background = g.background;
+
+      // Batch update existing elements
+      this._batchUpdateGraphElements(theme);
+    }
+
+    _batchUpdateGraphElements(theme) {
+      const g = theme.graph;
       
-      <label>Theme Preset</label>
-      <select id="themeSelect">${Object.keys(themes)
-        .map(t => `<option value="${t}" ${t === savedTheme ? "selected" : ""}>${t}</option>`)
-        .join("")}</select>
+      try {
+        const { nodes, edges } = window.network.body.data;
 
-      <div class="section">
-        <div class="section-title">Graph Colors</div>
-        <div class="row"><label>Node Border:</label><input type="color" id="nodeBorderColor"></div>
-        <div class="row"><label>Node Background:</label><input type="color" id="nodeBgColor"></div>
-        <div class="row"><label>Node Highlight:</label><input type="color" id="nodeHighlightColor"></div>
-        <div class="row"><label>Edge Color:</label><input type="color" id="edgeColor"></div>
-        <div class="row"><label>Background:</label><input type="color" id="graphBgColor"></div>
-      </div>
+        // Update all nodes
+        const nodeUpdates = nodes.get().map(n => ({
+          id: n.id,
+          color: {
+            border: g.nodeBorder,
+            background: g.nodeBackground,
+            highlight: { border: g.nodeHighlight, background: g.nodeBackground },
+            hover: { border: g.nodeHighlight, background: g.nodeBackground }
+          },
+          font: { color: g.nodeFont, size: g.nodeFontSize, face: g.fontFamily }
+        }));
+        nodes.update(nodeUpdates);
 
-      <div class="section">
-        <div class="section-title">Typography</div>
-        <div class="row"><label>Node Font Size:</label><input type="number" id="nodeFontSize" min="8" max="24" value="14"></div>
-      </div>
+        // Update all edges
+        const edgeUpdates = edges.get().map(e => ({
+          id: e.id,
+          color: { 
+            color: g.edgeColor, 
+            highlight: g.edgeHighlight, 
+            hover: g.edgeHighlight 
+          },
+          font: { color: g.nodeFont, size: g.nodeFontSize - 2, face: g.fontFamily }
+        }));
+        edges.update(edgeUpdates);
 
-      <button id="resetThemeBtn">🔄 Reset to Preset</button>
-      <button id="applyThemeBtn">✓ Apply to Graph</button>
-      <button id="popThemeBtn">↗ Pop Out</button>
-    `;
-
-    const settingsContainer = document.getElementById("theme-settings") || document.body;
-    settingsContainer.appendChild(menu);
-
-    // References
-    const selector = menu.querySelector("#themeSelect");
-    const nodeBorderInput = menu.querySelector("#nodeBorderColor");
-    const nodeBgInput = menu.querySelector("#nodeBgColor");
-    const nodeHighlightInput = menu.querySelector("#nodeHighlightColor");
-    const edgeInput = menu.querySelector("#edgeColor");
-    const graphBgInput = menu.querySelector("#graphBgColor");
-    const nodeFontSizeInput = menu.querySelector("#nodeFontSize");
-    const resetBtn = menu.querySelector("#resetThemeBtn");
-    const applyBtn = menu.querySelector("#applyThemeBtn");
-    const popBtn = menu.querySelector("#popThemeBtn");
-
-    // Drag functionality
-    let isDragging = false, offsetX = 0, offsetY = 0;
-    menu.addEventListener("mousedown", e => {
-      if (!menu.classList.contains("floating")) return;
-      isDragging = true;
-      offsetX = e.clientX - menu.getBoundingClientRect().left;
-      offsetY = e.clientY - menu.getBoundingClientRect().top;
-      menu.classList.add("dragging");
-      e.preventDefault();
-    });
-    document.addEventListener("mousemove", e => {
-      if (!isDragging) return;
-      menu.style.left = `${e.clientX - offsetX}px`;
-      menu.style.top = `${e.clientY - offsetY}px`;
-    });
-    document.addEventListener("mouseup", () => {
-      isDragging = false;
-      menu.classList.remove("dragging");
-    });
-
-    // Floating/docking
-    const overlay = document.getElementById("floating-widgets") || (() => {
-      const d = document.createElement("div");
-      d.id = "floating-widgets";
-      d.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999999;";
-      document.body.appendChild(d);
-      return d;
-    })();
-
-    const makeFloating = () => {
-      if (!menu.classList.contains("floating")) {
-        overlay.appendChild(menu);
-        menu.classList.add("floating");
-        menu.style.pointerEvents = "auto";
-        menu.style.right = "1rem";
-        menu.style.bottom = "1rem";
-        popBtn.textContent = "↙ Dock Back";
+        console.log(`Updated ${nodeUpdates.length} nodes, ${edgeUpdates.length} edges`);
+      } catch (err) {
+        console.warn('Error updating graph elements:', err);
       }
-    };
 
-    const makeDocked = () => {
-      if (menu.classList.contains("floating")) {
-        settingsContainer.appendChild(menu);
-        menu.classList.remove("floating");
-        menu.style.cssText = "";
-        popBtn.textContent = "↗ Pop Out";
-      }
-    };
+      window.network.redraw();
+    }
 
-    popBtn.addEventListener("click", () => {
-      menu.classList.contains("floating") ? makeDocked() : makeFloating();
-    });
-
-    // Update inputs from theme
-    const updateInputsFromTheme = (themeName) => {
-      const theme = themes[themeName];
-      if (!theme) return;
-      
-      nodeBorderInput.value = theme.graph.nodeBorder;
-      nodeBgInput.value = theme.graph.nodeBackground;
-      nodeHighlightInput.value = theme.graph.nodeHighlight;
-      edgeInput.value = theme.graph.edgeColor;
-      graphBgInput.value = theme.graph.background;
-      nodeFontSizeInput.value = theme.graph.nodeFontSize;
-    };
-
-    // Apply theme
-    const applyTheme = (themeName) => {
-      const theme = themes[themeName];
-      if (!theme) return;
-      
-      styleEl.textContent = theme.css;
-      localStorage.setItem("theme", themeName);
-      updateInputsFromTheme(themeName);
-      applyThemeToGraph(themeName);
-    };
-
-    // Event listeners
-    selector.addEventListener("change", e => {
-      applyTheme(e.target.value);
-    });
-
-    applyBtn.addEventListener("click", () => {
-      if (!window.network) {
-        alert('Graph network not ready yet');
+    _watchForNetwork() {
+      // Check if already ready
+      if (window.network?.body?.data) {
+        this._applyToGraph(themes[this.currentTheme]);
+        this._hookNetworkSetData();
         return;
       }
-      
-      const customColors = {
-        nodeBorder: nodeBorderInput.value,
-        nodeBackground: nodeBgInput.value,
-        nodeHighlight: nodeHighlightInput.value,
-        edgeColor: edgeInput.value,
-        background: graphBgInput.value,
-        nodeFont: nodeBorderInput.value, // Use border color for font
-        fontSize: parseInt(nodeFontSizeInput.value)
-      };
-      
-      applyCustomColorsToGraph(customColors);
-    });
 
-    resetBtn.addEventListener("click", () => {
-      applyTheme(selector.value);
-    });
+      // Poll for network availability
+      let attempts = 0;
+      const maxAttempts = 40; // 20 seconds
 
-    // Initial application
-    updateInputsFromTheme(savedTheme);
-    applyTheme(savedTheme);
-
-    // Monitor for network ready and apply theme
-    let checkAttempts = 0;
-    const maxAttempts = 40; // 20 seconds max
-    
-    const checkAndApplyTheme = () => {
-      if (window.network && window.network.body && window.network.body.data) {
-        console.log('Network detected, applying theme...');
-        applyThemeToGraph(savedTheme);
-        return true;
-      }
-      return false;
-    };
-
-    // Try to apply immediately
-    if (!checkAndApplyTheme()) {
-      // If not ready, poll for network
-      const networkInterval = setInterval(() => {
-        checkAttempts++;
+      const interval = setInterval(() => {
+        attempts++;
         
-        if (checkAndApplyTheme()) {
-          clearInterval(networkInterval);
-          console.log('Theme applied after', checkAttempts, 'attempts');
-        } else if (checkAttempts >= maxAttempts) {
-          clearInterval(networkInterval);
+        if (window.network?.body?.data) {
+          clearInterval(interval);
+          console.log(`Network ready after ${attempts} attempts`);
+          this._applyToGraph(themes[this.currentTheme]);
+          this._hookNetworkSetData();
+        } else if (attempts >= maxAttempts) {
+          clearInterval(interval);
           console.warn('Network not ready after maximum attempts');
         }
       }, 500);
     }
 
-    // Also listen for network data changes (when graph is loaded/updated)
-    const originalSetData = window.network ? window.network.setData : null;
-    if (window.network && typeof window.network.setData === 'function') {
-      const originalFunc = window.network.setData.bind(window.network);
-      window.network.setData = function(data) {
-        originalFunc(data);
-        // Apply theme after data is set
+    _hookNetworkSetData() {
+      if (!window.network || this._hooked) return;
+      this._hooked = true;
+
+      const original = window.network.setData.bind(window.network);
+      window.network.setData = (data) => {
+        original(data);
+        // Reapply theme after data changes
         setTimeout(() => {
-          const currentTheme = localStorage.getItem("theme") || "default";
-          console.log('Graph data changed, reapplying theme:', currentTheme);
-          applyThemeToGraph(currentTheme);
+          this._applyToGraph(themes[this.currentTheme]);
         }, 100);
       };
     }
-  };
-    const savedTheme = localStorage.getItem("theme") || "default";
 
-    // Create style element
-    const styleEl = document.querySelector('style[data-theme-style]') || document.createElement("style");
-    styleEl.setAttribute("data-theme-style", "");
-    document.head.appendChild(styleEl);
-    if (themes[savedTheme]) {
-      styleEl.textContent = themes[savedTheme].css;
-    } else {
-      console.warn(`Theme "${savedTheme}" not found. Falling back to default theme.`);
-      styleEl.textContent = themes["default"].css;
+    // --- Public API ---
+
+    onChange(callback) {
+      this.listeners.add(callback);
+      return () => this.listeners.delete(callback);
     }
 
-  // Export for use
-  window.applyThemeToGraph = applyThemeToGraph;
+    getThemes() {
+      return Object.entries(themes).map(([id, t]) => ({ 
+        id, 
+        name: t.name 
+      }));
+    }
+
+    getCurrentTheme() {
+      return this.currentTheme;
+    }
+
+    getThemeConfig(name) {
+      return themes[name];
+    }
+
+    applyCustomGraphColors(colors) {
+      if (!window.network) {
+        console.warn('Graph network not ready');
+        return;
+      }
+
+      const customTheme = {
+        graph: {
+          nodeBorder: colors.nodeBorder,
+          nodeBackground: colors.nodeBackground,
+          nodeHighlight: colors.nodeHighlight,
+          nodeFont: colors.nodeFont || colors.nodeBorder,
+          nodeFontSize: colors.fontSize || 14,
+          edgeColor: colors.edgeColor,
+          edgeHighlight: colors.edgeColor,
+          background: colors.background,
+          fontFamily: themes[this.currentTheme]?.graph?.fontFamily || 'sans-serif'
+        }
+      };
+
+      this._applyToGraph(customTheme);
+    }
+  }
+
+  // --- Create singleton instance ---
+  const themeManager = new ThemeManager();
+
+  // --- Theme Settings UI ---
+  VeraChat.prototype.initThemeSettings = function() {
+    if (document.querySelector('#themeMenu')) return;
+
+    themeManager.init();
+    this._createThemeUI(themeManager);
+  };
+
+  VeraChat.prototype._createThemeUI = function(manager) {
+    const currentTheme = manager.getCurrentTheme();
+    const themeConfig = manager.getThemeConfig(currentTheme);
+
+    // Create menu container
+    const menu = document.createElement('div');
+    menu.id = 'themeMenu';
+
+    menu.innerHTML = `
+      <style>
+        #themeMenu {
+          background: rgba(0, 0, 0, 0.9);
+          color: #fff;
+          padding: 16px;
+          border-radius: 10px;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 13px;
+          width: 280px;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(10px);
+        }
+
+        #themeMenu h4 {
+          margin: 0 0 16px 0;
+          font-size: 16px;
+          text-align: center;
+          border-bottom: 1px solid #333;
+          padding-bottom: 12px;
+        }
+
+        #themeMenu label {
+          font-size: 11px;
+          opacity: 0.7;
+          margin-top: 10px;
+          display: block;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        #themeMenu select,
+        #themeMenu input,
+        #themeMenu button {
+          width: 100%;
+          background: #1a1a1a;
+          color: #fff;
+          border: 1px solid #333;
+          border-radius: 6px;
+          padding: 8px 12px;
+          margin-top: 6px;
+          font-size: 13px;
+          box-sizing: border-box;
+        }
+
+        #themeMenu input[type="color"] {
+          height: 36px;
+          padding: 4px;
+          cursor: pointer;
+        }
+
+        #themeMenu input[type="number"] {
+          width: 80px;
+        }
+
+        #themeMenu button {
+          cursor: pointer;
+          transition: background 0.2s;
+          margin-top: 8px;
+        }
+
+        #themeMenu button:hover {
+          background: #333;
+        }
+
+        #themeMenu button.primary {
+          background: #6366f1;
+          border-color: #6366f1;
+        }
+
+        #themeMenu button.primary:hover {
+          background: #4f46e5;
+        }
+
+        #themeMenu .section {
+          margin-top: 16px;
+          padding-top: 12px;
+          border-top: 1px solid #222;
+        }
+
+        #themeMenu .section-title {
+          font-size: 11px;
+          opacity: 0.5;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 8px;
+        }
+
+        #themeMenu .row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: 8px;
+        }
+
+        #themeMenu .row label {
+          flex: 1;
+          margin: 0;
+        }
+
+        #themeMenu .row input[type="color"] {
+          width: 60px;
+          margin: 0;
+        }
+
+        #themeMenu.floating {
+          position: fixed;
+          z-index: 999999;
+          cursor: grab;
+          resize: both;
+          overflow: auto;
+        }
+
+        #themeMenu.floating.dragging {
+          cursor: grabbing;
+          opacity: 0.9;
+        }
+
+        #themeMenu .btn-row {
+          display: flex;
+          gap: 8px;
+          margin-top: 12px;
+        }
+
+        #themeMenu .btn-row button {
+          flex: 1;
+          margin: 0;
+        }
+      </style>
+
+      <h4>🎨 Theme Settings</h4>
+
+      <label>Theme Preset</label>
+      <select id="themeSelect">
+        ${manager.getThemes().map(t => 
+          `<option value="${t.id}" ${t.id === currentTheme ? 'selected' : ''}>${t.name}</option>`
+        ).join('')}
+      </select>
+
+      <div class="section">
+        <div class="section-title">Graph Customization</div>
+        
+        <div class="row">
+          <label>Node Border</label>
+          <input type="color" id="nodeBorderColor" value="${themeConfig?.graph?.nodeBorder || '#6366f1'}">
+        </div>
+        
+        <div class="row">
+          <label>Node Background</label>
+          <input type="color" id="nodeBgColor" value="${themeConfig?.graph?.nodeBackground || '#27272a'}">
+        </div>
+        
+        <div class="row">
+          <label>Node Highlight</label>
+          <input type="color" id="nodeHighlightColor" value="${themeConfig?.graph?.nodeHighlight || '#818cf8'}">
+        </div>
+        
+        <div class="row">
+          <label>Edge Color</label>
+          <input type="color" id="edgeColor" value="${themeConfig?.graph?.edgeColor || '#52525b'}">
+        </div>
+        
+        <div class="row">
+          <label>Background</label>
+          <input type="color" id="graphBgColor" value="${themeConfig?.graph?.background || '#18181b'}">
+        </div>
+
+        <label>Font Size</label>
+        <input type="number" id="nodeFontSize" min="8" max="24" value="${themeConfig?.graph?.nodeFontSize || 14}">
+      </div>
+
+      <div class="btn-row">
+        <button id="resetThemeBtn">🔄 Reset</button>
+        <button id="applyThemeBtn" class="primary">✓ Apply</button>
+      </div>
+      
+      <button id="popThemeBtn" style="margin-top: 8px;">↗ Pop Out</button>
+    `;
+
+    // Add to container
+    const settingsContainer = document.getElementById('theme-settings') || document.body;
+    settingsContainer.appendChild(menu);
+
+    // Get references
+    const selector = menu.querySelector('#themeSelect');
+    const nodeBorderInput = menu.querySelector('#nodeBorderColor');
+    const nodeBgInput = menu.querySelector('#nodeBgColor');
+    const nodeHighlightInput = menu.querySelector('#nodeHighlightColor');
+    const edgeInput = menu.querySelector('#edgeColor');
+    const graphBgInput = menu.querySelector('#graphBgColor');
+    const fontSizeInput = menu.querySelector('#nodeFontSize');
+    const resetBtn = menu.querySelector('#resetThemeBtn');
+    const applyBtn = menu.querySelector('#applyThemeBtn');
+    const popBtn = menu.querySelector('#popThemeBtn');
+
+    // Update inputs when theme changes
+    const updateInputsFromTheme = (themeName) => {
+      const config = manager.getThemeConfig(themeName);
+      if (!config?.graph) return;
+
+      nodeBorderInput.value = config.graph.nodeBorder;
+      nodeBgInput.value = config.graph.nodeBackground;
+      nodeHighlightInput.value = config.graph.nodeHighlight;
+      edgeInput.value = config.graph.edgeColor;
+      graphBgInput.value = config.graph.background;
+      fontSizeInput.value = config.graph.nodeFontSize;
+    };
+
+    // Theme select change
+    selector.addEventListener('change', (e) => {
+      manager.apply(e.target.value);
+      updateInputsFromTheme(e.target.value);
+    });
+
+    // Apply custom colors
+    applyBtn.addEventListener('click', () => {
+      manager.applyCustomGraphColors({
+        nodeBorder: nodeBorderInput.value,
+        nodeBackground: nodeBgInput.value,
+        nodeHighlight: nodeHighlightInput.value,
+        edgeColor: edgeInput.value,
+        background: graphBgInput.value,
+        fontSize: parseInt(fontSizeInput.value)
+      });
+    });
+
+    // Reset to preset
+    resetBtn.addEventListener('click', () => {
+      manager.apply(selector.value);
+      updateInputsFromTheme(selector.value);
+    });
+
+    // Floating/docking functionality
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // Ensure floating widgets container exists
+    let overlay = document.getElementById('floating-widgets');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'floating-widgets';
+      overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:999999;';
+      document.body.appendChild(overlay);
+    }
+
+    const makeFloating = () => {
+      overlay.appendChild(menu);
+      menu.classList.add('floating');
+      menu.style.pointerEvents = 'auto';
+      menu.style.right = '20px';
+      menu.style.bottom = '20px';
+      menu.style.left = 'auto';
+      menu.style.top = 'auto';
+      popBtn.textContent = '↙ Dock';
+    };
+
+    const makeDocked = () => {
+      settingsContainer.appendChild(menu);
+      menu.classList.remove('floating');
+      menu.style.cssText = '';
+      popBtn.textContent = '↗ Pop Out';
+    };
+
+    popBtn.addEventListener('click', () => {
+      menu.classList.contains('floating') ? makeDocked() : makeFloating();
+    });
+
+    // Drag handlers
+    menu.addEventListener('mousedown', (e) => {
+      if (!menu.classList.contains('floating')) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON') return;
+
+      isDragging = true;
+      offsetX = e.clientX - menu.getBoundingClientRect().left;
+      offsetY = e.clientY - menu.getBoundingClientRect().top;
+      menu.classList.add('dragging');
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      menu.style.left = `${e.clientX - offsetX}px`;
+      menu.style.top = `${e.clientY - offsetY}px`;
+      menu.style.right = 'auto';
+      menu.style.bottom = 'auto';
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+      menu.classList.remove('dragging');
+    });
+
+    // Listen for theme changes to update inputs
+    manager.onChange((themeName) => {
+      selector.value = themeName;
+      updateInputsFromTheme(themeName);
+    });
+  };
+
+  // --- Export ---
+  window.themeManager = themeManager;
   window.themes = themes;
 })();

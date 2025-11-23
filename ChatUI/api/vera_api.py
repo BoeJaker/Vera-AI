@@ -24,6 +24,8 @@ from neo4j import GraphDatabase
 from Vera.vera import Vera
 import Vera.ChatUI.api.vectorstore_api as vectorstore_api
 import Vera.ChatUI.api.toolchain_api as toolchain_api
+import Vera.ChatUI.api.toolchain_query as toolchain_query_api
+import Vera.ChatUI.api.n8n_proxy as n8n_proxy
 import Vera.ChatUI.api.graph_api as graph_api
 import Vera.ChatUI.api.chat_api as chat_api
 import Vera.ChatUI.api.orchestrator_api as orchestrator_api
@@ -69,7 +71,9 @@ app.include_router(chat_api.router)
 app.include_router(chat_api.wsrouter)
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
+app.include_router(toolchain_query_api.router)
 app.include_router(toolchain_api.wsrouter)
+app.include_router(n8n_proxy.router)
 app.include_router(orchestrator_api.router)
 app.include_router(vectorstore_api.router)
 app.include_router(memory_api.router)

@@ -13,7 +13,7 @@
      * Call this early, before initGraph()
      */
     function initGraphLoader() {
-        const container = document.getElementById('graph');
+        const container = document.getElementById('vis-network');
         if (!container) {
             console.warn('Graph container not found for loader');
             return null;

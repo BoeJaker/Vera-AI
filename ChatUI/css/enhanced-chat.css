@@ -110,11 +110,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
-
+/* 
 /* =====================================================================
    Chat Messages Container - FIXED
    ===================================================================== */
-
+/* 
 #chatMessages {
     padding: 20px;
     display: flex;
@@ -124,12 +124,12 @@
     overflow-y: auto;
     background: var(--bg);
     color: var(--text);
-}
+} */
 
 /* =====================================================================
    FIXED: Message Base Structure with Proper Alignment
    ===================================================================== */
-
+/* 
 .message {
     display: flex;
     gap: 12px;
@@ -139,26 +139,26 @@
     transition: opacity 0.3s ease;
     animation: messageSlideIn 0.3s ease;
     width: 100%;
-}
+} */
 
 /* USER MESSAGES - ALIGNED TO RIGHT */
-.message.user {
+/* .message.user {
     flex-direction: row-reverse;
     justify-content: flex-start;
     margin-left: auto;
     max-width: 80%;
-}
+} */
 
 /* ASSISTANT MESSAGES - ALIGNED TO LEFT */
-.message.assistant {
+/* .message.assistant {
     flex-direction: row;
     justify-content: flex-start;
     margin-right: auto;
     max-width: 80%;
-}
+} */
 
 /* SYSTEM MESSAGES - CENTERED */
-.message.system {
+/* .message.system {
     justify-content: center;
     max-width: 90%;
     margin: 0 auto;
@@ -190,10 +190,10 @@
     opacity: 0;
     transition: opacity 0.3s ease;
     z-index: 0;
-}
+} */
 
 /* Accent bar on left for assistant, right for user */
-.message.assistant.modern-message::before {
+/* .message.assistant.modern-message::before {
     left: 0;
 }
 
@@ -225,13 +225,13 @@
 
 .modern-message:active {
     transform: scale(0.99);
-}
+} */
 
 /* =====================================================================
    Avatar System
    ===================================================================== */
 
-.message-avatar {
+/* .message-avatar {
     flex-shrink: 0;
     position: relative;
     z-index: 1;
@@ -298,12 +298,12 @@
 
 .system-avatar {
     background: linear-gradient(135deg, var(--text-muted) 0%, var(--hover) 100%);
-}
+} */ */
 
 /* =====================================================================
    Message Content Container
    ===================================================================== */
-
+/* 
 .message-content-container {
     flex: 1;
     min-width: 0;
@@ -317,10 +317,10 @@
     gap: 12px;
     margin-bottom: 8px;
     font-size: 13px;
-}
+} */
 
 /* User messages - reverse header order */
-.message.user .message-header {
+/* .message.user .message-header {
     flex-direction: row-reverse;
 }
 
@@ -381,11 +381,88 @@
     border-color: var(--accent);
     text-align: center;
     font-size: 13px;
-}
+} */
 
 /* =====================================================================
    FIXED: Message Menu - Positioned within Chat Area
    ===================================================================== */
+   
+
+.modern-message {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.modern-message::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(180deg, var(--accent) 0%, var(--accent-muted) 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 0;
+} */
+
+/* Accent bar on left for assistant, right for user */
+.message.assistant.modern-message::before {
+    left: 0;
+}
+
+.message.user.modern-message::before {
+    right: 0;
+}
+
+.message.system.modern-message::before {
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+}
+
+.modern-message:hover {
+    filter: brightness(1.1);
+}
+
+.message.assistant.modern-message:hover {
+    transform: translateX(4px);
+}
+
+.message.user.modern-message:hover {
+    transform: translateX(-4px);
+}
+
+.modern-message:hover::before {
+    opacity: 1;
+}
+
+.modern-message:active {
+    transform: scale(0.99);
+}
+
+.modern-message:hover .message-content {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    border-color: var(--hover);
+}
+.click-hint {
+    opacity: 0;
+    font-size: 10px;
+    color: var(--text-dim);
+    transition: opacity 0.3s ease;
+    font-style: italic;
+}
+
+.message.user .click-hint {
+    margin-right: auto;
+}
+
+.message.assistant .click-hint {
+    margin-left: auto;
+}
+
+.modern-message:hover .click-hint {
+    opacity: 1;
+}
 
 .message-menu {
     position: fixed;
@@ -432,6 +509,7 @@
 
 .message-menu-inner {
     padding: 8px;
+    background: var(--bg);
 }
 
 .menu-section {
@@ -452,7 +530,7 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    background: var(--bg);
+    background: var(--panel-bg);
     border-radius: 8px;
     margin-bottom: 4px;
 }

@@ -1,0 +1,1064 @@
+/**
+ * Cypher Query Panel v3 - Visual Query Builder Styles (Fixed IDs)
+ * All selectors prefixed with 'cypher-' to avoid conflicts
+ */
+
+/* ============================================
+   Panel Base
+   ============================================ */
+.cypher-panel {
+    position: fixed;
+    top: 0;
+    right: -440px;
+    width: 420px;
+    height: 100vh;
+    background: #0f172a;
+    border-left: 1px solid #1e293b;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s ease;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    color: #e2e8f0;
+}
+
+.cypher-panel.open {
+    right: 0;
+}
+
+/* ============================================
+   Header
+   ============================================ */
+.cypher-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 16px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.cypher-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.cypher-header-btns {
+    display: flex;
+    gap: 6px;
+}
+
+.cypher-panel .hdr-btn {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+.cypher-panel .hdr-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+/* ============================================
+   Tabs (Internal to Cypher Panel)
+   ============================================ */
+.cypher-tabs {
+    display: flex;
+    padding: 12px 16px;
+    gap: 8px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+.cypher-tab-btn {
+    flex: 1;
+    padding: 8px 12px;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-tab-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-tab-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+/* ============================================
+   Body & Scrolling
+   ============================================ */
+.cypher-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    position: relative;
+}
+
+.cypher-body::-webkit-scrollbar {
+    width: 6px;
+}
+
+.cypher-body::-webkit-scrollbar-track {
+    background: #1e293b;
+}
+
+.cypher-body::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+}
+
+.cypher-tab-content {
+    display: none;
+}
+
+.cypher-tab-content.active {
+    display: block;
+}
+
+/* ============================================
+   Builder Sections
+   ============================================ */
+.cypher-panel .section-box {
+    background: #1e293b;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.cypher-panel .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(51, 65, 85, 0.3);
+    font-weight: 500;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #94a3b8;
+}
+
+.cypher-panel .section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.cypher-panel .section-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: #3b82f6;
+    cursor: pointer;
+}
+
+.cypher-panel .section-body {
+    padding: 12px;
+}
+
+.cypher-panel .section-body.collapsed {
+    display: none;
+}
+
+/* ============================================
+   Form Elements
+   ============================================ */
+.cypher-panel .field {
+    margin-bottom: 12px;
+}
+
+.cypher-panel .field:last-child {
+    margin-bottom: 0;
+}
+
+.cypher-panel .field.half {
+    width: calc(50% - 4px);
+    display: inline-block;
+}
+
+.cypher-panel .field label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.cypher-panel .field-select,
+.cypher-panel .field-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 13px;
+    transition: border-color 0.15s;
+}
+
+.cypher-panel .field-select:focus,
+.cypher-panel .field-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+/* ============================================
+   Filters
+   ============================================ */
+.cypher-panel .filters-area {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #334155;
+}
+
+.cypher-panel .filters-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cypher-panel .filters-hdr span {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+.cypher-panel .btn-add {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px dashed #475569;
+    border-radius: 4px;
+    color: #60a5fa;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .btn-add:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: #3b82f6;
+}
+
+.cypher-panel .filter-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 8px;
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 6px;
+    border: 1px solid #334155;
+    margin-bottom: 6px;
+}
+
+.cypher-panel .filter-row .filter-prop {
+    width: 100px;
+    padding: 6px 8px;
+    font-size: 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #e2e8f0;
+}
+
+.cypher-panel .filter-row .filter-op {
+    width: 110px;
+    padding: 6px 8px;
+    font-size: 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #e2e8f0;
+}
+
+.cypher-panel .filter-row .filter-val {
+    flex: 1;
+    min-width: 80px;
+    padding: 6px 8px;
+    font-size: 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #e2e8f0;
+}
+
+.cypher-panel .filter-del {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+.cypher-panel .filter-del:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+/* ============================================
+   Date Range
+   ============================================ */
+.cypher-panel .date-range-fields {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.cypher-panel .date-quick-btns {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+
+.cypher-panel .date-quick {
+    padding: 5px 12px;
+    background: transparent;
+    border: 1px solid #475569;
+    border-radius: 20px;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .date-quick:hover {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #64748b;
+}
+
+/* ============================================
+   Direction Buttons
+   ============================================ */
+.cypher-panel .dir-buttons {
+    display: flex;
+    gap: 6px;
+}
+
+.cypher-panel .dir-btn {
+    flex: 1;
+    padding: 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .dir-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-panel .dir-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+/* ============================================
+   Subsection (Target Node)
+   ============================================ */
+.cypher-panel .subsection {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #334155;
+}
+
+.cypher-panel .subsection-title {
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+
+/* ============================================
+   Order Control
+   ============================================ */
+.cypher-panel .order-row {
+    display: flex;
+    gap: 8px;
+}
+
+.cypher-panel .order-row .field-select {
+    flex: 1;
+}
+
+.cypher-panel .order-dir {
+    width: 36px;
+    padding: 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .order-dir:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+/* ============================================
+   Quick Actions
+   ============================================ */
+.cypher-panel .quick-actions {
+    display: flex;
+    gap: 8px;
+    padding: 10px 0;
+    flex-wrap: wrap;
+}
+
+.cypher-panel .quick-btn {
+    padding: 5px 12px;
+    background: transparent;
+    border: 1px solid #475569;
+    border-radius: 20px;
+    color: #94a3b8;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .quick-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #64748b;
+}
+
+/* ============================================
+   Query Preview
+   ============================================ */
+.cypher-panel .query-preview-box {
+    background: #1e293b;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.cypher-panel .preview-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(51, 65, 85, 0.3);
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+#cypher-query-preview {
+    margin: 0;
+    padding: 12px;
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #60a5fa;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 120px;
+    overflow-y: auto;
+    background: #0f172a;
+}
+
+.cypher-panel .tiny-btn {
+    padding: 4px 8px;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #64748b;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .tiny-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+/* ============================================
+   Execute Section
+   ============================================ */
+.cypher-panel .execute-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.cypher-panel .exec-options {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+}
+
+.cypher-panel .exec-options label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #94a3b8;
+    cursor: pointer;
+}
+
+.cypher-panel .exec-options input {
+    accent-color: #3b82f6;
+    cursor: pointer;
+}
+
+.cypher-panel .btn-execute {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cypher-panel .btn-execute:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+}
+
+.cypher-panel .btn-execute:active {
+    transform: translateY(0);
+}
+
+/* ============================================
+   Results Section
+   ============================================ */
+.cypher-panel .results-box {
+    background: #1e293b;
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.cypher-panel .results-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(51, 65, 85, 0.3);
+    font-size: 11px;
+    font-weight: 500;
+    color: #64748b;
+    text-transform: uppercase;
+}
+
+#cypher-results-content {
+    padding: 12px;
+}
+
+.cypher-panel .results-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.cypher-panel .results-stats span b {
+    font-weight: 600;
+    color: #60a5fa;
+}
+
+/* Stats Display */
+.cypher-panel .stats-display {
+    padding: 8px;
+}
+
+.cypher-panel .stat-big {
+    font-size: 24px;
+    font-weight: 700;
+    color: #60a5fa;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.cypher-panel .stat-section {
+    margin-top: 16px;
+    font-size: 12px;
+}
+
+.cypher-panel .stat-section b {
+    display: block;
+    margin-bottom: 8px;
+    color: #94a3b8;
+}
+
+.cypher-panel .stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+}
+
+.cypher-panel .stat-row span:first-child {
+    color: #94a3b8;
+}
+
+.cypher-panel .stat-row span:last-child {
+    font-weight: 600;
+    color: #60a5fa;
+}
+
+/* ============================================
+   Collapsible Details
+   ============================================ */
+.cypher-panel .detail-section {
+    background: #1e293b;
+    border-radius: 8px;
+    margin-bottom: 8px;
+}
+
+.cypher-panel .detail-section summary {
+    padding: 10px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #94a3b8;
+    list-style: none;
+    user-select: none;
+}
+
+.cypher-panel .detail-section summary::-webkit-details-marker {
+    display: none;
+}
+
+.cypher-panel .detail-section summary::before {
+    content: '▶';
+    display: inline-block;
+    margin-right: 8px;
+    font-size: 10px;
+    transition: transform 0.15s;
+}
+
+.cypher-panel .detail-section[open] summary::before {
+    transform: rotate(90deg);
+}
+
+#cypher-templates-container,
+#cypher-history-container,
+#cypher-saved-container {
+    padding: 8px 12px 12px;
+}
+
+.cypher-panel .list-item {
+    padding: 8px 10px;
+    background: rgba(15, 23, 42, 0.5);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+}
+
+.cypher-panel .list-item:hover {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.cypher-panel .item-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+}
+
+.cypher-panel .item-meta {
+    font-size: 10px;
+    color: #475569;
+    margin-top: 4px;
+}
+
+.cypher-panel .saved-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cypher-panel .del-btn {
+    background: transparent;
+    border: none;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.cypher-panel .del-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: #ef4444;
+}
+
+.cypher-panel .empty-msg {
+    text-align: center;
+    padding: 16px;
+    color: #475569;
+    font-size: 12px;
+    font-style: italic;
+}
+
+/* ============================================
+   Layout Tab
+   ============================================ */
+.cypher-panel .layout-modes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.cypher-panel .layout-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .layout-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-panel .layout-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.cypher-panel .layout-icon {
+    font-size: 20px;
+}
+
+.cypher-panel .toggle-btns {
+    display: flex;
+    gap: 6px;
+}
+
+.cypher-panel .toggle-btn {
+    flex: 1;
+    padding: 6px 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #64748b;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .toggle-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-panel .toggle-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.cypher-panel .physics-actions,
+.cypher-panel .layout-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.cypher-panel .action-btn {
+    padding: 8px 12px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+}
+
+.cypher-panel .action-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-panel .action-btn.primary {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #3b82f6;
+    color: white;
+}
+
+.cypher-panel .action-btn.primary:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+}
+
+/* ============================================
+   Editor Mode
+   ============================================ */
+.cypher-panel .editor-box {
+    background: #1e293b;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.cypher-panel .editor-toolbar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(51, 65, 85, 0.3);
+    border-bottom: 1px solid #334155;
+}
+
+.cypher-panel .tool-btn {
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #94a3b8;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.cypher-panel .tool-btn:hover {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+.cypher-panel .editor-wrapper {
+    display: flex;
+    background: #0f172a;
+}
+
+.cypher-panel .line-nums {
+    min-width: 32px;
+    padding: 12px 8px;
+    background: rgba(30, 41, 59, 0.5);
+    border-right: 1px solid #334155;
+    text-align: right;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #475569;
+    user-select: none;
+}
+
+.cypher-panel .line-nums div {
+    height: 17.6px;
+}
+
+#cypher-editor {
+    flex: 1;
+    min-height: 200px;
+    padding: 12px;
+    background: transparent;
+    border: none;
+    resize: vertical;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 11px;
+    line-height: 1.6;
+    color: #e2e8f0;
+    tab-size: 2;
+}
+
+#cypher-editor:focus {
+    outline: none;
+}
+
+#cypher-editor::placeholder {
+    color: #475569;
+}
+
+/* ============================================
+   Loading Overlay
+   ============================================ */
+.cypher-panel .loading-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.95);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    z-index: 100;
+}
+
+.cypher-panel .loading-overlay .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #334155;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: cypher-spin 0.8s linear infinite;
+}
+
+@keyframes cypher-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   Toast Notifications
+   ============================================ */
+.cypher-toast {
+    position: fixed;
+    bottom: 20px;
+    right: 440px;
+    padding: 12px 20px;
+    background: #1e293b;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    z-index: 1001;
+    transform: translateY(100px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    font-size: 13px;
+    color: #e2e8f0;
+    border-left: 4px solid #3b82f6;
+}
+
+.cypher-toast.show {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+.cypher-toast.success {
+    border-left-color: #10b981;
+}
+
+.cypher-toast.error {
+    border-left-color: #ef4444;
+}
+
+.cypher-toast.warning {
+    border-left-color: #f59e0b;
+}
+
+.cypher-toast.info {
+    border-left-color: #3b82f6;
+}
+
+/* ============================================
+   Toggle Button
+   ============================================ */
+#cypher-toggle-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--panel-bg) 0%, var(--accent) 100%);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 20px;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4);
+    transition: all 0.2s;
+}
+
+#cypher-toggle-btn:hover {
+    transform: scale(1.05);
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5);
+}
+
+#cypher-toggle-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 999;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 768px) {
+    .cypher-panel {
+        width: 100%;
+        right: -100%;
+    }
+    
+    .cypher-toast {
+        left: 20px;
+        right: 20px;
+    }
+    
+    .cypher-panel .filter-row {
+        flex-wrap: wrap;
+    }
+    
+    .cypher-panel .filter-row .filter-prop,
+    .cypher-panel .filter-row .filter-op {
+        width: calc(50% - 15px);
+    }
+    
+    .cypher-panel .filter-row .filter-val {
+        width: 100%;
+    }
+}
