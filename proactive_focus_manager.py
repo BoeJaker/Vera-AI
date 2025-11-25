@@ -10,7 +10,6 @@ from typing import Optional, Callable, Dict, List, Any
 import psutil
 import re
 
-
 class ProactiveFocusManager:
     """Enhanced with streaming support, WebSocket broadcasting, and hybrid memory integration"""
     
@@ -1038,7 +1037,82 @@ Context:
                 "goal": goal,
                 "error": str(e)
             })
-    def iterative_workflow(self, max_iterations: Optional[int] = None, 
+            
+    def iterative_workflow(
+            self,
+            max_iterations: Optional[int] = None,
+            iteration_interval: int = 300,
+            auto_execute: bool = True
+        ):
+            """
+            Orchestrator-based iterative workflow.
+            """
+            iteration = 0
+            
+            while max_iterations is None or iteration < max_iterations:
+                iteration += 1
+                print(f"\n[Iteration {iteration}]\n")
+                
+                try:
+                    # Step 1: Review state
+                    state = self._review_current_state()
+                    
+                    # Step 2: Generate ideas (async, low priority)
+                    if iteration % 3 == 0:
+                        task_id = self.agent.proactive_orchestrator.submit_proactive_task(
+                            "proactive.generate_ideas",
+                            vera_instance=self.agent,
+                            context=state
+                        )
+                        # Don't wait - let it run in background
+                    
+                    # Step 3: Generate next steps
+                    task_id = self.agent.proactive_orchestrator.submit_proactive_task(
+                        "proactive.generate_next_steps",
+                        vera_instance=self.agent,
+                        context=state
+                    )
+                    
+                    # Step 4: Generate actions
+                    actions_task = self.agent.proactive_orchestrator.submit_proactive_task(
+                        "proactive.generate_actions",
+                        vera_instance=self.agent,
+                        context=state
+                    )
+                    
+                    # Wait for actions
+                    actions_result = self.agent.orchestrator.wait_for_result(
+                        actions_task,
+                        timeout=30.0
+                    )
+                    
+                    # Step 5: Execute high-priority actions
+                    if auto_execute and actions_result:
+                        actions = actions_result.result or []
+                        
+                        for action in actions:
+                            if isinstance(action, dict) and action.get('priority') == 'high':
+                                # Submit execution task (async)
+                                exec_task = self.agent.proactive_orchestrator.submit_proactive_task(
+                                    "proactive.execute_action",
+                                    vera_instance=self.agent,
+                                    action=action
+                                )
+                                # Limit concurrent executions
+                                break
+                    
+                    # Step 6: Save checkpoint
+                    self.save_focus_board()
+                    
+                    # Wait for next iteration
+                    time.sleep(iteration_interval)
+                    
+                except Exception as e:
+                    print(f"[Error] {e}")
+                    import traceback
+                    traceback.print_exc()
+                    
+    def iterative_workflow_old(self, max_iterations: Optional[int] = None, 
                           iteration_interval: int = 300,
                           auto_execute: bool = True):
         """

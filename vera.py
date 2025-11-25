@@ -569,7 +569,39 @@ class Vera:
         
         # Combined memory = short-term + long-term
         self.memory = CombinedMemory(memories=[self.buffer_memory, self.vector_memory])
-        
+        import Vera.vera_tasks 
+        from Vera.orchestration import (
+            Orchestrator, 
+            ProactiveFocusOrchestrator,
+            TaskType,
+            task,
+            proactive_task,
+            registry
+        )
+
+        # Initialize orchestrator
+        self.orchestrator = Orchestrator(
+            config={
+                TaskType.LLM: 3,        # 3 workers for LLM tasks
+                TaskType.WHISPER: 1,    # 1 worker for audio
+                TaskType.TOOL: 4,       # 4 workers for tool execution
+                TaskType.ML_MODEL: 1,   # 1 worker for ML models
+                TaskType.BACKGROUND: 2, # 2 workers for background tasks
+                TaskType.GENERAL: 2     # 2 workers for general tasks
+            },
+            redis_url="redis://localhost:6379",  # Optional: for distributed setup
+            cpu_threshold=75.0
+        )
+
+        # Start orchestrator
+        self.orchestrator.start()
+
+        # Integrate with ProactiveFocusManager
+        self.proactive_orchestrator = ProactiveFocusOrchestrator(
+            self.orchestrator, 
+            self.focus_manager
+        )
+
         # Playwright browser setup
         self.sync_browser = create_sync_playwright_browser()
         self.playwright_toolkit = PlayWrightBrowserToolkit.from_browser(sync_browser=self.sync_browser)
@@ -685,245 +717,333 @@ class Vera:
         
         return ai_output
 
-    # --- Save memory entry ---
-    def save_to_memory(self, user_input, llm_output):
-        """Save both user query and LLM reply to shared memory."""
-        self.buffer_memory.chat_memory.add_user_message(user_input)
-        self.buffer_memory.chat_memory.add_ai_message(llm_output)
-        self.vector_memory.save_context({"input": user_input}, {"output": llm_output})
-        self.vectorstore.persist()
-        # self.mem.add_session_memory(self.sess.id, f"input: {user_input}\noutput: {llm_output}", "Thought", {"topic": "decision"}, promote=True)
 
-
-    # def execute_tool_chain(self, query):
-    #     """Plan and execute multiple tools in sequence, replacing inputs based on previous outputs."""
-
-    #     planning_prompt = f"""
-    #         You are a planning assistant.
-    #         Available tools: {[(tool.name, tool.description) for tool in self.tools]}.
-    #         The query is: {query}
-
-    #         Plan a sequence of tool calls to solve the request.
-
-    #         Rules for planning:
-    #         - If a tool's input depends on the output data of a previous tool, write "{{prev}}" as the placeholder for that data.
-    #         - DO NOT try to guess values that depend on previous outputs.
-    #         - Use the exact tool names provided above.
-
-    #         Respond ONLY in this pure JSON format:
-    #         [
-    #         {{ "tool": "<tool name>", "input": "<tool input or '{{prev}}'>" }},
-    #         {{ "tool": "<tool name>", "input": "<tool input or '{{prev}}'>" }}
-    #         ]
-    #         """
-    #     plan_json=""
-    #     # Get the plan from the LLM and clean up any leading/trailing ```json or ```
-    #     for r in self.stream_llm(self.deep_llm, planning_prompt):
-    #         # print(r)
-    #         yield(r)
-    #         plan_json += r
-
-    #     print(f"\n[ Planning Agent ]\nPlan: {plan_json}")
-
-    #     for prefix in ("```json", "```"):
-    #         if plan_json.startswith(prefix):
-    #             plan_json = plan_json[len(prefix):].strip()
-    #     if plan_json.endswith("```"):
-    #         plan_json = plan_json[:-3].strip()
-
-    #     try:
-    #         tool_plan = json.loads(plan_json)
-    #     except Exception as e:
-    #         print(f"Failed to parse tool plan JSON: {e}")
-    #         return f"Planning failed: {e} \n\n{plan_json}"
-
-    #     tool_outputs = {}
-    #     prev_output = None
-
-    #     for step in tool_plan:
-    #         print(f"Executing step: {step}")
-    #         yield(f"Executing step: {step}")
-    #         tool_name = step.get("tool")
-    #         tool_input = step.get("input", "")
-    #         tool_input = tool_input.replace("{prev}", str(prev_output if prev_output is not None else ""))
-    #         print(f"{tool_name} input: {tool_input}")
-    #         yield((f"{tool_name} input: {tool_input}"))
-    #         # Find tool
-    #         tool = next((t for t in self.tools if t.name == tool_name), None)
-    #         if not tool:
-    #             tool_outputs[tool_name] = f"Tool not found: {tool_name}"
-    #             prev_output = None
-    #             continue
-
-    #         try:
-    #             if hasattr(tool, "run") and callable(tool.run):
-    #                 func = tool.run
-    #             elif hasattr(tool, "func") and callable(tool.func):
-    #                 func = tool.func
-    #             elif callable(tool):
-    #                 func = tool
-    #             else:
-    #                 raise ValueError(f"Tool is not callable")
-
-    #             collected = []
-    #             result=""
-    #             try:
-    #                 for r in func(tool_input):
-    #                     # print(f"Step result: {r}")
-    #                     yield r
-    #                     collected.append(r)
-    #             except TypeError:
-    #                 # Not iterable — call again and yield single result
-    #                 result = func(tool_input)
-    #                 # print(f"Step result: {result}")
-    #                 yield result
-    #             else:
-    #                 # You can combine collected results here if needed:
-    #                 result = "".join(str(c) for c in collected)
-    #                 yield result
-    #             # store result or return if you want
-    #             # tool_outputs[tool_name] = result
-    #             prev_output = result
-    #             tool_outputs[tool_name] = result
-    #             self.save_to_memory(query, tool_outputs[tool_name])
-
-    #         except Exception as e:
-    #             tool_outputs[tool_name] = f"Error executing {tool_name}: {e}"
-    #             prev_output = None
-    #             print(tool_outputs) 
-
-    #     # Merge results into a final answer
-    #     merge_prompt = f"""
-    #         The query was: {query}
-    #         The following tools were executed with their outputs:
-    #         {tool_outputs}
-
-    #         Create a final answer that combines all the results.
-    #         """
-    #     final_answer = self.deep_llm.invoke(merge_prompt)
-    #     return final_answer
-
-    # --- Coordinator ---
-#     def run(self, query):
-#         self.mem.add_session_memory(self.sess.id, f"{query}", "Query", {"topic": "query"})
-#         # Quick triage with Fast Agent (streamed)
-#         print("\n[ Triage Agent ]\n")
-#         triage_prompt =""
-#         fast_response=""
-#         deep_response=""
-#         reasoning_response=""
-#         tool_chain_response=""
-#         tool_response=""
-#         # if self.triage_memory is True: triage_prompt += (f"Given the conversation so far: {self.buffer_memory.load_memory_variables({})['chat_history']}\n")
-#         # if self.long_term_triage is True: triage_prompt += (f"Given the conversation so far: {self.buffer_memory.load_memory_variables({})['chat_history']}\n")
-#         triage_prompt += (
-#                     f"""
-#                     Classify this Query into one of the following categories:
-#                         - 'focus'      → Change the focus of background thought.
-#                         - 'proactive'  → Trigger proactive thinking.
-#                         - 'simple'     → Simple textual response.
-#                         - 'toolchain'  → Requires a series of tools or step-by-step planning and execution.
-#                         - 'reasoning'  → Requires deep reasoning.
-#                         - 'complex'    → Complex written response with high-quality output.
-#                         - 'scheduling' → Requires scheduling or time management tasks.
-
-#                     Current focus: {self.focus_manager.focus}  
-#                     If you detect a change in focus or topic, you may specify new focus terms by appending the output with the.
-
-#                     Available tools: {', '.join(t.name for t in self.tools)}
-
-#                     Query: {query}
-
-#                     Rules:
-#                     - If 'simple' is the chosen category, disregard these rules and answer the Query using as many words as you like.
-#                     - Respond with a single classification term (e.g., 'simple', 'tool', 'complex') on the first line, then any optional extra info.
-#                     - You may optionally append focus terms.
-#                     - If setting a 'focus', also specify the focus term to set (e.g., "focus project management").
-#                     - Do NOT provide reasoning in your output nor formatting not mentioned in this prompt.
-#                     """
-# #                   - 'tool'       → Requires execution of a single tool.
-#         )
-#         for r in self.stream_llm(self.fast_llm, triage_prompt):
-#             fast_response += r
-#         self.mem.add_session_memory(self.sess.id, f"{fast_response}", "Triage", {"topic": "fast"})
-        
-#         if "focus" in fast_response.lower():
-#             # If the query is about focus, use the proactive focus manager
-#             print("\n[ Proactive Focus Manager ]\n")
-#             self.focus_manager.set_focus(fast_response.lower().split("focus", 1)[-1].strip())
-#             # proactive_response = self.focus_manager.relate_to_focus(query, fast_response)
-#             # self.save_to_memory(query, proactive_response)
-#             # return {"fast": fast_response}
-        
-#         # Decide routing
-#         if "complex" in fast_response.lower():
-#             print("\n[ Deep Agent ]\n")
-#             for r in self.stream_llm_with_memory(self.deep_llm, query, extra_context=fast_response):
-#                 deep_response += r
-#             self.save_to_memory(query, deep_response) # Save to legacy memory
-#             return {"fast": fast_response, "deep": deep_response}
-        
-#         elif "reasoning" in fast_response.lower():
-#             print("\n[ Reasoning Agent ]\n")
-#             for r in self.stream_llm_with_memory(self.reasoning_llm, query, extra_context=fast_response):
-#                 reasoning_response += r
-#             self.save_to_memory(query, reasoning_response) # Save to legacy memory
-#             return {"fast": fast_response, "reasoning": reasoning_response}
-        
-#         elif "toolchain" in fast_response.lower():
-#             print("\n[ Tool Chain Agent ]\n")
-#             for r in self.toolchain.execute_tool_chain(query):
-#                 tool_chain_response += str(r)
-#             self.save_to_memory(query, tool_chain_response)
-#             self.mem.add_session_memory(self.sess.id, f"{tool_chain_response}", "Response", {"topic": "toolchain"}, promote=True)
-#             return {"fast": fast_response, "toolchain": tool_chain_response}
-                
-#         elif "tool" in fast_response.lower():
-#             print("\n[ Tool Agent ]\n")
-
-#             tool_response = self.light_agent.invoke(query)         
-            
-#             # Save both the user query and the full tool agent output (including intermediate steps if available)
-
-#             if hasattr(self.light_agent, "agent_executor") and hasattr(self.light_agent.agent_executor, "intermediate_steps"):
-#                 # If intermediate steps are available, save them as well
-#                 intermediate_steps = self.light_agent.agent_executor.intermediate_steps
-#                 self.save_to_memory(query, {"output": tool_response['output'], "intermediate_steps": tool_response['intermediate_steps']})
-#                 return {"fast": fast_response, "tool": tool_response['output']}
-#             else:
-#                 self.save_to_memory(query, tool_response)
-#                 self.mem.add_session_memory(self.sess.id, f"{tool_response}", "Response", {"topic": "tool"}, promote=True)
-#             return {"fast": fast_response, "tool": tool_response}
-
-#         elif "proactive" in fast_response.lower():
-#             # If the query is about proactive thinking, use the proactive focus manager
-#             print("\n[ Proactive Focus Manager ]\n")
-#             proactive_thought = self.focus_manager._generate_proactive_thought()
-#             if proactive_thought:
-#                 self.focus_manager.add_to_focus_board("actions", proactive_thought)
-#                 self.save_to_memory(query, proactive_thought)
-#                 self.mem.add_session_memory(self.sess.id, f"{proactive_thought}", "Thought", {"topic": "proactive"}, promote=True)
-#                 return {"fast": fast_response, "proactive": proactive_thought}
-#             else:
-#                 return {"fast": fast_response, "proactive": "No proactive thought generated."}
-        
-#         elif "scheduling" in fast_response.lower():
-#             print("\n[ Scheduling Assistant ]\n")
-#             scheduling_response = self.executive_instance.main(query)
-#             self.save_to_memory(query, scheduling_response)
-#             self.mem.add_session_memory(self.sess.id, f"{scheduling_response}", "Response", {"topic": "scheduling"}, promote=True)
-#             return {"fast": fast_response, "scheduling": scheduling_response}
-        
-#         else:
-#         #     # Simple case, just fast agent again
-#         #     final_fast_response = self.stream_llm_with_memory(self.fast_llm, query, extra_context=fast_response)
-#         #     self.save_to_memory(query, final_fast_response)
-#         #     return {"fast": final_fast_response}
-#             self.save_to_memory(query, fast_response)
-#             return {"fast": fast_response}
-        
-        
     def async_run(self, query):
+        """
+        Fully orchestrated async_run - all execution through orchestrator.
+        Preserves streaming behavior of original.
+        ALWAYS yields - guaranteed to be a generator.
+        """
+        
+        # Log query to memory
+        if hasattr(self, 'mem') and hasattr(self, 'sess'):
+            self.mem.add_session_memory(self.sess.id, query, "Query", {"topic": "plan"}, promote=True)
+        
+        # ========================================================================
+        # STEP 1: TRIAGE (streaming through orchestrator)
+        # ========================================================================
+        
+        # Check if orchestrator is available
+        use_orchestrator = hasattr(self, 'orchestrator') and self.orchestrator and self.orchestrator.running
+        
+        full_triage = ""
+        
+        if use_orchestrator:
+            try:
+                # Submit triage task
+                triage_task_id = self.orchestrator.submit_task(
+                    "llm.triage",
+                    vera_instance=self,
+                    query=query
+                )
+                
+                # Stream triage result
+                for chunk in self.orchestrator.stream_result(triage_task_id, timeout=10.0):
+                    full_triage += chunk
+                    yield chunk  # ← Streams to user!
+            
+            except TimeoutError:
+                # Triage timeout - fallback to direct
+                print("[Orchestrator] Triage timeout, using direct fallback")
+                for chunk in self._triage_direct(query):
+                    full_triage += chunk
+                    yield chunk
+            
+            except Exception as e:
+                # Orchestrator error - fallback to direct
+                print(f"[Orchestrator] Triage failed: {e}, using direct fallback")
+                for chunk in self._triage_direct(query):
+                    full_triage += chunk
+                    yield chunk
+        
+        else:
+            # No orchestrator - use direct
+            for chunk in self._triage_direct(query):
+                full_triage += chunk
+                yield chunk
+        
+        # Log triage
+        if hasattr(self, 'mem') and hasattr(self, 'sess'):
+            self.mem.add_session_memory(self.sess.id, full_triage, "Response", {"topic": "triage"}, promote=True)
+        
+        # ========================================================================
+        # STEP 2: ROUTE based on triage (all through orchestrator)
+        # ========================================================================
+        
+        triage_lower = full_triage.lower()
+        total_response = ""
+        
+        # Focus change
+        if "focus" in triage_lower:
+            print("\n[ Proactive Focus Manager ]\n")
+            if hasattr(self, 'focus_manager'):
+                new_focus = full_triage.lower().split("focus", 1)[-1].strip()
+                self.focus_manager.set_focus(new_focus)
+                message = f"\n✓ Focus changed to: {self.focus_manager.focus}\n"
+                yield message
+                total_response = message
+        
+        # Proactive thinking (background task via orchestrator)
+        elif triage_lower.startswith("proactive"):
+            print("\n[ Proactive Focus Manager ]\n")
+            
+            if use_orchestrator:
+                try:
+                    # Submit as background task (don't wait)
+                    task_id = self.orchestrator.submit_task(
+                        "proactive.generate_thought",
+                        vera_instance=self
+                    )
+                    message = "\n[Proactive thought generation started in background]\n"
+                    yield message
+                    total_response = message
+                
+                except Exception as e:
+                    print(f"[Orchestrator] Failed to submit proactive task: {e}")
+                    # Fallback to direct
+                    if hasattr(self, 'focus_manager') and self.focus_manager.focus:
+                        # Start iterative workflow
+                        self.focus_manager.iterative_workflow(
+                            max_iterations=None,
+                            iteration_interval=600,
+                            auto_execute=True
+                        )
+                        message = "\n[Proactive workflow started]\n"
+                        yield message
+                        total_response = message
+                    else:
+                        message = "\n[No active focus for proactive thinking]\n"
+                        yield message
+                        total_response = message
+            
+            else:
+                # No orchestrator - direct
+                if hasattr(self, 'focus_manager') and self.focus_manager.focus:
+                    self.focus_manager.iterative_workflow(
+                        max_iterations=None,
+                        iteration_interval=600,
+                        auto_execute=True
+                    )
+                    message = "\n[Proactive workflow started]\n"
+                    yield message
+                    total_response = message
+                else:
+                    message = "\n[No active focus]\n"
+                    yield message
+                    total_response = message
+        
+        # Toolchain (streaming through orchestrator)
+        elif triage_lower.startswith("toolchain") or "tool" in triage_lower:
+            print("\n[ Tool Chain Agent ]\n")
+            
+            if use_orchestrator:
+                try:
+                    # Submit toolchain task
+                    task_id = self.orchestrator.submit_task(
+                        "toolchain.execute",
+                        vera_instance=self,
+                        query=query
+                    )
+                    
+                    # Stream toolchain output
+                    for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
+                        total_response += str(chunk)
+                        yield chunk  # ← Streams to user!
+                
+                except Exception as e:
+                    print(f"[Orchestrator] Toolchain failed: {e}, using direct fallback")
+                    # Fallback to direct
+                    for chunk in self.toolchain.execute_tool_chain(query):
+                        total_response += str(chunk)
+                        yield chunk
+            
+            else:
+                # No orchestrator - direct
+                for chunk in self.toolchain.execute_tool_chain(query):
+                    total_response += str(chunk)
+                    yield chunk
+            
+            # Log response
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    total_response,
+                    "Response",
+                    {"topic": "response", "agent": "toolchain"}
+                )
+        
+        # Reasoning (streaming through orchestrator)
+        elif triage_lower.startswith("reasoning"):
+            print("\n[ Reasoning Agent ]\n")
+            
+            if use_orchestrator:
+                try:
+                    # Submit reasoning task
+                    task_id = self.orchestrator.submit_task(
+                        "llm.generate",
+                        vera_instance=self,
+                        llm_type="reasoning",
+                        prompt=query
+                    )
+                    
+                    # Stream reasoning output
+                    for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
+                        total_response += chunk
+                        yield chunk  # ← Streams to user!
+                
+                except Exception as e:
+                    print(f"[Orchestrator] Reasoning failed: {e}, using direct fallback")
+                    # Fallback to direct
+                    for chunk in self.stream_llm(self.reasoning_llm, query):
+                        total_response += chunk
+                        yield chunk
+            
+            else:
+                # No orchestrator - direct
+                for chunk in self.stream_llm(self.reasoning_llm, query):
+                    total_response += chunk
+                    yield chunk
+            
+            # Log response
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    total_response,
+                    "Response",
+                    {"topic": "response", "agent": "reasoning"}
+                )
+        
+        # Complex (streaming through orchestrator)
+        elif triage_lower.startswith("complex"):
+            print("\n[ Deep Reasoning Agent ]\n")
+            
+            if use_orchestrator:
+                try:
+                    # Submit complex task
+                    task_id = self.orchestrator.submit_task(
+                        "llm.generate",
+                        vera_instance=self,
+                        llm_type="deep",
+                        prompt=query
+                    )
+                    
+                    # Stream deep output
+                    for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
+                        total_response += chunk
+                        yield chunk  # ← Streams to user!
+                
+                except Exception as e:
+                    print(f"[Orchestrator] Complex failed: {e}, using direct fallback")
+                    # Fallback to direct
+                    for chunk in self.stream_llm(self.deep_llm, query):
+                        total_response += chunk
+                        yield chunk
+            
+            else:
+                # No orchestrator - direct
+                for chunk in self.stream_llm(self.deep_llm, query):
+                    total_response += chunk
+                    yield chunk
+            
+            # Log response
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    total_response,
+                    "Response",
+                    {"topic": "response", "agent": "complex"}
+                )
+        
+        # Simple/Default - Fast LLM (streaming through orchestrator)
+        else:
+            print("\n[ Fast Agent ]\n")
+            
+            if use_orchestrator:
+                try:
+                    # Submit fast task
+                    task_id = self.orchestrator.submit_task(
+                        "llm.generate",
+                        vera_instance=self,
+                        llm_type="fast",
+                        prompt=query
+                    )
+                    
+                    # Stream fast output
+                    for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
+                        total_response += chunk
+                        yield chunk  # ← Streams to user!
+                
+                except Exception as e:
+                    print(f"[Orchestrator] Fast LLM failed: {e}, using direct fallback")
+                    # Fallback to direct
+                    for chunk in self.stream_llm(self.fast_llm, query):
+                        total_response += chunk
+                        yield chunk
+            
+            else:
+                # No orchestrator - direct
+                for chunk in self.stream_llm(self.fast_llm, query):
+                    total_response += chunk
+                    yield chunk
+            
+            # Log response
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    total_response,
+                    "Response",
+                    {"topic": "response", "agent": "fast"}
+                )
+        
+        # ========================================================================
+        # STEP 3: SAVE TO MEMORY
+        # ========================================================================
+        
+        if total_response:
+            self.save_to_memory(query, total_response)
+
+
+    # ============================================================================
+    # HELPER: Direct triage fallback
+    # ============================================================================
+
+    def _triage_direct(self, query):
+        """
+        Direct triage without orchestrator (fallback).
+        Generator that yields chunks.
+        """
+        triage_prompt = f"""
+        Classify this Query into one of the following categories:
+            - 'focus'      → Change the focus of background thought.
+            - 'proactive'  → Trigger proactive thinking.
+            - 'simple'     → Simple textual response.
+            - 'toolchain'  → Requires a series of tools or step-by-step planning.
+            - 'reasoning'  → Requires deep reasoning.
+            - 'complex'    → Complex written response with high-quality output.
+
+        Current focus: {self.focus_manager.focus if hasattr(self, 'focus_manager') else 'None'}
+        Available tools: {', '.join(t.name for t in self.tools) if hasattr(self, 'tools') else 'None'}
+
+        Query: {query}
+
+        Respond with a single classification term (e.g., 'simple', 'toolchain', 'complex') on the first line.
+        """
+        
+        for chunk in self.stream_llm(self.fast_llm, triage_prompt):
+            yield chunk
+
+
+    def async_run_old(self, query):
         self.mem.add_session_memory(self.sess.id, f"{query}", "Query", {"topic": "plan"}, promote=True)
         # Stream triage prompt output chunk-by-chunk
         # - 'tool'       → Requires execution of a single tool.

@@ -1,7 +1,6 @@
 // =====================================================================
-// Modern Interactive Chat UI - INTEGRATED VERSION
-// Fixes: alignment, graph focus, menu positioning, tools, wider bubbles
-// All duplicate functions merged with improved logging
+// Modern Interactive Chat UI - COMPLETE FIX
+// Fixes: Canvas buttons, mermaid rendering, auto-focus, full-width bubbles
 // =====================================================================
 
 (() => {
@@ -489,6 +488,9 @@
         setTimeout(() => {
             this.addControlBar();
         }, 100);
+        
+        // Start timestamp updater
+        this.startTimestampUpdater();
     };
     
     VeraChat.prototype.ensureToolsLoaded = async function() {
@@ -502,7 +504,26 @@
     };
     
     // =====================================================================
-    // Control Bar - INTEGRATED WITH ENHANCED LOGGING
+    // Timestamp Updater - NEW
+    // =====================================================================
+    
+    VeraChat.prototype.startTimestampUpdater = function() {
+        // Update timestamps every minute
+        setInterval(() => {
+            document.querySelectorAll('.message-timestamp').forEach(el => {
+                const messageId = el.closest('.message')?.id;
+                if (messageId) {
+                    const message = this.messages.find(m => m.id === messageId);
+                    if (message && message.timestamp) {
+                        el.textContent = this.formatTimestamp(message.timestamp);
+                    }
+                }
+            });
+        }, 60000); // Update every minute
+    };
+    
+    // =====================================================================
+    // Control Bar - ENHANCED WITH NEW BUTTONS
     // =====================================================================
     
     VeraChat.prototype.addControlBar = function() {
@@ -565,6 +586,25 @@
                 <div class="ctrl-divider"></div>
                 
                 <button class="ctrl-btn" 
+                        onclick="app.openChatSettings()"
+                        title="Chat settings">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"/>
+                    </svg>
+                </button>
+                
+                <button class="ctrl-btn" 
+                        onclick="app.openChatHistory()"
+                        title="Chat history">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                        <path d="M12 7v5l4 2"/>
+                    </svg>
+                </button>
+                
+                <button class="ctrl-btn" 
                         onclick="app.clearChat()"
                         title="Clear chat">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -582,6 +622,23 @@
                         <polyline points="7 10 12 15 17 10"/>
                         <line x1="12" y1="15" x2="12" y2="3"/>
                     </svg>
+                </button>
+            </div>
+            
+            <div class="control-search-wrapper">
+                <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" 
+                       id="chat-search-input" 
+                       class="chat-search-input" 
+                       placeholder="Search chat..."
+                       oninput="app.searchChat(this.value)">
+                <button class="search-clear-btn" 
+                        onclick="app.clearSearch()"
+                        style="display: none;">
+                    ✕
                 </button>
             </div>
             
@@ -621,6 +678,92 @@
     };
 
     // ============================================================================
+    // NEW: Chat Search
+    // ============================================================================
+    
+    VeraChat.prototype.searchChat = function(query) {
+        const clearBtn = document.querySelector('.search-clear-btn');
+        if (clearBtn) {
+            clearBtn.style.display = query ? 'block' : 'none';
+        }
+        
+        if (!query) {
+            // Clear highlights
+            document.querySelectorAll('.message.search-hidden').forEach(el => {
+                el.classList.remove('search-hidden');
+            });
+            document.querySelectorAll('.search-highlight').forEach(el => {
+                const text = el.textContent;
+                el.replaceWith(document.createTextNode(text));
+            });
+            return;
+        }
+        
+        const lowerQuery = query.toLowerCase();
+        
+        document.querySelectorAll('.message').forEach(messageEl => {
+            const message = this.messages.find(m => m.id === messageEl.id);
+            if (!message) return;
+            
+            const content = message.content.toLowerCase();
+            if (content.includes(lowerQuery)) {
+                messageEl.classList.remove('search-hidden');
+                // Highlight matches
+                this.highlightText(messageEl, query);
+            } else {
+                messageEl.classList.add('search-hidden');
+            }
+        });
+    };
+    
+    VeraChat.prototype.highlightText = function(element, query) {
+        const walker = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+        
+        const textNodes = [];
+        while (walker.nextNode()) {
+            textNodes.push(walker.currentNode);
+        }
+        
+        const regex = new RegExp(`(${query})`, 'gi');
+        
+        textNodes.forEach(node => {
+            const text = node.textContent;
+            if (regex.test(text)) {
+                const span = document.createElement('span');
+                span.innerHTML = text.replace(regex, '<span class="search-highlight">$1</span>');
+                node.replaceWith(...span.childNodes);
+            }
+        });
+    };
+    
+    VeraChat.prototype.clearSearch = function() {
+        const input = document.getElementById('chat-search-input');
+        if (input) {
+            input.value = '';
+            this.searchChat('');
+        }
+    };
+    
+    // ============================================================================
+    // NEW: Placeholder functions for settings and history
+    // ============================================================================
+    
+    VeraChat.prototype.openChatSettings = function() {
+        this.setControlStatus('⚙️ Chat settings (coming soon)');
+        console.log('Chat settings clicked - to be implemented');
+    };
+    
+    VeraChat.prototype.openChatHistory = function() {
+        this.setControlStatus('📜 Chat history (coming soon)');
+        console.log('Chat history clicked - to be implemented');
+    };
+
+    // ============================================================================
     // CSS - Add this or replace existing control bar styles
     // ============================================================================
 
@@ -635,6 +778,7 @@
         border-bottom: 1px solid var(--border, #334155);
         min-height: 32px;
         flex-shrink: 0;
+        gap: 12px;
     }
 
     .control-group-sleek {
@@ -690,6 +834,56 @@
         margin: 0 4px;
     }
 
+    .control-search-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+        flex: 1;
+        max-width: 300px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 10px;
+        color: var(--text-muted, #94a3b8);
+        pointer-events: none;
+    }
+
+    .chat-search-input {
+        flex: 1;
+        padding: 6px 30px 6px 32px;
+        background: var(--bg, #0f172a);
+        border: 1px solid var(--border, #334155);
+        border-radius: 4px;
+        color: var(--text, #e2e8f0);
+        font-size: 12px;
+        outline: none;
+        transition: all 0.2s ease;
+    }
+
+    .chat-search-input:focus {
+        border-color: var(--accent, #3b82f6);
+        box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+    }
+
+    .search-clear-btn {
+        position: absolute;
+        right: 8px;
+        background: transparent;
+        border: none;
+        color: var(--text-muted, #94a3b8);
+        cursor: pointer;
+        padding: 2px 4px;
+        border-radius: 2px;
+        font-size: 14px;
+        transition: all 0.15s ease;
+    }
+
+    .search-clear-btn:hover {
+        color: var(--text, #e2e8f0);
+        background: var(--border, #334155);
+    }
+
     .control-status-sleek {
         font-size: 11px;
         color: var(--text-muted, #94a3b8);
@@ -711,6 +905,19 @@
         }
     }
 
+    /* Search Highlighting */
+    .message.search-hidden {
+        display: none !important;
+    }
+
+    .search-highlight {
+        background: var(--warning, #fbbf24);
+        color: var(--bg, #0f172a);
+        padding: 2px 4px;
+        border-radius: 2px;
+        font-weight: 600;
+    }
+
     /* Override old control bar styles if present */
     .chat-control-bar {
         display: none !important;
@@ -724,24 +931,6 @@
         style.textContent = sleekControlBarStyles;
         document.head.appendChild(style);
     }
-    VeraChat.prototype.updateControlBar = function() {
-        const canvasBtn = document.getElementById('toggle-canvas-focus');
-        const ttsBtn = document.getElementById('toggle-tts');
-        const sttBtn = document.getElementById('toggle-stt');
-        
-        if (canvasBtn) {
-            canvasBtn.className = `control-btn ${this.canvasAutoFocus ? 'active' : ''}`;
-            canvasBtn.querySelector('.control-icon').textContent = this.canvasAutoFocus ? '🎯' : '⏸️';
-        }
-        
-        if (ttsBtn) {
-            ttsBtn.className = `control-btn ${this.ttsEnabled ? 'active' : ''}`;
-        }
-        
-        if (sttBtn) {
-            sttBtn.className = `control-btn ${this.sttActive ? 'active recording' : ''}`;
-        }
-    };
     
     VeraChat.prototype.setControlStatus = function(message, duration = 3000) {
         const status = document.getElementById('control-status');
@@ -1020,13 +1209,21 @@
         messageEl.dataset.graphNodeId = message.graph_node_id || `msg_${message.id}`;
         messageEl.dataset.showingSource = 'false';
         
-        // Make clickable
-        messageEl.onclick = (e) => {
-            if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
-                return;
-            }
-            this.toggleMessageMenu(message.id);
-        };
+        // Detect if message has wide content (code blocks, JSON, tables, diagrams)
+        const hasWideContent = this.hasWideContent(message.content);
+        if (hasWideContent) {
+            messageEl.classList.add('message-wide');
+        }
+        
+        // Make clickable ONLY for non-system messages
+        if (message.role !== 'system') {
+            messageEl.onclick = (e) => {
+                if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
+                    return;
+                }
+                this.toggleMessageMenu(message.id);
+            };
+        }
         
         // Avatar
         const avatar = document.createElement('div');
@@ -1097,11 +1294,25 @@
         
         // Auto-focus canvas if enabled
         if (this.canvasAutoFocus && message.role === 'assistant') {
-            this.checkAndAutoRenderCanvas(message);
+            setTimeout(() => {
+                this.checkAndAutoRenderCanvas(message);
+            }, 300);
         }
         
         container.scrollTop = container.scrollHeight;
     };
+    
+    // NEW: Detect if content has elements that need full width
+    VeraChat.prototype.hasWideContent = function(content) {
+        return content.includes('```') || 
+               content.includes('graph ') ||
+               content.includes('sequenceDiagram') ||
+               content.includes('classDiagram') ||
+               content.includes('flowchart') ||
+               (content.startsWith('{') && content.includes('"')) ||
+               (content.startsWith('[') && content.includes('"'));
+    };
+    
     VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
         const messageEl = document.getElementById(messageId);
         if (!messageEl) return;
@@ -1221,7 +1432,7 @@
         if (window.mermaid) {
             messageEl.querySelectorAll('.mermaid-diagram').forEach((block, index) => {
                 // Skip if already rendered
-                if (block.querySelector('svg')) return;
+                if (block.querySelector('svg') || block.querySelector('.mermaid-wrapper')) return;
                 
                 const id = `mermaid-${messageId}-${index}`;
                 const mermaidCode = block.textContent.trim();
@@ -1231,7 +1442,39 @@
                 try {
                     // Use the async render API
                     window.mermaid.render(id + '-svg', mermaidCode).then(result => {
-                        block.innerHTML = result.svg;
+                        // Store original code
+                        block.dataset.mermaidSource = mermaidCode;
+                        block.dataset.showing = 'rendered';
+                        
+                        // Create wrapper with toggle button
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'mermaid-wrapper';
+                        
+                        const toggleBtn = document.createElement('button');
+                        toggleBtn.className = 'mermaid-toggle-btn';
+                        toggleBtn.innerHTML = '📝';
+                        toggleBtn.title = 'Toggle source';
+                        toggleBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            this.toggleMermaid(block);
+                        };
+                        
+                        const svgContainer = document.createElement('div');
+                        svgContainer.className = 'mermaid-rendered';
+                        svgContainer.innerHTML = result.svg;
+                        
+                        const sourceContainer = document.createElement('pre');
+                        sourceContainer.className = 'mermaid-source';
+                        sourceContainer.style.display = 'none';
+                        sourceContainer.textContent = mermaidCode;
+                        
+                        wrapper.appendChild(toggleBtn);
+                        wrapper.appendChild(svgContainer);
+                        wrapper.appendChild(sourceContainer);
+                        
+                        block.innerHTML = '';
+                        block.appendChild(wrapper);
+                        
                         console.log('✅ Mermaid rendered successfully');
                     }).catch(err => {
                         console.error('❌ Mermaid render error:', err);
@@ -1263,6 +1506,28 @@
                     `;
                 }
             });
+        }
+    };
+
+    // NEW: Toggle mermaid between rendered and source
+    VeraChat.prototype.toggleMermaid = function(block) {
+        const showing = block.dataset.showing;
+        const rendered = block.querySelector('.mermaid-rendered');
+        const source = block.querySelector('.mermaid-source');
+        const toggleBtn = block.querySelector('.mermaid-toggle-btn');
+        
+        if (showing === 'rendered') {
+            rendered.style.display = 'none';
+            source.style.display = 'block';
+            block.dataset.showing = 'source';
+            toggleBtn.innerHTML = '🎨';
+            toggleBtn.title = 'Show diagram';
+        } else {
+            rendered.style.display = 'block';
+            source.style.display = 'none';
+            block.dataset.showing = 'rendered';
+            toggleBtn.innerHTML = '📝';
+            toggleBtn.title = 'Show source';
         }
     };
 
@@ -1395,6 +1660,7 @@
         return (firstLine.split(',').length > 1 || firstLine.split('\t').length > 1);
     };
     
+    // FIXED: JSON renders in tree mode by default
     VeraChat.prototype.renderInlineJSON = function(code) {
         try {
             const parsed = JSON.parse(code);
@@ -1404,12 +1670,12 @@
                 <div class="inline-json-viewer">
                     <div class="format-toolbar">
                         <span class="format-label">JSON</span>
-                        <button class="format-btn" onclick="app.toggleJSONView(this); event.stopPropagation();">Tree</button>
+                        <button class="format-btn" onclick="app.toggleJSONView(this); event.stopPropagation();">Raw</button>
                         <button class="format-btn" onclick="app.copyFormatContent(this); event.stopPropagation();">Copy</button>
                     </div>
                     <div class="json-content">
-                        <pre class="json-formatted"><code class="language-json">${this.escapeHtml(formatted)}</code></pre>
-                        <div class="json-tree" style="display:none;">${this.createCompactJSONTree(parsed)}</div>
+                        <pre class="json-formatted" style="display:none;"><code class="language-json">${this.escapeHtml(formatted)}</code></pre>
+                        <div class="json-tree">${this.createCompactJSONTree(parsed)}</div>
                     </div>
                 </div>
             `;
@@ -1457,15 +1723,16 @@
         return tableHTML;
     };
     
+    // FIXED: Canvas button now properly connected
     VeraChat.prototype.renderCodeBlock = function(language, code) {
         const codeId = 'code_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         return `
-            <div class="enhanced-code-block" data-code-id="${codeId}">
+            <div class="enhanced-code-block" data-code-id="${codeId}" data-code-lang="${language}" data-code-content="${this.escapeHtml(code).replace(/"/g, '&quot;')}">
                 <div class="code-toolbar">
                     <span class="code-language">${language.toUpperCase()}</span>
                     <div class="code-actions">
                         <button class="code-action-btn" onclick="app.copyCodeBlock(this); event.stopPropagation();" title="Copy">📋</button>
-                        <button class="code-action-btn" onclick="app.showCanvasModeSelector(this, '${codeId}'); event.stopPropagation();" title="Send to Canvas">🎨</button>
+                        <button class="code-action-btn" onclick="app.showCanvasModeSelector(this); event.stopPropagation();" title="Send to Canvas">🎨</button>
                     </div>
                 </div>
                 <pre><code class="language-${language}">${this.escapeHtml(code)}</code></pre>
@@ -1507,13 +1774,17 @@
     };
     
     // =====================================================================
-    // Auto-Canvas Streaming
+    // Auto-Canvas Streaming - FIXED
     // =====================================================================
         
     VeraChat.prototype.checkAndAutoRenderCanvas = function(message) {
-        if (!this.canvasAutoFocus) return;
+        if (!this.canvasAutoFocus) {
+            console.log('Canvas auto-focus disabled');
+            return;
+        }
         
         const content = message.content;
+        console.log('🎯 Checking auto-canvas for content:', content.substring(0, 100));
         
         // Check for code blocks first
         const codeBlockMatch = content.match(/```(\w+)?\n([\s\S]{50,}?)```/);
@@ -1521,40 +1792,48 @@
             const language = codeBlockMatch[1] || 'text';
             const code = codeBlockMatch[2];
             
+            console.log('📝 Found code block:', language);
+            
             // Mermaid diagrams
             if (language === 'mermaid' || code.includes('graph TD') || code.includes('graph LR') || 
                 code.includes('sequenceDiagram') || code.includes('flowchart')) {
+                console.log('🎨 Auto-rendering mermaid diagram');
                 this.autoRenderToCanvas('diagram', code, language);
                 return;
             }
             
             // HTML preview
             if (language === 'html' && code.length > 100) {
+                console.log('🌐 Auto-rendering HTML preview');
                 this.autoRenderToCanvas('preview', code, language);
                 return;
             }
             
             // Python/Jupyter
             if ((language === 'python' || language === 'py') && code.length > 100) {
-                this.autoRenderToCanvas('jupyter', code, language);
+                console.log('📓 Auto-rendering Python code');
+                this.autoRenderToCanvas('code', code, language);
                 return;
             }
             
             // JavaScript/React preview
             if ((language === 'js' || language === 'javascript' || language === 'jsx') && 
                 (code.includes('React') || code.includes('useState') || code.length > 200)) {
+                console.log('⚛️ Auto-rendering React code');
                 this.autoRenderToCanvas('preview', code, language);
                 return;
             }
             
             // SVG
             if (language === 'svg' || code.includes('<svg')) {
+                console.log('🖼️ Auto-rendering SVG');
                 this.autoRenderToCanvas('preview', code, language);
                 return;
             }
             
             // Generic code editor for longer code
             if (code.length > 200) {
+                console.log('💻 Auto-rendering generic code');
                 this.autoRenderToCanvas('code', code, language);
                 return;
             }
@@ -1564,6 +1843,7 @@
         if (this.looksLikeJSON(content) && content.length > 100) {
             try {
                 JSON.parse(content);
+                console.log('🗂️ Auto-rendering JSON');
                 this.autoRenderToCanvas('json', content, 'json');
                 return;
             } catch (e) {}
@@ -1571,31 +1851,46 @@
         
         // Check for CSV/TSV
         if (this.looksLikeCSV(content) && content.split('\n').length > 3) {
+            console.log('📊 Auto-rendering table');
             this.autoRenderToCanvas('table', content, 'csv');
             return;
         }
         
         // Check for Markdown content
         if (content.includes('# ') && content.length > 200) {
+            console.log('📝 Auto-rendering markdown');
             this.autoRenderToCanvas('markdown', content, 'markdown');
             return;
         }
+        
+        console.log('ℹ️ No auto-canvas trigger found');
     };
     
     VeraChat.prototype.autoRenderToCanvas = function(mode, content, language) {
         const now = Date.now();
-        if (now - this.lastCanvasCheck < 2000) return;
+        if (now - this.lastCanvasCheck < 2000) {
+            console.log('⏳ Too soon since last canvas check, skipping');
+            return;
+        }
         this.lastCanvasCheck = now;
         
+        console.log(`🚀 Auto-rendering to canvas: mode=${mode}, lang=${language}`);
+        
         const canvasTab = this.tabs ? this.tabs.find(t => t.id === 'canvas') : null;
-        if (!canvasTab) return;
+        if (!canvasTab) {
+            console.error('❌ Canvas tab not found');
+            return;
+        }
         
         this.setControlStatus(`🎨 Auto-rendering in ${mode} mode...`);
         
         setTimeout(() => {
+            console.log('📍 Activating canvas tab');
             this.activateTab('canvas', canvasTab.columnId);
             
             setTimeout(() => {
+                console.log('🔧 Switching canvas mode and loading content');
+                
                 if (typeof this.switchCanvasMode === 'function') {
                     this.switchCanvasMode(mode);
                 }
@@ -1605,9 +1900,125 @@
                 
                 if (typeof this.loadIntoCanvas === 'function') {
                     this.loadIntoCanvas(language, content);
+                } else {
+                    console.error('❌ loadIntoCanvas function not found');
                 }
+                
+                console.log('✅ Canvas loaded successfully');
             }, 100);
         }, 500);
+    };
+    
+    // FIXED: loadIntoCanvas function that properly integrates with canvas modes
+    VeraChat.prototype.loadIntoCanvas = function(language, code) {
+        console.log(`📥 Loading into canvas: language=${language}, code length=${code.length}`);
+        
+        if (!this.canvas) {
+            console.error('❌ Canvas not initialized');
+            return;
+        }
+        
+        const mode = this.canvas.mode;
+        console.log(`📍 Current canvas mode: ${mode}`);
+        
+        // Set persistent content
+        this.canvas.persistentContent = code;
+        
+        // Load into appropriate editor based on mode
+        setTimeout(() => {
+            switch(mode) {
+                case 'code':
+                    if (this.canvas.monacoEditor) {
+                        console.log('✏️ Loading into Monaco editor');
+                        this.canvas.monacoEditor.setValue(code);
+                        
+                        // Set language
+                        const monacoLang = this.getMonacoLanguageForCanvas(language);
+                        monaco.editor.setModelLanguage(this.canvas.monacoEditor.getModel(), monacoLang);
+                    }
+                    break;
+                    
+                case 'diagram':
+                    const mermaidEditor = document.querySelector('#mermaid-editor');
+                    if (mermaidEditor) {
+                        console.log('📊 Loading into diagram editor');
+                        mermaidEditor.value = code;
+                        // Auto-render
+                        const renderBtn = document.querySelector('#renderDiagram');
+                        if (renderBtn) renderBtn.click();
+                    }
+                    break;
+                    
+                case 'preview':
+                    const htmlEditor = document.querySelector('#html-editor');
+                    if (htmlEditor) {
+                        console.log('🌐 Loading into preview editor');
+                        htmlEditor.value = code;
+                        // Auto-run
+                        const runBtn = document.querySelector('#runPreview');
+                        if (runBtn) runBtn.click();
+                    }
+                    break;
+                    
+                case 'json':
+                    const jsonEditor = document.querySelector('#json-editor');
+                    if (jsonEditor) {
+                        console.log('🗂️ Loading into JSON editor');
+                        jsonEditor.value = code;
+                        // Auto-parse
+                        const parseBtn = document.querySelector('#parseJson');
+                        if (parseBtn) parseBtn.click();
+                    }
+                    break;
+                    
+                case 'markdown':
+                    const mdEditor = document.querySelector('#md-editor');
+                    if (mdEditor) {
+                        console.log('📝 Loading into markdown editor');
+                        mdEditor.value = code;
+                        mdEditor.dispatchEvent(new Event('input'));
+                    }
+                    break;
+                    
+                case 'table':
+                    const tableData = document.querySelector('#table-data');
+                    if (tableData) {
+                        console.log('📊 Loading into table viewer');
+                        tableData.value = code;
+                        const parseTableBtn = document.querySelector('#parseTable');
+                        if (parseTableBtn) parseTableBtn.click();
+                    }
+                    break;
+                    
+                default:
+                    console.warn(`⚠️ Unknown canvas mode: ${mode}`);
+            }
+            
+            console.log('✅ Content loaded into canvas');
+        }, 200);
+    };
+    
+    VeraChat.prototype.getMonacoLanguageForCanvas = function(language) {
+        const map = {
+            'javascript': 'javascript',
+            'js': 'javascript',
+            'python': 'python',
+            'py': 'python',
+            'html': 'html',
+            'css': 'css',
+            'json': 'json',
+            'markdown': 'markdown',
+            'md': 'markdown',
+            'typescript': 'typescript',
+            'ts': 'typescript',
+            'lua': 'lua',
+            'cpp': 'cpp',
+            'c': 'c',
+            'rust': 'rust',
+            'go': 'go',
+            'arduino': 'arduino'
+        };
+        return map[language.toLowerCase()] || 'plaintext';
     };
     
     // =====================================================================
@@ -1921,37 +2332,50 @@
     };
     
     // =====================================================================
-    // Canvas Integration
+    // Canvas Integration - FIXED
     // =====================================================================
     
     VeraChat.prototype.sendToCanvasAuto = function(message) {
+        console.log('🎯 sendToCanvasAuto called');
         const detection = this.detectContentType ? this.detectContentType(message.content) : { mode: 'code', language: 'text' };
         this.sendToCanvasMode(message, detection.mode);
         this.setControlStatus(`🎨 Sent to Canvas (${detection.mode})`);
     };
     
     VeraChat.prototype.sendToCanvasMode = function(message, mode) {
+        console.log(`🚀 sendToCanvasMode: mode=${mode}`);
+        
         const canvasTab = this.tabs ? this.tabs.find(t => t.id === 'canvas') : null;
         if (!canvasTab) {
+            console.error('❌ Canvas tab not found');
             this.setControlStatus('❌ Canvas not available');
             return;
         }
         
+        console.log('📍 Activating canvas tab');
         this.activateTab('canvas', canvasTab.columnId);
         
         setTimeout(() => {
+            console.log(`🔧 Switching to ${mode} mode`);
+            
             if (typeof this.switchCanvasMode === 'function') {
                 this.switchCanvasMode(mode);
             }
+            
             const modeSelector = document.querySelector('#canvasMode');
             if (modeSelector) modeSelector.value = mode;
             
             const detection = this.detectContentType ? this.detectContentType(message.content) : { language: 'text' };
+            console.log(`📥 Loading content: language=${detection.language}`);
+            
             if (typeof this.loadIntoCanvas === 'function') {
                 this.loadIntoCanvas(detection.language, message.content);
+            } else {
+                console.error('❌ loadIntoCanvas function not found');
             }
             
             this.setControlStatus(`✅ Loaded in ${mode} mode`);
+            console.log('✅ Canvas load complete');
         }, 100);
     };
     
@@ -2041,19 +2465,22 @@
     // Utility Functions
     // =====================================================================
     
+    // FIXED: Toggle between raw and tree views
     VeraChat.prototype.toggleJSONView = function(button) {
         const viewer = button.closest('.inline-json-viewer');
         const formatted = viewer.querySelector('.json-formatted');
         const tree = viewer.querySelector('.json-tree');
         
-        if (tree.style.display === 'none') {
-            formatted.style.display = 'none';
-            tree.style.display = 'block';
-            button.textContent = 'Raw';
-        } else {
+        if (formatted.style.display === 'none') {
+            // Currently showing tree, switch to raw
             formatted.style.display = 'block';
             tree.style.display = 'none';
             button.textContent = 'Tree';
+        } else {
+            // Currently showing raw, switch to tree
+            formatted.style.display = 'none';
+            tree.style.display = 'block';
+            button.textContent = 'Raw';
         }
     };
     
@@ -2097,16 +2524,27 @@
         });
     };
     
-    VeraChat.prototype.showCanvasModeSelector = function(button, codeId) {
+    // FIXED: Canvas button now properly extracts code from data attributes
+    VeraChat.prototype.showCanvasModeSelector = function(button) {
+        console.log('🎨 showCanvasModeSelector called');
+        
         const block = button.closest('.enhanced-code-block');
-        const code = block.querySelector('code').textContent;
-        const language = block.querySelector('.code-language').textContent.toLowerCase();
+        if (!block) {
+            console.error('❌ Could not find code block');
+            return;
+        }
+        
+        const code = block.dataset.codeContent || block.querySelector('code').textContent;
+        const language = block.dataset.codeLang || block.querySelector('.code-language').textContent.toLowerCase();
+        
+        console.log(`📝 Code extracted: lang=${language}, length=${code.length}`);
         
         document.querySelectorAll('.canvas-mode-popup').forEach(p => p.remove());
         
         const popup = document.createElement('div');
         popup.className = 'canvas-mode-popup';
         
+        // Store in button's dataset for sendCodeToCanvas
         button.dataset.codeContent = code;
         button.dataset.codeLanguage = language;
         
@@ -2129,26 +2567,48 @@
             };
             document.addEventListener('click', closeHandler);
         }, 10);
+        
+        console.log('✅ Canvas mode popup shown');
     };
     
     VeraChat.prototype.sendCodeToCanvas = function(mode, button) {
+        console.log(`🚀 sendCodeToCanvas: mode=${mode}`);
+        
         const code = button.dataset.codeContent;
         const language = button.dataset.codeLanguage;
         
-        const canvasTab = this.tabs ? this.tabs.find(t => t.id === 'canvas') : null;
-        if (!canvasTab) return;
+        if (!code) {
+            console.error('❌ No code found in button dataset');
+            return;
+        }
         
+        console.log(`📝 Code: lang=${language}, length=${code.length}`);
+        
+        const canvasTab = this.tabs ? this.tabs.find(t => t.id === 'canvas') : null;
+        if (!canvasTab) {
+            console.error('❌ Canvas tab not found');
+            return;
+        }
+        
+        console.log('📍 Activating canvas tab');
         this.activateTab('canvas', canvasTab.columnId);
         
         setTimeout(() => {
+            console.log(`🔧 Switching to ${mode} mode and loading content`);
+            
             if (typeof this.switchCanvasMode === 'function') {
                 this.switchCanvasMode(mode);
             }
             const modeSelector = document.querySelector('#canvasMode');
             if (modeSelector) modeSelector.value = mode;
+            
             if (typeof this.loadIntoCanvas === 'function') {
                 this.loadIntoCanvas(language, code);
+            } else {
+                console.error('❌ loadIntoCanvas function not found');
             }
+            
+            console.log('✅ Code loaded into canvas');
         }, 100);
         
         document.querySelectorAll('.canvas-mode-popup').forEach(p => p.remove());
@@ -2251,6 +2711,7 @@
                         tertiaryColor: '#0f172a'
                     }
                 });
+                console.log('✅ Mermaid initialized');
             };
             document.head.appendChild(mermaidScript);
         }
@@ -2277,7 +2738,7 @@
             
             console.log('🎨 Calling initModernFeatures');
             this.initModernFeatures();
-            
+
             return result;
         };
         
@@ -2287,5 +2748,5 @@
         console.log('⏭️ Init already wrapped, skipping');
     }
     
-    console.log('🚀 Modern Interactive Chat UI (INTEGRATED) loaded successfully');
+    console.log('🚀 Modern Interactive Chat UI (COMPLETE FIX) loaded successfully');
 })();

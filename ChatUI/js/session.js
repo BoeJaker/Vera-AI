@@ -20,7 +20,7 @@
             this.init();
             // this.initResize();
             this.veraRobot = new VeraRobot('vera-robot');
-
+            this.sessionHistory = null; 
             this.toolchainWebSocket = null;
             this.currentExecution = null;
             this.toolchainExecutions = [];
@@ -50,16 +50,18 @@
             this.nextColumnId = 1; // Track next available column ID
             this.tabs = [
                 { id: 'chat', label: 'Chat', columnId: 1 },
+                { id: 'chat-history', label: 'Chat History', columnId: 1 },
                 { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
                 { id: 'memory', label: 'Memory', columnId: 2 },
                 { id: 'notebook', label: 'Notebook', columnId: 2 },
                 { id: 'canvas', label: 'Canvas', columnId: 2 },
+                { id: 'visualiser', label: 'Visualiser', columnId: 2 },
                 { id: 'toolchain', label: 'Toolchain', columnId: 2 },
                 { id: 'focus', label: 'Proactive Focus', columnId: 2 },
                 { id: 'training', label: 'Training', columnId: 2 },
                 { id: 'orchestration', label: 'Orchestration', columnId: 2 },
                 { id: 'analytics', label: 'Analytics', columnId: 2 },
-                { id: 'files', label: 'Files', columnId: 2 },
+                // { id: 'files', label: 'Files', columnId: 2 },
                 { id: 'settings', label: 'Settings', columnId: 2 }
             ];
             this.activeTabPerColumn = {};
@@ -77,11 +79,13 @@
                 const response = await fetch('http://llm.int:8888/api/session/start', { method: 'POST' });
                 const data = await response.json();
                 this.sessionId = data.session_id;
+
                 if (window.updateStartupStatus) {
                     window.updateStartupStatus('Building interface');
                 }
                 document.getElementById('sessionInfo').textContent = `Session: ${this.sessionId}`;
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator connected"></span>Connected';
+                this.initSessionHistory();
                 
                 // Create initial 2 columns
                 this.createColumn();
@@ -117,6 +121,9 @@
                     this.connectFocusWebSocket();
                 }
             } catch (error) {
+                if (window.updateStartupStatus) {
+                    window.updateStartupStatus('Connection failed');
+                }
                 console.error('Init error:', error);
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>Offline';
                 this.addSystemMessage('Connection failed. Running in offline mode.');
@@ -132,6 +139,84 @@
                 // DON'T add event listeners here - they're added in activateTab when the chat tab is shown
             }
 
+        initSessionHistory() {
+            // Wait for DOM to be ready
+            setTimeout(() => {
+                const container = document.getElementById('session-history-container');
+                if (!container) {
+                    console.warn('Session history container not found');
+                    return;
+                }
+
+                this.sessionHistory = new SessionHistory({
+                    containerId: 'session-history-container',
+                    apiBaseUrl: 'http://llm.int:8888/api/session',
+                    currentSessionId: this.sessionId,
+                    onLoadSession: (sessionId) => this.loadHistoricalSession(sessionId),
+                    autoRefresh: false,
+                    refreshInterval: 30000
+                });
+
+                console.log('Session History initialized');
+            }, 100);
+        }
+
+        async loadHistoricalSession(sessionId) {
+            console.log('Loading historical session:', sessionId);
+            
+            try {
+                // Update current session
+                this.sessionId = sessionId;
+                
+                // Update session history UI
+                if (this.sessionHistory) {
+                    this.sessionHistory.setCurrentSession(sessionId);
+                }
+                
+                // Update session display
+                document.getElementById('sessionInfo').textContent = `Session: ${sessionId}`;
+                
+                // Load session details and messages
+                const response = await fetch(
+                    `http://llm.int:8888/api/session/${sessionId}/details?include_all_messages=true`
+                );
+                const data = await response.json();
+                
+                // Clear existing messages
+                this.messages = [];
+                const chatMessages = document.getElementById('chatMessages');
+                if (chatMessages) {
+                    chatMessages.innerHTML = '';
+                }
+                
+                // Display loaded messages
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        if (msg.text) {
+                            // Determine role from message metadata or type
+                            const role = msg.type === 'user' ? 'user' : 'assistant';
+                            this.addMessage(msg.text, role);
+                        }
+                    });
+                    
+                    this.addSystemMessage(`Loaded ${data.messages.length} messages from previous session`);
+                } else {
+                    this.addSystemMessage('Session loaded - no previous messages');
+                }
+                
+                // Reconnect WebSocket for this session
+                if (this.websocket) {
+                    this.websocket.close();
+                }
+                if (this.useWebSocket) {
+                    this.connectWebSocket();
+                }
+                
+            } catch (error) {
+                console.error('Error loading historical session:', error);
+                this.addSystemMessage('Error loading session. Please try again.');
+            }
+        }
         createColumn() {
             const mainContent = document.getElementById('mainContent');
             const id = this.nextColumnId++;
@@ -267,6 +352,7 @@
                 case 'chat':
                     return `
                         <div id="chatMessages" style="flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px;"></div>
+                        
                         <div class="input-area">
                             <div class="input-wrapper">
                                 <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
@@ -274,6 +360,13 @@
                             </div>
                         </div>
                     `;
+                case 'chat-history':
+                    return `
+                        <aside class="session-sidebar" style="float:left;">
+                            <div id="session-history-container"></div>
+                        </aside>
+                    `;
+
                     
                 case 'graph':
                     return `
@@ -282,7 +375,6 @@
                                 <span class="panel-title">KNOWLEDGE GRAPH</span>
                             </span>
                             <div class="panel-controls">
-                                <button class="panel-btn" onclick="app.testPanel()">🧪 Test</button>
                                 <button class="panel-btn" onclick="app.fitGraph()">🎯 Fit</button>
                                 <button class="panel-btn" onclick="app.zoomIn()">🔍+</button>
                                 <button class="panel-btn" onclick="app.zoomOut()">🔍-</button>
@@ -373,184 +465,251 @@
                     
                 case 'orchestration':
                     return `
-                        <div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
-                            <div style="padding: 16px; background: var(--bg); border-bottom: 1px solid #334155;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                    <h2 style="margin: 0;">🎻 Task Orchestrator</h2>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button class="panel-btn" onclick="app.refreshOrchestrator()">🔄 Refresh</button>
+                        <div id="orchestration-container" style="height: 100%; overflow: hidden;">
+                            <!-- Header -->
+                            <div style="padding: 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="margin: 0; font-size: 18px;">Task Orchestrator</h2>
+                                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                        <span id="orch-pool-indicator" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px;"></span>
+                                        <span id="orch-pool-status">Stopped</span>
                                     </div>
                                 </div>
                                 
-                                <!-- Status Cards -->
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 12px;">
-                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Local Pool</div>
-                                        <div style="font-size: 20px; font-weight: bold;">
-                                            <span id="orch-pool-indicator" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px;"></span>
-                                            <span id="orch-pool-status">Stopped</span>
-                                        </div>
-                                    </div>
-                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">CPU Usage</div>
-                                        <div style="font-size: 20px; font-weight: bold;" id="orch-cpu">0%</div>
-                                    </div>
-                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Queue Size</div>
-                                        <div style="font-size: 20px; font-weight: bold;" id="orch-queue">0</div>
-                                    </div>
-                                    <div style="background: var(--panel-bg); padding: 12px; border-radius: 6px; border: 1px solid var(--border);">
-                                        <div style="color: var(--text-muted); font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">Active Workers</div>
-                                        <div style="font-size: 20px; font-weight: bold;"><span id="orch-workers-active">0</span>/<span id="orch-workers-total">0</span></div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Navigation Tabs -->
-                                <div style="display: flex; gap: 8px; margin-top: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
-                                    <button class="orch-nav-btn active" data-panel="dashboard" onclick="app.switchOrchPanel('dashboard')">📊 Dashboard</button>
-                                    <button class="orch-nav-btn" data-panel="pool" onclick="app.switchOrchPanel('pool')">🏭 Pool</button>
-                                    <button class="orch-nav-btn" data-panel="tasks" onclick="app.switchOrchPanel('tasks')">📋 Tasks</button>
-                                    <button class="orch-nav-btn" data-panel="monitor" onclick="app.switchOrchPanel('monitor')">📈 Monitor</button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="app.startOrchestrator()" style="padding: 8px 16px; background: var(--success); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
+                                        Start
+                                    </button>
+                                    <button onclick="app.stopOrchestrator()" style="padding: 8px 16px; background: var(--danger); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
+                                        Stop
+                                    </button>
                                 </div>
                             </div>
                             
-                            <div style="flex: 1; overflow-y: auto; padding: 16px;">
+                            <!-- Navigation -->
+                            <div style="padding: 12px 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; gap: 8px; overflow-x: auto;">
+                                <button class="orch-nav-btn active" data-panel="dashboard" onclick="app.switchOrchPanel('dashboard')" style="padding: 8px 16px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                    Dashboard
+                                </button>
+                                <button class="orch-nav-btn" data-panel="workers" onclick="app.switchOrchPanel('workers')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                    Worker Pools
+                                </button>
+                                <button class="orch-nav-btn" data-panel="tasks" onclick="app.switchOrchPanel('tasks')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                    Tasks
+                                </button>
+                                <button class="orch-nav-btn" data-panel="monitor" onclick="app.switchOrchPanel('monitor')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                    System Monitor
+                                </button>
+                                <button class="orch-nav-btn" data-panel="config" onclick="app.switchOrchPanel('config')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                    Configuration
+                                </button>
+                            </div>
+                            
+                            <!-- Content Area -->
+                            <div style="height: calc(100% - 120px); overflow-y: auto; padding: 16px;">
+                                
                                 <!-- Dashboard Panel -->
                                 <div id="orch-panel-dashboard" class="orch-panel">
-                                    <h3 style="color: var(--accent); margin-bottom: 16px;">System Overview</h3>
-                                    
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Tasks Completed</div>
-                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-dash-completed">0</div>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                        <!-- Workers Card -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--accent);">
+                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Workers</div>
+                                            <div style="font-size: 28px; font-weight: 600;">
+                                                <span id="orch-workers-active">0</span>/<span id="orch-workers-total">0</span>
+                                            </div>
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Active / Total</div>
                                         </div>
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Worker Utilization</div>
-                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-dash-util">0%</div>
+                                        
+                                        <!-- Queue Card -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--warning);">
+                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Queue</div>
+                                            <div style="font-size: 28px; font-weight: 600;" id="orch-queue">0</div>
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pending Tasks</div>
+                                        </div>
+                                        
+                                        <!-- Utilization Card -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--success);">
+                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Utilization</div>
+                                            <div style="font-size: 28px; font-weight: 600;" id="orch-dash-util">0%</div>
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Worker Usage</div>
+                                        </div>
+                                        
+                                        <!-- CPU Card -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--danger);">
+                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">System CPU</div>
+                                            <div style="font-size: 28px; font-weight: 600;" id="orch-cpu">0%</div>
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Current Usage</div>
                                         </div>
                                     </div>
                                     
-                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                        <h4 style="color: var(--text); margin-bottom: 12px;">Recent Tasks</h4>
-                                        <div id="orch-dash-tasks" style="max-height: 300px; overflow-y: auto;">
-                                            <p style="color: var(--text-muted); text-align: center;">No recent tasks</p>
+                                    <!-- Queue Breakdown -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; margin-bottom: 16px;">
+                                        <h3 style="margin: 0 0 12px 0; font-size: 14px;">Queue by Type</h3>
+                                        <div id="orch-queue-breakdown">
+                                            <p style="color: var(--text-muted); text-align: center;">No data available</p>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Pool Panel -->
-                                <div id="orch-panel-pool" class="orch-panel" style="display: none;">
-                                    <h3 style="color: var(--accent); margin-bottom: 16px;">Worker Pool Control</h3>
+                                <!-- Worker Pools Panel (NEW) -->
+                                <div id="orch-panel-workers" class="orch-panel" style="display: none;">
+                                    <div style="margin-bottom: 16px;">
+                                        <h3 style="margin: 0 0 8px 0; font-size: 16px;">Worker Pool Management</h3>
+                                        <p style="margin: 0; font-size: 12px; color: var(--text-muted);">
+                                            Scale worker pools dynamically based on workload. Each task type has its own dedicated pool.
+                                        </p>
+                                    </div>
                                     
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                            <h4 style="color: var(--text); margin-bottom: 12px;">Configuration</h4>
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Worker Count</label>
-                                                <input type="number" id="orch-worker-count" value="4" min="1" max="32" 
-                                                    style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
-                                            </div>
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">CPU Threshold (%)</label>
-                                                <input type="number" id="orch-cpu-threshold" value="85" min="50" max="100"
-                                                    style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
-                                            </div>
-                                            <button class="panel-btn" onclick="app.initializePool()">Initialize Pool</button>
-                                        </div>
-                                        
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                            <h4 style="color: var(--text); margin-bottom: 12px;">Controls</h4>
-                                            <div style="display: flex; flex-direction: column; gap: 8px;">
-                                                <button class="panel-btn" onclick="app.startPool()">▶ Start Pool</button>
-                                                <button class="panel-btn" onclick="app.pausePool()">⏸ Pause Pool</button>
-                                                <button class="panel-btn" onclick="app.resumePool()">▶ Resume Pool</button>
-                                                <button class="panel-btn" onclick="app.stopPool()">⏹ Stop Pool</button>
-                                            </div>
-                                        </div>
+                                    <div id="orch-worker-pools-list">
+                                        <p style="color: var(--text-muted); text-align: center;">Loading worker pools...</p>
                                     </div>
                                 </div>
                                 
                                 <!-- Tasks Panel -->
                                 <div id="orch-panel-tasks" class="orch-panel" style="display: none;">
-                                    <h3 style="color: var(--accent); margin-bottom: 16px;">Task Management</h3>
-                                    
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                            <h4 style="color: var(--text); margin-bottom: 12px;">Submit Task</h4>
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Task Name</label>
-                                                <select id="orch-task-name" style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
-                                                    <option>Loading tasks...</option>
-                                                </select>
-                                            </div>
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Priority</label>
-                                                <select id="orch-task-priority" style="width: 100%; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px;">
-                                                    <option value="NORMAL">Normal</option>
-                                                    <option value="HIGH">High</option>
-                                                    <option value="CRITICAL">Critical</option>
-                                                </select>
-                                            </div>
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Payload (JSON)</label>
-                                                <textarea id="orch-task-payload" style="width: 100%; height: 100px; padding: 8px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; font-family: monospace;">{"example": "data"}</textarea>
-                                            </div>
-                                            <button class="panel-btn" onclick="app.submitTask()">Submit Task</button>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                        <!-- Task Submission -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                            <h3 style="margin: 0 0 12px 0; font-size: 14px;">Submit Task</h3>
+                                            
+                                            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-muted);">Task Name</label>
+                                            <select id="orch-task-name" style="width: 100%; padding: 8px; margin-bottom: 12px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <option>Loading...</option>
+                                            </select>
+                                            
+                                            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-muted);">Payload (JSON)</label>
+                                            <textarea id="orch-task-payload" style="width: 100%; padding: 8px; margin-bottom: 12px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: monospace; font-size: 11px; resize: vertical;" rows="6" placeholder='{"key": "value"}'>{}</textarea>
+                                            
+                                            <button onclick="app.submitTask()" style="width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px;">
+                                                Submit Task
+                                            </button>
                                         </div>
                                         
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                            <h4 style="color: var(--text); margin-bottom: 12px;">Registered Tasks</h4>
-                                            <div id="orch-registered-tasks" style="max-height: 300px; overflow-y: auto;">
+                                        <!-- Registered Tasks -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                            <h3 style="margin: 0 0 12px 0; font-size: 14px;">Registered Tasks</h3>
+                                            <div id="orch-registered-tasks" style="max-height: 400px; overflow-y: auto;">
                                                 <p style="color: var(--text-muted);">Loading...</p>
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                            <h4 style="color: var(--text); margin: 0;">Task History</h4>
-                                            <button class="panel-btn" onclick="app.refreshTaskHistory()">🔄 Refresh</button>
+                                </div>
+                                
+                                <!-- System Monitor Panel -->
+                                <div id="orch-panel-monitor" class="orch-panel" style="display: none;">
+                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                                        <!-- CPU Monitor -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                                <h3 style="margin: 0; font-size: 14px;">CPU Usage</h3>
+                                                <span id="orch-mon-cpu" style="font-size: 18px; font-weight: 600;">0%</span>
+                                            </div>
+                                            <div style="height: 12px; background: var(--bg-darker); border-radius: 6px; overflow: hidden;">
+                                                <div id="orch-cpu-bar" style="height: 100%; background: var(--danger); width: 0%; transition: width 0.3s;"></div>
+                                            </div>
                                         </div>
-                                        <div id="orch-task-history" style="max-height: 400px; overflow-y: auto;">
-                                            <p style="color: var(--text-muted); text-align: center;">No task history</p>
+                                        
+                                        <!-- Memory Monitor -->
+                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                                <h3 style="margin: 0; font-size: 14px;">Memory Usage</h3>
+                                                <span id="orch-mon-memory" style="font-size: 18px; font-weight: 600;">0%</span>
+                                            </div>
+                                            <div style="height: 12px; background: var(--bg-darker); border-radius: 6px; overflow: hidden;">
+                                                <div id="orch-memory-bar" style="height: 100%; background: var(--warning); width: 0%; transition: width 0.3s;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Top Processes -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                                            <h3 style="margin: 0; font-size: 14px;">Top Processes</h3>
+                                            <span style="font-size: 12px; color: var(--text-muted);">
+                                                <span id="orch-mon-processes">0</span> active
+                                            </span>
+                                        </div>
+                                        <div id="orch-processes-list" style="max-height: 300px; overflow-y: auto;">
+                                            <p style="color: var(--text-muted); text-align: center;">No data</p>
                                         </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Monitor Panel -->
-                                <div id="orch-panel-monitor" class="orch-panel" style="display: none;">
-                                    <h3 style="color: var(--accent); margin-bottom: 16px;">System Monitor</h3>
-                                    
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 20px;">
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">CPU Usage</div>
-                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-cpu">0%</div>
-                                            <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden;">
-                                                <div id="orch-cpu-bar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s;"></div>
+                                <!-- Configuration Panel (NEW) -->
+                                <div id="orch-panel-config" class="orch-panel" style="display: none;">
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; max-width: 600px;">
+                                        <h3 style="margin: 0 0 16px 0; font-size: 16px;">Orchestrator Configuration</h3>
+                                        <p style="margin: 0 0 24px 0; font-size: 12px; color: var(--text-muted);">
+                                            Configure initial worker pool sizes. Changes require reinitialization.
+                                        </p>
+                                        
+                                        <div style="display: grid; gap: 16px;">
+                                            <!-- LLM Workers -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">LLM Workers</label>
+                                                <input id="orch-llm-workers" type="number" value="3" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for language model tasks</div>
+                                            </div>
+                                            
+                                            <!-- Tool Workers -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Tool Workers</label>
+                                                <input id="orch-tool-workers" type="number" value="4" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for tool execution</div>
+                                            </div>
+                                            
+                                            <!-- Whisper Workers -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Whisper Workers</label>
+                                                <input id="orch-whisper-workers" type="number" value="1" min="0" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for audio transcription</div>
+                                            </div>
+                                            
+                                            <!-- Background Workers -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Background Workers</label>
+                                                <input id="orch-bg-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for background/proactive tasks</div>
+                                            </div>
+                                            
+                                            <!-- General Workers -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">General Workers</label>
+                                                <input id="orch-gen-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for general tasks</div>
+                                            </div>
+                                            
+                                            <!-- CPU Threshold -->
+                                            <div>
+                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">CPU Threshold (%)</label>
+                                                <input id="orch-cpu-threshold" type="number" value="75" min="50" max="95" step="5" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pause workers when CPU exceeds this threshold</div>
                                             </div>
                                         </div>
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Memory</div>
-                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-memory">0%</div>
-                                            <div style="width: 100%; height: 8px; background: var(--border); border-radius: 4px; margin-top: 8px; overflow: hidden;">
-                                                <div id="orch-memory-bar" style="height: 100%; width: 0%; background: var(--accent); transition: width 0.3s;"></div>
-                                            </div>
-                                        </div>
-                                        <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border); text-align: center;">
-                                            <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 8px;">Processes</div>
-                                            <div style="font-size: 32px; font-weight: bold; color: var(--accent);" id="orch-mon-processes">0</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div style="background: var(--panel-bg); padding: 16px; border-radius: 8px; border: 1px solid var(--border);">
-                                        <h4 style="color: var(--text); margin-bottom: 12px;">Top Processes</h4>
-                                        <div id="orch-processes-list" style="max-height: 400px; overflow-y: auto;">
-                                            <p style="color: var(--text-muted); text-align: center;">Loading...</p>
-                                        </div>
+                                        
+                                        <button onclick="app.initializeOrchestrator()" style="width: 100%; padding: 12px; margin-top: 24px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: 600;">
+                                            Initialize Orchestrator
+                                        </button>
                                     </div>
                                 </div>
+                                
                             </div>
                         </div>
+
+                        <style>
+                            .orch-nav-btn {
+                                transition: all 0.2s;
+                            }
+                            
+                            .orch-nav-btn:hover {
+                                background: var(--accent-muted) !important;
+                            }
+                            
+                            .orch-nav-btn.active {
+                                background: var(--accent) !important;
+                                color: white !important;
+                            }
+                        </style>
                     `;
                 case 'analytics':
                     return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📈 Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;
@@ -1039,13 +1198,7 @@
             resizer.addEventListener('mousedown', startResize);
             document.addEventListener('mousemove', doResize);
             document.addEventListener('mouseup', stopResize);
-        }
-        
-        testPanel() {
-            // console.log('Test button clicked');
-            app.initThemeSettings();
-            window.applyThemeToGraph();
-        }            
+        }      
 
         toggleFullscreen(panel) {
             const chatPanel = document.getElementById('chatPanel');

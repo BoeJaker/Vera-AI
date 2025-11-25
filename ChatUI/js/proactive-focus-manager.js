@@ -1581,4 +1581,649 @@ VeraChat.prototype.completeProactiveThoughtStream = function(thought) {
         }
     }
 };
+ VeraChat.prototype.showBackgroundControlPanel = function() {
+        const modal = document.createElement('div');
+        modal.id = 'backgroundControlModal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        `;
+        
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid #334155;
+        `;
+        
+        content.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #e2e8f0;">⚙️ Background Thinking Control</h2>
+                <button onclick="document.getElementById('backgroundControlModal').remove()" 
+                        style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer;">×</button>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label style="color: #cbd5e1; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">
+                    Background Mode
+                </label>
+                <select id="bgMode" style="width: 100%; padding: 8px; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; font-size: 14px;">
+                    <option value="off">❌ Off - No background thinking</option>
+                    <option value="manual">👆 Manual - Only on trigger</option>
+                    <option value="scheduled">📅 Scheduled - Within time window</option>
+                    <option value="continuous">♾️ Continuous - Always running</option>
+                </select>
+            </div>
+            
+            <div id="intervalSection" style="margin-bottom: 16px;">
+                <label style="color: #cbd5e1; font-size: 14px; font-weight: 600; display: block; margin-bottom: 8px;">
+                    Interval (seconds)
+                </label>
+                <input type="number" id="bgInterval" value="600" min="60" step="60"
+                       style="width: 100%; padding: 8px; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 6px; font-size: 14px;">
+            </div>
+            
+            <div id="scheduleSection" style="display: none; margin-bottom: 16px; padding: 16px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; border: 1px solid #334155;">
+                <h3 style="margin: 0 0 12px 0; color: #cbd5e1; font-size: 14px;">📅 Schedule</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px;">Start Time</label>
+                        <input type="time" id="bgStartTime" value="09:00"
+                               style="width: 100%; padding: 6px; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 4px;">End Time</label>
+                        <input type="time" id="bgEndTime" value="17:00"
+                               style="width: 100%; padding: 6px; background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px;">
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 8px; margin-top: 20px;">
+                <button onclick="app.applyBackgroundConfig()" class="panel-btn" 
+                        style="flex: 1; padding: 10px; background: #3b82f6; font-size: 14px; font-weight: 600;">
+                    ✓ Apply Settings
+                </button>
+                <button onclick="document.getElementById('backgroundControlModal').remove()" class="panel-btn"
+                        style="padding: 10px; font-size: 14px;">
+                    Cancel
+                </button>
+            </div>
+        `;
+        
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+        
+        // Show/hide schedule section based on mode
+        const modeSelect = document.getElementById('bgMode');
+        const scheduleSection = document.getElementById('scheduleSection');
+        const intervalSection = document.getElementById('intervalSection');
+        
+        modeSelect.addEventListener('change', (e) => {
+            const mode = e.target.value;
+            scheduleSection.style.display = mode === 'scheduled' ? 'block' : 'none';
+            intervalSection.style.display = mode === 'off' ? 'none' : 'block';
+        });
+        
+        // Load current settings
+        this.loadBackgroundStatus();
+    };
+    
+    VeraChat.prototype.loadBackgroundStatus = async function() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/background/status`);
+            const data = await response.json();
+            
+            const modeSelect = document.getElementById('bgMode');
+            const intervalInput = document.getElementById('bgInterval');
+            const startTimeInput = document.getElementById('bgStartTime');
+            const endTimeInput = document.getElementById('bgEndTime');
+            
+            if (modeSelect) modeSelect.value = data.mode;
+            if (intervalInput) intervalInput.value = data.interval;
+            if (startTimeInput && data.schedule.start_time) {
+                startTimeInput.value = data.schedule.start_time;
+            }
+            if (endTimeInput && data.schedule.end_time) {
+                endTimeInput.value = data.schedule.end_time;
+            }
+            
+            // Trigger change event to show/hide schedule section
+            if (modeSelect) modeSelect.dispatchEvent(new Event('change'));
+            
+        } catch (error) {
+            console.error('Failed to load background status:', error);
+        }
+    };
+    
+    VeraChat.prototype.applyBackgroundConfig = async function() {
+        if (!this.sessionId) return;
+        
+        const mode = document.getElementById('bgMode').value;
+        const interval = parseInt(document.getElementById('bgInterval').value);
+        const startTime = document.getElementById('bgStartTime').value;
+        const endTime = document.getElementById('bgEndTime').value;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/background/config`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: mode,
+                    interval: interval,
+                    start_time: mode === 'scheduled' ? startTime : null,
+                    end_time: mode === 'scheduled' ? endTime : null
+                })
+            });
+            
+            const data = await response.json();
+            
+            this.addSystemMessage(`✓ Background mode set to: ${mode}`);
+            document.getElementById('backgroundControlModal').remove();
+            
+            // Refresh focus UI
+            this.loadFocusStatus();
+            
+        } catch (error) {
+            console.error('Failed to apply background config:', error);
+            this.addSystemMessage('Error applying background config');
+        }
+    };
+    
+    VeraChat.prototype.pauseBackground = async function() {
+        if (!this.sessionId) return;
+        
+        try {
+            await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/background/pause`, {
+                method: 'POST'
+            });
+            this.addSystemMessage('⏸️ Background thinking paused');
+        } catch (error) {
+            console.error('Failed to pause background:', error);
+        }
+    };
+    
+    VeraChat.prototype.resumeBackground = async function() {
+        if (!this.sessionId) return;
+        
+        try{
+            await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/background/resume`, {
+                method: 'POST'
+            });
+            this.addSystemMessage('▶️ Background thinking resumed');
+        } catch (error) {
+            console.error('Failed to resume background:', error);
+        }
+    };
+    
+    // ============================================================
+    // ENTITY REFERENCE UI
+    // ============================================================
+    
+    VeraChat.prototype.showEntityExplorer = async function() {
+        if (!this.sessionId) return;
+        
+        // Fetch related entities
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/entities/discover`);
+            const data = await response.json();
+            
+            this.displayEntityExplorerModal(data.entities);
+            
+        } catch (error) {
+            console.error('Failed to discover entities:', error);
+            this.addSystemMessage('Error discovering entities');
+        }
+    };
+    
+    VeraChat.prototype.displayEntityExplorerModal = function(entities) {
+        const modal = document.createElement('div');
+        modal.id = 'entityExplorerModal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            backdrop-filter: blur(4px);
+        `;
+        
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid #334155;
+        `;
+        
+        let html = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; color: #e2e8f0;">🔗 Related Entities</h2>
+                <button onclick="document.getElementById('entityExplorerModal').remove()" 
+                        style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer;">×</button>
+            </div>
+        `;
+        
+        const entityTypes = {
+            'sessions': { icon: '💬', color: '#3b82f6', label: 'Sessions' },
+            'notebooks': { icon: '📓', color: '#8b5cf6', label: 'Notebooks' },
+            'folders': { icon: '📁', color: '#f59e0b', label: 'Folders' },
+            'documents': { icon: '📄', color: '#10b981', label: 'Documents' },
+            'entities': { icon: '🔷', color: '#ec4899', label: 'Other Entities' }
+        };
+        
+        for (const [type, config] of Object.entries(entityTypes)) {
+            const items = entities[type] || [];
+            
+            if (items.length === 0) continue;
+            
+            html += `
+                <div style="margin-bottom: 24px;">
+                    <h3 style="color: ${config.color}; font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                        <span>${config.icon}</span>
+                        <span>${config.label} (${items.length})</span>
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+            `;
+            
+            items.forEach((entity, idx) => {
+                html += `
+                    <div style="background: rgba(15, 23, 42, 0.5); border-left: 3px solid ${config.color}; padding: 12px; border-radius: 6px;">
+                        <div style="display: flex; justify-content: space-between; align-items: start;">
+                            <div style="flex: 1;">
+                                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                                    ${this.escapeHtml(entity.name)}
+                                </div>
+                                <div style="color: #64748b; font-size: 11px;">
+                                    ID: ${this.escapeHtml(entity.entity_id)}
+                                </div>
+                                ${entity.content_summary ? `
+                                    <div style="color: #94a3b8; font-size: 12px; margin-top: 8px; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px;">
+                                        ${this.escapeHtml(entity.content_summary)}
+                                    </div>
+                                ` : ''}
+                            </div>
+                            <button onclick="app.viewEntityContent('${this.escapeHtml(entity.entity_id)}')" class="panel-btn"
+                                    style="font-size: 11px; padding: 4px 8px; margin-left: 8px;">
+                                👁️ View
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (Object.values(entities).every(arr => arr.length === 0)) {
+            html += `
+                <div style="text-align: center; padding: 40px; color: #64748b;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">🔍</div>
+                    <div>No related entities found</div>
+                </div>
+            `;
+        }
+        
+        content.innerHTML = html;
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+    };
+    
+    VeraChat.prototype.viewEntityContent = async function(entityId) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/entities/${entityId}/content?max_length=1000`);
+            const data = await response.json();
+            
+            const contentModal = document.createElement('div');
+            contentModal.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: #1e293b;
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 700px;
+                width: 90%;
+                max-height: 70vh;
+                overflow-y: auto;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                border: 1px solid #334155;
+                z-index: 10001;
+            `;
+            
+            contentModal.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3 style="margin: 0; color: #e2e8f0; font-size: 16px;">${this.escapeHtml(data.name)}</h3>
+                    <button onclick="this.parentElement.parentElement.remove()" class="panel-btn" style="font-size: 11px; padding: 4px 8px;">✕</button>
+                </div>
+                <div style="color: #64748b; font-size: 12px; margin-bottom: 12px;">
+                    Type: ${this.escapeHtml(data.entity_type)} • ID: ${this.escapeHtml(entityId)}
+                </div>
+                <div style="color: #cbd5e1; font-size: 13px; line-height: 1.6; white-space: pre-wrap; background: rgba(0, 0, 0, 0.3); padding: 16px; border-radius: 8px;">
+                    ${data.content ? this.escapeHtml(data.content) : 'No content available'}
+                </div>
+            `;
+            
+            document.body.appendChild(contentModal);
+            
+        } catch (error) {
+            console.error('Failed to view entity content:', error);
+            this.addSystemMessage('Error loading entity content');
+        }
+    };
+    
+    VeraChat.prototype.enrichBoardItem = async function(category, index) {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/board/item/enrich`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    category: category,
+                    item_index: index,
+                    auto_discover: true
+                })
+            });
+            
+            const data = await response.json();
+            
+            this.addSystemMessage(`✓ Enriched ${category} item with ${data.item.entity_refs.length} entity references`);
+            this.loadFocusStatus();
+            
+        } catch (error) {
+            console.error('Failed to enrich item:', error);
+            this.addSystemMessage('Error enriching item');
+        }
+    };
+    
+    // ============================================================
+    // TOOL INTEGRATION UI
+    // ============================================================
+    
+    VeraChat.prototype.showToolSuggestions = async function(category, index) {
+        if (!this.sessionId) return;
+        
+        try {
+            await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/board/item/suggest-tools`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    category: category,
+                    item_index: index
+                })
+            });
+            
+            this.addSystemMessage('🔧 Generating tool suggestions...');
+            
+            // Refresh board after a delay to show suggestions
+            setTimeout(() => this.loadFocusStatus(), 3000);
+            
+        } catch (error) {
+            console.error('Failed to suggest tools:', error);
+            this.addSystemMessage('Error suggesting tools');
+        }
+    };
+    
+    VeraChat.prototype.executeToolForItem = async function(category, index, toolName) {
+        if (!this.sessionId) return;
+        
+        if (!confirm(`Execute tool "${toolName}" for this item?`)) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/tools/execute`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    category: category,
+                    item_index: index,
+                    tool_name: toolName,
+                    tool_input: null
+                })
+            });
+            
+            const data = await response.json();
+            
+            this.addSystemMessage(`✓ Executed ${toolName}: ${data.result ? data.result.substring(0, 100) : 'No result'}...`);
+            this.loadFocusStatus();
+            
+        } catch (error) {
+            console.error('Failed to execute tool:', error);
+            this.addSystemMessage(`Error executing tool: ${error.message}`);
+        }
+    };
+    
+    VeraChat.prototype.showToolUsageHistory = async function() {
+        if (!this.sessionId) return;
+        
+        try {
+            const response = await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/tools/usage-history?limit=20`);
+            const data = await response.json();
+            
+            const modal = document.createElement('div');
+            modal.id = 'toolHistoryModal';
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                backdrop-filter: blur(4px);
+            `;
+            
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                border-radius: 12px;
+                padding: 24px;
+                max-width: 700px;
+                width: 90%;
+                max-height: 80vh;
+                overflow-y: auto;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                border: 1px solid #334155;
+            `;
+            
+            let html = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #e2e8f0;">🔧 Tool Usage History</h2>
+                    <button onclick="document.getElementById('toolHistoryModal').remove()" 
+                            style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer;">×</button>
+                </div>
+            `;
+            
+            if (data.history.length === 0) {
+                html += `
+                    <div style="text-align: center; padding: 40px; color: #64748b;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">🔧</div>
+                        <div>No tool usage history</div>
+                    </div>
+                `;
+            } else {
+                html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
+                
+                data.history.forEach((entry, idx) => {
+                    const statusColor = entry.success ? '#10b981' : '#ef4444';
+                    const statusIcon = entry.success ? '✓' : '✕';
+                    
+                    html += `
+                        <div style="background: rgba(15, 23, 42, 0.5); border-left: 3px solid ${statusColor}; padding: 12px; border-radius: 6px;">
+                            <div style="display: flex; justify-content: between; align-items: start; margin-bottom: 8px;">
+                                <div style="flex: 1;">
+                                    <div style="color: #e2e8f0; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+                                        🔧 ${this.escapeHtml(entry.tool)}
+                                        <span style="color: ${statusColor}; margin-left: 8px;">${statusIcon}</span>
+                                    </div>
+                                    <div style="color: #64748b; font-size: 11px;">
+                                        ${new Date(entry.timestamp).toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="color: #94a3b8; font-size: 12px; margin-bottom: 8px;">
+                                Item: ${this.escapeHtml(entry.item_note ? entry.item_note.substring(0, 60) : 'N/A')}...
+                            </div>
+                            ${entry.result_preview ? `
+                                <div style="color: #cbd5e1; font-size: 11px; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 4px;">
+                                    ${this.escapeHtml(entry.result_preview)}
+                                </div>
+                            ` : ''}
+                            ${entry.error ? `
+                                <div style="color: #fca5a5; font-size: 11px; background: rgba(239, 68, 68, 0.1); padding: 8px; border-radius: 4px;">
+                                    Error: ${this.escapeHtml(entry.error)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += `</div>`;
+            }
+            
+            content.innerHTML = html;
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+            
+        } catch (error) {
+            console.error('Failed to load tool history:', error);
+            this.addSystemMessage('Error loading tool history');
+        }
+    };
+    
+    // ============================================================
+    // ENHANCED ITEM RENDERING
+    // ============================================================
+    
+    VeraChat.prototype.renderEnhancedItem = function(item, idx, category, color) {
+        const hasRefs = item.entity_refs && item.entity_refs.length > 0;
+        const hasTools = item.tool_suggestions && item.tool_suggestions.length > 0;
+        const hasHistory = item.execution_history && item.execution_history.length > 0;
+        
+        let html = `
+            <div id="item-${category}-${idx}" class="draggable-item" draggable="true"
+                 data-category="${category}" data-index="${idx}"
+                 ondragstart="app.handleDragStart(event)" ondragend="app.handleDragEnd(event)"
+                 style="padding: 12px; border-radius: 6px; border-left: 3px solid ${color}; background: rgba(15, 23, 42, 0.5); cursor: move;">
+                
+                <div style="color: #cbd5e1; font-size: 13px; margin-bottom: 8px;">${this.escapeHtml(item.note)}</div>
+                
+                ${hasRefs ? `
+                    <div style="margin-bottom: 8px;">
+                        <div style="color: #8b5cf6; font-size: 11px; font-weight: 600; margin-bottom: 4px;">🔗 References (${item.entity_refs.length})</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                            ${item.entity_refs.map(ref => `
+                                <span style="padding: 2px 6px; background: rgba(139, 92, 246, 0.2); color: #a78bfa; border-radius: 4px; font-size: 10px;">
+                                    ${ref.entity_type}: ${this.escapeHtml(ref.name)}
+                                </span>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                ${hasTools ? `
+                    <div style="margin-bottom: 8px;">
+                        <div style="color: #3b82f6; font-size: 11px; font-weight: 600; margin-bottom: 4px;">🔧 Suggested Tools</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                            ${item.tool_suggestions.map(tool => `
+                                <button onclick="app.executeToolForItem('${category}', ${idx}, '${this.escapeHtml(tool.tool)}')"
+                                        class="panel-btn" style="font-size: 10px; padding: 2px 6px;">
+                                    ${this.escapeHtml(tool.tool)}
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button class="panel-btn" style="font-size: 10px; padding: 3px 6px;" 
+                            onclick="app.enrichBoardItem('${category}', ${idx})">🔗 Enrich</button>
+                    <button class="panel-btn" style="font-size: 10px; padding: 3px 6px;"
+                            onclick="app.showToolSuggestions('${category}', ${idx})">🔧 Suggest Tools</button>
+                    <button class="panel-btn" style="font-size: 10px; padding: 3px 6px;"
+                            onclick="app.editBoardItem('${category}', ${idx})">✏️ Edit</button>
+                    <button class="panel-btn" style="font-size: 10px; padding: 3px 6px;"
+                            onclick="app.deleteBoardItem('${category}', ${idx})">🗑️</button>
+                    <button class="panel-btn" style="font-size: 10px; padding: 3px 6px;"
+                            onclick="app.moveToCompleted('${category}', ${idx})">✓ Complete</button>
+                </div>
+            </div>
+        `;
+        
+        return html;
+    };
+    
+    // Update the main focus UI to include new controls
+    VeraChat.prototype.renderEnhancedFocusControls = function() {
+        return `
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${this.currentFocus ? `
+                    <button class="panel-btn" onclick="app.${this.focusRunning ? 'stopProactiveThinking' : 'startProactiveThinking'}()" style="padding: 6px 12px;">
+                        ${this.focusRunning ? '⏸️ Stop' : '▶️ Start'}
+                    </button>
+                    <button class="panel-btn" onclick="app.triggerProactiveThought()" style="padding: 6px 12px;">
+                        💭 Think Now
+                    </button>
+                    <button class="panel-btn" onclick="app.pauseBackground()" style="padding: 6px 12px;">
+                        ⏸️ Pause
+                    </button>
+                    <button class="panel-btn" onclick="app.resumeBackground()" style="padding: 6px 12px;">
+                        ▶️ Resume
+                    </button>
+                ` : ''}
+                <button class="panel-btn" onclick="app.showBackgroundControlPanel()" style="padding: 6px 12px;">
+                    ⚙️ Background
+                </button>
+                <button class="panel-btn" onclick="app.showEntityExplorer()" style="padding: 6px 12px;">
+                    🔗 Entities
+                </button>
+                <button class="panel-btn" onclick="app.showToolUsageHistory()" style="padding: 6px 12px;">
+                    🔧 Tool History
+                </button>
+                <button class="panel-btn" onclick="app.showFocusBoardMenu()" style="padding: 6px 12px;">
+                    📂 Load
+                </button>
+                <button class="panel-btn" onclick="app.loadFocusStatus()" style="padding: 6px 12px;">
+                    🔄 Refresh
+                </button>
+                <button class="panel-btn" onclick="app.saveFocusBoard()" style="padding: 6px 12px;">
+                    💾 Save
+                </button>
+            </div>
+        `;
+    };
 })();

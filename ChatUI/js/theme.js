@@ -676,7 +676,84 @@
         background: '#2b1a2f',
         fontFamily: '"Share Tech Mono", monospace'
       }
+    },
+    rainbowNoir: {
+      name: 'Rainbow Noir',
+      variables: {
+        '--bg': '#0b0b0e',
+        '--bg-surface': '#141418',
+        '--panel-bg': '#1d1d24',
+
+        /* Text uses bright rainbow terminal vibes */
+        '--text': 'linear-gradient(90deg, #ff5555, #f1fa8c, #50fa7b, #8be9fd, #bd93f9, #ff79c6)',
+        '--text-secondary': '#bbbbbb',
+
+        /* Rainbow accents for UI elements */
+        '--accent': '#ff79c6',
+        '--accent-muted': '#ff79c666',
+
+        '--border': '#444',
+        '--border-subtle': '#2a2a2f',
+        '--hover': '#bd93f9',
+        '--text-inverted': '#ffffff',
+
+        /* User-message text in rainbow gradient */
+        '--user-text': 'linear-gradient(90deg, #ff9a9e, #fad0c4, #fbc2eb, #a18cd1, #84fab0, #8fd3f4)'
+      },
+
+      fonts: ['Share+Tech+Mono'],
+
+      css: `
+        body {
+          font-family: 'Share Tech Mono', 'Segoe UI', sans-serif;
+          color: #ffffff;
+        }
+
+        button, select, input, textarea {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+
+        /* Rainbow text effect */
+        .message-content, .message.user .message-content {
+          background: rgba(255, 255, 255, 0.03);
+          border-left: 3px solid var(--border);
+          -webkit-background-clip: text;
+          background-clip: text;
+        }
+
+        .message-content {
+          color: transparent;
+          background-image: var(--text);
+        }
+
+        .message.user .message-content {
+          color: transparent;
+          background-image: var(--user-text);
+          border-left-color: #ff79c6;
+        }
+
+        .chat-panel, .graph-panel {
+          box-shadow: inset 0 0 12px rgba(0,0,0,0.4);
+        }
+
+        #messageInput:focus {
+          border-color: var(--accent);
+        }
+      `,
+
+      graph: {
+        nodeBorder: '#ff79c6',
+        nodeBackground: '#1d1d24',
+        nodeHighlight: '#bd93f9',
+        nodeFont: '#ffffff',
+        nodeFontSize: 14,
+        edgeColor: '#444',
+        edgeHighlight: '#ff79c6',
+        background: '#0b0b0e',
+        fontFamily: '"Share Tech Mono", monospace'
+      }
     }
+
   };
 
   // --- Theme Manager Class ---

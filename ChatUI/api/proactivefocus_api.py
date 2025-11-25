@@ -13,6 +13,12 @@ from starlette.websockets import WebSocketState
 # ============================================================
 from Vera.ChatUI.api.session import sessions, get_or_create_vera, vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
+# Enhanced API Endpoints for Proactive Focus Manager
+# Add these to your existing focus.py router
+
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 # ============================================================
 # Logging setup
@@ -26,10 +32,408 @@ router = APIRouter(prefix="/api/focus", tags=["focus"])
 wsrouter = APIRouter(prefix="/ws/focus", tags=["wsfocus"])
 
 # ============================================================
+# Request/Response Models
+# ============================================================
+
+class BackgroundConfigRequest(BaseModel):
+    mode: str  # 'off', 'manual', 'scheduled', 'continuous'
+    interval: Optional[int] = None
+    start_time: Optional[str] = None  # "09:00"
+    end_time: Optional[str] = None    # "17:00"
+
+class EntityReferenceRequest(BaseModel):
+    entity_id: str
+    entity_type: str
+    name: str
+    metadata: Optional[dict] = None
+
+class ToolExecutionRequest(BaseModel):
+    category: str
+    item_index: int
+    tool_name: str
+    tool_input: Optional[dict] = None
+
+class EnrichItemRequest(BaseModel):
+    category: str
+    item_index: int
+    auto_discover: bool = True
+
+# ============================================================
+# Background Control Endpoints
+# ============================================================
+
+@router.post("/{session_id}/background/config")
+async def configure_background_mode(session_id: str, config: BackgroundConfigRequest):
+    """Configure background thinking mode and schedule."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    from proactive_focus_manager_enhanced import BackgroundMode
+    
+    try:
+        mode = BackgroundMode(config.mode)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid mode. Must be one of: {[m.value for m in BackgroundMode]}"
+        )
+    
+    vera.focus_manager.set_background_mode(
+        mode=mode,
+        interval=config.interval,
+        start_time=config.start_time,
+        end_time=config.end_time
+    )
+    
+    return {
+        "status": "success",
+        "mode": mode.value,
+        "interval": vera.focus_manager.proactive_interval,
+        "schedule": {
+            "start": config.start_time,
+            "end": config.end_time
+        }
+    }
+
+@router.post("/{session_id}/background/pause")
+async def pause_background(session_id: str):
+    """Temporarily pause background thinking."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    vera.focus_manager.pause_background()
+    
+    return {"status": "paused"}
+
+@router.post("/{session_id}/background/resume")
+async def resume_background(session_id: str):
+    """Resume paused background thinking."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    vera.focus_manager.resume_background()
+    
+    return {"status": "resumed"}
+
+@router.get("/{session_id}/background/status")
+async def get_background_status(session_id: str):
+    """Get current background thinking status and configuration."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    fm = vera.focus_manager
+    next_run = fm.get_next_scheduled_run()
+    
+    return {
+        "mode": fm.background_mode.value,
+        "running": fm.running,
+        "paused": not fm.pause_event.is_set(),
+        "interval": fm.proactive_interval,
+        "cpu_threshold": fm.cpu_threshold,
+        "schedule": {
+            "start_time": str(fm.schedule_start_time) if fm.schedule_start_time else None,
+            "end_time": str(fm.schedule_end_time) if fm.schedule_end_time else None,
+            "within_schedule": fm.is_within_schedule(),
+            "next_run": next_run.isoformat() if next_run else None
+        }
+    }
+
+# ============================================================
+# Entity Reference Endpoints
+# ============================================================
+
+@router.get("/{session_id}/entities/discover")
+async def discover_related_entities(session_id: str):
+    """Discover entities related to current focus."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    entities = vera.focus_manager.discover_related_entities()
+    
+    # Convert EntityReference objects to dicts
+    serialized = {}
+    for entity_type, refs in entities.items():
+        serialized[entity_type] = [ref.to_dict() for ref in refs]
+    
+    return {
+        "status": "success",
+        "entities": serialized,
+        "total": sum(len(refs) for refs in entities.values())
+    }
+
+@router.get("/{session_id}/entities/{entity_id}/content")
+async def get_entity_content(session_id: str, entity_id: str, max_length: int = 500):
+    """Get content/summary for a specific entity."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    # Check if entity is in cache
+    if entity_id not in vera.focus_manager._entity_cache:
+        raise HTTPException(status_code=404, detail="Entity not found in cache")
+    
+    entity_ref = vera.focus_manager._entity_cache[entity_id]
+    content = vera.focus_manager.get_entity_content(entity_ref, max_length=max_length)
+    
+    return {
+        "entity_id": entity_id,
+        "entity_type": entity_ref.entity_type,
+        "name": entity_ref.name,
+        "content": content
+    }
+
+@router.post("/{session_id}/board/item/enrich")
+async def enrich_board_item(session_id: str, request: EnrichItemRequest):
+    """Enrich a focus board item with entity references."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    fm = vera.focus_manager
+    
+    if request.category not in fm.focus_board:
+        raise HTTPException(status_code=400, detail=f"Invalid category: {request.category}")
+    
+    items = fm.focus_board[request.category]
+    if request.item_index >= len(items):
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    item = items[request.item_index]
+    fm.enrich_item_with_entities(item, auto_discover=request.auto_discover)
+    
+    return {
+        "status": "enriched",
+        "item": item.to_dict()
+    }
+
+# ============================================================
+# Tool Integration Endpoints
+# ============================================================
+
+@router.get("/{session_id}/tools/available")
+async def get_available_tools(session_id: str, refresh: bool = False):
+    """Get list of available tools."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    if refresh:
+        vera.focus_manager.refresh_available_tools()
+    
+    return {
+        "tools": vera.focus_manager._available_tools,
+        "total": len(vera.focus_manager._available_tools)
+    }
+
+@router.post("/{session_id}/board/item/suggest-tools")
+async def suggest_tools_for_item(session_id: str, request: dict):
+    """Suggest relevant tools for a focus board item."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    category = request.get("category")
+    item_index = request.get("item_index")
+    
+    if not category or item_index is None:
+        raise HTTPException(status_code=400, detail="Category and item_index required")
+    
+    fm = vera.focus_manager
+    
+    if category not in fm.focus_board:
+        raise HTTPException(status_code=400, detail=f"Invalid category: {category}")
+    
+    items = fm.focus_board[category]
+    if item_index >= len(items):
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    item = items[item_index]
+    
+    # Run in background thread to avoid blocking
+    import threading
+    
+    def suggest():
+        fm.suggest_tools_for_item(item)
+    
+    thread = threading.Thread(target=suggest, daemon=True)
+    thread.start()
+    
+    return {
+        "status": "started",
+        "message": "Tool suggestion generation started"
+    }
+
+@router.post("/{session_id}/tools/execute")
+async def execute_tool_for_item(session_id: str, request: ToolExecutionRequest):
+    """Execute a specific tool for a focus board item."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    fm = vera.focus_manager
+    
+    if request.category not in fm.focus_board:
+        raise HTTPException(status_code=400, detail=f"Invalid category: {request.category}")
+    
+    items = fm.focus_board[request.category]
+    if request.item_index >= len(items):
+        raise HTTPException(status_code=404, detail="Item not found")
+    
+    item = items[request.item_index]
+    
+    # Execute tool in background thread
+    import threading
+    
+    result_container = {"result": None, "error": None}
+    
+    def execute():
+        try:
+            result = fm.execute_tool_for_item(
+                item, 
+                request.tool_name, 
+                request.tool_input
+            )
+            result_container["result"] = result
+        except Exception as e:
+            result_container["error"] = str(e)
+    
+    thread = threading.Thread(target=execute, daemon=True)
+    thread.start()
+    thread.join(timeout=30)  # Wait up to 30 seconds
+    
+    if result_container["error"]:
+        raise HTTPException(status_code=500, detail=result_container["error"])
+    
+    return {
+        "status": "executed",
+        "tool": request.tool_name,
+        "result": result_container["result"],
+        "item": item.to_dict()
+    }
+
+@router.get("/{session_id}/tools/usage-history")
+async def get_tool_usage_history(session_id: str, limit: int = 20):
+    """Get tool usage history."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    history = vera.focus_manager._tool_usage_history[-limit:]
+    
+    return {
+        "history": history,
+        "total": len(vera.focus_manager._tool_usage_history)
+    }
+
+# ============================================================
+# Enhanced Board Retrieval
+# ============================================================
+
+@router.get("/{session_id}/board/enhanced")
+async def get_enhanced_board(session_id: str, include_content: bool = False):
+    """Get focus board with full entity references and tool suggestions."""
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    fm = vera.focus_manager
+    
+    # Serialize board with all enhancements
+    board = {}
+    for category, items in fm.focus_board.items():
+        board[category] = []
+        for item in items:
+            item_dict = item.to_dict()
+            
+            # Optionally fetch content for entity refs
+            if include_content:
+                for ref in item.entity_refs:
+                    if not ref.content_summary:
+                        content = fm.get_entity_content(ref, max_length=200)
+                        if content:
+                            ref.content_summary = content
+                
+                # Update dict with content
+                item_dict["entity_refs"] = [ref.to_dict() for ref in item.entity_refs]
+            
+            board[category].append(item_dict)
+    
+    return {
+        "focus": fm.focus,
+        "project_id": fm.project_id,
+        "board": board,
+        "related_entities": {
+            "sessions": list(fm._related_sessions),
+            "notebooks": list(fm._related_notebooks),
+            "folders": list(fm._related_folders)
+        },
+        "stats": {
+            "total_items": sum(len(items) for items in fm.focus_board.values()),
+            "total_entity_refs": sum(
+                len(item.entity_refs) 
+                for items in fm.focus_board.values() 
+                for item in items
+            ),
+            "tools_used": len(fm._tool_usage_history)
+        }
+    }
+
+
+# ============================================================
 # Proactive Focus Manager Endpoints
-# ============================================================
-# ============================================================
-# Proactive Focus Manager Endpoints - FIXED
 # ============================================================
 
 @router.get("/{session_id}/boards/list")

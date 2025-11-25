@@ -3,9 +3,18 @@ Vera API Endpoints using FastAPI - Enhanced with Toolchain Monitoring
 Compatible with the frontend chat interface
 """ 
 
+# ============================================================
+# Fast API imports
+# ============================================================
+
+
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+# ============================================================
+# General imports
+# ============================================================
 
 from typing import List, Dict, Any
 import json
@@ -19,15 +28,19 @@ from threading import Thread
 from uuid import uuid4
 from neo4j import GraphDatabase
 
-# Import existing modules
+# ============================================================
+# Vera imports
+# ============================================================
 
 from Vera.vera import Vera
+import Vera.ChatUI.api.execution as execution_api
 import Vera.ChatUI.api.vectorstore_api as vectorstore_api
 import Vera.ChatUI.api.toolchain_api as toolchain_api
 import Vera.ChatUI.api.toolchain_query as toolchain_query_api
 import Vera.ChatUI.api.n8n_proxy as n8n_proxy
 import Vera.ChatUI.api.graph_api as graph_api
 import Vera.ChatUI.api.chat_api as chat_api
+import Vera.ChatUI.api.chat_history_api as chat_history_api
 import Vera.ChatUI.api.orchestrator_api as orchestrator_api
 import Vera.ChatUI.api.memory_api as memory_api
 import Vera.ChatUI.api.proactivefocus_api as proactivefocus_api
@@ -67,8 +80,10 @@ app.add_middleware(
 # Router setup
 # ============================================================
 
+app.include_router(execution_api.router)
 app.include_router(chat_api.router)
 app.include_router(chat_api.wsrouter)
+app.include_router(chat_history_api.router)
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
 app.include_router(toolchain_query_api.router)

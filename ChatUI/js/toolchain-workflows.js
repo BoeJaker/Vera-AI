@@ -33,7 +33,7 @@
                         </button>
                         <button class="panel-btn ${this.toolchainView === 'workflows' ? 'active' : ''}" 
                                 onclick="app.switchToolchainView('workflows')">
-                            🔄 Workflows
+                            Workflows
                         </button>
                     </div>
                 </div>

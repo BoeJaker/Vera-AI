@@ -1,6 +1,6 @@
 """
-Enhanced MonitoredToolChainPlanner - Compatible with Hybrid Planner
-Adds WebSocket monitoring to the hybrid planner while preserving all features
+Enhanced MonitoredToolChainPlanner - FIXED FOR ASYNC CONTEXTS
+Works correctly when called from FastAPI/async contexts
 """
 
 import asyncio
@@ -25,6 +25,7 @@ class EnhancedMonitoredToolChainPlanner:
     """
     Wrapper that adds WebSocket monitoring to any toolchain planner.
     Compatible with both original ToolChainPlanner and HybridToolChainPlanner.
+    FIXED: Works correctly in async contexts (FastAPI).
     """
     
     def __init__(self, original_planner, session_id: str):
@@ -48,13 +49,11 @@ class EnhancedMonitoredToolChainPlanner:
         self.execution_id = self._create_toolchain_execution(query)
         
         try:
-            # Broadcast execution started
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self._broadcast_toolchain_event(
+            # Broadcast execution started (non-blocking)
+            self._broadcast_event_nonblocking(
                 "execution_started",
                 {"execution_id": self.execution_id, "query": query, "strategy": strategy, "mode": mode}
-            ))
+            )
             
             # Check if planner supports strategy parameter
             planner_method = self.original_planner.execute_tool_chain
@@ -65,10 +64,7 @@ class EnhancedMonitoredToolChainPlanner:
             
             # Generate plan if not provided
             if plan is None:
-                loop.run_until_complete(self._broadcast_toolchain_event(
-                    "status",
-                    {"status": "planning"}
-                ))
+                self._broadcast_event_nonblocking("status", {"status": "planning"})
                 
                 # Try to use plan_tool_chain with strategy if available
                 if hasattr(self.original_planner, 'plan_tool_chain'):
@@ -83,7 +79,6 @@ class EnhancedMonitoredToolChainPlanner:
                         logger.warning(f"Error calling plan_tool_chain with strategy: {e}")
                         gen = self.original_planner.plan_tool_chain(query)
                 else:
-                    # No separate planning method, will plan during execution
                     gen = None
                 
                 if gen:
@@ -91,18 +86,15 @@ class EnhancedMonitoredToolChainPlanner:
                     for chunk in gen:
                         plan_chunks.append(chunk)
                         if isinstance(chunk, str):
-                            loop.run_until_complete(self._broadcast_toolchain_event(
-                                "plan_chunk",
-                                {"chunk": chunk}
-                            ))
+                            self._broadcast_event_nonblocking("plan_chunk", {"chunk": chunk})
                             yield chunk
                         elif isinstance(chunk, list):
                             # Final plan
                             self._update_toolchain_plan(chunk)
-                            loop.run_until_complete(self._broadcast_toolchain_event(
+                            self._broadcast_event_nonblocking(
                                 "plan",
                                 {"plan": chunk, "total_steps": len(chunk)}
-                            ))
+                            )
                             plan = chunk
                             yield chunk
                         elif isinstance(chunk, dict):
@@ -115,19 +107,16 @@ class EnhancedMonitoredToolChainPlanner:
                                 plan = [chunk]
                             
                             self._update_toolchain_plan(plan)
-                            loop.run_until_complete(self._broadcast_toolchain_event(
+                            self._broadcast_event_nonblocking(
                                 "plan",
                                 {"plan": plan, "total_steps": len(plan)}
-                            ))
+                            )
                             yield chunk
             else:
                 self._update_toolchain_plan(plan)
             
             # Execute plan
-            loop.run_until_complete(self._broadcast_toolchain_event(
-                "status",
-                {"status": "executing"}
-            ))
+            self._broadcast_event_nonblocking("status", {"status": "executing"})
             
             # Prepare execution arguments
             exec_kwargs = {'query': query, **kwargs}
@@ -169,59 +158,47 @@ class EnhancedMonitoredToolChainPlanner:
                             tool_name = match.group(2)
                             
                             self._add_toolchain_step(step_num, tool_name, "")
-                            loop.run_until_complete(self._broadcast_toolchain_event(
+                            self._broadcast_event_nonblocking(
                                 "step_started",
                                 {
                                     "step_number": step_num,
                                     "tool_name": tool_name,
                                     "execution_id": self.execution_id
                                 }
-                            ))
+                            )
                     except Exception as e:
                         logger.debug(f"Error parsing step marker: {e}")
                 
                 # Broadcast output
                 if step_num > 0:
-                    loop.run_until_complete(self._broadcast_toolchain_event(
+                    self._broadcast_event_nonblocking(
                         "step_output",
                         {"step_number": step_num, "chunk": chunk_str}
-                    ))
+                    )
                 
                 yield chunk
                 final_result += chunk_str
             
             # Mark as completed
             self._complete_toolchain_execution(final_result, "completed")
-            
-            loop.run_until_complete(self._broadcast_toolchain_event(
+            self._broadcast_event_nonblocking(
                 "execution_completed",
                 {"final_result": final_result[:500]}
-            ))
+            )
             
-            loop.close()
             return final_result
             
         except Exception as e:
             logger.error(f"Toolchain execution error: {e}", exc_info=True)
             self._complete_toolchain_execution(str(e), "failed")
-            
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            
-            loop.run_until_complete(self._broadcast_toolchain_event(
+            self._broadcast_event_nonblocking(
                 "execution_failed",
                 {"error": str(e)}
-            ))
-            loop.close()
+            )
             raise
     
     def plan_tool_chain(self, query: str, strategy: str = "static", **kwargs):
-        """
-        Generate a plan with optional strategy parameter.
-        """
+        """Generate a plan with optional strategy parameter."""
         if hasattr(self.original_planner, 'plan_tool_chain'):
             import inspect
             sig = inspect.signature(self.original_planner.plan_tool_chain)
@@ -234,7 +211,52 @@ class EnhancedMonitoredToolChainPlanner:
             # Fallback: no separate planning method
             yield [{"tool": "fast_llm", "input": query}]
     
-    # Helper methods
+    # ============================================================
+    # Helper Methods - Non-blocking Event Broadcasting
+    # ============================================================
+    
+    def _broadcast_event_nonblocking(self, event_type: str, data: Dict[str, Any]):
+        """
+        Broadcast event without blocking.
+        Works correctly in both sync and async contexts.
+        """
+        try:
+            # Try to get the running event loop
+            loop = asyncio.get_running_loop()
+            
+            # Schedule the broadcast as a task (fire and forget)
+            loop.create_task(self._broadcast_toolchain_event(event_type, data))
+            
+        except RuntimeError:
+            # No event loop running (unlikely in FastAPI, but handle it)
+            logger.debug(f"No event loop running, skipping broadcast of {event_type}")
+    
+    async def _broadcast_toolchain_event(self, event_type: str, data: Dict[str, Any]):
+        """Broadcast toolchain events to all connected WebSockets for a session."""
+        if self.session_id in websocket_connections:
+            disconnected = []
+            for websocket in websocket_connections[self.session_id]:
+                try:
+                    await websocket.send_json({
+                        "type": event_type,
+                        "data": data,
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                except Exception as e:
+                    logger.warning(f"Failed to send to websocket: {e}")
+                    disconnected.append(websocket)
+            
+            # Clean up disconnected websockets
+            for ws in disconnected:
+                try:
+                    websocket_connections[self.session_id].remove(ws)
+                except ValueError:
+                    pass  # Already removed
+    
+    # ============================================================
+    # Storage Helper Methods
+    # ============================================================
+    
     def _create_toolchain_execution(self, query: str) -> str:
         """Create a new toolchain execution record."""
         execution_id = str(uuid.uuid4())
@@ -312,25 +334,6 @@ class EnhancedMonitoredToolChainPlanner:
             
             if self.session_id in active_toolchains:
                 del active_toolchains[self.session_id]
-    
-    async def _broadcast_toolchain_event(self, event_type: str, data: Dict[str, Any]):
-        """Broadcast toolchain events to all connected WebSockets for a session."""
-        if self.session_id in websocket_connections:
-            disconnected = []
-            for websocket in websocket_connections[self.session_id]:
-                try:
-                    await websocket.send_json({
-                        "type": event_type,
-                        "data": data,
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to send to websocket: {e}")
-                    disconnected.append(websocket)
-            
-            # Clean up disconnected websockets
-            for ws in disconnected:
-                websocket_connections[self.session_id].remove(ws)
     
     # Delegate other methods to original planner
     def __getattr__(self, name):

@@ -1,0 +1,122 @@
+version: '3.8'
+
+services:
+  # Redis for pub/sub and coordination
+  redis:
+    image: redis:7-alpine
+    container_name: vera-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - vera-network
+    restart: unless-stopped
+
+  # Main orchestrator service
+  orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vera-orchestrator
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # Worker configuration
+      - WORKERS_LLM=4
+      - WORKERS_WHISPER=2
+      - WORKERS_TOOL=8
+      - WORKERS_ML=2
+      - WORKERS_BACKGROUND=4
+      - WORKERS_GENERAL=4
+      
+      # Resource limits
+      - MAX_RESOURCES=20
+      - AUTO_SCALE=true
+      - CPU_THRESHOLD=85.0
+      
+      # Docker configuration
+      - DOCKER_ENABLED=true
+      - DOCKER_URL=unix:///var/run/docker.sock
+      
+      # Proxmox configuration (update with your details)
+      - PROXMOX_ENABLED=false
+      - PROXMOX_HOST=${PROXMOX_HOST:-}
+      - PROXMOX_USER=${PROXMOX_USER:-}
+      - PROXMOX_TOKEN_NAME=${PROXMOX_TOKEN_NAME:-}
+      - PROXMOX_TOKEN_VALUE=${PROXMOX_TOKEN_VALUE:-}
+      
+      # Redis configuration
+      - REDIS_URL=redis://redis:6379/0
+      
+      # Logging
+      - LOG_LEVEL=INFO
+      
+    volumes:
+      # Mount Docker socket for container management
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount code (development)
+      - .:/app
+      # Shared data volume
+      - shared-data:/data
+    networks:
+      - vera-network
+    restart: unless-stopped
+    # Uncomment to expose API/monitoring port
+    # ports:
+    #   - "8080:8080"
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vera-prometheus
+    profiles:
+      - monitoring
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - vera-network
+    restart: unless-stopped
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vera-grafana
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - vera-network
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+    driver: local
+  shared-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  vera-network:
+    driver: bridge

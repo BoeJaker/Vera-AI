@@ -441,7 +441,7 @@ VeraChat.prototype.renderCurrentExecution = function() {
                             
                             <div class="tool-subcard" style="padding: 8px; border-radius: 4px; margin-bottom: 8px;">
                                 <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
-                                <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${this.escapeHtml(step.input.substring(0, 200))}${step.input.length > 200 ? '...' : ''}</div>
+                                <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${step.input ? this.escapeHtml(step.input.substring(0, 200)) : 'No input'}${step.input.length > 200 ? '...' : ''}</div>
                             </div>
                             
                             ${step.output ? `

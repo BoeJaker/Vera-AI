@@ -34,10 +34,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/notebooks", tags=["notebooks"])
 
 # ============================================================
-# Storage Configuration
+# Storage Configuration - ENHANCED
 # ============================================================
 NOTEBOOKS_DIR = Path("Output/Notebooks")
 NOTEBOOKS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Global notebooks directory (session-independent)
+GLOBAL_NOTEBOOKS_DIR = NOTEBOOKS_DIR / "All_Notebooks"
+GLOBAL_NOTEBOOKS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Markdown exports directory
+MARKDOWN_EXPORTS_DIR = NOTEBOOKS_DIR / "Markdown_Exports"
+MARKDOWN_EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Track Neo4j availability
 neo4j_available = None
@@ -79,7 +87,7 @@ def ensure_neo4j_constraints(driver):
         logger.error(f"Failed to create Neo4j constraints: {e}")
 
 # ============================================================
-# File Storage Helpers
+# Session-Specific File Storage Helpers
 # ============================================================
 def get_session_notebook_dir(session_id: str) -> Path:
     """Get or create directory for session notebooks"""
@@ -132,11 +140,129 @@ def list_session_notebooks(session_id: str) -> List[Dict[str, Any]]:
     return sorted(notebooks, key=lambda x: x.get('created_at', ''), reverse=True)
 
 # ============================================================
-#  Hybrid Storage Functions
+# Global Storage Helpers (Session-Independent) - NEW
 # ============================================================
 
-def get_notebooks_hybrid(session_id: str) -> List[Dict[str, Any]]:
+def save_to_global_storage(notebook_data: Dict[str, Any]):
+    """Save notebook to global storage (session-independent)"""
+    try:
+        # Save as JSON
+        global_file = GLOBAL_NOTEBOOKS_DIR / f"{notebook_data['id']}.json"
+        with open(global_file, 'w', encoding='utf-8') as f:
+            json.dump(notebook_data, f, indent=2, ensure_ascii=False)
+        
+        # Also save as markdown for easy reading
+        export_notebook_as_markdown(notebook_data)
+        
+        logger.info(f"Saved notebook {notebook_data['id']} to global storage")
+    except Exception as e:
+        logger.error(f"Failed to save to global storage: {e}")
+
+def load_from_global_storage(notebook_id: str) -> Optional[Dict[str, Any]]:
+    """Load notebook from global storage"""
+    global_file = GLOBAL_NOTEBOOKS_DIR / f"{notebook_id}.json"
+    if not global_file.exists():
+        return None
+    
+    try:
+        with open(global_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load from global storage: {e}")
+        return None
+
+def delete_from_global_storage(notebook_id: str):
+    """Delete notebook from global storage"""
+    global_file = GLOBAL_NOTEBOOKS_DIR / f"{notebook_id}.json"
+    markdown_file = None
+    
+    # Find and delete markdown file
+    for md_file in MARKDOWN_EXPORTS_DIR.glob(f"*_{notebook_id[:8]}.md"):
+        markdown_file = md_file
+        break
+    
+    if global_file.exists():
+        global_file.unlink()
+    if markdown_file and markdown_file.exists():
+        markdown_file.unlink()
+
+def list_all_notebooks() -> List[Dict[str, Any]]:
+    """List all notebooks across all sessions from global storage"""
+    notebooks = []
+    
+    for notebook_file in GLOBAL_NOTEBOOKS_DIR.glob("*.json"):
+        try:
+            with open(notebook_file, 'r', encoding='utf-8') as f:
+                notebook = json.load(f)
+                notebooks.append(notebook)
+        except Exception as e:
+            logger.error(f"Failed to load {notebook_file}: {e}")
+    
+    return sorted(notebooks, key=lambda x: x.get('updated_at', ''), reverse=True)
+
+def export_notebook_as_markdown(notebook_data: Dict[str, Any]):
+    """Export notebook as markdown file"""
+    try:
+        notebook_name = notebook_data.get('name', 'Untitled')
+        safe_name = "".join(c for c in notebook_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        markdown_file = MARKDOWN_EXPORTS_DIR / f"{safe_name}_{notebook_data['id'][:8]}.md"
+        
+        with open(markdown_file, 'w', encoding='utf-8') as f:
+            # Write header
+            f.write(f"# {notebook_name}\n\n")
+            
+            if notebook_data.get('description'):
+                f.write(f"**Description:** {notebook_data['description']}\n\n")
+            
+            f.write(f"**Created:** {notebook_data.get('created_at', 'Unknown')}\n")
+            f.write(f"**Updated:** {notebook_data.get('updated_at', 'Unknown')}\n")
+            f.write(f"**Session ID:** {notebook_data.get('session_id', 'Unknown')}\n")
+            f.write(f"**Notebook ID:** {notebook_data.get('id', 'Unknown')}\n\n")
+            f.write("---\n\n")
+            
+            # Write notes
+            notes = notebook_data.get('notes', [])
+            if notes:
+                f.write(f"## Notes ({len(notes)})\n\n")
+                
+                for i, note in enumerate(notes, 1):
+                    f.write(f"### {i}. {note.get('title', 'Untitled Note')}\n\n")
+                    
+                    # Metadata
+                    f.write(f"- **Created:** {note.get('created_at', 'Unknown')}\n")
+                    f.write(f"- **Updated:** {note.get('updated_at', 'Unknown')}\n")
+                    
+                    if note.get('tags'):
+                        tags = ', '.join(note['tags'])
+                        f.write(f"- **Tags:** {tags}\n")
+                    
+                    if note.get('source'):
+                        f.write(f"- **Source:** {note['source'].get('type', 'Unknown')}\n")
+                    
+                    f.write("\n")
+                    
+                    # Content
+                    content = note.get('content', '')
+                    f.write(f"{content}\n\n")
+                    f.write("---\n\n")
+            else:
+                f.write("*No notes in this notebook*\n\n")
+        
+        logger.info(f"Exported notebook as markdown: {markdown_file}")
+    except Exception as e:
+        logger.error(f"Failed to export markdown: {e}")
+
+# ============================================================
+# Hybrid Storage Functions - ENHANCED
+# ============================================================
+
+def get_notebooks_hybrid(session_id: str, include_all_sessions: bool = False) -> List[Dict[str, Any]]:
     """Get notebooks from Neo4j or file storage"""
+    
+    # If include_all_sessions, return from global storage
+    if include_all_sessions:
+        return list_all_notebooks()
+    
     driver = get_neo4j_driver()
     
     if driver:
@@ -226,8 +352,10 @@ def create_notebook_hybrid(session_id: str, notebook: NotebookCreate) -> Dict[st
                 
                 if result.single():
                     driver.close()
-                    # Also save to file for backup
+                    # Save to session-specific file
                     save_notebook_to_file(session_id, notebook_data)
+                    # Save to global storage
+                    save_to_global_storage(notebook_data)
                     return notebook_data
         except Exception as e:
             logger.error(f"Neo4j error during create, using file storage: {e}")
@@ -237,6 +365,7 @@ def create_notebook_hybrid(session_id: str, notebook: NotebookCreate) -> Dict[st
     
     # Fallback to file storage
     save_notebook_to_file(session_id, notebook_data)
+    save_to_global_storage(notebook_data)
     return notebook_data
 
 def update_notebook_hybrid(session_id: str, notebook_id: str, notebook: NotebookUpdate) -> Dict[str, Any]:
@@ -284,6 +413,7 @@ def update_notebook_hybrid(session_id: str, notebook_id: str, notebook: Notebook
                         if existing:
                             existing.update(notebook_data)
                             save_notebook_to_file(session_id, existing)
+                            save_to_global_storage(existing)
                         return notebook_data
         except Exception as e:
             logger.error(f"Neo4j error during update, using file storage: {e}")
@@ -303,6 +433,7 @@ def update_notebook_hybrid(session_id: str, notebook_id: str, notebook: Notebook
     existing["updated_at"] = now
     
     save_notebook_to_file(session_id, existing)
+    save_to_global_storage(existing)
     return existing
 
 def delete_notebook_hybrid(session_id: str, notebook_id: str) -> Dict[str, Any]:
@@ -336,29 +467,55 @@ def delete_notebook_hybrid(session_id: str, notebook_id: str) -> Dict[str, Any]:
             if driver:
                 driver.close()
     
-    # Always delete from file storage
+    # Delete from all storage
     try:
         delete_notebook_file(session_id, notebook_id)
+        delete_from_global_storage(notebook_id)
     except Exception as e:
-        logger.error(f"Failed to delete notebook file: {e}")
+        logger.error(f"Failed to delete notebook files: {e}")
     
     return {"success": True, "deleted_notes": note_count}
 
 # ============================================================
-#  Notebook Endpoints
+# Notebook Endpoints - ENHANCED
 # ============================================================
 
 @router.get("/{session_id}")
-async def get_notebooks(session_id: str):
-    """Get all notebooks for a session"""
+async def get_notebooks(session_id: str, all_sessions: bool = False):
+    """Get all notebooks for a session or across all sessions"""
     try:
-        notebooks = get_notebooks_hybrid(session_id)
+        notebooks = get_notebooks_hybrid(session_id, include_all_sessions=all_sessions)
         return {
             "notebooks": notebooks,
-            "storage_type": "neo4j" if neo4j_available else "file"
+            "storage_type": "neo4j" if neo4j_available else "file",
+            "all_sessions": all_sessions
         }
     except Exception as e:
         logger.error(f"Failed to get notebooks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/global/list")
+async def get_all_notebooks_global():
+    """Get all notebooks across all sessions (global view)"""
+    try:
+        notebooks = list_all_notebooks()
+        
+        # Group by session for better organization
+        by_session = {}
+        for nb in notebooks:
+            session_id = nb.get('session_id', 'unknown')
+            if session_id not in by_session:
+                by_session[session_id] = []
+            by_session[session_id].append(nb)
+        
+        return {
+            "notebooks": notebooks,
+            "by_session": by_session,
+            "total": len(notebooks),
+            "sessions": len(by_session)
+        }
+    except Exception as e:
+        logger.error(f"Failed to get global notebooks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/{session_id}/create")
@@ -477,7 +634,10 @@ async def get_notes(
     # Fallback to file storage
     notebook_data = load_notebook_from_file(session_id, notebook_id)
     if not notebook_data:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        # Try global storage
+        notebook_data = load_from_global_storage(notebook_id)
+        if not notebook_data:
+            raise HTTPException(status_code=404, detail="Notebook not found")
     
     notes = notebook_data.get("notes", [])
     
@@ -545,7 +705,9 @@ async def get_note(session_id: str, notebook_id: str, note_id: str):
     # Fallback to file storage
     notebook_data = load_notebook_from_file(session_id, notebook_id)
     if not notebook_data:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        notebook_data = load_from_global_storage(notebook_id)
+        if not notebook_data:
+            raise HTTPException(status_code=404, detail="Notebook not found")
     
     note = next((n for n in notebook_data.get("notes", []) if n["id"] == note_id), None)
     if not note:
@@ -614,6 +776,7 @@ async def create_note(session_id: str, notebook_id: str, note: NoteCreate):
                             notebook_data.setdefault("notes", []).append(note_data)
                             notebook_data["note_count"] = len(notebook_data["notes"])
                             save_notebook_to_file(session_id, notebook_data)
+                            save_to_global_storage(notebook_data)
                         return {"note": note_data, "storage_type": "neo4j"}
         except Exception as e:
             logger.error(f"Neo4j error during note create: {e}")
@@ -629,6 +792,7 @@ async def create_note(session_id: str, notebook_id: str, note: NoteCreate):
     notebook_data.setdefault("notes", []).append(note_data)
     notebook_data["note_count"] = len(notebook_data["notes"])
     save_notebook_to_file(session_id, notebook_data)
+    save_to_global_storage(notebook_data)
     
     return {"note": note_data, "storage_type": "file"}
 
@@ -701,6 +865,7 @@ async def update_note(session_id: str, notebook_id: str, note_id: str, note: Not
                                     notebook_data["notes"][i] = note_data
                                     break
                             save_notebook_to_file(session_id, notebook_data)
+                            save_to_global_storage(notebook_data)
                         return {"note": note_data, "storage_type": "neo4j"}
         except Exception as e:
             logger.error(f"Neo4j error during note update: {e}")
@@ -726,6 +891,7 @@ async def update_note(session_id: str, notebook_id: str, note_id: str, note: Not
             existing_note["updated_at"] = now
             
             save_notebook_to_file(session_id, notebook_data)
+            save_to_global_storage(notebook_data)
             return {"note": existing_note, "storage_type": "file"}
     
     raise HTTPException(status_code=404, detail="Note not found")
@@ -754,6 +920,7 @@ async def delete_note(session_id: str, notebook_id: str, note_id: str):
                         notebook_data["notes"] = [n for n in notebook_data.get("notes", []) if n["id"] != note_id]
                         notebook_data["note_count"] = len(notebook_data["notes"])
                         save_notebook_to_file(session_id, notebook_data)
+                        save_to_global_storage(notebook_data)
                     return {"success": True, "storage_type": "neo4j"}
         except Exception as e:
             logger.error(f"Neo4j error during note delete: {e}")
@@ -774,6 +941,7 @@ async def delete_note(session_id: str, notebook_id: str, note_id: str):
     
     notebook_data["note_count"] = len(notebook_data["notes"])
     save_notebook_to_file(session_id, notebook_data)
+    save_to_global_storage(notebook_data)
     
     return {"success": True, "storage_type": "file"}
 
@@ -1040,13 +1208,17 @@ async def get_all_tags(session_id: str):
     
     return {"tags": tags, "storage_type": "file"}
 
-# ==================== EXPORT/IMPORT ENDPOINTS ====================
+# ==================== EXPORT/IMPORT ENDPOINTS - ENHANCED ====================
 
 @router.get("/{session_id}/{notebook_id}/export")
 async def export_notebook(session_id: str, notebook_id: str):
     """Export entire notebook as JSON"""
     # Always use file storage for export (most reliable)
     notebook_data = load_notebook_from_file(session_id, notebook_id)
+    
+    if not notebook_data:
+        # Try global storage
+        notebook_data = load_from_global_storage(notebook_id)
     
     if not notebook_data:
         # Try Neo4j if file not found
@@ -1114,3 +1286,25 @@ async def export_notebook(session_id: str, notebook_id: str):
         "notes": notebook_data.get("notes", []),
         "exported_at": datetime.utcnow().isoformat()
     }
+
+@router.post("/{session_id}/{notebook_id}/export-markdown")
+async def export_notebook_markdown(session_id: str, notebook_id: str):
+    """Export notebook as markdown"""
+    try:
+        # Load notebook with all notes
+        notebook_data = load_notebook_from_file(session_id, notebook_id)
+        if not notebook_data:
+            notebook_data = load_from_global_storage(notebook_id)
+        
+        if not notebook_data:
+            raise HTTPException(status_code=404, detail="Notebook not found")
+        
+        export_notebook_as_markdown(notebook_data)
+        
+        return {
+            "success": True,
+            "message": f"Exported to {MARKDOWN_EXPORTS_DIR}"
+        }
+    except Exception as e:
+        logger.error(f"Failed to export markdown: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,36 +1,30 @@
-
 """
-Integration module to add orchestrator routes to existing FastAPI application
-Usage: 
-    from orchestrator_integration import add_orchestrator_routes
-    add_orchestrator_routes(app, vera_instance)
+FastAPI Endpoints for Streaming Orchestrator
+=============================================
+Exposes the new streaming-enabled orchestrator via REST API
 """
 
-from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-import os
-import asyncio
-from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
 from datetime import datetime
+import asyncio
 import psutil
 
-from Vera.BackgroundCognition.proactive_background_focus import (
-    PriorityWorkerPool, 
-    ClusterWorkerPool, 
-    RemoteNode,
-    GLOBAL_TASK_REGISTRY as R,
+from Vera.orchestration import (
+    Orchestrator,
+    TaskType,
     Priority,
-    ProactiveFocusManager,
-    ScheduledTask,
-    TokenBucket
+    TaskStatus,
+    registry
 )
 
-# ============================================================
-# Router Setup
-# ============================================================
+# ============================================================================
+# ROUTER SETUP
+# ============================================================================
+
 router = APIRouter(prefix="/orchestrator", tags=["orchestrator"])
+
 
 # ============================================================================
 # GLOBAL STATE
@@ -38,14 +32,10 @@ router = APIRouter(prefix="/orchestrator", tags=["orchestrator"])
 
 class OrchestratorState:
     def __init__(self):
-        self.local_pool: Optional[PriorityWorkerPool] = None
-        self.cluster_pool: Optional[ClusterWorkerPool] = None
-        self.focus_manager: Optional[ProactiveFocusManager] = None
+        self.orchestrator: Optional[Orchestrator] = None
         self.vera_instance = None
-        self.task_history: List[Dict] = []
-        self.system_metrics: List[Dict] = []
-        self.remote_nodes: List[RemoteNode] = []
         self.websocket_connections: List[WebSocket] = []
+
 
 state = OrchestratorState()
 
@@ -54,38 +44,29 @@ state = OrchestratorState()
 # PYDANTIC MODELS
 # ============================================================================
 
-class WorkerPoolConfig(BaseModel):
-    worker_count: int = 4
-    cpu_threshold: float = 85.0
-    max_processes: int = 24
-    max_process_name: str = "ollama"
+class OrchestratorConfig(BaseModel):
+    llm_workers: int = 3
+    tool_workers: int = 4
+    whisper_workers: int = 1
+    background_workers: int = 2
+    general_workers: int = 2
+    cpu_threshold: float = 75.0
 
 
-class RemoteNodeConfig(BaseModel):
-    name: str
-    base_url: str
-    labels: List[str]
-    auth_token: Optional[str] = None
-    weight: int = 1
+class WorkerScaleRequest(BaseModel):
+    task_type: str  # "LLM", "TOOL", "WHISPER", "BACKGROUND", "GENERAL"
+    num_workers: int
 
 
 class TaskSubmission(BaseModel):
     name: str
-    payload: Dict[str, Any]
-    priority: str = "NORMAL"
-    labels: List[str] = []
-    delay: float = 0.0
+    payload: Dict[str, Any] = {}
+    priority: Optional[str] = None
     context: Dict[str, Any] = {}
 
 
 class FocusUpdate(BaseModel):
     focus: str
-
-
-class RateLimitConfig(BaseModel):
-    label: str
-    fill_rate: float
-    capacity: int
 
 
 # ============================================================================
@@ -120,390 +101,214 @@ manager = ConnectionManager()
 
 
 # ============================================================================
-# TASK CALLBACKS
+# ORCHESTRATOR MANAGEMENT
 # ============================================================================
 
-def on_task_start(task: ScheduledTask):
-    """Called when a task starts execution"""
-    task_data = {
-        "type": "task_start",
-        "timestamp": datetime.now().isoformat(),
-        "task_id": task.task_id,
-        "name": task.name,
-        "priority": task.priority.name if hasattr(task.priority, 'name') else str(task.priority),
-        "labels": list(task.labels)
-    }
-    
-    state.task_history.append({
-        "timestamp": task_data["timestamp"],
-        "task_id": task.task_id,
-        "name": task.name,
-        "priority": task_data["priority"],
-        "status": "started",
-        "labels": ", ".join(task.labels)
-    })
-    
-    # Broadcast to WebSocket clients
-    asyncio.create_task(manager.broadcast({"type": "task_start", "data": task_data}))
-
-
-def on_task_end(task: ScheduledTask, result: Optional[Any], error: Optional[BaseException]):
-    """Called when a task completes or fails"""
-    status = "completed" if error is None else "failed"
-    
-    task_data = {
-        "type": "task_end",
-        "timestamp": datetime.now().isoformat(),
-        "task_id": task.task_id,
-        "name": task.name,
-        "priority": task.priority.name if hasattr(task.priority, 'name') else str(task.priority),
-        "status": status,
-        "result": str(result) if result else None,
-        "error": str(error) if error else None,
-        "labels": list(task.labels)
-    }
-    
-    state.task_history.append({
-        "timestamp": task_data["timestamp"],
-        "task_id": task.task_id,
-        "name": task.name,
-        "priority": task_data["priority"],
-        "status": status,
-        "result": task_data["result"],
-        "error": task_data["error"],
-        "labels": ", ".join(task.labels)
-    })
-    
-    # Keep history limited
-    if len(state.task_history) > 1000:
-        state.task_history = state.task_history[-500:]
-    
-    # Broadcast to WebSocket clients
-    asyncio.create_task(manager.broadcast({"type": "task_end", "data": task_data}))
-
-
-# ============================================================================
-# FRONTEND UI
-# ============================================================================
-
-@router.get("/")
-async def serve_orchestrator_ui():
-    """Serve the orchestrator frontend"""
-    html_path = os.path.join(os.path.dirname(__file__), "orchestrator.html")
-    if os.path.exists(html_path):
-        return FileResponse(html_path)
-    else:
-        return {
-            "message": "Orchestrator UI not found. Place orchestrator.html in the same directory.",
-            "expected_path": html_path
-        }
-
-
-# ============================================================================
-# HEALTH & STATUS
-# ============================================================================
-
-@router.get("/health")
-async def orchestrator_health():
-    """Get overall system health status"""
-    return {
-        "status": "healthy",
-        "local_pool": state.local_pool is not None and state.local_pool._running,
-        "cluster_pool": state.cluster_pool is not None,
-        "focus_manager": state.focus_manager is not None and state.focus_manager._running,
-        "vera_connected": state.vera_instance is not None
-    }
-
-@router.get("/system/metrics")
-async def get_system_metrics():
-    """Get current system metrics"""
+@router.post("/initialize")
+async def initialize_orchestrator(config: OrchestratorConfig):
+    """Initialize the orchestrator with worker pools"""
     try:
-        # Get queue size safely
-        queue_size = 0
-        if state.local_pool and hasattr(state.local_pool, '_q'):
-            try:
-                queue_size = state.local_pool._q.qsize()
-            except Exception:
-                queue_size = 0
+        from Vera.orchestration import TaskType
         
-        metrics = {
-            "timestamp": datetime.now().isoformat(),
-            "cpu_percent": psutil.cpu_percent(interval=0.1),
-            "memory_percent": psutil.virtual_memory().percent,
-            "queue_size": queue_size
+        orchestrator_config = {
+            TaskType.LLM: config.llm_workers,
+            TaskType.TOOL: config.tool_workers,
+            TaskType.WHISPER: config.whisper_workers,
+            TaskType.BACKGROUND: config.background_workers,
+            TaskType.GENERAL: config.general_workers
         }
         
-        state.system_metrics.append(metrics)
-        if len(state.system_metrics) > 100:
-            state.system_metrics = state.system_metrics[-100:]
-        
-        return {"metrics": metrics}
-    except Exception as e:
-        # Log the error but return a valid response
-        print(f"Error in get_system_metrics: {e}")
-        return {
-            "metrics": {
-                "timestamp": datetime.now().isoformat(),
-                "cpu_percent": 0.0,
-                "memory_percent": 0.0,
-                "queue_size": 0
-            }
-        }
-
-
-# ============================================================================
-# WORKER POOL MANAGEMENT
-# ============================================================================
-
-@router.post("/pool/initialize")
-async def initialize_pool(config: WorkerPoolConfig):
-    """Initialize the local worker pool"""
-    try:
-        # Define rate limits
-        rate_limits = {
-            "llm": (0.5, 2),
-            "exec": (2.0, 5),
-            "heavy": (0.2, 1)
-        }
-        
-        # Create the pool
-        state.local_pool = PriorityWorkerPool(
-            worker_count=config.worker_count,
-            cpu_threshold=config.cpu_threshold,
-            max_process_name=config.max_process_name,
-            max_processes=config.max_processes,
-            rate_limits=rate_limits,
-            on_task_start=on_task_start,
-            on_task_end=on_task_end,
-            name="VeraPool"
+        state.orchestrator = Orchestrator(
+            config=orchestrator_config,
+            cpu_threshold=config.cpu_threshold
         )
         
-        # Set concurrency limits
-        state.local_pool.set_concurrency_limit("llm", 2)
-        state.local_pool.set_concurrency_limit("exec", 3)
-        state.local_pool.set_concurrency_limit("heavy", 1)
+        # Start the orchestrator
+        state.orchestrator.start()
+        
+        # Subscribe to events for WebSocket broadcasting
+        state.orchestrator.event_bus.subscribe("task.completed", lambda msg: 
+            asyncio.create_task(manager.broadcast({"type": "task_completed", "data": msg}))
+        )
+        state.orchestrator.event_bus.subscribe("task.failed", lambda msg: 
+            asyncio.create_task(manager.broadcast({"type": "task_failed", "data": msg}))
+        )
         
         return {
             "status": "success",
-            "message": "Local pool initialized",
+            "message": "Orchestrator initialized and started",
             "config": {
-                "worker_count": config.worker_count,
-                "cpu_threshold": config.cpu_threshold,
-                "max_processes": config.max_processes,
-                "max_process_name": config.max_process_name
+                "llm_workers": config.llm_workers,
+                "tool_workers": config.tool_workers,
+                "whisper_workers": config.whisper_workers,
+                "background_workers": config.background_workers,
+                "general_workers": config.general_workers,
+                "cpu_threshold": config.cpu_threshold
             }
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to initialize pool: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to initialize: {str(e)}")
 
 
-@router.post("/pool/start")
-async def start_pool():
-    """Start the worker pool"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Pool not initialized. Call /pool/initialize first.")
+@router.post("/start")
+async def start_orchestrator():
+    """Start the orchestrator"""
+    if not state.orchestrator:
+        raise HTTPException(status_code=400, detail="Orchestrator not initialized")
     
     try:
-        state.local_pool.start()
-        return {"status": "success", "message": "Pool started"}
+        state.orchestrator.start()
+        return {"status": "success", "message": "Orchestrator started"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/pool/stop")
-async def stop_pool():
-    """Stop the worker pool"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Pool not initialized")
+@router.post("/stop")
+async def stop_orchestrator():
+    """Stop the orchestrator"""
+    if not state.orchestrator:
+        raise HTTPException(status_code=400, detail="Orchestrator not initialized")
     
     try:
-        state.local_pool.stop()
-        return {"status": "success", "message": "Pool stopped"}
+        state.orchestrator.stop()
+        return {"status": "success", "message": "Orchestrator stopped"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/pool/pause")
-async def pause_pool():
-    """Pause the worker pool (stop accepting new tasks)"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Pool not initialized")
+@router.get("/status")
+async def get_status():
+    """Get orchestrator status"""
+    if not state.orchestrator:
+        return {
+            "initialized": False,
+            "running": False
+        }
     
-    try:
-        state.local_pool.pause()
-        return {"status": "success", "message": "Pool paused"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/pool/resume")
-async def resume_pool():
-    """Resume the worker pool"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Pool not initialized")
+    stats = state.orchestrator.get_stats()
     
-    try:
-        state.local_pool.resume()
-        return {"status": "success", "message": "Pool resumed"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/pool/status")
-async def get_pool_status():
-    """Get current pool status and metrics"""
-    if not state.local_pool:
-        return {"initialized": False}
+    # Calculate totals
+    total_workers = 0
+    active_workers = 0
+    
+    for pool_stats in stats.get("worker_pools", {}).values():
+        total_workers += pool_stats.get("num_workers", 0)
+        for worker in pool_stats.get("workers", []):
+            if worker.get("current_task"):
+                active_workers += 1
+    
+    # Get queue sizes
+    queue_sizes = stats.get("queue_sizes", {})
+    total_queue = sum(queue_sizes.values())
     
     return {
         "initialized": True,
-        "running": state.local_pool._running,
-        "worker_count": state.local_pool.worker_count,
-        "queue_size": state.local_pool._q.qsize(),
-        "active_workers": len([t for t in state.local_pool._threads if t.is_alive()]),
-        "rate_limits": {
-            label: {
-                "fill_rate": bucket.fill_rate,
-                "capacity": bucket.capacity,
-                "current_tokens": bucket.tokens
-            }
-            for label, bucket in getattr(state.local_pool, 'rate_buckets', {}).items()
-        }
+        "running": stats.get("running", False),
+        "worker_count": total_workers,
+        "active_workers": active_workers,
+        "queue_size": total_queue,
+        "queue_sizes": queue_sizes,
+        "worker_pools": stats.get("worker_pools", {})
     }
 
 
 # ============================================================================
-# CLUSTER MANAGEMENT
+# WORKER POOL SCALING
 # ============================================================================
 
-@router.post("/cluster/initialize")
-async def initialize_cluster():
-    """Initialize the cluster pool"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Local pool must be initialized first")
+@router.post("/workers/scale")
+async def scale_workers(request: WorkerScaleRequest):
+    """Scale a worker pool"""
+    if not state.orchestrator:
+        raise HTTPException(status_code=400, detail="Orchestrator not initialized")
     
     try:
-        state.cluster_pool = ClusterWorkerPool(state.local_pool)
+        # Map string to TaskType enum
+        task_type_map = {
+            "LLM": TaskType.LLM,
+            "TOOL": TaskType.TOOL,
+            "WHISPER": TaskType.WHISPER,
+            "BACKGROUND": TaskType.BACKGROUND,
+            "GENERAL": TaskType.GENERAL,
+            "ML_MODEL": TaskType.ML_MODEL
+        }
         
-        # Re-add any existing nodes
-        for node in state.remote_nodes:
-            state.cluster_pool.add_node(node)
+        task_type = task_type_map.get(request.task_type.upper())
+        if not task_type:
+            raise HTTPException(status_code=400, detail=f"Invalid task type: {request.task_type}")
+        
+        # Scale the pool
+        state.orchestrator.scale_pool(task_type, request.num_workers)
         
         return {
             "status": "success",
-            "message": "Cluster initialized",
-            "node_count": len(state.remote_nodes)
+            "message": f"Scaled {request.task_type} pool to {request.num_workers} workers",
+            "task_type": request.task_type,
+            "num_workers": request.num_workers
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/cluster/nodes/add")
-async def add_cluster_node(config: RemoteNodeConfig):
-    """Add a remote node to the cluster"""
-    if not state.cluster_pool:
-        raise HTTPException(status_code=400, detail="Cluster not initialized. Call /cluster/initialize first.")
+@router.get("/workers/pools")
+async def get_worker_pools():
+    """Get detailed worker pool information"""
+    if not state.orchestrator:
+        return {"pools": []}
     
-    try:
-        node = RemoteNode(
-            name=config.name,
-            base_url=config.base_url,
-            labels=tuple(config.labels),
-            auth_token=config.auth_token or "",
-            weight=config.weight
-        )
+    stats = state.orchestrator.get_stats()
+    pools_data = []
+    
+    for task_type_str, pool_stats in stats.get("worker_pools", {}).items():
+        num_workers = pool_stats.get("num_workers", 0)
+        workers = pool_stats.get("workers", [])
         
-        state.remote_nodes.append(node)
-        state.cluster_pool.add_node(node)
+        # Count active workers
+        active_count = sum(1 for w in workers if w.get("current_task"))
         
-        return {
-            "status": "success",
-            "message": f"Node '{config.name}' added",
-            "node": {
-                "name": node.name,
-                "base_url": node.base_url,
-                "labels": list(node.labels),
-                "weight": node.weight
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/cluster/nodes")
-async def get_cluster_nodes():
-    """Get list of all cluster nodes"""
-    nodes = []
-    for node in state.remote_nodes:
-        nodes.append({
-            "name": node.name,
-            "base_url": node.base_url,
-            "labels": list(node.labels),
-            "weight": node.weight,
-            "last_ok": node.last_ok > 0,
-            "inflight": node.inflight
+        # Calculate utilization
+        utilization = (active_count / num_workers * 100) if num_workers > 0 else 0
+        
+        # Get queue size for this type
+        queue_size = stats.get("queue_sizes", {}).get(task_type_str, 0)
+        
+        pools_data.append({
+            "task_type": task_type_str,
+            "num_workers": num_workers,
+            "active_workers": active_count,
+            "idle_workers": num_workers - active_count,
+            "utilization": round(utilization, 1),
+            "queue_size": queue_size,
+            "workers": workers
         })
     
-    return {"nodes": nodes}
-
-
-@router.get("/cluster/nodes/{node_name}")
-async def remove_cluster_node(node_name: str):
-    """Remove a node from the cluster"""
-    if not state.cluster_pool:
-        raise HTTPException(status_code=400, detail="Cluster not initialized")
-    
-    # Find and remove from state
-    node = next((n for n in state.remote_nodes if n.name == node_name), None)
-    if not node:
-        raise HTTPException(status_code=404, detail=f"Node '{node_name}' not found")
-    
-    state.remote_nodes.remove(node)
-    
-    # Remove from cluster pool
-    state.cluster_pool.nodes = [n for n in state.cluster_pool.nodes if n.name != node_name]
-    
-    return {"status": "success", "message": f"Node '{node_name}' removed"}
+    return {"pools": pools_data}
 
 
 # ============================================================================
 # TASK MANAGEMENT
 # ============================================================================
 
-@router.get("/tasks/submit")
+@router.post("/tasks/submit")
 async def submit_task(task: TaskSubmission):
-    """Submit a new task for execution"""
+    """Submit a task for execution"""
+    if not state.orchestrator:
+        raise HTTPException(status_code=400, detail="Orchestrator not initialized")
+    
+    if not state.vera_instance:
+        raise HTTPException(status_code=400, detail="Vera instance not connected")
+    
     try:
-        # Map priority string to enum
-        priority_map = {
-            "CRITICAL": Priority.CRITICAL,
-            "HIGH": Priority.HIGH,
-            "NORMAL": Priority.NORMAL,
-            "LOW": Priority.LOW
-        }
+        # Add vera_instance to context
+        context = task.context.copy()
+        context["vera_instance"] = state.vera_instance
         
-        priority = priority_map.get(task.priority.upper(), Priority.NORMAL)
-        
-        # Submit through cluster if available, otherwise local pool
-        if state.cluster_pool:
-            task_id = state.cluster_pool.submit_task(
-                name=task.name,
-                payload=task.payload,
-                priority=priority,
-                labels=task.labels,
-                delay=task.delay,
-                context=task.context
-            )
-        elif state.local_pool:
-            task_id = state.local_pool.submit(
-                lambda: R.run(task.name, task.payload, task.context),
-                priority=priority,
-                delay=task.delay,
-                name=task.name,
-                labels=tuple(task.labels)
-            )
-        else:
-            raise HTTPException(status_code=400, detail="No worker pool available. Initialize a pool first.")
+        # Submit task
+        task_id = state.orchestrator.submit_task(
+            task.name,
+            **task.payload,
+            **context
+        )
         
         return {
             "status": "success",
@@ -514,17 +319,69 @@ async def submit_task(task: TaskSubmission):
         raise HTTPException(status_code=500, detail=f"Failed to submit task: {str(e)}")
 
 
-@router.get("/tasks/history")
-async def get_task_history(limit: int = 50):
-    """Get task execution history"""
-    return {"history": state.task_history[-limit:]}
+@router.get("/tasks/result/{task_id}")
+async def get_task_result(task_id: str, timeout: float = 5.0):
+    """Get task result (for non-streaming tasks)"""
+    if not state.orchestrator:
+        raise HTTPException(status_code=400, detail="Orchestrator not initialized")
+    
+    try:
+        result = state.orchestrator.wait_for_result(task_id, timeout=timeout)
+        
+        if not result:
+            return {
+                "status": "pending",
+                "task_id": task_id,
+                "message": "Task not completed yet"
+            }
+        
+        return {
+            "status": result.status.value,
+            "task_id": task_id,
+            "result": result.result,
+            "error": result.error,
+            "duration": result.duration
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/tasks/registry")
-async def get_registered_tasks():
-    """Get list of registered task handlers"""
-    tasks = list(R._h.keys()) if hasattr(R, '_h') else []
-    return {"tasks": tasks}
+async def get_task_registry():
+    """Get registered tasks"""
+    tasks = []
+    
+    # Get all registered tasks
+    for task_type in TaskType:
+        task_names = registry.list_tasks(task_type=task_type)
+        for name in task_names:
+            metadata = registry.get_metadata(name)
+            if metadata:
+                tasks.append({
+                    "name": name,
+                    "type": task_type.value,
+                    "priority": metadata.priority.value,
+                    "estimated_duration": metadata.estimated_duration,
+                    "requires_gpu": metadata.requires_gpu,
+                    "proactive_focus": metadata.metadata.get("proactive_focus", False)
+                })
+    
+    # Also get tasks without type filter
+    all_tasks = registry.list_tasks()
+    for name in all_tasks:
+        if not any(t["name"] == name for t in tasks):
+            tasks.append({"name": name, "type": "unknown"})
+    
+    return {"tasks": tasks, "count": len(tasks)}
+
+
+@router.get("/tasks/history")
+async def get_task_history(limit: int = 50):
+    """Get task execution history"""
+    # Get completed tasks from orchestrator
+    # Note: You may want to add a history tracking mechanism to the orchestrator
+    # For now, return empty list
+    return {"history": [], "message": "Task history not yet implemented"}
 
 
 # ============================================================================
@@ -533,170 +390,98 @@ async def get_registered_tasks():
 
 @router.get("/system/metrics")
 async def get_system_metrics():
-    """Get current system metrics"""
+    """Get system metrics"""
     try:
-        metrics = {
-            "timestamp": datetime.now().isoformat(),
-            "cpu_percent": psutil.cpu_percent(interval=0.1),
-            "memory_percent": psutil.virtual_memory().percent,
-            "queue_size": state.local_pool._q.qsize() if state.local_pool else 0
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        memory = psutil.virtual_memory()
+        
+        # Get queue sizes if orchestrator is running
+        queue_size = 0
+        if state.orchestrator:
+            stats = state.orchestrator.get_stats()
+            queue_sizes = stats.get("queue_sizes", {})
+            queue_size = sum(queue_sizes.values())
+        
+        return {
+            "metrics": {
+                "timestamp": datetime.now().isoformat(),
+                "cpu_percent": cpu_percent,
+                "memory_percent": memory.percent,
+                "memory_used_gb": memory.used / (1024**3),
+                "memory_total_gb": memory.total / (1024**3),
+                "queue_size": queue_size
+            }
         }
-        
-        state.system_metrics.append(metrics)
-        if len(state.system_metrics) > 100:
-            state.system_metrics = state.system_metrics[-100:]
-        
-        return {"metrics": metrics}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/system/processes")
-async def get_process_info():
-    """Get top processes by CPU usage"""
+async def get_system_processes():
+    """Get system processes"""
     try:
         processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'num_threads']):
+        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
             try:
                 info = proc.info
-                if info['cpu_percent'] is not None:
-                    processes.append(info)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
-        
-        processes.sort(key=lambda x: x.get('cpu_percent', 0) or 0, reverse=True)
-        return {"processes": processes[:20]}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# RATE LIMITS
-# ============================================================================
-
-@router.get("/rate-limits/add")
-async def add_rate_limit(config: RateLimitConfig):
-    """Add or update a rate limit"""
-    if not state.local_pool:
-        raise HTTPException(status_code=400, detail="Pool not initialized")
-    
-    try:
-        # from worker_pool import TokenBucket
-        state.local_pool.rate_buckets[config.label] = TokenBucket(
-            fill_rate=config.fill_rate,
-            capacity=float(config.capacity)
-        )
-        
-        return {
-            "status": "success",
-            "message": f"Rate limit set for label '{config.label}'"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/rate-limits")
-async def get_rate_limits():
-    """Get all configured rate limits"""
-    if not state.local_pool:
-        return {"rate_limits": {}}
-    
-    limits = {}
-    for label, bucket in getattr(state.local_pool, 'rate_buckets', {}).items():
-        limits[label] = {
-            "fill_rate": bucket.fill_rate,
-            "capacity": bucket.capacity,
-            "current_tokens": bucket.tokens
-        }
-    
-    return {"rate_limits": limits}
-
-
-# ============================================================================
-# OLLAMA MONITORING
-# ============================================================================
-
-@router.get("/ollama/status")
-async def get_ollama_status():
-    """Get Ollama process status and API health"""
-    try:
-        import requests
-        
-        ollama_processes = []
-        total_cpu = 0
-        total_memory = 0
-        total_threads = 0
-        
-        # Find Ollama processes
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent', 'num_threads', 'memory_info']):
-            try:
-                if proc.info['name'] and 'ollama' in proc.info['name'].lower():
-                    memory_mb = (proc.info['memory_info'].rss / 1024 / 1024) if proc.info.get('memory_info') else 0
-                    
-                    ollama_processes.append({
-                        'pid': proc.info['pid'],
-                        'name': proc.info['name'],
-                        'cpu_percent': proc.info['cpu_percent'] or 0,
-                        'memory_percent': proc.info['memory_percent'] or 0,
-                        'num_threads': proc.info['num_threads'] or 0,
-                        'memory_mb': memory_mb
+                if info['cpu_percent'] and info['cpu_percent'] > 0.1:  # Only show active processes
+                    processes.append({
+                        "pid": info['pid'],
+                        "name": info['name'],
+                        "cpu_percent": info['cpu_percent'] or 0,
+                        "memory_percent": info['memory_percent'] or 0
                     })
-                    
-                    total_cpu += proc.info['cpu_percent'] or 0
-                    total_memory += proc.info['memory_percent'] or 0
-                    total_threads += proc.info['num_threads'] or 0
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         
-        # Check Ollama API health
-        api_status = "unknown"
-        models = []
-        try:
-            response = requests.get("http://localhost:11434/api/tags", timeout=2)
-            if response.status_code == 200:
-                api_status = "healthy"
-                models_data = response.json().get("models", [])
-                models = [m.get("name", m.get("model", "")) for m in models_data]
-        except Exception:
-            api_status = "unavailable"
+        # Sort by CPU usage
+        processes.sort(key=lambda x: x['cpu_percent'], reverse=True)
         
-        return {
-            "processes": ollama_processes,
-            "summary": {
-                "process_count": len(ollama_processes),
-                "total_cpu": total_cpu,
-                "total_memory": total_memory,
-                "total_threads": total_threads
-            },
-            "api_status": api_status,
-            "models": models
-        }
+        return {"processes": processes[:20]}  # Top 20
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============================================================================
-# WEBSOCKET ENDPOINTS
+# HEALTH CHECK
+# ============================================================================
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "orchestrator_initialized": state.orchestrator is not None,
+        "orchestrator_running": state.orchestrator.running if state.orchestrator else False,
+        "vera_connected": state.vera_instance is not None,
+        "registered_tasks": len(list(registry._tasks.keys())) if hasattr(registry, '_tasks') else 0
+    }
+
+
+# ============================================================================
+# WEBSOCKET
 # ============================================================================
 
 @router.websocket("/ws/updates")
 async def websocket_updates(websocket: WebSocket):
-    """WebSocket endpoint for real-time system updates"""
+    """WebSocket for real-time updates"""
     await manager.connect(websocket)
     try:
         while True:
             await asyncio.sleep(2)
-            if state.local_pool:
-                try:
-                    await websocket.send_json({
-                        "type": "status_update",
-                        "data": {
-                            "queue_size": state.local_pool._q.qsize(),
-                            "timestamp": datetime.now().isoformat()
-                        }
-                    })
-                except Exception:
-                    break
+            
+            if state.orchestrator:
+                stats = state.orchestrator.get_stats()
+                queue_sizes = stats.get("queue_sizes", {})
+                
+                await websocket.send_json({
+                    "type": "status_update",
+                    "data": {
+                        "queue_size": sum(queue_sizes.values()),
+                        "queue_sizes": queue_sizes,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                })
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
@@ -705,98 +490,43 @@ async def websocket_updates(websocket: WebSocket):
 
 
 # ============================================================================
-# FOCUS MANAGER
+# INITIALIZATION HELPER
 # ============================================================================
 
-@router.get("/focus/set")
-async def set_focus(update: FocusUpdate):
-    """Set the proactive focus"""
-    if not state.focus_manager:
-        # Initialize focus manager if not exists
-        if state.local_pool:
-            state.focus_manager = ProactiveFocusManager(
-                agent=state.vera_instance,
-                pool=state.local_pool
-            )
-        else:
-            raise HTTPException(status_code=400, detail="Pool not initialized")
+def initialize_orchestrator_api(vera_instance, config: Optional[Dict] = None):
+    """
+    Initialize orchestrator API with Vera instance.
+    Call this from FastAPI startup.
+    """
+    from Vera.orchestration import TaskType
     
-    try:
-        state.focus_manager.set_focus(update.focus)
-        state.focus_manager.start()
-        
-        return {
-            "status": "success",
-            "message": f"Focus set to: {update.focus}"
+    state.vera_instance = vera_instance
+    
+    # Default config
+    if config is None:
+        config = {
+            TaskType.LLM: 3,
+            TaskType.TOOL: 4,
+            TaskType.WHISPER: 1,
+            TaskType.BACKGROUND: 2,
+            TaskType.GENERAL: 2
         }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/focus/status")
-async def get_focus_status():
-    """Get current focus status"""
-    if not state.focus_manager:
-        return {"active": False, "focus": None}
     
-    return {
-        "active": state.focus_manager._running,
-        "focus": state.focus_manager.focus,
-        "focus_board": state.focus_manager.focus_board if hasattr(state.focus_manager, 'focus_board') else {}
-    }
-
-
-@router.get("/focus/stop")
-async def stop_focus():
-    """Stop the proactive focus manager"""
-    if not state.focus_manager:
-        raise HTTPException(status_code=400, detail="Focus manager not initialized")
+    # Create and start orchestrator
+    state.orchestrator = Orchestrator(
+        config=config,
+        cpu_threshold=75.0
+    )
+    state.orchestrator.start()
     
-    try:
-        state.focus_manager.stop()
-        return {"status": "success", "message": "Focus manager stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# STARTUP / SHUTDOWN
-# ============================================================================
-
-@router.on_event("startup")
-async def startup_event():
-    """Initialize on startup"""
-    print("=" * 60)
-    print("Vera Task Orchestrator API Starting...")
-    print("=" * 60)
+    # Subscribe to events for WebSocket broadcasting
+    state.orchestrator.event_bus.subscribe("task.completed", lambda msg: 
+        asyncio.create_task(manager.broadcast({"type": "task_completed", "data": msg}))
+    )
+    state.orchestrator.event_bus.subscribe("task.failed", lambda msg: 
+        asyncio.create_task(manager.broadcast({"type": "task_failed", "data": msg}))
+    )
     
-    # Register some example tasks
-    @R.register("example.hello")
-    def hello_task(payload, context):
-        name = payload.get("name", "World")
-        return f"Hello, {name}!"
+    print("[Orchestrator API] Initialized and started")
     
-    @R.register("example.compute")
-    def compute_task(payload, context):
-        import time
-        duration = payload.get("duration", 1)
-        time.sleep(duration)
-        return f"Computed for {duration} seconds"
-    
-    print("Registered example tasks: example.hello, example.compute")
-    print("=" * 60)
-
-
-@router.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    print("Shutting down Vera Task Orchestrator...")
-    
-    if state.focus_manager and state.focus_manager._running:
-        state.focus_manager.stop()
-    
-    if state.local_pool and state.local_pool._running:
-        state.local_pool.stop(wait=True)
-    
-    print("Shutdown complete")
-
+    return state.orchestrator

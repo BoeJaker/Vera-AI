@@ -1,6 +1,6 @@
 (() => {
     // ============================================================
-    // Enhanced Notebooks UI with Optimizations
+    // Enhanced Notebooks UI with Session-Independent Storage
     // ============================================================
     
     // State management
@@ -11,7 +11,9 @@
         sortBy: 'updated_at',
         sortOrder: 'desc',
         autoSaveTimeout: null,
-        storageType: null
+        storageType: null,
+        viewMode: 'current', // 'current' or 'all'
+        allNotebooks: []
     };
     
     // ============================================================
@@ -92,21 +94,34 @@
     };
     
     // ============================================================
-    // Enhanced Notebook Management
+    // Enhanced Notebook Management with All-Sessions View
     // ============================================================
     
-    VeraChat.prototype.loadNotebooks = async function() {
-        if (!this.sessionId || this.notebookState.isLoading) return;
+    VeraChat.prototype.loadNotebooks = async function(allSessions = false) {
+        if (!this.sessionId && !allSessions) return;
         
         this.notebookState.isLoading = true;
+        this.notebookState.viewMode = allSessions ? 'all' : 'current';
         
         try {
-            const response = await fetch(`http://llm.int:8888/api/notebooks/${this.sessionId}`);
+            let url = allSessions ? 
+                `http://llm.int:8888/api/notebooks/global/list` :
+                `http://llm.int:8888/api/notebooks/${this.sessionId}`;
+            
+            const response = await fetch(url);
             if (!response.ok) throw new Error('Failed to load notebooks');
             
             const data = await response.json();
-            this.notebooks = data.notebooks || [];
-            this.notebookState.storageType = data.storage_type;
+            
+            if (allSessions) {
+                this.notebookState.allNotebooks = data.notebooks || [];
+                this.notebooks = data.notebooks || [];
+                this.showToast(`Loaded ${data.total} notebooks from ${data.sessions} sessions`, 'success');
+            } else {
+                this.notebooks = data.notebooks || [];
+                this.notebookState.storageType = data.storage_type;
+            }
+            
             this.updateNotebookSelector();
             
             // Show storage type indicator
@@ -121,7 +136,31 @@
         }
     };
 
+    VeraChat.prototype.toggleNotebookView = async function() {
+        const isCurrentlyAll = this.notebookState.viewMode === 'all';
+        await this.loadNotebooks(!isCurrentlyAll);
+        this.updateViewToggleButton();
+    };
+
+    VeraChat.prototype.updateViewToggleButton = function() {
+        const toggleBtn = document.getElementById('toggle-view-btn');
+        if (toggleBtn) {
+            if (this.notebookState.viewMode === 'all') {
+                toggleBtn.textContent = '📂 Current Session Only';
+                toggleBtn.title = 'Switch to viewing only current session notebooks';
+            } else {
+                toggleBtn.textContent = '🌐 All Sessions';
+                toggleBtn.title = 'View notebooks from all sessions';
+            }
+        }
+    };
+
     VeraChat.prototype.createNotebook = async function() {
+        if (!this.sessionId && this.notebookState.viewMode !== 'all') {
+            this.showToast('No session ID available', 'error');
+            return;
+        }
+        
         const modal = this.createPromptModal(
             'Create New Notebook',
             [
@@ -142,7 +181,8 @@
             this.showLoadingOverlay('Creating notebook...');
             
             try {
-                const response = await fetch(`http://llm.int:8888/api/notebooks/${this.sessionId}/create`, {
+                const sessionId = this.sessionId || 'default';
+                const response = await fetch(`http://llm.int:8888/api/notebooks/${sessionId}/create`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, description })
@@ -244,8 +284,9 @@
         this.showLoadingOverlay('Deleting notebook...');
         
         try {
+            const sessionId = this.currentNotebook.session_id || this.sessionId;
             const response = await fetch(
-                `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}`,
+                `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}`,
                 { method: 'DELETE' }
             );
             
@@ -317,15 +358,49 @@
         const storageIndicator = document.getElementById('storage-type-indicator');
         
         selector.innerHTML = '<option value="">Select a notebook...</option>';
-        this.notebooks.forEach(nb => {
-            const option = document.createElement('option');
-            option.value = nb.id;
-            option.textContent = `${nb.name} (${nb.note_count || 0} notes)`;
-            if (this.currentNotebook && nb.id === this.currentNotebook.id) {
-                option.selected = true;
-            }
-            selector.appendChild(option);
-        });
+        
+        // Group by session if viewing all
+        if (this.notebookState.viewMode === 'all') {
+            const bySession = {};
+            this.notebooks.forEach(nb => {
+                const sessionId = nb.session_id || 'unknown';
+                if (!bySession[sessionId]) {
+                    bySession[sessionId] = [];
+                }
+                bySession[sessionId].push(nb);
+            });
+            
+            Object.keys(bySession).sort().forEach(sessionId => {
+                const optgroup = document.createElement('optgroup');
+                const displaySession = sessionId === this.sessionId ? 
+                    `${sessionId} (Current)` : sessionId;
+                optgroup.label = `Session: ${displaySession.substring(0, 20)}...`;
+                
+                bySession[sessionId].forEach(nb => {
+                    const option = document.createElement('option');
+                    option.value = nb.id;
+                    option.textContent = `${nb.name} (${nb.note_count || 0} notes)`;
+                    option.setAttribute('data-session-id', nb.session_id);
+                    if (this.currentNotebook && nb.id === this.currentNotebook.id) {
+                        option.selected = true;
+                    }
+                    optgroup.appendChild(option);
+                });
+                
+                selector.appendChild(optgroup);
+            });
+        } else {
+            // Standard single-session view
+            this.notebooks.forEach(nb => {
+                const option = document.createElement('option');
+                option.value = nb.id;
+                option.textContent = `${nb.name} (${nb.note_count || 0} notes)`;
+                if (this.currentNotebook && nb.id === this.currentNotebook.id) {
+                    option.selected = true;
+                }
+                selector.appendChild(option);
+            });
+        }
         
         if (deleteBtn) {
             deleteBtn.disabled = !this.currentNotebook;
@@ -333,9 +408,14 @@
         
         // Update storage indicator
         if (storageIndicator && this.notebookState.storageType) {
-            storageIndicator.textContent = this.notebookState.storageType === 'file' ? '📁 File Storage' : '🗄️ Neo4j';
+            const viewModeText = this.notebookState.viewMode === 'all' ? ' (All Sessions)' : '';
+            storageIndicator.textContent = 
+                (this.notebookState.storageType === 'file' ? '📁 File Storage' : '🗄️ Neo4j') + 
+                viewModeText;
             storageIndicator.style.color = this.notebookState.storageType === 'file' ? '#f59e0b' : '#10b981';
         }
+        
+        this.updateViewToggleButton();
     };
 
     VeraChat.prototype.switchNotebook = async function(notebookId) {
@@ -349,8 +429,10 @@
         }
         
         this.currentNotebook = this.notebooks.find(nb => nb.id === notebookId);
-        await this.loadNotes();
-        this.updateNotebookSelector();
+        if (this.currentNotebook) {
+            await this.loadNotes();
+            this.updateNotebookSelector();
+        }
     };
 
     // ============================================================
@@ -369,8 +451,9 @@
                 order: this.notebookState.sortOrder
             });
             
+            const sessionId = this.currentNotebook.session_id || this.sessionId;
             const response = await fetch(
-                `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}/notes?${params}`
+                `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/notes?${params}`
             );
             
             if (!response.ok) throw new Error('Failed to load notes');
@@ -407,8 +490,9 @@
             this.showLoadingOverlay('Creating note...');
             
             try {
+                const sessionId = this.currentNotebook.session_id || this.sessionId;
                 const response = await fetch(
-                    `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}/notes/create`,
+                    `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/notes/create`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -452,8 +536,9 @@
         this.updateSaveStatus('Saving...');
         
         try {
+            const sessionId = this.currentNotebook.session_id || this.sessionId;
             const response = await fetch(
-                `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}/notes/${this.currentNote.id}/update`,
+                `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/notes/${this.currentNote.id}/update`,
                 {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
@@ -514,8 +599,9 @@
         this.showLoadingOverlay('Deleting note...');
         
         try {
+            const sessionId = this.currentNotebook.session_id || this.sessionId;
             const response = await fetch(
-                `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}/notes/${noteId}`,
+                `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/notes/${noteId}`,
                 { method: 'DELETE' }
             );
             
@@ -531,6 +617,30 @@
         } catch (error) {
             console.error('Failed to delete note:', error);
             this.showToast('Failed to delete note', 'error');
+        } finally {
+            this.hideLoadingOverlay();
+        }
+    };
+
+    VeraChat.prototype.exportNotebookAsMarkdown = async function() {
+        if (!this.currentNotebook) return;
+        
+        this.showLoadingOverlay('Exporting as markdown...');
+        
+        try {
+            const sessionId = this.currentNotebook.session_id || this.sessionId;
+            const response = await fetch(
+                `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/export-markdown`,
+                { method: 'POST' }
+            );
+            
+            if (!response.ok) throw new Error('Failed to export');
+            
+            const data = await response.json();
+            this.showToast('Notebook exported as markdown!', 'success');
+        } catch (error) {
+            console.error('Failed to export markdown:', error);
+            this.showToast('Failed to export markdown', 'error');
         } finally {
             this.hideLoadingOverlay();
         }
@@ -564,8 +674,9 @@
             this.showLoadingOverlay('Capturing message...');
             
             try {
+                const sessionId = this.currentNotebook.session_id || this.sessionId;
                 const response = await fetch(
-                    `http://llm.int:8888/api/notebooks/${this.sessionId}/${this.currentNotebook.id}/notes/create`,
+                    `http://llm.int:8888/api/notebooks/${sessionId}/${this.currentNotebook.id}/notes/create`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

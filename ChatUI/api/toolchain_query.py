@@ -1,12 +1,13 @@
 """
-API Extensions for Advanced Toolchain Query Builder
-Adds endpoints for plan templates, strategies, and custom toolchain execution
+API Extensions for Advanced Toolchain Query Builder - FIXED VERSION
+Better error handling, fallbacks, and debugging
 """
 
 import json
 import logging
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from Vera.ChatUI.api.session import sessions, get_or_create_vera
@@ -37,13 +38,6 @@ class QueryPreviewRequest(BaseModel):
     params: Dict[str, Any]
 
 
-class CustomToolchainRequest(BaseModel):
-    session_id: str
-    name: str
-    strategy: str
-    steps: List[Dict[str, str]]
-
-
 # ============================================================
 # Planning Strategy Definitions
 # ============================================================
@@ -52,38 +46,32 @@ PLANNING_STRATEGIES = {
     "static": {
         "id": "static",
         "name": "Static",
-        "description": "Fixed plan upfront (default)",
-        "suitable_for": ["general tasks", "known workflows", "standard operations"]
+        "description": "Fixed plan upfront (default)"
     },
     "quick": {
         "id": "quick",
         "name": "Quick",
-        "description": "Fast, minimal plan for simple tasks",
-        "suitable_for": ["simple queries", "single-step tasks", "quick answers"]
+        "description": "Fast, minimal plan for simple tasks"
     },
     "comprehensive": {
         "id": "comprehensive",
         "name": "Comprehensive",
-        "description": "Deep, thorough multi-step plans",
-        "suitable_for": ["research", "complex analysis", "detailed reports"]
+        "description": "Deep, thorough multi-step plans"
     },
     "dynamic": {
         "id": "dynamic",
         "name": "Dynamic",
-        "description": "Plan one step at a time based on results",
-        "suitable_for": ["exploratory tasks", "uncertain outcomes", "adaptive workflows"]
+        "description": "Plan one step at a time based on results"
     },
     "exploratory": {
         "id": "exploratory",
         "name": "Exploratory",
-        "description": "Multiple alternatives explored in parallel",
-        "suitable_for": ["comparing approaches", "finding best solution", "A/B testing"]
+        "description": "Multiple alternatives explored in parallel"
     },
     "multipath": {
         "id": "multipath",
         "name": "Multi-path",
-        "description": "Branch and try different approaches",
-        "suitable_for": ["fault tolerance", "fallback options", "robust execution"]
+        "description": "Branch and try different approaches"
     }
 }
 
@@ -93,6 +81,15 @@ PLANNING_STRATEGIES = {
 # ============================================================
 
 PLAN_TEMPLATES = {
+    "direct_prompt": {
+        "id": "direct_prompt",
+        "name": "Direct Prompt",
+        "description": "Just describe what you want - AI creates the toolchain",
+        "category": "direct",
+        "params": [
+            {"name": "query", "type": "textarea", "label": "What do you want to do?", "required": True}
+        ]
+    },
     "web_research": {
         "id": "web_research",
         "name": "Web Research",
@@ -180,10 +177,9 @@ async def get_plan_templates():
 
 @router.post("/preview")
 async def preview_query_plan(request: QueryPreviewRequest):
-    """
-    Generate a preview of the plan that would be executed.
-    Does not actually execute the plan.
-    """
+    """Generate a preview of the plan that would be executed."""
+    logger.info(f"[Preview] Session: {request.session_id}, Template: {request.template}, Strategy: {request.strategy}")
+    
     if request.session_id not in sessions:
         raise HTTPException(status_code=404, detail="Session not found")
     
@@ -197,15 +193,22 @@ async def preview_query_plan(request: QueryPreviewRequest):
         
         # Generate plan based on template
         if request.template == "custom":
-            # Custom toolchain
             if "custom_plan" not in request.params:
                 raise HTTPException(status_code=400, detail="custom_plan required for custom template")
-            
             plan = request.params["custom_plan"]
             
+        elif request.template == "direct_prompt":
+            # For direct prompt, use simple fallback plan
+            query = request.params.get("query", "")
+            plan = [
+                {"tool": "fast_llm", "input": f"Create a plan for: {query}"}
+            ]
+            logger.info(f"[Preview] Generated direct prompt plan with {len(plan)} steps")
+            
         else:
-            # Use template to generate plan
+            # Generate from template
             plan = _generate_plan_from_template(request.template, request.params, vera)
+            logger.info(f"[Preview] Generated {request.template} plan with {len(plan)} steps")
         
         return {
             "strategy": request.strategy,
@@ -222,94 +225,116 @@ async def preview_query_plan(request: QueryPreviewRequest):
 
 @router.post("/execute")
 async def execute_query(request: QueryExecutionRequest):
-    """
-    Execute a toolchain using the specified strategy and template.
-    Streams the execution results.
-    """
-    from fastapi.responses import StreamingResponse
+    """Execute a toolchain using the specified strategy and template."""
+    logger.info(f"[Execute] Starting - Session: {request.session_id}, Template: {request.template}, Strategy: {request.strategy}")
     
     if request.session_id not in sessions:
+        logger.error(f"[Execute] Session not found: {request.session_id}")
         raise HTTPException(status_code=404, detail="Session not found")
     
     vera = get_or_create_vera(request.session_id)
+    logger.info(f"[Execute] Vera instance retrieved: {type(vera).__name__}")
+    logger.info(f"[Execute] Toolchain type: {type(vera.toolchain).__name__}")
     
     async def generate():
         try:
+            logger.info(f"[Execute] Generator started")
+            
             # Get template
             template = PLAN_TEMPLATES.get(request.template)
             if not template:
-                yield f"Error: Unknown template: {request.template}\n"
+                error_msg = f"Error: Unknown template: {request.template}\n"
+                logger.error(f"[Execute] {error_msg}")
+                yield error_msg
                 return
             
+            logger.info(f"[Execute] Template found: {template['name']}")
+            
             # Generate plan
+            plan = None
             if request.template == "custom":
                 if "custom_plan" not in request.params:
-                    yield f"Error: custom_plan required for custom template\n"
+                    error_msg = "Error: custom_plan required for custom template\n"
+                    logger.error(f"[Execute] {error_msg}")
+                    yield error_msg
                     return
                 plan = request.params["custom_plan"]
                 yield f"Using custom toolchain with {len(plan)} steps\n"
+                logger.info(f"[Execute] Using custom plan with {len(plan)} steps")
+                
+            elif request.template == "direct_prompt":
+                # Direct prompt - let toolchain decide the plan
+                query = request.params.get("query", "")
+                yield f"Processing direct prompt: {query[:50]}...\n"
+                logger.info(f"[Execute] Direct prompt mode: {query[:100]}")
+                # Don't generate plan, let execute_tool_chain do it
+                plan = None
+                
             else:
-                plan = _generate_plan_from_template(request.template, request.params, vera)
-                yield f"Generated plan with {len(plan)} steps\n"
+                # Generate plan from template
+                try:
+                    plan = _generate_plan_from_template(request.template, request.params, vera)
+                    yield f"Generated plan with {len(plan)} steps\n"
+                    logger.info(f"[Execute] Generated plan: {json.dumps(plan, indent=2)}")
+                except Exception as e:
+                    error_msg = f"Error generating plan: {str(e)}\n"
+                    logger.error(f"[Execute] {error_msg}", exc_info=True)
+                    yield error_msg
+                    return
             
             yield f"\n{'='*60}\n"
             yield f"Strategy: {request.strategy}\n"
             yield f"Template: {request.template}\n"
             yield f"{'='*60}\n\n"
             
-            # Get strategy enum
-            from Vera.Toolchain.enhanced_toolchain_planner import PlanningStrategy
-            strategy_map = {
-                "static": PlanningStrategy.STATIC,
-                "quick": PlanningStrategy.QUICK,
-                "comprehensive": PlanningStrategy.COMPREHENSIVE,
-                "dynamic": PlanningStrategy.DYNAMIC,
-                "exploratory": PlanningStrategy.EXPLORATORY,
-                "multipath": PlanningStrategy.MULTIPATH
-            }
-            
-            strategy = strategy_map.get(request.strategy, PlanningStrategy.STATIC)
+            # Format query
+            query = _format_query_from_params(request.template, request.params)
+            logger.info(f"[Execute] Query: {query}")
             
             # Execute toolchain
-            query = _format_query_from_params(request.template, request.params)
+            logger.info(f"[Execute] Calling toolchain.execute_tool_chain...")
+            logger.info(f"[Execute] Args: query={query[:100]}, plan={'None' if plan is None else f'{len(plan)} steps'}, strategy={request.strategy}")
             
-            for chunk in vera.toolchain.execute_tool_chain(query, plan=plan, strategy=strategy):
-                yield str(chunk)
+            chunk_count = 0
+            try:
+                # Try with strategy parameter
+                logger.info(f"[Execute] Attempting execution with strategy parameter")
+                for chunk in vera.toolchain.execute_tool_chain(
+                    query, 
+                    plan=plan, 
+                    strategy=request.strategy
+                ):
+                    chunk_count += 1
+                    chunk_str = str(chunk)
+                    if chunk_count <= 5:  # Log first 5 chunks
+                        logger.info(f"[Execute] Chunk {chunk_count}: {chunk_str[:100]}")
+                    yield chunk_str
+                    
+            except TypeError as e:
+                # Fallback if strategy not supported
+                logger.warning(f"[Execute] Toolchain doesn't support strategy parameter: {e}")
+                yield f"\nNote: Using fallback execution (strategy not supported)\n\n"
                 
+                chunk_count = 0
+                for chunk in vera.toolchain.execute_tool_chain(query, plan=plan):
+                    chunk_count += 1
+                    chunk_str = str(chunk)
+                    if chunk_count <= 5:
+                        logger.info(f"[Execute] Fallback chunk {chunk_count}: {chunk_str[:100]}")
+                    yield chunk_str
+            
+            logger.info(f"[Execute] Execution complete - total chunks: {chunk_count}")
+            yield f"\n\n{'='*60}\n"
+            yield f"Execution completed successfully\n"
+            yield f"{'='*60}\n"
+                    
         except Exception as e:
-            logger.error(f"Query execution error: {e}", exc_info=True)
-            yield f"\n\nError: {str(e)}\n"
+            error_msg = f"\n\nError during execution: {str(e)}\n"
+            logger.error(f"[Execute] {error_msg}", exc_info=True)
+            yield error_msg
     
+    logger.info(f"[Execute] Returning StreamingResponse")
     return StreamingResponse(generate(), media_type="text/plain")
-
-
-@router.post("/save-custom")
-async def save_custom_toolchain(request: CustomToolchainRequest):
-    """Save a custom toolchain for reuse."""
-    if request.session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Save to session or database
-    # For now, just return success
-    return {
-        "success": True,
-        "name": request.name,
-        "steps": len(request.steps),
-        "message": "Custom toolchain saved successfully"
-    }
-
-
-@router.get("/{session_id}/saved-toolchains")
-async def get_saved_toolchains(session_id: str):
-    """Get all saved custom toolchains for a session."""
-    if session_id not in sessions:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # TODO: Implement actual storage/retrieval
-    return {
-        "toolchains": [],
-        "total": 0
-    }
 
 
 # ============================================================
@@ -317,55 +342,95 @@ async def get_saved_toolchains(session_id: str):
 # ============================================================
 
 def _generate_plan_from_template(template_id: str, params: Dict[str, Any], vera) -> List[Dict[str, str]]:
-    """
-    Generate a plan from a template and parameters.
-    Uses the PlanTemplate class from enhanced_toolchain_planner.
-    """
+    """Generate a plan from a template and parameters."""
+    logger.info(f"[PlanGen] Generating plan for template: {template_id}")
+    logger.info(f"[PlanGen] Params: {json.dumps(params, indent=2)}")
+    
+    # Try to use PlanTemplate if available
     try:
         from Vera.Toolchain.enhanced_toolchain_planner import PlanTemplate
+        logger.info(f"[PlanGen] Using PlanTemplate class")
         
         templates = PlanTemplate()
         
         if template_id == "web_research":
             query = params.get("query", "")
             depth = params.get("depth", "standard")
-            return templates.web_research(query, depth)
+            plan = templates.web_research(query, depth)
             
         elif template_id == "data_analysis":
             data_source = params.get("data_source", "")
             analysis_type = params.get("analysis_type", "")
-            return templates.data_analysis(data_source, analysis_type)
+            plan = templates.data_analysis(data_source, analysis_type)
             
         elif template_id == "code_task":
             task_description = params.get("task_description", "")
             language = params.get("language", "python")
-            return templates.code_task(task_description, language)
+            plan = templates.code_task(task_description, language)
             
         elif template_id == "comparison_research":
             topic_a = params.get("topic_a", "")
             topic_b = params.get("topic_b", "")
-            return templates.comparison_research(topic_a, topic_b)
+            plan = templates.comparison_research(topic_a, topic_b)
             
         elif template_id == "document_creation":
             topic = params.get("topic", "")
             doc_type = params.get("doc_type", "report")
-            return templates.document_creation(topic, doc_type)
+            plan = templates.document_creation(topic, doc_type)
             
         else:
             raise ValueError(f"Unknown template: {template_id}")
+        
+        logger.info(f"[PlanGen] Successfully generated plan with {len(plan)} steps")
+        return plan
             
-    except ImportError:
+    except ImportError as e:
         # Fallback if enhanced planner not available
-        logger.warning("Enhanced toolchain planner not available, using basic plan")
+        logger.warning(f"[PlanGen] Enhanced toolchain planner not available: {e}, using fallback")
+        return _generate_fallback_plan(template_id, params)
+
+
+def _generate_fallback_plan(template_id: str, params: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Generate a simple fallback plan when PlanTemplate is not available."""
+    logger.info(f"[PlanGen] Generating fallback plan for {template_id}")
+    
+    if template_id == "web_research":
+        query = params.get("query", "")
         return [
-            {"tool": "fast_llm", "input": f"Process this request: {json.dumps(params)}"}
+            {"tool": "web_search", "input": query},
+            {"tool": "fast_llm", "input": f"Analyze and summarize: {{prev}}"}
+        ]
+    
+    elif template_id == "code_task":
+        task = params.get("task_description", "")
+        return [
+            {"tool": "fast_llm", "input": f"Write code for: {task}"},
+            {"tool": "python_repl", "input": "{prev}"}
+        ]
+    
+    elif template_id == "data_analysis":
+        data_source = params.get("data_source", "")
+        analysis = params.get("analysis_type", "")
+        return [
+            {"tool": "fast_llm", "input": f"Analyze {data_source}: {analysis}"}
+        ]
+    
+    else:
+        # Generic fallback
+        query_text = json.dumps(params)
+        return [
+            {"tool": "fast_llm", "input": f"Process this request: {query_text}"}
         ]
 
 
 def _format_query_from_params(template_id: str, params: Dict[str, Any]) -> str:
     """Format parameters into a natural language query."""
+    logger.info(f"[QueryFormat] Formatting query for {template_id}")
     
-    if template_id == "web_research":
+    if template_id == "direct_prompt":
+        return params.get("query", "")
+    
+    elif template_id == "web_research":
         return params.get("query", "")
     
     elif template_id == "data_analysis":
@@ -392,13 +457,7 @@ def _format_query_from_params(template_id: str, params: Dict[str, Any]) -> str:
 # ============================================================
 
 def integrate_query_router(app):
-    """
-    Integrate the query router into the FastAPI app.
-    
-    Usage in main API file:
-        from toolchain_query_api import integrate_query_router
-        integrate_query_router(app)
-    """
+    """Integrate the query router into the FastAPI app."""
     app.include_router(router)
     logger.info("[Query API] Advanced toolchain query endpoints registered")
     logger.info("[Query API] Available at /api/toolchain/query/*")

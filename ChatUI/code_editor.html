@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ESP32 Web IDE + Simulator + Wokwi + TIC-80 (single file)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root { --bg:#111; --panel:#222; --muted:#9aa2ad; --accent:#2b6cb0; }
+  html,body { height:100%; }
+  body { margin:0; height:100vh; display:flex; flex-direction:column; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial; background:var(--bg); color:#ddd; }
+  #toolbar { background:var(--panel); padding:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  select,input,button { padding:6px 10px; border-radius:6px; border:1px solid #333; background:#0b0c0d; color:#ddd; }
+  button { cursor:pointer; }
+  #main { display:flex; flex:1; gap:8px; padding:8px; box-sizing:border-box; min-height:0; }
+  #left { flex:1; display:flex; flex-direction:column; gap:8px; min-width:420px; min-height:0; }
+  #editor { height:100%; border-radius:8px; overflow:hidden; min-height:0; }
+  #simRight { width:420px; display:flex; flex-direction:column; gap:8px; min-height:0; }
+  #simulatorContainer { background:var(--panel); padding:10px; border-radius:8px; min-height:240px; display:flex; flex-direction:column; gap:8px; max-height:40vh; overflow:auto; }
+  #boardName { color:#fff; font-weight:600; }
+  #simulatorBoard { display:grid; grid-template-columns: repeat(auto-fill, 50px); gap:8px; }
+  .pin { width:50px; height:50px; display:flex; align-items:center; justify-content:center; border-radius:6px; font-weight:600; color:white; background:#555; border:1px solid #777; transition:120ms; }
+  .pin.digital.LOW { background:#444; }
+  .pin.digital.HIGH { background:limegreen; color:black; border-color:#0f0; }
+  .pin.analog { background:#335; }
+  .pin.pwm { background:#533; }
+  #consoleWrap { display:flex; flex-direction:column; gap:6px; }
+  #console { height:200px; background:#000; color:#0f0; padding:8px; border-radius:8px; overflow:auto; font-family:monospace; font-size:13px; }
+  #tabs { display:flex; gap:6px; margin-bottom:6px; }
+  .tab { padding:6px 10px; cursor:pointer; background:#1a1a1a; border-radius:6px; color:#ddd; border:1px solid #333; }
+  .tab.active { background:#333; border-color:#666; }
+  iframe.simframe { width:100%; height:320px; border:0; display:none; border-radius:6px; }
+  .small { font-size:12px; color:var(--muted); }
+  .muted { color:var(--muted); }
+  label.small { display:flex; gap:6px; align-items:center; font-size:13px; }
+</style>
+
+<!-- Monaco loader -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+
+<div id="toolbar">
+  <label class="small">Language:
+    <select id="language">
+      <option value="arduino">Arduino (C++ style)</option>
+      <option value="js">JavaScript (direct simulator)</option>
+      <option value="tic80">TIC-80 (Lua)</option>
+    </select>
+  </label>
+
+  <label class="small">Board:
+    <select id="boardType" onchange="loadBoard()">
+      <option value="esp32">ESP32 DevKit</option>
+      <option value="uno">Arduino UNO</option>
+    </select>
+  </label>
+
+  <label class="small">Port:
+    <select id="usbPort"></select>
+  </label>
+
+  <button onclick="refreshPorts()">Refresh Ports</button>
+
+  <button id="runBtn" onclick="runCode()">Run</button>
+  <button onclick="stopCode()">Stop</button>
+
+  <button onclick="connectUSB()">Connect USB</button>
+  <button onclick="startServerMonitor()">Server Monitor</button>
+
+  <label class="small">FQBN:
+    <input id="fqbnField" style="width:220px" placeholder="e.g. esp32:esp32:esp32">
+  </label>
+  <button onclick="autoDetectFQBN()">Auto-detect FQBN</button>
+  <button onclick="flashUSB()">Upload (compile+flash)</button>
+
+  <div style="flex:1"></div>
+
+  <!-- Simulation tabs -->
+  <div id="tabs">
+    <div class="tab active" id="tab-sim" onclick="selectTab('sim')">Simulator</div>
+    <div class="tab" id="tab-wokwi" onclick="selectTab('wokwi')">Wokwi</div>
+    <div class="tab" id="tab-tic" onclick="selectTab('tic')">TIC-80</div>
+  </div>
+</div>
+
+<div id="main">
+  <div id="left">
+    <div id="editor"></div>
+    <div class="small muted">Tip: select Language. TIC-80 mode expects Lua (change editor content language to Lua or paste your TIC-80 code). Use the TIC-80 tab to run in the embedded player.</div>
+  </div>
+
+  <div id="simRight">
+    <div id="simulatorContainer">
+      <div id="boardName"></div>
+      <div id="simulatorBoard"></div>
+
+      <!-- Wokwi iframe -->
+      <iframe id="wokwiFrame" class="simframe"></iframe>
+
+      <!-- TIC-80 iframe (hidden until selected) -->
+      <iframe id="ticFrame" class="simframe"></iframe>
+    </div>
+
+    <div id="consoleWrap">
+      <div id="console">[Serial Monitor]</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===========================
+   State & Utilities (keeps your existing behavior)
+   =========================== */
+let editor;
+let running = false;
+let loopTask = null;
+let port = null;
+let writer = null;
+let reader = null;
+let SIM_STATE = {};
+const DEFAULT_FQBNS = { esp32: "esp32:esp32:esp32", uno: "arduino:avr:uno" };
+
+/* ---------------------------
+   Board map (simple)
+   --------------------------- */
+const BOARD_MAP = {
+  esp32: { name: "ESP32 DevKit", fqbn: "esp32:esp32:esp32", pins: Array.from({length:22}, (_, i) => ({id:i,type:"digital"})) },
+  uno: { name: "Arduino UNO", fqbn: "arduino:avr:uno", pins: [
+      {id:0,type:"digital"},{id:1,type:"digital"},{id:2,type:"digital"},{id:3,type:"pwm"},
+      {id:4,type:"digital"},{id:5,type:"pwm"},{id:6,type:"pwm"},{id:7,type:"digital"},
+      {id:8,type:"digital"},{id:9,type:"pwm"},{id:10,type:"pwm"},{id:11,type:"pwm"},
+      {id:12,type:"digital"},{id:13,type:"digital"},{id:"A0",type:"analog"},{id:"A1",type:"analog"},
+      {id:"A2",type:"analog"},{id:"A3",type:"analog"},{id:"A4",type:"analog"},{id:"A5",type:"analog"}
+  ] }
+};
+
+/* ===========================
+   Monaco initialization
+   =========================== */
+require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
+require(['vs/editor/editor.main'], function () {
+  // register a friendly Arduino language tokens for highlighting
+  monaco.languages.register({ id: 'arduino' });
+  monaco.languages.setMonarchTokensProvider('arduino', {
+    keywords: ['void','int','float','double','char','long','bool','pinMode','digitalWrite','digitalRead','analogRead','analogWrite','delay','HIGH','LOW','INPUT','OUTPUT','Serial','println','print'],
+    tokenizer: {
+      root: [
+        [/[a-zA-Z_]\w*/, { cases: { '@keywords': 'keyword', '@default': 'identifier' } }],
+        [/\d+/, 'number'],
+        [/\/\/.*$/, 'comment'],
+        [/\/\*/, 'comment', '@comment'],
+        [/".*?"/, 'string']
+      ],
+      comment: [
+        [/[^\/*]+/, 'comment'],
+        [/\*\//, 'comment', '@pop'],
+        [/[\/*]/, 'comment']
+      ]
+    }
+  });
+
+  // Also register Lua language for TIC-80 mode (Monaco has lua support built-in via language id 'lua')
+  // We'll switch language dynamically when user picks TIC-80
+
+  monaco.languages.registerCompletionItemProvider('arduino', {
+    provideCompletionItems: () => {
+      const suggestions = [
+        { label: 'setup()', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'void setup() {\n\t$0\n}', documentation: 'Arduino setup()' },
+        { label: 'loop()', kind: monaco.languages.CompletionItemKind.Snippet, insertText: 'void loop() {\n\t$0\n}', documentation: 'Arduino loop()' },
+        { label:'pinMode', kind: monaco.languages.CompletionItemKind.Function, insertText:'pinMode(${1:pin}, ${2:OUTPUT});' },
+        { label:'digitalWrite', kind: monaco.languages.CompletionItemKind.Function, insertText:'digitalWrite(${1:pin}, ${2:HIGH});' },
+        { label:'delay', kind: monaco.languages.CompletionItemKind.Function, insertText:'delay(${1:1000});' },
+      ];
+      return { suggestions };
+    }
+  });
+
+  editor = monaco.editor.create(document.getElementById('editor'), {
+    language: 'arduino',
+    theme: 'vs-dark',
+    automaticLayout: true,
+    minimap: { enabled: true },
+    value: `// Example Arduino sketch (C++ style)
+void setup() {
+  pinMode(2, OUTPUT);
+  Serial.print("Boot");
+}
+void loop() {
+  digitalWrite(2, HIGH);
+  Serial.print("LED ON");
+  delay(500);
+  digitalWrite(2, LOW);
+  Serial.print("LED OFF");
+  delay(500);
+}`
+  });
+
+  loadBoard();
+  refreshPorts();
+});
+
+/* ===========================
+   Tabs handling (Simulator / Wokwi / TIC)
+   =========================== */
+function selectTab(which){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+which).classList.add('active');
+
+  // hide all iframe players
+  document.getElementById('wokwiFrame').style.display = 'none';
+  document.getElementById('ticFrame').style.display = 'none';
+  document.getElementById('simulatorBoard').style.display = 'grid';
+  document.getElementById('console').style.display = 'block';
+
+  if(which === 'wokwi'){
+    document.getElementById('simulatorBoard').style.display = 'none';
+    document.getElementById('console').style.display = 'block';
+    document.getElementById('wokwiFrame').style.display = 'block';
+    loadWokwi();
+  } else if(which === 'tic'){
+    document.getElementById('simulatorBoard').style.display = 'none';
+    document.getElementById('console').style.display = 'none'; // TIC-80 has own display
+    document.getElementById('ticFrame').style.display = 'block';
+    loadTIC80();
+  } else {
+    // sim
+    document.getElementById('simulatorBoard').style.display = 'grid';
+    document.getElementById('console').style.display = 'block';
+  }
+}
+
+/* ===========================
+   Simulator UI + API (your existing simulator)
+   =========================== */
+function loadBoard(){
+  const type = document.getElementById('boardType').value;
+  const board = BOARD_MAP[type];
+  document.getElementById('boardName').textContent = board.name;
+  const grid = document.getElementById('simulatorBoard');
+  grid.innerHTML = '';
+  SIM_STATE = {};
+  board.pins.forEach(pin => {
+    SIM_STATE[pin.id] = { mode:'INPUT', value:'LOW', type: pin.type };
+    const cell = document.createElement('div');
+    cell.className = `pin ${pin.type} LOW`;
+    cell.id = 'pin' + String(pin.id);
+    cell.textContent = String(pin.id);
+    grid.appendChild(cell);
+  });
+  // set suggested FQBN
+  const fqbnField = document.getElementById('fqbnField');
+  if(fqbnField && board.fqbn) fqbnField.value = board.fqbn;
+}
+
+function updatePinUI(pin){
+  const state = SIM_STATE[pin];
+  const el = document.getElementById('pin' + String(pin));
+  if(!el) return;
+  el.className = `pin ${state.type} ${state.value === 'HIGH' ? 'HIGH':'LOW'}`;
+}
+
+/* API used by the transpiled code */
+function pinMode(pin, mode){
+  if(SIM_STATE[pin]) SIM_STATE[pin].mode = typeof mode === 'string' ? mode : String(mode);
+  updatePinUI(pin);
+}
+function digitalWrite(pin, val){
+  if(!SIM_STATE[pin]) return;
+  SIM_STATE[pin].value = (val === 'HIGH' || val === 1 || val === '1' || val === true) ? 'HIGH' : 'LOW';
+  updatePinUI(pin);
+  consoleLog(`[Pin ${pin}] = ${SIM_STATE[pin].value}`, 'sim');
+}
+function digitalRead(pin){
+  return SIM_STATE[pin] && SIM_STATE[pin].value === 'HIGH' ? 1 : 0;
+}
+function analogWrite(pin, val){
+  if(!SIM_STATE[pin]) return;
+  SIM_STATE[pin].value = val > 0 ? 'HIGH' : 'LOW';
+  updatePinUI(pin);
+  consoleLog(`[PWM ${pin}] Duty=${val}`, 'sim');
+}
+function analogRead(pin){
+  return Math.floor(Math.random()*1024);
+}
+const SerialSim = {
+  print: (v) => consoleLog(String(v), 'sim'),
+  println: (v) => consoleLog(String(v) + '\n', 'sim')
+};
+function delay(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+/* ===========================
+   Console / Serial Monitor
+   =========================== */
+function consoleLog(msg, source='sys'){
+  const c = document.getElementById('console');
+  const ts = new Date().toLocaleTimeString();
+  const label = source === 'hw' ? '[HW]' : source === 'sim' ? '[SIM]' : source === 'sys' ? '[SYS]' : '['+source.toUpperCase()+']';
+  c.innerHTML += `${ts} ${label} ${escapeHtml(msg)}<br>`;
+  c.scrollTop = c.scrollHeight;
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+/* ===========================
+   Arduino -> JS Transpiler (Option B)
+   =========================== */
+function transpileArduinoToJS(code){
+  let out = String(code).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  out = out.replace(/^\s*#include[^\n]*$/mg, '// removed #include');
+  out = out.replace(/\b(unsigned\s+long|unsigned\s+int|unsigned|long|int|float|double|char|bool)\s+([A-Za-z_]\w*)\s*(=)?/g,
+                      (m, t, name, eq) => { return 'let ' + name + (eq ? ' =' : ''); });
+  out = out.replace(/\bvoid\s+setup\s*\(\s*\)\s*\{/g, 'async function setup(){');
+  out = out.replace(/\bvoid\s+loop\s*\(\s*\)\s*\{/g, 'async function loop(){');
+  out = out.replace(/\bdelay\s*\(\s*([^)]+)\s*\)\s*;/g, 'await delay($1);');
+  out = out.replace(/\bHIGH\b/g, `'HIGH'`);
+  out = out.replace(/\bLOW\b/g, `'LOW'`);
+  out = out.replace(/\bOUTPUT\b/g, `'OUTPUT'`);
+  out = out.replace(/\bINPUT\b/g, `'INPUT'`);
+  out = out.replace(/\bINPUT_PULLUP\b/g, `'INPUT_PULLUP'`);
+  out = out.replace(/\bSerial\s*\.\s*print\s*\(/g, 'SerialSim.print(');
+  out = out.replace(/\bSerial\s*\.\s*println\s*\(/g, 'SerialSim.println(');
+  return out;
+}
+
+/* ===========================
+   Runner: transpile -> execute
+   =========================== */
+async function runCode(){
+  if(running) return;
+  const lang = document.getElementById('language').value;
+  const code = editor.getValue();
+  running = true;
+  document.getElementById('runBtn').textContent = 'Running...';
+
+  try{
+    if(lang === 'js'){
+      await runUserJS(code);
+    } else if(lang === 'arduino'){
+      const js = transpileArduinoToJS(code);
+      await runUserJS(js, { fromTranspile:true });
+    } else if(lang === 'tic80'){
+      // For TIC-80, switch to the TIC tab and send code to the TIC iframe
+      selectTab('tic');
+      await sendCodeToTIC(code);
+    }
+  } catch(err){
+    consoleLog('[ERROR] ' + (err && err.message ? err.message : err), 'sys');
+  } finally {
+    running = false;
+    document.getElementById('runBtn').textContent = 'Run';
+  }
+}
+
+async function runUserJS(jsCode, opts={}) {
+  try {
+    const wrapper = `
+      "use strict";
+      ${jsCode}
+      return { setup, loop };
+    `;
+    const fn = new Function('pinMode','digitalWrite','digitalRead','analogWrite','analogRead','SerialSim','delay', wrapper);
+    const prog = fn(pinMode, digitalWrite, digitalRead, analogWrite, analogRead, SerialSim, delay);
+    if(typeof prog.setup === 'function') await prog.setup();
+    if(typeof prog.loop === 'function'){
+      loopTask = (async () => {
+        while(running){
+          try { await prog.loop(); } catch(e){ consoleLog('[Runtime Error] ' + e, 'sys'); running=false; break; }
+        }
+      })();
+      await loopTask;
+    } else { consoleLog('[WARN] No loop() defined.', 'sys'); }
+  } catch(err){
+    consoleLog('[Exec Error] ' + (err && err.stack ? err.stack : err), 'sys');
+    throw err;
+  }
+}
+
+function stopCode(){
+  if(!running){ consoleLog('[INFO] Not running', 'sys'); return; }
+  running = false;
+  consoleLog('=== Stopped ===', 'sys');
+}
+
+/* ===========================
+   Web Serial: connect + monitor (hardware)
+   =========================== */
+async function refreshPorts(){
+  const sel = document.getElementById('usbPort');
+  sel.innerHTML = '';
+  try {
+    const ports = await navigator.serial.getPorts();
+    for(const p of ports){
+      const info = p.getInfo ? p.getInfo() : {};
+      const label = (info.usbVendorId ? 'VID:' + info.usbVendorId.toString(16) : '') + ' ' + (info.usbProductId ? 'PID:' + info.usbProductId.toString(16) : '') || p;
+      const opt = document.createElement('option'); opt.value = JSON.stringify({portIndex: 'pre', vid: info.usbVendorId, pid: info.usbProductId});
+      opt.textContent = label;
+      sel.appendChild(opt);
+    }
+  } catch(e){ /* ignore */ }
+  try {
+    const res = await fetch('/ports');
+    if(res.ok){
+      const list = await res.json();
+      for(const p of list){
+        const o = document.createElement('option'); o.value = p.device; o.textContent = `${p.device} - ${p.description || ''}`;
+        sel.appendChild(o);
+      }
+    }
+  } catch(e){ /* ignore */ }
+}
+
+async function connectUSB(){
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    consoleLog('USB connected — streaming hardware serial now', 'hw');
+    readFromPort(port);
+    try {
+      const info = port.getInfo ? port.getInfo() : {};
+      if(info.usbVendorId || info.usbProductId){
+        const suggested = suggestBoardFromVidPid(info.usbVendorId, info.usbProductId);
+        if(suggested) {
+          document.getElementById('fqbnField').value = suggested;
+          consoleLog('[Auto-FQBN] Suggested: ' + suggested, 'sys');
+        }
+      }
+    } catch(e){ /* ignore */ }
+  } catch(e){ consoleLog('[USB] ' + e, 'sys'); }
+}
+
+async function readFromPort(serialPort){
+  if(!serialPort) return;
+  try {
+    const readerLocal = serialPort.readable.getReader();
+    while(true){
+      const { value, done } = await readerLocal.read();
+      if(done) break;
+      if(value){ const text = new TextDecoder().decode(value); consoleLog(text, 'hw'); }
+    }
+    readerLocal.releaseLock();
+  } catch(e){ consoleLog('[USB read error] ' + e, 'sys'); }
+}
+
+/* ===========================
+   Auto-detect FQBN (heuristics)
+   =========================== */
+function suggestBoardFromVidPid(vid, pid){
+  if(typeof vid === 'string') vid = parseInt(vid, 10);
+  if(typeof pid === 'string') pid = parseInt(pid, 10);
+  if(vid === 0x10C4) return DEFAULT_FQBNS.esp32;
+  if(vid === 0x1A86) return DEFAULT_FQBNS.esp32;
+  if(vid === 0x0403) return DEFAULT_FQBNS.uno;
+  if(vid === 0x2341) return DEFAULT_FQBNS.uno;
+  const b = document.getElementById('boardType').value;
+  return DEFAULT_FQBNS[b] || '';
+}
+
+/* ===========================
+   Flash upload to backend
+   =========================== */
+async function flashUSB(){
+  const sel = document.getElementById('usbPort');
+  let portValue = sel.value;
+  if(!portValue){ alert('Select a port (or connect using "Connect USB").'); return; }
+  const fqbn = document.getElementById('fqbnField').value || prompt('Enter FQBN (e.g. esp32:esp32:esp32)');
+  if(!fqbn) return consoleLog('No FQBN provided', 'sys');
+  const code = editor.getValue();
+  consoleLog('[FLASH] compile + upload started', 'sys');
+  try {
+    const res = await fetch('/flash', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ code, fqbn, port: portValue }) });
+    const j = await res.json();
+    if(j.error){ consoleLog('[FLASH ERROR] ' + (j.error||'unknown') + (j.stderr ? '\n' + j.stderr : ''), 'sys'); }
+    else { consoleLog('[FLASH OK] ' + (j.stdout || ''), 'sys'); }
+  } catch(e){ consoleLog('[FLASH exception] ' + e, 'sys'); }
+}
+
+/* ===========================
+   Server-side serial monitor (optional)
+   =========================== */
+let wsSerial = null;
+function startServerMonitor(){ tryConnectWS().catch(()=> tryConnectSSE()); }
+async function tryConnectWS(){
+  if(wsSerial && wsSerial.readyState === WebSocket.OPEN) return;
+  const host = window.location.origin.replace(/^http/, 'ws');
+  const url = host + '/ws-serial';
+  wsSerial = new WebSocket(url);
+  wsSerial.onopen = () => consoleLog('[Server Monitor] connected (ws)', 'sys');
+  wsSerial.onmessage = ev => consoleLog(ev.data, 'hw');
+  wsSerial.onclose = () => consoleLog('[Server Monitor] closed', 'sys');
+  wsSerial.onerror = e => consoleLog('[Server Monitor] error: ' + e, 'sys');
+}
+let sseSource = null;
+function tryConnectSSE(){ if(sseSource) return; try { const url = '/serial-stream'; sseSource = new EventSource(url); sseSource.onmessage = ev => consoleLog(ev.data, 'hw'); sseSource.onerror = () => consoleLog('[Server Monitor] SSE error', 'sys'); consoleLog('[Server Monitor] connected (sse)', 'sys'); } catch(e){ consoleLog('[Server Monitor] unavailable', 'sys'); } }
+
+/* ===========================
+   TIC-80 integration (Option A: iframe + postMessage best-effort)
+   =========================== */
+function loadTIC80(){
+  const frame = document.getElementById('ticFrame');
+  // load the public TIC-80 player
+  // official: https://tic.computer/play
+  // we use a new project page so user can paste/run code
+  if(!frame.src){
+    frame.src = 'https://tic.computer/play';
+    // attach listener for returned messages (if player posts any)
+    window.addEventListener('message', handleTICMessages);
+  }
+}
+
+/* Best-effort: send code via postMessage to TIC iframe. Many TIC web players accept different APIs;
+   this attempts a reasonable message structure. If it doesn't work, fallback opens the player in a new tab.
+*/
+async function sendCodeToTIC(code){
+  const frame = document.getElementById('ticFrame');
+  if(!frame || !frame.contentWindow){
+    // open new tab as fallback
+    openTICInNewTab(code);
+    return;
+  }
+
+  // Try a few message types that some players/libraries expect
+  const msgVariants = [
+    { type: 'tic.setCode', code },              // hypothetical standard
+    { type: 'tic80.setCode', code },            // alternative
+    { type: 'setCode', code },
+    { type: 'load', code },
+    { type: 'editor.setCode', code }
+  ];
+
+  let posted = false;
+  for(const m of msgVariants){
+    try{
+      frame.contentWindow.postMessage(m, '*');
+      posted = true;
+    }catch(e){
+      // ignore
+    }
+  }
+
+  // If nothing is received by the iframe (we can't detect), also open a new tab with instructions
+  // we give the iframe a moment; if it's sandboxed / doesn't accept messages, fall back
+  setTimeout(()=> {
+    // inform user how to paste if messages didn't work
+    consoleLog('[TIC-80] Tried sending code to embedded player. If nothing happened, click "Open TIC in new tab" to paste code manually.', 'sys');
+    // also add a small helper button inside console (not clickable programmatically across origins)
+  }, 600);
+}
+
+/* If postMessage isn't supported by target, open new tab with code prefilled via data: URL fallback.
+   We cannot auto-paste into remote site, but we open a small page with the code and instructions.
+*/
+function openTICInNewTab(code){
+  const html = `<!doctype html><meta charset="utf-8"><title>Paste TIC-80 code</title>
+  <body style="background:#111;color:#ddd;font-family:system-ui;padding:12px;">
+  <h2>Paste into TIC-80</h2>
+  <p>Open <a href="https://tic.computer/play" target="_blank">https://tic.computer/play</a>, open the editor & paste the code below:</p>
+  <pre style="white-space:pre-wrap;background:#000;color:#0f0;padding:8px;border-radius:6px;">${escapeHtml(code)}</pre>
+  </body>`;
+  const w = window.open();
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+/* Optional handler for messages from TIC iframe */
+function handleTICMessages(ev){
+  // you can inspect ev.origin to restrict messages
+  try{
+    const d = ev.data;
+    if(!d) return;
+    // many players will post messages like {type:'serial', data:'...'}
+    if(d.type === 'tic.serial' || d.type === 'serial'){
+      consoleLog('[TIC] ' + d.data, 'tic');
+    } else if(d.type && typeof d === 'object'){
+      consoleLog('[TIC msg] ' + JSON.stringify(d), 'tic');
+    }
+  }catch(e){ /* ignore */ }
+}
+
+/* ===========================
+   Init
+   =========================== */
+window.addEventListener('load', () => {
+  refreshPorts();
+  // ensure console sizing doesn't grow the page
+  if(!('serial' in navigator)) consoleLog('[WARN] Web Serial API not available in this browser. Use Chrome/Edge with secure origin or localhost.', 'sys');
+  // default tab is simulator
+  selectTab('sim');
+});
+</script>
+</body>
+</html>
