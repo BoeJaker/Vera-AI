@@ -465,6 +465,9 @@ class TaskQueue:
         self._lock = threading.Lock()
         self.cpu_threshold = cpu_threshold
         self.logger = logging.getLogger("TaskQueue")
+        self._last_cpu_check = 0
+        self._cached_cpu = 0
+        self._cpu_check_interval = 1.0  # Check once per second
     
     def submit(self, task_name: str, *args, **kwargs) -> str:
         """Submit a task for execution"""
@@ -521,10 +524,14 @@ class TaskQueue:
     
     def get_next(self, worker_type: TaskType, timeout: float = 1.0) -> Tuple[Optional[str], ...]:
         """Get next task for a worker of the given type"""
-        # Check CPU usage before dispatching
-        if psutil.cpu_percent(interval=0.1) >= self.cpu_threshold:
-            return None, None, None, None, None
+        # Check CPU usage (cached)
+        now = time.time()
+        if now - self._last_cpu_check > self._cpu_check_interval:
+            self._cached_cpu = psutil.cpu_percent(interval=0.1)
+            self._last_cpu_check = now
         
+        if self._cached_cpu >= self.cpu_threshold:
+            return None, None, None, None, None
         with self._lock:
             queue = self._queues[worker_type]
             

@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-# Vera.py - Vera
+# Vera.py - Vera with Unified Logging System
 
 """
 Vera - AI System
-Multi-agent system with proactive focus management and tool execution.
+Multi-agent system with proactive focus management, tool execution,
+and infrastructure-aware task orchestration.
+
+NEW: Unified logging system with configurable verbosity and rich formatting
 """
 
 # --- Imports ---
+import queue
 import sys, os, io
 import subprocess
 import json
 from typing import List, Dict, Any, Type, Optional, Callable, Iterator, Union
 import threading
 import time
-# import inspect
 import psutil
 import re
 import traceback
@@ -52,573 +55,359 @@ from langchain.llms.base import LLM
 try:
     from Vera.Agents.executive_0_9 import executive
     from Vera.Memory.memory import *
-    # from Vera.Memory.archive import PostgresArchive, HybridMemoryWithArchive
-
-    from Vera.Toolchain.toolchain import ToolChainPlanner # v1 import
+    from Vera.Toolchain.toolchain import ToolChainPlanner
     from Vera.Toolchain.tools import ToolLoader
-    from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
-    from Vera.Toolchain.Tools.memory import load_memory_tools
     from Vera.Agents.reviewer import Reviewer
     from Vera.Agents.planning import Planner
-    from Vera.proactive_focus_manager import ProactiveFocusManager
+    from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
+    from Vera.Ollama.manager import *
+    from Vera.Orchestration.vera_tasks import *
+    from Vera.Configuration.config_manager import (
+        ConfigManager, 
+        VeraConfig, 
+        validate_config
+    )
+    from Vera.Logging.logging import (
+        get_logger,
+        LoggingConfig as VeraLoggingConfig,
+        LogContext,
+        LogLevel
+    )
 except Exception as e:
-    print(e)
+    print(f"Import error: {e}")
     from Agents.executive_0_9 import executive
-    # sys.path.append(os.path.join(os.path.dirname(__file__), 'Memory'))
     from Memory.memory import *
-    # from Memory.archive import PostgresArchive, HybridMemoryWithArchive
-    from Toolchain.toolchain import ToolChainPlanner # v1 import
+    from Toolchain.toolchain import ToolChainPlanner
     from Toolchain.tools import ToolLoader
-    from Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
-    from Toolchain.Tools.memory import load_memory_tools
     from Agents.reviewer import Reviewer
     from Agents.planning import Planner
-    from proactive_focus_manager import ProactiveFocusManager
-
-# # Initialize both systems
-# memory = HybridMemory(
-#     neo4j_uri="bolt://localhost:7687",
-#     neo4j_user="neo4j",
-#     neo4j_password="password",
-#     chroma_dir="./chroma_store"
-# )
-
-# archive = PostgresArchive(
-#     connection_string="postgresql://user:pass@localhost:5432/memory_archive"
-# )
-
-# # Wrap them together
-# integrated = HybridMemoryWithArchive(memory, archive)
+    from ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
+    from Ollama.manager import *
+    from Orchestration.vera_tasks import *
+    from Configuration.config_manager import (
+        ConfigManager, 
+        VeraConfig, 
+        validate_config
+    )
+    from Logging.logging import (
+        get_logger,
+        LoggingConfig as VeraLoggingConfig,
+        LogContext,
+        LogLevel
+    )
 
 #---- Constants ---
 MODEL_CONFIG_FILE = "Configuration/vera_models.json"
 
-# --- Ollama Connection Manager ---
-class OllamaConnectionManager:
-    """Manages connection to Ollama API with local fallback"""
-    
-    def __init__(self, api_url: Optional[str] = None):
-        self.api_url = api_url or os.getenv("OLLAMA_API_URL", "http://localhost:11434")
-        self.use_local = False
-        self.connection_tested = False
-        
-    def test_connection(self) -> bool:
-        """Test if Ollama API is accessible"""
-        try:
-            response = requests.get(f"{self.api_url}/api/tags", timeout=5)
-            if response.status_code == 200:
-                print(f"[Ollama] Connected to API at {self.api_url}")
-                self.use_local = False
-                self.connection_tested = True
-                return True
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            print(f"[Ollama] API connection failed: {e}")
-        
-        # Fallback to local
-        print("[Ollama] Falling back to local Ollama process")
-        self.use_local = True
-        self.connection_tested = True
-        return False
-    
-    def list_models(self) -> List[Dict]:
-        """List available models from API or local"""
-        if not self.connection_tested:
-            self.test_connection()
-        
-        if not self.use_local:
-            try:
-                response = requests.get(f"{self.api_url}/api/tags", timeout=5)
-                if response.status_code == 200:
-                    models_data = response.json().get("models", [])
-                    # API returns models in a different format, normalize it
-                    return [{"model": m.get("name", m.get("model", ""))} for m in models_data]
-            except Exception as e:
-                print(f"[Ollama] API list failed, trying local: {e}")
-                self.use_local = True
-        
-        # Use local ollama import
-        try:
-            return ollama.list()["models"]
-        except Exception as e:
-            raise RuntimeError(f"[Ollama] Both API and local connection failed: {e}")
-    
-    def pull_model(self, model_name: str) -> bool:
-        """Pull/download a model from API or local"""
-        if not self.connection_tested:
-            self.test_connection()
-        
-        if not self.use_local:
-            try:
-                print(f"[Ollama] Pulling model {model_name} via API...")
-                response = requests.post(
-                    f"{self.api_url}/api/pull",
-                    json={"name": model_name, "stream": False},
-                    timeout=300
-                )
-                return response.status_code == 200
-            except Exception as e:
-                print(f"[Ollama] API pull failed, trying local: {e}")
-                self.use_local = True
-        
-        # Use local ollama import
-        try:
-            ollama.pull(model_name)
-            return True
-        except Exception as e:
-            print(f"[Ollama] Failed to pull model: {e}")
-            return False
-    
-    def create_llm(self, model: str, temperature: float = 0.7, **kwargs):
-        """Create an Ollama LLM instance with API or local configuration"""
-        if not self.connection_tested:
-            self.test_connection()
-        
-        if not self.use_local:
-            # Use API mode
-            print(f"[Ollama] Using API mode for model {model}")
-            return OllamaAPIWrapper(
-                model=model,
-                temperature=temperature,
-                api_url=self.api_url,
-                **kwargs
-            )
-        else:
-            # Use local Ollama
-            print(f"[Ollama] Using local Ollama for model {model}")
-            return Ollama(
-                model=model,
-                temperature=temperature,
-                **kwargs
-            )
-    
-    def create_embeddings(self, model: str, **kwargs):
-        """Create an Ollama embeddings instance with API or local configuration"""
-        if not self.connection_tested:
-            self.test_connection()
-        
-        if not self.use_local:
-            # Use API mode
-            return OllamaEmbeddings(
-                model=model,
-                base_url=self.api_url,
-                **kwargs
-            )
-        else:
-            # Use local Ollama
-            return OllamaEmbeddings(
-                model=model,
-                **kwargs
-            )
-# --- Ollama API Wrapper with Thought Support ---
-class OllamaAPIWrapper(LLM):
-    """Wrapper for Ollama API calls with fallback to local and thought output support"""
-    
-    model: str
-    temperature: float = 0.7
-    api_url: str = "http://localhost:11434"
-    
-    @property
-    def _llm_type(self) -> str:
-        return "ollama_api"
-    
-    def _call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
-        """Call Ollama API, fallback to local if it fails"""
-        try:
-            # Filter out non-serializable kwargs
-            api_kwargs = {k: v for k, v in kwargs.items() 
-                         if k not in ['run_manager', 'callbacks'] and 
-                         isinstance(v, (str, int, float, bool, list, dict, type(None)))}
-            
-            # Try API call
-            response = requests.post(
-                f"{self.api_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "temperature": self.temperature,
-                    "stream": False,
-                    **api_kwargs
-                },
-                timeout=2400
-            )
-            
-            if response.status_code == 200:
-                response_data = response.json()
-                
-                # Output thought if available (for models like gpt-oss)
-                if "thought" in response_data and response_data["thought"]:
-                    thought = response_data["thought"]
-                    print(f"\n[Thought] {thought}\n", flush=True)
-                    sys.stdout.flush()
-                
-                return response_data.get("response", "")
-            else:
-                print(f"[Ollama API] Request failed with status {response.status_code}, falling back to local")
-                return self._fallback_call(prompt, stop, run_manager, **kwargs)
-                
-        except Exception as e:
-            print(f"[Ollama API] Error: {e}, falling back to local")
-            return self._fallback_call(prompt, stop, run_manager, **kwargs)
-    
-    def _stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> Iterator[GenerationChunk]:
-        """Stream responses from Ollama API, fallback to local if it fails"""
-        try:
-            # Filter out non-serializable kwargs
-            api_kwargs = {k: v for k, v in kwargs.items() 
-                         if k not in ['run_manager', 'callbacks'] and 
-                         isinstance(v, (str, int, float, bool, list, dict, type(None)))}
-            
-            # Try API streaming call
-            print(f"[Ollama API] Starting stream request to {self.api_url}")
-            response = requests.post(
-                f"{self.api_url}/api/generate",
-                json={
-                    "model": self.model,
-                    "prompt": prompt,
-                    "temperature": self.temperature,
-                    "stream": True,
-                    **api_kwargs
-                },
-                stream=True,
-                timeout=2400
-            )
-            
-            if response.status_code == 200:
-                print(f"[Ollama API] Stream connected, receiving data...")
-                chunk_count = 0
-                thought_buffer = []  # Buffer to collect thought chunks
-                
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            json_response = json.loads(line)
-                            
-                            # Handle thought content (for models like gpt-oss)
-                            if "thought" in json_response:
-                                thought_chunk = json_response["thought"]
-                                if thought_chunk:
-                                    thought_buffer.append(thought_chunk)
-                                    # Print thought in real-time
-                                    if not thought_buffer[:-1]:  # First chunk
-                                        sys.stdout.write("\n[Thought] ")
-                                    sys.stdout.write(thought_chunk)
-                                    sys.stdout.flush()
-                            
-                            # Handle response content
-                            if "response" in json_response:
-                                # If we just finished outputting thought, add newline
-                                if thought_buffer:
-                                    sys.stdout.write("\n\n")
-                                    sys.stdout.flush()
-                                    thought_buffer = []  # Clear buffer
-                                
-                                chunk_text = json_response["response"]
-                                if chunk_text:  # Only yield non-empty chunks
-                                    chunk_count += 1
-                                    # Create a GenerationChunk object like LangChain expects
-                                    chunk = GenerationChunk(text=chunk_text)
-                                    if run_manager:
-                                        run_manager.on_llm_new_token(chunk_text)
-                                    yield chunk
-                                    
-                        except json.JSONDecodeError as e:
-                            print(f"[Ollama API] JSON decode error: {e}")
-                            continue
-                            
-                # Final newline if we ended on thought
-                if thought_buffer:
-                    sys.stdout.write("\n")
-                    sys.stdout.flush()
-                    
-                print(f"[Ollama API] Stream completed, yielded {chunk_count} chunks")
-            else:
-                print(f"[Ollama API] Stream failed with status {response.status_code}, falling back to local")
-                yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
-                
-        except Exception as e:
-            print(f"[Ollama API] Stream error: {e}, falling back to local")
-            traceback.print_exc()
-            yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
-    
-    def _fallback_call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
-        """Fallback to local Ollama"""
-        fallback_llm = Ollama(model=self.model, temperature=self.temperature)
-        print(f"[Ollama API] Using local fallback for model {self.model}")
-        
-        # Pass run_manager if available
-        call_kwargs = kwargs.copy()
-        if run_manager:
-            call_kwargs['run_manager'] = run_manager
-        
-        return fallback_llm.invoke(prompt, stop=stop, **call_kwargs)
-    
-    def _fallback_stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs):
-        """Fallback streaming to local Ollama"""
-        fallback_llm = Ollama(model=self.model, temperature=self.temperature)
-        print(f"[Ollama API] Using local streaming fallback for model {self.model}")
-        print(f"[Ollama API] Starting local stream...")
-        chunk_count = 0
-        
-        # Pass run_manager to the fallback if available
-        stream_kwargs = kwargs.copy()
-        if run_manager:
-            stream_kwargs['run_manager'] = run_manager
-        
-        for chunk in fallback_llm.stream(prompt, stop=stop, **stream_kwargs):
-            chunk_count += 1
-            # LangChain's stream should return GenerationChunk objects
-            # But handle both cases
-            if isinstance(chunk, str):
-                yield GenerationChunk(text=chunk)
-            elif hasattr(chunk, 'text'):
-                yield chunk
-            elif hasattr(chunk, 'content'):
-                yield GenerationChunk(text=chunk.content)
-            else:
-                yield GenerationChunk(text=str(chunk))
-        print(f"\n[Ollama API] Local stream completed, yielded {chunk_count} chunks")
-    
-    async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        """Async call - falls back to sync for now"""
-        return self._call(prompt, stop, **kwargs)
-
-# --- Model Selection ---
-def choose_models_from_installed(ollama_manager: OllamaConnectionManager, MODEL_CONFIG_FILE: str = MODEL_CONFIG_FILE):
-    """Choose models with support for API or local Ollama"""
-    
-    # Get list of installed Ollama models
-    try:
-        models_list = ollama_manager.list_models()
-        available_models = [m["model"] for m in models_list]
-    except Exception as e:
-        print(f"[Vera Model Loader] Error listing models: {e}")
-        available_models = []
-    
-    if not available_models:
-        print("[Vera Model Loader] No Ollama models found!")
-        print("Would you like to pull some default models? (y/n): ", end="")
-        response = input().strip().lower()
-        
-        if response == 'y':
-            default_to_pull = ["gemma2", "mistral:7b"]
-            for model in default_to_pull:
-                print(f"[Vera Model Loader] Pulling {model}...")
-                if ollama_manager.pull_model(model):
-                    print(f"[Vera Model Loader] Successfully pulled {model}")
-                else:
-                    print(f"[Vera Model Loader] Failed to pull {model}")
-            
-            # Refresh model list
-            try:
-                models_list = ollama_manager.list_models()
-                available_models = [m["model"] for m in models_list]
-            except Exception as e:
-                print(f"[Vera Model Loader] Error refreshing model list: {e}")
-        
-        if not available_models:
-            raise RuntimeError("[Vera Model Loader] No Ollama models available! Please install models manually.")
-
-    # Default models (used if config file doesn't exist)
-    default_models = {
-        "embedding_model": "mistral:7b",
-        "fast_llm": "gemma2",
-        "intermediate_llm": "gemma3:12b",
-        "deep_llm": "gemma3:27b",
-        "reasoning_llm": "gpt-oss:20b",
-        "tool_llm": "gemma2"
-    }
-
-    # Load last used models if available
-    if os.path.exists(MODEL_CONFIG_FILE):
-        try:
-            with open(MODEL_CONFIG_FILE, "r") as f:
-                saved_models = json.load(f)
-                default_models.update(saved_models)
-        except Exception:
-            print("[Vera Model Loader] Warning: could not read config file, using defaults.")
-    
-    chosen_models = {}
-    print("\n[Vera Model Loader] Select a model for each category:")
-    for key, default in default_models.items():
-        # Check if default model is available, otherwise use first available
-        if default not in available_models and available_models:
-            default = available_models[0]
-            print(f"[Vera Model Loader] Default model '{default_models[key]}' not found, using '{default}'")
-        
-        print(f"\nSelect model for {key.replace('_', ' ').title()} (default: {default})")
-        for idx, model in enumerate(available_models, 1):
-            marker = " ← current default" if model == default else ""
-            print(f"{idx}. {model}{marker}")
-        
-        choice = input(f"Enter choice (1-{len(available_models)}) or press Enter for default: ").strip()
-
-        if choice.isdigit() and 1 <= int(choice) <= len(available_models):
-            chosen_models[key] = available_models[int(choice) - 1]
-        else:
-            chosen_models[key] = default
-
-    # Save chosen models for next run
-    try:
-        with open(MODEL_CONFIG_FILE, "w") as f:
-            json.dump(chosen_models, f, indent=2)
-        print(f"[Vera Model Loader] Configuration saved to {MODEL_CONFIG_FILE}")
-    except Exception as e:
-        print(f"[Vera Model Loader] Warning: could not save config: {e}")
-
-    print("\n[Vera Model Loader] Selected Models:")
-    for key, model in chosen_models.items():
-        print(f"  {key}: {model}")
-    print()
-
-    return chosen_models
+# Global manager instance (initialized on first use)
+_manager: Optional[OllamaConnectionManager] = None
 
 
-# --- Agent Class ---
 class Vera:
-    """Vera class that manages multiple LLMs and tools for complex tasks.
-    Started off as a triple agent, but now it has grown into a multi-agent system."""
+    """
+    Vera class that manages multiple LLMs and tools for complex tasks.
+    
+    Features:
+    - Infrastructure-aware orchestration with Docker/Proxmox support
+    - Unified logging system with configurable verbosity
+    - Context tracking across all operations
+    - Performance monitoring built-in
+    """
 
-    def __init__(self, chroma_path="./Memory/vera_agent_memory", ollama_api_url: Optional[str] = None):
-        # Initialize Ollama connection manager
-        self.ollama_manager = OllamaConnectionManager(api_url=ollama_api_url)
+    def __init__(
+        self, 
+        config_file: str = "Configuration/vera_config.yaml",
+        chroma_path: Optional[str] = None,
+        ollama_api_url: Optional[str] = None,
+        **kwargs
+    ):
+        """
+        Initialize Vera with configuration system and unified logging
         
-        # Select models
-        self.selected_models = choose_models_from_installed(self.ollama_manager)
+        Args:
+            config_file: Path to configuration file
+            chroma_path: Override memory path (optional)
+            ollama_api_url: Override Ollama API URL (optional)
+            **kwargs: Additional overrides for backward compatibility
+        """
         
-        # Initialize LLMs using the manager (automatically handles API/local)
-        self.embedding_llm = self.selected_models["embedding_model"]
+        # --- Load Configuration (using basic print for early setup) ---
+        print("[Vera] Loading configuration...")
+        self.config_manager = ConfigManager(config_file)
+        self.config = self.config_manager.config
+        
+        # Validate configuration
+        issues = validate_config(self.config)
+        if issues:
+            print("[Vera] Configuration issues detected:")
+            for issue in issues:
+                print(f"  ⚠ {issue}")
+            response = input("\nContinue anyway? (y/n): ").strip().lower()
+            if response != 'y':
+                raise RuntimeError("Configuration validation failed")
+        
+        # --- Setup Unified Logging System (FIRST!) ---
+        self._setup_unified_logging()
+        
+        # Now we can use structured logging
+        self.logger.info("Configuration loaded successfully")
+        
+        # Register config reload callback
+        self.config_manager.register_callback(self._on_config_reload)
+        
+        # Apply overrides (for backward compatibility)
+        if chroma_path:
+            self.config.memory.chroma_path = chroma_path
+            self.logger.debug(f"Memory path overridden: {chroma_path}")
+        if ollama_api_url:
+            self.config.ollama.api_url = ollama_api_url
+            self.logger.debug(f"Ollama API URL overridden: {ollama_api_url}")
+        
+        # Apply kwargs overrides
+        if 'enable_infrastructure' in kwargs:
+            self.config.infrastructure.enable_infrastructure = kwargs['enable_infrastructure']
+        if 'enable_docker' in kwargs:
+            self.config.infrastructure.enable_docker = kwargs['enable_docker']
+        if 'enable_proxmox' in kwargs:
+            self.config.infrastructure.enable_proxmox = kwargs['enable_proxmox']
+        
+        # --- Initialize Ollama Connection Manager ---
+        self.logger.info("Initializing Ollama connection manager...")
+        self.thoughts_captured = []
+        self.thought_queue = queue.Queue()
+        self.stream_thoughts_inline = self.config.logging.stream_thoughts_inline
+        
+        self.ollama_manager = OllamaConnectionManager(
+            config=self.config.ollama, 
+            thought_callback=self._on_thought_captured,
+            logger=self.logger  # Pass logger to manager
+        )
+        
+        # --- Model Selection ---
+        self.logger.info("Initializing models...")
+        self.selected_models = self.config.models
+        
+        # Create base context
+        self.base_context = LogContext(
+            session_id=None,  # Set after session creation
+            agent="vera"
+        )
+        
+        # Initialize LLMs using config temperatures
+        self.embedding_llm = self.selected_models.embedding_model
+        
+        self.logger.start_timer("model_initialization")
+        
         self.fast_llm = self.ollama_manager.create_llm(
-            model=self.selected_models["fast_llm"], 
-            temperature=0.6
+            model=self.selected_models.fast_llm, 
+            temperature=self.selected_models.fast_temperature
         )
+        
         self.intermediate_llm = self.ollama_manager.create_llm(
-            model=self.selected_models["intermediate_llm"], 
-            temperature=0.4
+            model=self.selected_models.intermediate_llm, 
+            temperature=self.selected_models.intermediate_temperature
         )
+        
         self.deep_llm = self.ollama_manager.create_llm(
-            model=self.selected_models["deep_llm"], 
-            temperature=0.6
+            model=self.selected_models.deep_llm, 
+            temperature=self.selected_models.deep_temperature
         )
+        
         self.reasoning_llm = self.ollama_manager.create_llm(
-            model=self.selected_models["reasoning_llm"], 
-            temperature=0.7
+            model=self.selected_models.reasoning_llm, 
+            temperature=self.selected_models.reasoning_temperature
         )
+        
         self.tool_llm = self.ollama_manager.create_llm(
-            model=self.selected_models["tool_llm"], 
-            temperature=0.1
+            model=self.selected_models.tool_llm, 
+            temperature=self.selected_models.tool_temperature
         )
         
-        # --- Setup Memory ---
-        NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
-        NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
-        NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "testpassword")
-        CHROMA_DIR = "./Memory/chroma_store"
-        ARCHIVE_PATH = "./Memory/archive/memory_archive.jsonl"
-
+        duration = self.logger.stop_timer("model_initialization")
+        self.logger.success(f"Models initialized in {duration:.2f}s")
+        
+        # --- Setup Memory from Config ---
+        self.logger.info("Initializing memory systems...")
+        self.logger.start_timer("memory_initialization")
+        
         self.mem = HybridMemory(
-            neo4j_uri=NEO4J_URI,
-            neo4j_user=NEO4J_USER,
-            neo4j_password=NEO4J_PASSWORD,
-            chroma_dir=CHROMA_DIR,
-            archive_jsonl=ARCHIVE_PATH,
+            neo4j_uri=self.config.memory.neo4j_uri,
+            neo4j_user=self.config.memory.neo4j_user,
+            neo4j_password=self.config.memory.neo4j_password,
+            chroma_dir=self.config.memory.chroma_dir,
+            archive_jsonl=self.config.memory.archive_path,
         )
         
-        # Start a session (Tier 2)
-        print("Starting a session...")
         self.sess = self.mem.start_session(metadata={"agent": "vera"})
-        self.mem.add_session_memory(self.sess.id, "Session", "Session", metadata={"topic": "conversation"})
+        
+        # Update base context with session ID
+        self.base_context.session_id = self.sess.id
+        self.logger.push_context(self.base_context)
+        
+        self.logger.debug(f"Session started: {self.sess.id}")
+        
+        self.mem.add_session_memory(
+            self.sess.id, 
+            "Session", 
+            "Session", 
+            metadata={"topic": "conversation"}
+        )
 
-        # --- Shared ChromaDB Memory Tier 1---
-        embeddings = self.ollama_manager.create_embeddings(model=self.embedding_llm)
+        # --- Shared ChromaDB Memory ---
+        embeddings = self.ollama_manager.create_embeddings(
+            model=self.embedding_llm
+        )
+        
         self.vectorstore = Chroma(
-            persist_directory=chroma_path,
+            persist_directory=self.config.memory.chroma_path,
             embedding_function=embeddings
         )
 
-        # Vector memory (long-term)
         self.vector_memory = VectorStoreRetrieverMemory(
-            retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5})
+            retriever=self.vectorstore.as_retriever(
+                search_kwargs={"k": self.config.memory.vector_search_k}
+            )
         )
 
-        # Short-term conversation memory (buffer)
         self.buffer_memory = ConversationBufferMemory(
             memory_key="chat_history",
             input_key="input",
             return_messages=True
         )
         
-        # Plan memory (short-term, for storing plans in buffer)
         self.plan_memory = ConversationBufferMemory(
             memory_key="plan_history",
             input_key="input",
             return_messages=True
         )
         
-        # Plan long-term memory (vector store for plans)
         self.plan_vectorstore = Chroma(
-            persist_directory=os.path.join(chroma_path, "plans"),
+            persist_directory=os.path.join(
+                self.config.memory.chroma_path, 
+                "plans"
+            ),
             embedding_function=embeddings
         )
+        
         self.plan_vector_memory = VectorStoreRetrieverMemory(
-            retriever=self.plan_vectorstore.as_retriever(search_kwargs={"k": 5})
+            retriever=self.plan_vectorstore.as_retriever(
+                search_kwargs={"k": self.config.memory.plan_vector_search_k}
+            )
         )
+        
+        duration = self.logger.stop_timer("memory_initialization")
+        self.logger.success(f"Memory systems initialized in {duration:.2f}s")
         
         # --- Proactive Focus Manager ---
-        self.focus_manager = ProactiveFocusManager(agent=self)
-        self.triage_memory = False
+        if self.config.proactive_focus.enabled:
+            self.logger.info("Initializing proactive focus manager...")
+            self.focus_manager = ProactiveFocusManager(agent=self)
+            if self.config.proactive_focus.default_focus:
+                self.focus_manager.set_focus(
+                    self.config.proactive_focus.default_focus
+                )
+                self.logger.info(f"Default focus set: {self.config.proactive_focus.default_focus}")
+        else:
+            self.focus_manager = None
+            self.logger.debug("Proactive focus manager disabled")
         
-        # Combined memory = short-term + long-term
-        self.memory = CombinedMemory(memories=[self.buffer_memory, self.vector_memory])
-        import Vera.vera_tasks 
-        from Vera.orchestration import (
+        self.triage_memory = self.config.memory.enable_memory_triage
+        self.memory = CombinedMemory(
+            memories=[self.buffer_memory, self.vector_memory]
+        )
+        
+        # --- Initialize Orchestrator ---
+        self.logger.info("Initializing task orchestrator...")
+        self.enable_infrastructure = self.config.infrastructure.enable_infrastructure
+        
+        from Vera.Orchestration.orchestration import (
             Orchestrator, 
             ProactiveFocusOrchestrator,
-            TaskType,
-            task,
-            proactive_task,
-            registry
+            TaskType
         )
+        
+        orchestrator_config = {
+            TaskType.LLM: self.config.orchestrator.llm_workers,
+            TaskType.WHISPER: self.config.orchestrator.whisper_workers,
+            TaskType.TOOL: self.config.orchestrator.tool_workers,
+            TaskType.ML_MODEL: self.config.orchestrator.ml_model_workers,
+            TaskType.BACKGROUND: self.config.orchestrator.background_workers,
+            TaskType.GENERAL: self.config.orchestrator.general_workers
+        }
+        
+        if self.enable_infrastructure:
+            self.logger.info("Using Infrastructure Orchestrator")
+            from Vera.Orchestration.infrastructure_orchestration import (
+                InfrastructureOrchestrator
+            )
+            
+            proxmox_config = None
+            if self.config.infrastructure.enable_proxmox:
+                proxmox_config = {
+                    "host": self.config.infrastructure.proxmox_host,
+                    "user": self.config.infrastructure.proxmox_user,
+                    "password": self.config.infrastructure.proxmox_password,
+                    "verify_ssl": self.config.infrastructure.proxmox_verify_ssl,
+                    "node": self.config.infrastructure.proxmox_node
+                }
+                self.logger.debug(f"Proxmox configured: {self.config.infrastructure.proxmox_host}")
+            
+            self.orchestrator = InfrastructureOrchestrator(
+                config=orchestrator_config,
+                redis_url=self.config.orchestrator.redis_url,
+                cpu_threshold=self.config.orchestrator.cpu_threshold,
+                enable_docker=self.config.infrastructure.enable_docker,
+                enable_proxmox=self.config.infrastructure.enable_proxmox,
+                docker_url=self.config.infrastructure.docker_url,
+                proxmox_config=proxmox_config,
+                auto_scale=self.config.infrastructure.auto_scale,
+                max_resources=self.config.infrastructure.max_resources
+            )
+                # logger=self.logger  # Pass logger to orchestrator
+            # )
+        else:
+            self.logger.info("Using Standard Orchestrator")
+            self.orchestrator = Orchestrator(
+                config=orchestrator_config,
+                redis_url=self.config.orchestrator.redis_url,
+                cpu_threshold=self.config.orchestrator.cpu_threshold,
+            )
+                # logger=self.logger  # Pass logger to orchestrator
+            # )
 
-        # Initialize orchestrator
-        self.orchestrator = Orchestrator(
-            config={
-                TaskType.LLM: 3,        # 3 workers for LLM tasks
-                TaskType.WHISPER: 1,    # 1 worker for audio
-                TaskType.TOOL: 4,       # 4 workers for tool execution
-                TaskType.ML_MODEL: 1,   # 1 worker for ML models
-                TaskType.BACKGROUND: 2, # 2 workers for background tasks
-                TaskType.GENERAL: 2     # 2 workers for general tasks
-            },
-            redis_url="redis://localhost:6379",  # Optional: for distributed setup
-            cpu_threshold=75.0
-        )
-
-        # Start orchestrator
         self.orchestrator.start()
+        self.logger.success("Orchestrator started")
 
         # Integrate with ProactiveFocusManager
-        self.proactive_orchestrator = ProactiveFocusOrchestrator(
-            self.orchestrator, 
-            self.focus_manager
-        )
+        if self.focus_manager:
+            self.proactive_orchestrator = ProactiveFocusOrchestrator(
+                self.orchestrator, 
+                self.focus_manager
+            )
+            self.logger.debug("Proactive orchestrator integrated")
 
-        # Playwright browser setup
-        self.sync_browser = create_sync_playwright_browser()
-        self.playwright_toolkit = PlayWrightBrowserToolkit.from_browser(sync_browser=self.sync_browser)
-        self.playwright_tools = self.playwright_toolkit.get_tools()
-        print(f"[Vera] Loaded {len(self.playwright_tools)} Playwright tools.")
+        # --- Playwright Browser Setup ---
+        if self.config.playwright.enabled:
+            self.logger.info("Initializing Playwright browser...")
+            self.sync_browser = create_sync_playwright_browser()
+            self.playwright_toolkit = PlayWrightBrowserToolkit.from_browser(
+                sync_browser=self.sync_browser
+            )
+            self.playwright_tools = self.playwright_toolkit.get_tools()
+            self.logger.success(f"Loaded {len(self.playwright_tools)} Playwright tools")
+        else:
+            self.playwright_tools = []
+            self.logger.debug("Playwright browser disabled")
         
+        # --- Initialize Executive and Tools ---
+        self.logger.info("Loading tools...")
         self.executive_instance = executive(vera_instance=self)
-
-        # Tool setup
-        self.toolkit=ToolLoader(self)
+        self.toolkit = ToolLoader(self)
         self.tools = self.toolkit + self.playwright_tools
-
-        self.tools.extend(load_memory_tools(self))
-
-        print(f"[Vera] Loaded {len(self.tools)} tools.")
+        self.logger.success(f"Loaded {len(self.tools)} total tools")
         
-        # Fast Agent that can handle simple tool queries
+        # --- Initialize Agents ---
+        self.logger.debug("Initializing agents...")
         self.light_agent = initialize_agent(
             self.tools,
             self.tool_llm,
@@ -627,7 +416,6 @@ class Vera:
             verbose=True
         )
         
-        # Deep Agent that can call tools itself
         self.deep_agent = initialize_agent(
             self.tools,
             self.deep_llm,
@@ -637,169 +425,423 @@ class Vera:
         )
         
         self.toolchain = ToolChainPlanner(self, self.tools)
-        # Replace your toolchain initialization with:
-        integrate_hybrid_planner(self, enable_n8n=True)  # or False
 
-        # Define callback to handle proactive thoughts:
-        def handle_proactive(thought):
-            print(f"Proactive Thought: {thought}")
-            # Here, you could also feed it to fast_llm or notify the user interface
-
-        # Set callback
-        self.focus_manager.proactive_callback = handle_proactive
+        if self.focus_manager:
+            def handle_proactive(thought):
+                self.logger.thought(thought, context=LogContext(agent="proactive"))
+            self.focus_manager.proactive_callback = handle_proactive
+        
+        self.logger.success("Vera initialization complete!")
+        self.logger.info(f"Session ID: {self.sess.id}")
     
-    # --- Streaming wrapper ---
+    def _setup_unified_logging(self):
+        """Setup unified logging system from config"""
+        # Convert Vera config to logging config
+        log_cfg = self.config.logging
+        
+        # Map component levels
+        component_levels = {}
+        for component, level_str in getattr(log_cfg, 'component_levels', {}).items():
+            try:
+                component_levels[component] = LogLevel[level_str.upper()]
+            except KeyError:
+                component_levels[component] = LogLevel.INFO
+        
+        # Create logging config
+        vera_log_config = VeraLoggingConfig(
+            global_level=LogLevel[log_cfg.level.upper()],
+            component_levels=component_levels,
+            enable_colors=log_cfg.enable_colors,
+            enable_timestamps=log_cfg.enable_timestamps,
+            enable_thread_info=getattr(log_cfg, 'enable_thread_info', False),
+            enable_session_info=getattr(log_cfg, 'enable_session_info', True),
+            enable_model_info=getattr(log_cfg, 'enable_model_info', True),
+            show_milliseconds=getattr(log_cfg, 'show_milliseconds', True),
+            timestamp_format=getattr(log_cfg, 'timestamp_format', "%Y-%m-%d %H:%M:%S.%f"),
+            max_line_width=getattr(log_cfg, 'max_line_width', 100),
+            box_thoughts=getattr(log_cfg, 'box_thoughts', True),
+            box_responses=getattr(log_cfg, 'box_responses', False),
+            box_tools=getattr(log_cfg, 'box_tools', True),
+            show_raw_streams=getattr(log_cfg, 'show_raw_ollama_chunks', False),
+            log_to_file=log_cfg.file is not None,
+            log_file=log_cfg.file or "./logs/vera.log",
+            log_to_json=getattr(log_cfg, 'json_file', None) is not None,
+            json_log_file=getattr(log_cfg, 'json_file', None),
+            max_log_size=log_cfg.max_bytes,
+            backup_count=log_cfg.backup_count,
+            enable_performance_tracking=getattr(log_cfg, 'enable_performance_tracking', True),
+            track_llm_latency=getattr(log_cfg, 'track_llm_latency', True),
+            track_tool_latency=getattr(log_cfg, 'track_tool_latency', True),
+            show_ollama_raw_chunks=getattr(log_cfg, 'show_raw_ollama_chunks', False),
+            show_orchestrator_details=getattr(log_cfg, 'show_orchestrator_details', True),
+            show_memory_triage=getattr(log_cfg, 'show_memory_operations', False),
+            show_infrastructure_stats=getattr(log_cfg, 'show_infrastructure_events', True),
+            stream_thoughts_inline=getattr(log_cfg, 'stream_thoughts_inline', True),
+        )
+        
+        # Get logger
+        self.logger = get_logger("vera", vera_log_config)
+    
+    def _on_config_reload(self, old_config: VeraConfig, new_config: VeraConfig):
+        """Handle configuration reload"""
+        self.logger.info("Configuration reloaded!")
+        
+        # Update reference
+        self.config = new_config
+        
+        # Check what changed and respond accordingly
+        changes = []
+        
+        if old_config.models.fast_llm != new_config.models.fast_llm:
+            changes.append(f"Fast LLM: {old_config.models.fast_llm} → {new_config.models.fast_llm}")
+            # Recreate fast LLM
+            self.fast_llm = self.ollama_manager.create_llm(
+                model=new_config.models.fast_llm,
+                temperature=new_config.models.fast_temperature
+            )
+        
+        if old_config.orchestrator.cpu_threshold != new_config.orchestrator.cpu_threshold:
+            changes.append(f"CPU Threshold: {old_config.orchestrator.cpu_threshold} → {new_config.orchestrator.cpu_threshold}")
+            if hasattr(self.orchestrator, 'cpu_threshold'):
+                self.orchestrator.cpu_threshold = new_config.orchestrator.cpu_threshold
+        
+        if old_config.logging.level != new_config.logging.level:
+            changes.append(f"Log Level: {old_config.logging.level} → {new_config.logging.level}")
+            # Recreate logger with new config
+            self._setup_unified_logging()
+        
+        if changes:
+            self.logger.info("Applied configuration changes:")
+            for change in changes:
+                self.logger.info(f"  • {change}")
+        else:
+            self.logger.debug("No critical changes detected in reload")
+    
+    def reload_config(self):
+        """Manually trigger config reload"""
+        self.logger.info("Manually reloading configuration...")
+        self.config_manager.reload_config()
+    
+    def get_config_value(self, section: str, key: Optional[str] = None):
+        """Get current config value"""
+        return self.config_manager.get(section, key)
+    
+    def set_config_value(self, section: str, key: str, value: Any, persist: bool = True):
+        """Set config value and optionally persist"""
+        self.logger.debug(f"Setting config: {section}.{key} = {value}")
+        self.config_manager.set(section, key, value, persist)
+    
+    # --- Infrastructure Management Methods ---
+    
+    def get_infrastructure_stats(self):
+        """Get infrastructure statistics (if enabled)"""
+        if self.enable_infrastructure and hasattr(self.orchestrator, 'get_infrastructure_stats'):
+            stats = self.orchestrator.get_infrastructure_stats()
+            self.logger.infrastructure_event(
+                "stats_retrieved",
+                details=stats
+            )
+            return stats
+        return {"infrastructure": "disabled"}
+    
+    def provision_docker_resources(self, count: int = 1, spec: Optional[Dict] = None):
+        """Provision Docker containers for task execution"""
+        if not self.enable_infrastructure:
+            self.logger.warning("Infrastructure orchestration not enabled")
+            return []
+        
+        from Vera.Orchestration.infrastructure_orchestration import ResourceType, ResourceSpec
+        
+        resource_spec = ResourceSpec(**(spec or {
+            "cpu_cores": 2,
+            "memory_mb": 1024,
+            "disk_gb": 10
+        }))
+        
+        self.logger.infrastructure_event(
+            "provisioning_resources",
+            resource_type="docker",
+            details={"count": count, "spec": spec}
+        )
+        
+        resources = self.orchestrator.provision_resources(
+            ResourceType.DOCKER_CONTAINER,
+            spec=resource_spec,
+            count=count
+        )
+        
+        self.logger.success(f"Provisioned {len(resources)} Docker containers")
+        return resources
+    
+    def cleanup_idle_resources(self, max_idle_seconds: int = 300):
+        """Cleanup idle infrastructure resources"""
+        if self.enable_infrastructure and hasattr(self.orchestrator, 'cleanup_idle_resources'):
+            self.logger.info(f"Cleaning up resources idle >{max_idle_seconds}s...")
+            self.orchestrator.cleanup_idle_resources(max_idle_seconds)
+            self.logger.success("Resource cleanup complete")
+    
+    def _on_thought_captured(self, thought: str):
+        """Handle captured thoughts - queue them for streaming"""
+        # Store
+        self.thoughts_captured.append({
+            'timestamp': time.time(),
+            'thought': thought,
+            'session_id': self.sess.id if hasattr(self, 'sess') else None
+        })
+        
+        # Log using unified system
+        if hasattr(self, 'logger'):
+            context = LogContext(
+                session_id=self.sess.id if hasattr(self, 'sess') else None,
+                agent="reasoning",
+                model="reasoning_llm"
+            )
+            self.logger.thought(thought, context=context)
+        
+        # Queue for streaming if enabled
+        if self.stream_thoughts_inline:
+            self.thought_queue.put(thought)
+    
+    def _stream_with_thought_polling(self, llm, prompt):
+        """Wrap llm.stream() to poll thought queue more actively"""
+        import threading
+        from queue import Empty
+        
+        # Create a queue for chunks
+        chunk_queue = queue.Queue()
+        streaming_done = threading.Event()
+        
+        def stream_in_thread():
+            """Run LLM stream in background thread"""
+            try:
+                for chunk in llm.stream(prompt):
+                    chunk_queue.put(('chunk', chunk))
+                streaming_done.set()
+            except Exception as e:
+                self.logger.error(f"Stream error: {e}", exc_info=True)
+                chunk_queue.put(('error', str(e)))
+                streaming_done.set()
+        
+        # Start streaming in background
+        thread = threading.Thread(target=stream_in_thread, daemon=True)
+        thread.start()
+        
+        # Poll both queues
+        while not streaming_done.is_set() or not chunk_queue.empty() or not self.thought_queue.empty():
+            # Check for thoughts first (higher priority)
+            try:
+                thought = self.thought_queue.get_nowait()
+                yield thought
+                continue
+            except Empty:
+                pass
+            
+            # Check for chunks
+            try:
+                item_type, item_data = chunk_queue.get(timeout=0.1)
+                if item_type == 'chunk':
+                    yield str(item_data)
+                elif item_type == 'error':
+                    self.logger.error(f"Stream error: {item_data}")
+                    break
+            except Empty:
+                continue
+        
+        # Final drain of thought queue
+        while not self.thought_queue.empty():
+            try:
+                thought = self.thought_queue.get_nowait()
+                yield thought
+            except Empty:
+                break
+        
+        thread.join(timeout=1.0)
+
     def stream_llm(self, llm, prompt):
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        """Stream LLM output with immediate thought injection"""
         output = []
-        for chunk in llm.stream(prompt):
-            sys.stdout.write(chunk)
-            sys.stdout.flush()
-            output.append(chunk)
-            yield(chunk)
-        print()  # final newline
-        return "".join(output)
+        
+        context = LogContext(
+            session_id=self.sess.id,
+            model=llm.model if hasattr(llm, 'model') else "unknown",
+            agent="stream"
+        )
+        
+        self.logger.debug("Starting LLM stream", context=context)
+        
+        # Use the polling wrapper
+        for item in self._stream_with_thought_polling(llm, prompt):
+            # Stream to console
+            self.logger.response(item, context=context, stream=True)
+            output.append(item)
+            yield item
+        
+        result = "".join(output)
+        self.logger.debug(f"Stream complete: {len(result)} chars", context=context)
+        return result
 
-    def stream_ollama_raw(model, prompt):
-        url = "http://localhost:11434/api/generate"
-        payload = {
-            "model": model,
-            "prompt": prompt,
-            "stream": True
-        }
-        with requests.post(url, json=payload, stream=True) as r:
-            for line in r.iter_lines():
-                if line:
-                    data = line.decode("utf-8")
-                    print(data)  # raw JSON string
-
-    
-    # --- Streaming wrapper with memory injection ---
     def stream_llm_with_memory(self, llm, user_input, extra_context=None, long_term=True, short_term=True):
-        # Retrieve relevant memory context
+        """Stream LLM with memory context"""
+        context = LogContext(
+            session_id=self.sess.id,
+            model=llm.model if hasattr(llm, 'model') else "unknown",
+            agent="memory_stream"
+        )
+        
         past_context = ""
         relevant_history = ""
+        
         if short_term:
             past_context = self.memory.load_memory_variables({"input": user_input}).get("chat_history", "")
+            self.logger.debug("Loaded short-term memory", context=context)
            
         if long_term:
             relevant_history = self.vector_memory.load_memory_variables({"input": user_input})
+            self.logger.debug("Loaded long-term memory", context=context)
 
-        # hits = self.mem.focus_context(self.sess.id, user_input, top_k=5)
-
-        # Combine past context + any extra agent reasoning
         full_prompt = f"Conversation so far:\n{str(past_context)}"
         full_prompt += f"Relevant conversation history{relevant_history}"
-
-        print(f"Memory:\n\n{full_prompt}\n\n")
 
         if extra_context:
             full_prompt += f"\n\nExtra reasoning/context from another agent:\n{extra_context}"
         full_prompt += f"\n\nUser: {user_input}\nAssistant:"
-
         full_prompt += f"\n\nTools available via the agent system:{[tool.name for tool in self.tools]}\n"
-        # print(full_prompt)
 
         output = []
         for chunk in self.stream_llm(llm, full_prompt):
             output.append(chunk)
             yield chunk
 
-        # Save both question and answer to shared memory
         ai_output = "".join(output)
         self.memory.save_context({"input": user_input}, {"output": ai_output})
         self.vectorstore.persist()
-        self.focus_manager.update_latest_conversation(f"User Query: {user_input}")
-        self.focus_manager.update_latest_conversation(f"Agent Response: {user_input}")
+        
+        if self.focus_manager:
+            self.focus_manager.update_latest_conversation(f"User Query: {user_input}")
+            self.focus_manager.update_latest_conversation(f"Agent Response: {ai_output}")
+        
         self.mem.add_session_memory(self.sess.id, user_input, "Query", {"topic": "query"})
         self.mem.add_session_memory(self.sess.id, ai_output, "Response", {"topic": "response"})
         
+        self.logger.memory_operation(
+            "conversation_saved",
+            details={"input_len": len(user_input), "output_len": len(ai_output)},
+            context=context
+        )
+        
         return ai_output
 
+    def save_to_memory(self, query, response):
+        """Save interaction to all memory systems"""
+        self.memory.save_context({"input": query}, {"output": response})
+        self.vectorstore.persist()
+        
+        if self.config.logging.show_memory_operations:
+            self.logger.memory_operation(
+                "interaction_saved",
+                details={"query_len": len(query), "response_len": len(response)}
+            )
 
     def async_run(self, query):
         """
-        Fully orchestrated async_run - all execution through orchestrator.
-        Preserves streaming behavior of original.
+        Fully orchestrated async_run with unified logging.
         ALWAYS yields - guaranteed to be a generator.
         """
+        
+        query_context = LogContext(
+            session_id=self.sess.id,
+            agent="async_run",
+            extra={"query_length": len(query)}
+        )
+        
+        self.logger.info(f"Processing query: {query[:100]}{'...' if len(query) > 100 else ''}", context=query_context)
+        self.logger.start_timer("total_query_processing")
         
         # Log query to memory
         if hasattr(self, 'mem') and hasattr(self, 'sess'):
             self.mem.add_session_memory(self.sess.id, query, "Query", {"topic": "plan"}, promote=True)
         
-        # ========================================================================
+        # ====================================================================
         # STEP 1: TRIAGE (streaming through orchestrator)
-        # ========================================================================
+        # ====================================================================
         
-        # Check if orchestrator is available
         use_orchestrator = hasattr(self, 'orchestrator') and self.orchestrator and self.orchestrator.running
+        
+        self.logger.debug(f"Using orchestrator: {use_orchestrator}", context=query_context)
+        self.logger.start_timer("triage")
         
         full_triage = ""
         
         if use_orchestrator:
             try:
-                # Submit triage task
                 triage_task_id = self.orchestrator.submit_task(
                     "llm.triage",
                     vera_instance=self,
                     query=query
                 )
                 
-                # Stream triage result
+                self.logger.orchestrator_event(
+                    "task_submitted",
+                    task_id=triage_task_id,
+                    details={"type": "triage"}
+                )
+                
                 for chunk in self.orchestrator.stream_result(triage_task_id, timeout=10.0):
                     full_triage += chunk
-                    yield chunk  # ← Streams to user!
+                    yield chunk
             
             except TimeoutError:
-                # Triage timeout - fallback to direct
-                print("[Orchestrator] Triage timeout, using direct fallback")
+                self.logger.warning("Triage timeout, using direct fallback")
                 for chunk in self._triage_direct(query):
                     full_triage += chunk
                     yield chunk
             
             except Exception as e:
-                # Orchestrator error - fallback to direct
-                print(f"[Orchestrator] Triage failed: {e}, using direct fallback")
+                self.logger.error(f"Triage failed: {e}", exc_info=True)
                 for chunk in self._triage_direct(query):
                     full_triage += chunk
                     yield chunk
         
         else:
-            # No orchestrator - use direct
             for chunk in self._triage_direct(query):
                 full_triage += chunk
                 yield chunk
         
-        # Log triage
+        triage_duration = self.logger.stop_timer("triage", context=query_context)
+        
         if hasattr(self, 'mem') and hasattr(self, 'sess'):
             self.mem.add_session_memory(self.sess.id, full_triage, "Response", {"topic": "triage"}, promote=True)
         
-        # ========================================================================
-        # STEP 2: ROUTE based on triage (all through orchestrator)
-        # ========================================================================
+        # ====================================================================
+        # STEP 2: ROUTE based on triage
+        # ====================================================================
         
         triage_lower = full_triage.lower()
         total_response = ""
         
+        route_context = LogContext(
+            session_id=self.sess.id,
+            extra={"triage_result": triage_lower[:50]}
+        )
+        
         # Focus change
         if "focus" in triage_lower:
-            print("\n[ Proactive Focus Manager ]\n")
+            self.logger.info("Routing to: Proactive Focus Manager", context=route_context)
+            
             if hasattr(self, 'focus_manager'):
                 new_focus = full_triage.lower().split("focus", 1)[-1].strip()
                 self.focus_manager.set_focus(new_focus)
                 message = f"\n✓ Focus changed to: {self.focus_manager.focus}\n"
                 yield message
                 total_response = message
+                self.logger.success(f"Focus changed to: {self.focus_manager.focus}")
         
-        # Proactive thinking (background task via orchestrator)
+        # Proactive thinking
         elif triage_lower.startswith("proactive"):
-            print("\n[ Proactive Focus Manager ]\n")
+            self.logger.info("Routing to: Proactive Thinking", context=route_context)
             
             if use_orchestrator:
                 try:
-                    # Submit as background task (don't wait)
                     task_id = self.orchestrator.submit_task(
                         "proactive.generate_thought",
                         vera_instance=self
@@ -807,12 +849,11 @@ class Vera:
                     message = "\n[Proactive thought generation started in background]\n"
                     yield message
                     total_response = message
+                    self.logger.success("Proactive task submitted")
                 
                 except Exception as e:
-                    print(f"[Orchestrator] Failed to submit proactive task: {e}")
-                    # Fallback to direct
+                    self.logger.error(f"Failed to submit proactive task: {e}")
                     if hasattr(self, 'focus_manager') and self.focus_manager.focus:
-                        # Start iterative workflow
                         self.focus_manager.iterative_workflow(
                             max_iterations=None,
                             iteration_interval=600,
@@ -827,7 +868,6 @@ class Vera:
                         total_response = message
             
             else:
-                # No orchestrator - direct
                 if hasattr(self, 'focus_manager') and self.focus_manager.focus:
                     self.focus_manager.iterative_workflow(
                         max_iterations=None,
@@ -842,38 +882,36 @@ class Vera:
                     yield message
                     total_response = message
         
-        # Toolchain (streaming through orchestrator)
+        # Toolchain
         elif triage_lower.startswith("toolchain") or "tool" in triage_lower:
-            print("\n[ Tool Chain Agent ]\n")
+            self.logger.info("Routing to: Tool Chain Agent", context=route_context)
+            self.logger.start_timer("toolchain_execution")
             
             if use_orchestrator:
                 try:
-                    # Submit toolchain task
                     task_id = self.orchestrator.submit_task(
                         "toolchain.execute",
                         vera_instance=self,
                         query=query
                     )
                     
-                    # Stream toolchain output
                     for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
                         total_response += str(chunk)
-                        yield chunk  # ← Streams to user!
+                        yield chunk
                 
                 except Exception as e:
-                    print(f"[Orchestrator] Toolchain failed: {e}, using direct fallback")
-                    # Fallback to direct
+                    self.logger.error(f"Toolchain failed: {e}, using direct fallback")
                     for chunk in self.toolchain.execute_tool_chain(query):
                         total_response += str(chunk)
                         yield chunk
             
             else:
-                # No orchestrator - direct
                 for chunk in self.toolchain.execute_tool_chain(query):
                     total_response += str(chunk)
                     yield chunk
             
-            # Log response
+            duration = self.logger.stop_timer("toolchain_execution", context=route_context)
+            
             if hasattr(self, 'mem') and hasattr(self, 'sess'):
                 self.mem.add_session_memory(
                     self.sess.id,
@@ -882,13 +920,19 @@ class Vera:
                     {"topic": "response", "agent": "toolchain"}
                 )
         
-        # Reasoning (streaming through orchestrator)
+        # Reasoning
         elif triage_lower.startswith("reasoning"):
-            print("\n[ Reasoning Agent ]\n")
+            self.logger.info("Routing to: Reasoning Agent", context=route_context)
+            self.logger.start_timer("reasoning_generation")
+            
+            agent_context = LogContext(
+                session_id=self.sess.id,
+                agent="reasoning",
+                model=self.selected_models.reasoning_llm
+            )
             
             if use_orchestrator:
                 try:
-                    # Submit reasoning task
                     task_id = self.orchestrator.submit_task(
                         "llm.generate",
                         vera_instance=self,
@@ -896,25 +940,23 @@ class Vera:
                         prompt=query
                     )
                     
-                    # Stream reasoning output
                     for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
                         total_response += chunk
-                        yield chunk  # ← Streams to user!
+                        yield chunk
                 
                 except Exception as e:
-                    print(f"[Orchestrator] Reasoning failed: {e}, using direct fallback")
-                    # Fallback to direct
+                    self.logger.error(f"Reasoning failed: {e}, using direct fallback")
                     for chunk in self.stream_llm(self.reasoning_llm, query):
                         total_response += chunk
                         yield chunk
             
             else:
-                # No orchestrator - direct
                 for chunk in self.stream_llm(self.reasoning_llm, query):
                     total_response += chunk
                     yield chunk
             
-            # Log response
+            duration = self.logger.stop_timer("reasoning_generation", context=agent_context)
+            
             if hasattr(self, 'mem') and hasattr(self, 'sess'):
                 self.mem.add_session_memory(
                     self.sess.id,
@@ -923,13 +965,19 @@ class Vera:
                     {"topic": "response", "agent": "reasoning"}
                 )
         
-        # Complex (streaming through orchestrator)
+        # Complex
         elif triage_lower.startswith("complex"):
-            print("\n[ Deep Reasoning Agent ]\n")
+            self.logger.info("Routing to: Deep Reasoning Agent", context=route_context)
+            self.logger.start_timer("deep_generation")
+            
+            agent_context = LogContext(
+                session_id=self.sess.id,
+                agent="deep",
+                model=self.selected_models.deep_llm
+            )
             
             if use_orchestrator:
                 try:
-                    # Submit complex task
                     task_id = self.orchestrator.submit_task(
                         "llm.generate",
                         vera_instance=self,
@@ -937,25 +985,23 @@ class Vera:
                         prompt=query
                     )
                     
-                    # Stream deep output
                     for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
                         total_response += chunk
-                        yield chunk  # ← Streams to user!
+                        yield chunk
                 
                 except Exception as e:
-                    print(f"[Orchestrator] Complex failed: {e}, using direct fallback")
-                    # Fallback to direct
+                    self.logger.error(f"Complex generation failed: {e}, using direct fallback")
                     for chunk in self.stream_llm(self.deep_llm, query):
                         total_response += chunk
                         yield chunk
             
             else:
-                # No orchestrator - direct
                 for chunk in self.stream_llm(self.deep_llm, query):
                     total_response += chunk
                     yield chunk
             
-            # Log response
+            duration = self.logger.stop_timer("deep_generation", context=agent_context)
+            
             if hasattr(self, 'mem') and hasattr(self, 'sess'):
                 self.mem.add_session_memory(
                     self.sess.id,
@@ -964,13 +1010,19 @@ class Vera:
                     {"topic": "response", "agent": "complex"}
                 )
         
-        # Simple/Default - Fast LLM (streaming through orchestrator)
+        # Simple/Default - Fast LLM
         else:
-            print("\n[ Fast Agent ]\n")
+            self.logger.info("Routing to: Fast Agent", context=route_context)
+            self.logger.start_timer("fast_generation")
+            
+            agent_context = LogContext(
+                session_id=self.sess.id,
+                agent="fast",
+                model=self.selected_models.fast_llm
+            )
             
             if use_orchestrator:
                 try:
-                    # Submit fast task
                     task_id = self.orchestrator.submit_task(
                         "llm.generate",
                         vera_instance=self,
@@ -978,25 +1030,23 @@ class Vera:
                         prompt=query
                     )
                     
-                    # Stream fast output
                     for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
                         total_response += chunk
-                        yield chunk  # ← Streams to user!
+                        yield chunk
                 
                 except Exception as e:
-                    print(f"[Orchestrator] Fast LLM failed: {e}, using direct fallback")
-                    # Fallback to direct
+                    self.logger.error(f"Fast LLM failed: {e}, using direct fallback")
                     for chunk in self.stream_llm(self.fast_llm, query):
                         total_response += chunk
                         yield chunk
             
             else:
-                # No orchestrator - direct
                 for chunk in self.stream_llm(self.fast_llm, query):
                     total_response += chunk
                     yield chunk
             
-            # Log response
+            duration = self.logger.stop_timer("fast_generation", context=agent_context)
+            
             if hasattr(self, 'mem') and hasattr(self, 'sess'):
                 self.mem.add_session_memory(
                     self.sess.id,
@@ -1005,23 +1055,29 @@ class Vera:
                     {"topic": "response", "agent": "fast"}
                 )
         
-        # ========================================================================
+        # ====================================================================
         # STEP 3: SAVE TO MEMORY
-        # ========================================================================
+        # ====================================================================
         
         if total_response:
             self.save_to_memory(query, total_response)
-
-
-    # ============================================================================
-    # HELPER: Direct triage fallback
-    # ============================================================================
+        
+        total_duration = self.logger.stop_timer("total_query_processing", context=query_context)
+        self.logger.success(
+            f"Query complete: {len(total_response)} chars in {total_duration:.2f}s",
+            context=query_context
+        )
 
     def _triage_direct(self, query):
-        """
-        Direct triage without orchestrator (fallback).
-        Generator that yields chunks.
-        """
+        """Direct triage without orchestrator (fallback)"""
+        triage_context = LogContext(
+            session_id=self.sess.id,
+            agent="triage",
+            model=self.selected_models.fast_llm
+        )
+        
+        self.logger.debug("Using direct triage", context=triage_context)
+        
         triage_prompt = f"""
         Classify this Query into one of the following categories:
             - 'focus'      → Change the focus of background thought.
@@ -1032,7 +1088,6 @@ class Vera:
             - 'complex'    → Complex written response with high-quality output.
 
         Current focus: {self.focus_manager.focus if hasattr(self, 'focus_manager') else 'None'}
-        Available tools: {', '.join(t.name for t in self.tools) if hasattr(self, 'tools') else 'None'}
 
         Query: {query}
 
@@ -1042,131 +1097,18 @@ class Vera:
         for chunk in self.stream_llm(self.fast_llm, triage_prompt):
             yield chunk
 
-
-    def async_run_old(self, query):
-        self.mem.add_session_memory(self.sess.id, f"{query}", "Query", {"topic": "plan"}, promote=True)
-        # Stream triage prompt output chunk-by-chunk
-        # - 'tool'       → Requires execution of a single tool.
-        triage_prompt = (
-            f"""
-            Classify this Query into one of the following categories:
-                - 'focus'      → Change the focus of background thought.
-                - 'proactive'  → Trigger proactive thinking.
-                - 'simple'     → Simple textual response.
-                - 'toolchain'  → Requires a series of tools or step-by-step planning and execution.
-                - 'reasoning'  → Requires deep reasoning.
-                - 'complex'    → Complex written response with high-quality output.
-
-            Current focus: {self.focus_manager.focus}  
-            If you detect a change in focus or topic, you may specify new focus terms by appending the output with the.
-
-            Available tools: {', '.join(t.name for t in self.tools)}
-
-            Query: {query}
-
-            Rules:
-            - If 'simple' is the chosen category, disregard these rules and answer the Query using as many words as you like.
-            - Respond with a single classification term (e.g., 'simple', 'tool', 'complex') on the first line, then any optional extra info.
-            - You may optionally append focus terms.
-            - If setting a 'focus', also specify the focus term to set (e.g., "focus project management").
-            - Do NOT provide reasoning in your output nor formatting not mentioned in this prompt.
-            """
-        )
-
-        # Assume self.stream_llm returns a generator (or wrap to async generator)
-        full_triage=""
-
-        for triage_chunk in self.stream_llm(self.fast_llm, triage_prompt):
-            # print(triage_chunk)
-            full_triage+=triage_chunk
-            yield triage_chunk
-        self.mem.add_session_memory(self.sess.id, f"{full_triage}", "Response", {"topic": "triage"}, promote=True)
-        total_response = full_triage
-        triage_lower = full_triage.lower()
-
-        total_response = ""
-        fast_response = ""
-        deep_response = ""
-        reason_response = ""
-        tool_response = ""
-        toolchain_response = ""
-        
-        if "focus" in triage_lower:
-            # If the query is about focus, use the proactive focus manager
-            print("\n[ Proactive Focus Manager ]\n")
-            self.focus_manager.set_focus(full_triage.lower().split("focus", 1)[-1].strip())
-            
-        # Branch logic based on triage
-        # if "simple" in triage_lower:
-        #     # stream deep llm output
-        #     for fast_chunk in self.stream_llm(self.fast_llm, query): #, extra_context=triage_lower):
-        #         fast_response += fast_chunk
-        #         yield  fast_chunk
-        #     self.mem.add_session_memory(self.sess.id, f"{fast_response}", "Response", {"topic": "response", "agent": "simple"}) #"model":self.fast_llm})
-        #     total_response += fast_response
-        if triage_lower.startswith("proactive"):
-            # old code:
-            # If the query is about proactive thinking, use the proactive focus manager
-            # print("\n[ Proactive Focus Manager ]\n")
-            # proactive_thought = self.focus_manager._generate_proactive_thought_streaming()
-            # if proactive_thought:
-            #     self.focus_manager.add_to_focus_board("actions", proactive_thought)
-            #     yield proactive_thought
-            #     self.mem.add_session_memory(self.sess.id, f"{proactive_thought}", "Thought", {"topic": "proactive"})
-            #     total_response += proactive_thought
-
-            self.focus_manager.iterative_workflow(
-                max_iterations=None,
-                iteration_interval=600,  # 10 minutes
-                auto_execute=True
-            )
-        elif triage_lower.startswith("complex"):
-            # stream deep llm output
-            for deep_chunk in self.stream_llm(self.deep_llm, query): #, extra_context=triage_lower):
-                deep_response += deep_chunk
-                yield  deep_chunk
-            self.mem.add_session_memory(self.sess.id, f"{deep_response}", "Response", {"topic": "response", "agent": "complex"}) #"model":self.deep_llm})
-            total_response += deep_response
-        
-        elif triage_lower.startswith("reasoning"):
-            for reason_chunk in self.stream_llm(self.reasoning_llm, query): #, extra_context=triage_lower):
-                reason_response += reason_chunk
-                yield reason_chunk
-            self.mem.add_session_memory(self.sess.id, f"{reason_response}", "Response", {"topic": "response", "agent": "reasoning"})
-            total_response += reason_response
-        
-        elif triage_lower.startswith("toolchain"):
-            print("\n[ Tool Chain Agent ]\n")
-            # return {"fast": fast_response, "toolchain": tool_chain_response}
-            for toolchain_chunk in self.toolchain.execute_tool_chain(query):
-                toolchain_response += str(toolchain_chunk)
-                yield toolchain_chunk
-            self.mem.add_session_memory(self.sess.id, f"{toolchain_response}", "Response", {"topic": "response", "agent": "toolchain"})
-            total_response += toolchain_response    
-            # self.save_to_memory(query, tool_chain_response)
-        # elif "tool" in triage_lower:
-        #     for tool_chunk in self.light_agent.invoke(query):
-        #         tool_response += str(tool_chunk)
-        #         yield tool_chunk
-        #     yield tool_response
-        #     self.mem.add_session_memory(self.sess.id, f"{tool_response}", "Response", {"topic": "response", "agent": "tool"})
-        #     total_response += tool_response      
-
-        else:
-            pass
-        
-        self.save_to_memory(query, total_response) # Legacy Memory
-        # self.mem.add_session_memory(self.sess.id, f"{total_response}", "Response", {"topic": "response"}) 
-
-
     def print_llm_models(self):
         """Print the variable name and model name for each Ollama LLM."""
+        self.logger.info("=== Vera Model Configuration ===")
         for attr_name, attr_value in vars(self).items():
             if isinstance(attr_value, Ollama):
-                print(f"{attr_name} -> {attr_value.model}")
+                model_name = attr_value.model
+                self.logger.info(f"  {attr_name} → {model_name}")
+        self.logger.info("=" * 40)
         
     def print_agents(self):
         """Recursively find and print all LLM models and agents inside Vera."""
+        self.logger.info("=== Vera Agent Configuration ===")
         visited = set()
 
         def inspect_obj(obj, path="self"):
@@ -1174,82 +1116,100 @@ class Vera:
                 return
             visited.add(id(obj))
 
-            # Check if this is an agent
             if hasattr(obj, "llm") and hasattr(obj.llm, "model"):
                 agent_type = getattr(obj, "agent", None)
                 model_name = getattr(obj.llm, "model", "Unknown")
-                print(f"{path} -> Model: {model_name}, Agent Type: {agent_type}")
+                self.logger.info(f"  {path} → Model: {model_name}, Agent Type: {agent_type}")
 
-            # # Check if this is a bare LLM
-            # elif hasattr(obj, "model") and isinstance(getattr(obj, "model"), str):
-            #     print(f"{path} -> Model: {obj.model}")
-
-            # Recurse into attributes
             if hasattr(obj, "__dict__"):
                 for attr_name, attr_value in vars(obj).items():
                     inspect_obj(attr_value, f"{path}.{attr_name}")
 
         inspect_obj(self)
-
-    
+        self.logger.info("=" * 40)
 
 
 # --- Example usage ---
 if __name__ == "__main__":
+    import sys
     
-    vera = Vera()
+    # Example 1: Standard orchestration (no infrastructure)
+    vera = Vera(enable_infrastructure=False)
+    
+    # Example 2: With Docker infrastructure
+    # vera = Vera(
+    #     enable_infrastructure=True,
+    #     enable_docker=True,
+    #     auto_scale=True,
+    #     max_resources=5
+    # )
     
     os.system("clear")
     vera.print_llm_models()
     vera.print_agents()
-    # get_ollama_cpu_load_and_count()
-    # get_active_ollama_threads()
+    
+    # Show infrastructure stats if enabled
+    if vera.enable_infrastructure:
+        vera.logger.info("=== Infrastructure Stats ===")
+        stats = vera.get_infrastructure_stats()
+        for key, value in stats.items():
+            vera.logger.info(f"  {key}: {value}")
+        vera.logger.info("=" * 40)
 
+    vera.logger.info("Vera ready! Enter your queries below.")
+    vera.logger.info("Special commands: /stats, /infra, /provision, /cleanup, /clear, /exit")
+    
     while True:
-        user_query = input("\nEnter your query (or 'exit' to quit):\n\n ")
-        if user_query.lower() in ["exit", "quit"]:
+        try:
+            user_query = input("\n\n🔵 Query: ")
+        except (EOFError, KeyboardInterrupt):
+            vera.logger.info("Shutting down...")
             break
-        print("\nRunning agent...")
+        
+        if user_query.lower() in ["exit", "quit", "/exit"]:
+            vera.logger.info("Goodbye!")
+            break
+        
+        # Special commands
+        if user_query.lower() == "/stats":
+            vera.logger.print_stats()
+            continue
+        
+        if user_query.lower() == "/infra":
+            if vera.enable_infrastructure:
+                stats = vera.get_infrastructure_stats()
+            else:
+                vera.logger.warning("Infrastructure orchestration not enabled")
+            continue
+        
+        if user_query.lower() == "/provision":
+            if vera.enable_infrastructure:
+                resources = vera.provision_docker_resources(count=2)
+            else:
+                vera.logger.warning("Infrastructure orchestration not enabled")
+            continue
+        
+        if user_query.lower() == "/cleanup":
+            if vera.enable_infrastructure:
+                vera.cleanup_idle_resources(max_idle_seconds=60)
+            else:
+                vera.logger.warning("Infrastructure orchestration not enabled")
+            continue
         
         if user_query.lower() == "/clear":
+            vera.logger.warning("Clearing memory...")
             vera.vectorstore.delete_collection("vera_agent_memory")
             vera.buffer_memory.clear()
-            print("Memory cleared.")
-        if user_query.lower() == "/test":
-            print("Testing tool execution...")
-            print(vera.execute_tool_chain("List all projects"))
-            print(vera.execute_tool_chain("Add a new event to Google Calendar for tomorrow at 10 AM"))
-        if user_query.lower() == "/run":
-            print("Running a test query...")
-            print(vera.async_run("What is the weather like today?"))
-        if user_query.lower() == "/replay":
-            print("Replaying last tool plan...")
-            with open("./Configuration/last_tool_plan.json", "r", encoding="utf-8") as f:
-                last_plan = f.read()
-            tcp = ToolChainPlanner(vera, vera.tools)
-            print(tcp.execute_tool_chain(vera, "Replaying last plan", plan=json.loads(last_plan)))
-        # if user_query.lower() == "/history":
-        # if user_query.lower() == "/model": 
-        # if user_query.lower() == "/focus":
-        # if user_query.lower() == "/proactive":
-            # proactive_thought = self.focus_manager._generate_proactive_thought()
-            # if proactive_thought:
-            #     self.focus_manager.add_to_focus_board("actions", proactive_thought)
-            #     self.save_to_memory(query, proactive_thought)
-
-            # else :
-            #     result = vera.run(user_query)
-
-        # print("\n[ Results ]")
-        # print("Fast Response:", result.get("fast", "No fast response"))
-        # print("Deep Response:", result.get("deep", "No deep response"))
-        # print("Tool Response:", result.get("tool", "No tool response"))
-        # print("\n---\n")
-        result=""
+            vera.logger.success("Memory cleared")
+            continue
+        
+        # Process query
+        vera.logger.debug(f"Processing: {user_query}")
+        result = ""
         for chunk in vera.async_run(user_query):
-            print(chunk)
-            result += chunk
-        # get_ollama_cpu_load_and_count()
-        print(result)
+            # Chunks are already streamed by logger.response()
+            result += str(chunk)
+        
+        print()  # Newline after response
 
 # ジョセフ

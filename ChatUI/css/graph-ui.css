@@ -1,0 +1,98 @@
+#graph-info-card {
+    position: absolute;
+    bottom: 60px;
+    right: 20px;
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 200px;
+    max-width: 300px;
+    display: none;
+    z-index: 100;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    transition: all 0.2s ease;
+}
+
+#graph-info-card.minimized {
+    max-width: 200px;
+}
+
+#graph-info-card .info-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #334155;
+}
+
+#graph-info-card .info-card-title {
+    font-weight: 600;
+    color: #60a5fa;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+#graph-info-card .info-card-actions {
+    display: flex;
+    gap: 4px;
+}
+
+#graph-info-card .info-card-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.15s;
+}
+
+#graph-info-card .info-card-btn:hover {
+    background: #1e293b;
+    color: #60a5fa;
+}
+
+#graph-info-card .info-card-content {
+    font-size: 12px;
+    color: #cbd5e1;
+}
+
+#graph-info-card .info-card-row {
+    margin: 4px 0;
+    display: flex;
+    gap: 8px;
+}
+
+#graph-info-card .info-card-label {
+    color: #94a3b8;
+    min-width: 60px;
+}
+
+#graph-info-card .info-card-value {
+    color: #e2e8f0;
+    word-break: break-word;
+}
+
+#graph-info-card .info-card-labels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+#graph-info-card .info-card-badge {
+    display: inline-block;
+    background: #1e293b;
+    color: #60a5fa;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    border: 1px solid #334155;
+}

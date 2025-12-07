@@ -35,7 +35,7 @@ import requests
 from collections import defaultdict
 
 # Import base orchestration components
-from vera_orchestrator import (
+from Vera.Orchestration.orchestration import (
     TaskType, Priority, TaskStatus, TaskMetadata, TaskResult,
     Orchestrator, registry, WorkerPool, Worker, TaskQueue, EventBus
 )

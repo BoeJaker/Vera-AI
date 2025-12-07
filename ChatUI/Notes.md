@@ -56,5 +56,5 @@ New Chat button & Canvas button, like send to canvas - send to graph - turns the
 file:///X:/Programming/Machine%20Learning/knowledge-graph.html
 file:///X:/Programming/Machine%20Learning/code-graph.html
 
-when pasting in largw bodys of text they should become documents internally
+when pasting in large bodys of text they should become documents internally
 

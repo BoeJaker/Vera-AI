@@ -797,7 +797,7 @@ background: var(--bg-surface);
 border-right: 2px solid var(--border);
 overflow-y: auto;
 transition: left var(--transition-normal) ease;
-z-index: 1000;
+z-index: 100000;
 padding: 16px;
 }
 
@@ -1295,5 +1295,13 @@ if (!document.getElementById('column-fullscreen-styles')) {
     document.head.appendChild(styleEl);
 }
 
+/* Backdrop */
+.sidebar-backdrop {
+    z-index: 10000;  /* ← BACKDROP */
+}
 
+/* Message sidebar (left side) */
+.settings-sidebar {
+    z-index: 10001;  /* ← CORRECT: Above backdrop */
+}
 /* end of stylesheet */

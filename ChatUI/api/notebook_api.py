@@ -129,15 +129,28 @@ def list_session_notebooks(session_id: str) -> List[Dict[str, Any]]:
     session_dir = get_session_notebook_dir(session_id)
     notebooks = []
     
+    logger.info(f"Loading notebooks from: {session_dir}")
+    
     for notebook_file in session_dir.glob("*.json"):
         try:
             with open(notebook_file, 'r', encoding='utf-8') as f:
                 notebook = json.load(f)
+                
+                # Ensure notes array exists
+                if "notes" not in notebook:
+                    notebook["notes"] = []
+                
+                # Ensure note_count matches
+                notebook["note_count"] = len(notebook.get("notes", []))
+                
+                logger.info(f"Loaded notebook: {notebook.get('name')} with {notebook['note_count']} notes from {notebook_file.name}")
                 notebooks.append(notebook)
         except Exception as e:
             logger.error(f"Failed to load {notebook_file}: {e}")
     
-    return sorted(notebooks, key=lambda x: x.get('created_at', ''), reverse=True)
+    sorted_notebooks = sorted(notebooks, key=lambda x: x.get('created_at', ''), reverse=True)
+    logger.info(f"Total notebooks loaded from session files: {len(sorted_notebooks)}")
+    return sorted_notebooks
 
 # ============================================================
 # Global Storage Helpers (Session-Independent) - NEW
@@ -190,15 +203,28 @@ def list_all_notebooks() -> List[Dict[str, Any]]:
     """List all notebooks across all sessions from global storage"""
     notebooks = []
     
+    logger.info(f"Loading notebooks from global storage: {GLOBAL_NOTEBOOKS_DIR}")
+    
     for notebook_file in GLOBAL_NOTEBOOKS_DIR.glob("*.json"):
         try:
             with open(notebook_file, 'r', encoding='utf-8') as f:
                 notebook = json.load(f)
+                
+                # Ensure notes array exists
+                if "notes" not in notebook:
+                    notebook["notes"] = []
+                
+                # Ensure note_count matches
+                notebook["note_count"] = len(notebook.get("notes", []))
+                
+                logger.info(f"Loaded global notebook: {notebook.get('name')} ({notebook.get('session_id', 'unknown')}) with {notebook['note_count']} notes")
                 notebooks.append(notebook)
         except Exception as e:
             logger.error(f"Failed to load {notebook_file}: {e}")
     
-    return sorted(notebooks, key=lambda x: x.get('updated_at', ''), reverse=True)
+    sorted_notebooks = sorted(notebooks, key=lambda x: x.get('updated_at', ''), reverse=True)
+    logger.info(f"Total notebooks loaded from global storage: {len(sorted_notebooks)}")
+    return sorted_notebooks
 
 def export_notebook_as_markdown(notebook_data: Dict[str, Any]):
     """Export notebook as markdown file"""
@@ -257,14 +283,16 @@ def export_notebook_as_markdown(notebook_data: Dict[str, Any]):
 # ============================================================
 
 def get_notebooks_hybrid(session_id: str, include_all_sessions: bool = False) -> List[Dict[str, Any]]:
-    """Get notebooks from Neo4j or file storage"""
+    """Get notebooks from Neo4j AND file storage, then merge them"""
     
     # If include_all_sessions, return from global storage
     if include_all_sessions:
         return list_all_notebooks()
     
-    driver = get_neo4j_driver()
+    notebooks_by_id = {}
     
+    # First, try to get from Neo4j
+    driver = get_neo4j_driver()
     if driver:
         try:
             ensure_neo4j_constraints(driver)
@@ -285,9 +313,8 @@ def get_notebooks_hybrid(session_id: str, include_all_sessions: bool = False) ->
                     ORDER BY nb.created_at DESC
                 """, session_id=session_id)
                 
-                notebooks = []
                 for record in result:
-                    notebooks.append({
+                    notebook = {
                         "id": record["id"],
                         "session_id": session_id,
                         "name": record["name"],
@@ -296,16 +323,52 @@ def get_notebooks_hybrid(session_id: str, include_all_sessions: bool = False) ->
                         "updated_at": record["updated_at"],
                         "note_count": record["note_count"],
                         "notes": []
-                    })
+                    }
+                    notebooks_by_id[record["id"]] = notebook
+                    logger.info(f"Loaded from Neo4j: {record['name']} with {record['note_count']} notes")
             driver.close()
-            return notebooks
         except Exception as e:
-            logger.error(f"Neo4j error, falling back to file storage: {e}")
+            logger.error(f"Neo4j error: {e}")
             if driver:
                 driver.close()
     
-    # Fallback to file storage
-    return list_session_notebooks(session_id)
+    # ALSO load from file storage (both session-specific and global)
+    try:
+        # Load from session-specific storage
+        file_notebooks = list_session_notebooks(session_id)
+        for notebook in file_notebooks:
+            notebook_id = notebook["id"]
+            if notebook_id not in notebooks_by_id:
+                # This notebook is in files but not Neo4j - add it
+                notebooks_by_id[notebook_id] = notebook
+                logger.info(f"Loaded from session files: {notebook['name']} with {len(notebook.get('notes', []))} notes")
+            else:
+                # Merge notes from file if Neo4j notebook has no notes
+                if notebooks_by_id[notebook_id]["note_count"] == 0 and notebook.get("notes"):
+                    notebooks_by_id[notebook_id]["notes"] = notebook["notes"]
+                    notebooks_by_id[notebook_id]["note_count"] = len(notebook["notes"])
+                    logger.info(f"Merged notes from files for: {notebook['name']}")
+    except Exception as e:
+        logger.error(f"Error loading from file storage: {e}")
+    
+    # Also check global storage for any notebooks that might belong to this session
+    try:
+        global_notebooks = list_all_notebooks()
+        for notebook in global_notebooks:
+            if notebook.get("session_id") == session_id:
+                notebook_id = notebook["id"]
+                if notebook_id not in notebooks_by_id:
+                    notebooks_by_id[notebook_id] = notebook
+                    logger.info(f"Loaded from global storage: {notebook['name']} with {len(notebook.get('notes', []))} notes")
+    except Exception as e:
+        logger.error(f"Error loading from global storage: {e}")
+    
+    # Convert back to list and sort
+    notebooks = list(notebooks_by_id.values())
+    notebooks.sort(key=lambda x: x.get('updated_at', x.get('created_at', '')), reverse=True)
+    
+    logger.info(f"Total notebooks loaded for session {session_id}: {len(notebooks)}")
+    return notebooks
 
 def create_notebook_hybrid(session_id: str, notebook: NotebookCreate) -> Dict[str, Any]:
     """Create notebook in Neo4j or file storage"""
@@ -485,10 +548,18 @@ async def get_notebooks(session_id: str, all_sessions: bool = False):
     """Get all notebooks for a session or across all sessions"""
     try:
         notebooks = get_notebooks_hybrid(session_id, include_all_sessions=all_sessions)
+        
+        # If current session has no notebooks, check if there are notebooks in global storage
+        global_count = 0
+        if not all_sessions and len(notebooks) == 0:
+            global_notebooks = list_all_notebooks()
+            global_count = len(global_notebooks)
+        
         return {
             "notebooks": notebooks,
             "storage_type": "neo4j" if neo4j_available else "file",
-            "all_sessions": all_sessions
+            "all_sessions": all_sessions,
+            "global_notebooks_available": global_count
         }
     except Exception as e:
         logger.error(f"Failed to get notebooks: {e}")
@@ -568,10 +639,22 @@ async def get_notes(
     offset: int = 0
 ):
     """Get all notes in a notebook"""
+    logger.info(f"📝 GET NOTES REQUEST")
+    logger.info(f"   Session ID: {session_id[:20]}...")
+    logger.info(f"   Notebook ID: {notebook_id[:20]}...")
+    logger.info(f"   Sort: {sort_by} {order}")
+    
+    notes = []
+    total = 0
+    storage_used = "file"
+    tried_neo4j = False
+    
     # Try Neo4j first
     driver = get_neo4j_driver()
     
     if driver:
+        tried_neo4j = True
+        logger.info(f"   Trying Neo4j...")
         try:
             valid_sort_fields = ["created_at", "updated_at", "title"]
             if sort_by not in valid_sort_fields:
@@ -580,86 +663,128 @@ async def get_notes(
             order_clause = "DESC" if order.lower() == "desc" else "ASC"
             
             with driver.session() as session:
-                result = session.run(f"""
-                    MATCH (s:Session {{id: $session_id}})-[:HAS_NOTEBOOK]->(nb:Notebook {{id: $notebook_id}})
-                    MATCH (nb)-[:CONTAINS]->(n:Note)
-                    RETURN n.id as id, n.title as title, n.content as content,
-                           n.created_at as created_at, n.updated_at as updated_at,
-                           n.source as source, n.tags as tags, n.metadata as metadata
-                    ORDER BY n.{sort_by} {order_clause}
-                    SKIP $offset
-                    LIMIT $limit
-                """, session_id=session_id, notebook_id=notebook_id, 
-                     offset=offset, limit=limit)
+                # First check if notebook exists in Neo4j
+                check_result = session.run("""
+                    MATCH (s:Session {id: $session_id})-[:HAS_NOTEBOOK]->(nb:Notebook {id: $notebook_id})
+                    RETURN nb.id as id, nb.name as name
+                """, session_id=session_id, notebook_id=notebook_id)
                 
-                notes = []
-                for record in result:
-                    note = {
-                        "id": record["id"],
-                        "notebook_id": notebook_id,
-                        "title": record["title"],
-                        "content": record["content"],
-                        "created_at": record["created_at"],
-                        "updated_at": record["updated_at"],
-                        "tags": record["tags"] or [],
-                        "metadata": record["metadata"] or {}
-                    }
+                notebook_record = check_result.single()
+                if notebook_record:
+                    logger.info(f"   ✅ Notebook found in Neo4j: {notebook_record['name']}")
                     
-                    if record["source"]:
-                        note["source"] = record["source"]
+                    # Now get notes
+                    result = session.run(f"""
+                        MATCH (s:Session {{id: $session_id}})-[:HAS_NOTEBOOK]->(nb:Notebook {{id: $notebook_id}})
+                        MATCH (nb)-[:CONTAINS]->(n:Note)
+                        RETURN n.id as id, n.title as title, n.content as content,
+                               n.created_at as created_at, n.updated_at as updated_at,
+                               n.source as source, n.tags as tags, n.metadata as metadata
+                        ORDER BY n.{sort_by} {order_clause}
+                        SKIP $offset
+                        LIMIT $limit
+                    """, session_id=session_id, notebook_id=notebook_id, 
+                         offset=offset, limit=limit)
                     
-                    notes.append(note)
-                
-                # Get total count
-                count_result = session.run("""
-                    MATCH (nb:Notebook {id: $notebook_id})-[:CONTAINS]->(n:Note)
-                    RETURN count(n) as total
-                """, notebook_id=notebook_id)
-                
-                total = count_result.single()["total"]
+                    for record in result:
+                        note = {
+                            "id": record["id"],
+                            "notebook_id": notebook_id,
+                            "title": record["title"],
+                            "content": record["content"],
+                            "created_at": record["created_at"],
+                            "updated_at": record["updated_at"],
+                            "tags": record["tags"] or [],
+                            "metadata": record["metadata"] or {}
+                        }
+                        
+                        if record["source"]:
+                            note["source"] = record["source"]
+                        
+                        notes.append(note)
+                    
+                    # Get total count
+                    count_result = session.run("""
+                        MATCH (nb:Notebook {id: $notebook_id})-[:CONTAINS]->(n:Note)
+                        RETURN count(n) as total
+                    """, notebook_id=notebook_id)
+                    
+                    total = count_result.single()["total"]
+                    logger.info(f"   Neo4j returned {len(notes)} notes (total: {total})")
+                    
+                    if total > 0:
+                        storage_used = "neo4j"
+                else:
+                    logger.warning(f"   ⚠️ Notebook {notebook_id[:8]}... not found in Neo4j")
                 
             driver.close()
-            return {
-                "notes": notes,
-                "total": total,
-                "limit": limit,
-                "offset": offset,
-                "storage_type": "neo4j"
-            }
         except Exception as e:
-            logger.error(f"Neo4j error, falling back to file storage: {e}")
+            logger.error(f"   ❌ Neo4j error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             if driver:
                 driver.close()
+    else:
+        logger.info(f"   Neo4j not available")
     
-    # Fallback to file storage
-    notebook_data = load_notebook_from_file(session_id, notebook_id)
-    if not notebook_data:
-        # Try global storage
-        notebook_data = load_from_global_storage(notebook_id)
-        if not notebook_data:
+    # If Neo4j returned no notes OR Neo4j failed, try file storage
+    if total == 0:
+        logger.info(f"   Trying file storage...")
+        
+        # Try session-specific file first
+        logger.info(f"   Loading from session file: {session_id[:20]}...")
+        notebook_data = load_notebook_from_file(session_id, notebook_id)
+        
+        if notebook_data:
+            logger.info(f"   ✅ Found in session file: {notebook_data.get('name')}")
+            logger.info(f"      Notes in file: {len(notebook_data.get('notes', []))}")
+        else:
+            logger.info(f"   ⚠️ Not found in session file, trying global storage...")
+            # Try global storage
+            notebook_data = load_from_global_storage(notebook_id)
+            if notebook_data:
+                logger.info(f"   ✅ Found in global storage: {notebook_data.get('name')}")
+                logger.info(f"      Notes in file: {len(notebook_data.get('notes', []))}")
+            else:
+                logger.error(f"   ❌ Notebook not found in any storage!")
+        
+        if notebook_data:
+            notes = notebook_data.get("notes", [])
+            logger.info(f"   📝 Loaded {len(notes)} notes from file")
+            
+            if len(notes) > 0:
+                logger.info(f"   First note: {notes[0].get('title', 'No title')}")
+            
+            # Sort notes
+            reverse = order.lower() == "desc"
+            if sort_by == "title":
+                notes.sort(key=lambda x: x.get("title", ""), reverse=reverse)
+            elif sort_by == "updated_at":
+                notes.sort(key=lambda x: x.get("updated_at", ""), reverse=reverse)
+            else:  # created_at
+                notes.sort(key=lambda x: x.get("created_at", ""), reverse=reverse)
+            
+            # Paginate
+            total = len(notes)
+            notes = notes[offset:offset + limit]
+            storage_used = "file"
+            logger.info(f"   ✅ Returning {len(notes)} notes from file storage (total: {total})")
+        else:
+            logger.error(f"   ❌ FAILED TO LOAD NOTEBOOK FROM ANY STORAGE")
+            logger.error(f"      Tried:")
+            logger.error(f"      1. Neo4j: {'Yes' if tried_neo4j else 'No (unavailable)'}")
+            logger.error(f"      2. Session file: {session_id[:20]}...")
+            logger.error(f"      3. Global storage")
             raise HTTPException(status_code=404, detail="Notebook not found")
     
-    notes = notebook_data.get("notes", [])
-    
-    # Sort notes
-    reverse = order.lower() == "desc"
-    if sort_by == "title":
-        notes.sort(key=lambda x: x.get("title", ""), reverse=reverse)
-    elif sort_by == "updated_at":
-        notes.sort(key=lambda x: x.get("updated_at", ""), reverse=reverse)
-    else:  # created_at
-        notes.sort(key=lambda x: x.get("created_at", ""), reverse=reverse)
-    
-    # Paginate
-    total = len(notes)
-    notes = notes[offset:offset + limit]
+    logger.info(f"   🎯 FINAL RESULT: {len(notes)} notes from {storage_used}")
     
     return {
         "notes": notes,
         "total": total,
         "limit": limit,
         "offset": offset,
-        "storage_type": "file"
+        "storage_type": storage_used
     }
 
 @router.get("/{session_id}/{notebook_id}/notes/{note_id}")
@@ -737,64 +862,125 @@ async def create_note(session_id: str, notebook_id: str, note: NoteCreate):
     if source_dict:
         note_data["source"] = source_dict
     
+    saved_to_neo4j = False
     driver = get_neo4j_driver()
     
     if driver:
         try:
             with driver.session() as session:
-                # Check if notebook exists
+                # Check if notebook exists in Neo4j
                 notebook_check = session.run("""
                     MATCH (s:Session {id: $session_id})-[:HAS_NOTEBOOK]->(nb:Notebook {id: $notebook_id})
                     RETURN nb
                 """, session_id=session_id, notebook_id=notebook_id)
                 
-                if notebook_check.single():
-                    # Create note
-                    result = session.run("""
-                        MATCH (nb:Notebook {id: $notebook_id})
-                        CREATE (n:Note {
-                            id: $note_id,
-                            title: $title,
-                            content: $content,
-                            created_at: $now,
-                            updated_at: $now,
-                            source: $source,
-                            tags: $tags,
-                            metadata: $metadata
-                        })
-                        CREATE (nb)-[:CONTAINS]->(n)
-                        RETURN n
-                    """, notebook_id=notebook_id, note_id=note_id, title=note.title,
-                         content=note.content, now=now, source=source_dict,
-                         tags=note.tags, metadata=note.metadata)
+                notebook_record = notebook_check.single()
+                
+                # If notebook doesn't exist in Neo4j, create it from file storage
+                if not notebook_record:
+                    logger.warning(f"⚠️ Notebook {notebook_id[:8]}... not in Neo4j, attempting to create it")
                     
-                    if result.single():
+                    # Load notebook from file storage
+                    notebook_data = load_notebook_from_file(session_id, notebook_id)
+                    if not notebook_data:
+                        notebook_data = load_from_global_storage(notebook_id)
+                    
+                    if notebook_data:
+                        # Create notebook in Neo4j
+                        session.run("""
+                            MERGE (s:Session {id: $session_id})
+                            ON CREATE SET s.created_at = $now
+                            MERGE (s)-[:HAS_NOTEBOOK]->(nb:Notebook {id: $notebook_id})
+                            ON CREATE SET 
+                                nb.name = $name,
+                                nb.description = $description,
+                                nb.created_at = $created_at,
+                                nb.updated_at = $updated_at
+                        """, 
+                            session_id=session_id,
+                            notebook_id=notebook_id,
+                            name=notebook_data.get('name', 'Untitled'),
+                            description=notebook_data.get('description', ''),
+                            created_at=notebook_data.get('created_at', now),
+                            updated_at=notebook_data.get('updated_at', now),
+                            now=now
+                        )
+                        logger.info(f"✅ Created notebook {notebook_id[:8]}... in Neo4j from file storage")
+                    else:
+                        logger.error(f"❌ Cannot find notebook {notebook_id[:8]}... in any storage")
                         driver.close()
-                        # Update file backup
-                        notebook_data = load_notebook_from_file(session_id, notebook_id)
-                        if notebook_data:
-                            notebook_data.setdefault("notes", []).append(note_data)
-                            notebook_data["note_count"] = len(notebook_data["notes"])
-                            save_notebook_to_file(session_id, notebook_data)
-                            save_to_global_storage(notebook_data)
-                        return {"note": note_data, "storage_type": "neo4j"}
+                        raise HTTPException(status_code=404, detail="Notebook not found")
+                
+                # Now create the note
+                source_json = json.dumps(source_dict) if source_dict else None
+                metadata_json = json.dumps(note.metadata or {})
+                
+                result = session.run("""
+                    MATCH (nb:Notebook {id: $notebook_id})
+                    CREATE (n:Note {
+                        id: $note_id,
+                        title: $title,
+                        content: $content,
+                        created_at: $now,
+                        updated_at: $now,
+                        source: $source,
+                        tags: $tags,
+                        metadata: $metadata
+                    })
+                    CREATE (nb)-[:CONTAINS]->(n)
+                    RETURN n.id as id
+                """, notebook_id=notebook_id, note_id=note_id, title=note.title,
+                     content=note.content, now=now, source=source_json,
+                     tags=note.tags or [], metadata=metadata_json)
+                
+                if result.single():
+                    saved_to_neo4j = True
+                    logger.info(f"✅ Note '{note.title}' (ID: {note_id[:8]}...) saved to Neo4j in notebook {notebook_id[:8]}...")
+                else:
+                    logger.warning(f"⚠️ Note create query executed but no result returned")
+                    
         except Exception as e:
-            logger.error(f"Neo4j error during note create: {e}")
+            logger.error(f"❌ Neo4j error during note create: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
         finally:
             if driver:
                 driver.close()
+    else:
+        logger.info("ℹ️ Neo4j not available, saving to file storage only")
     
-    # Fallback to file storage
+    # Always save to file storage as backup
     notebook_data = load_notebook_from_file(session_id, notebook_id)
     if not notebook_data:
-        raise HTTPException(status_code=404, detail="Notebook not found")
+        # Try global storage
+        notebook_data = load_from_global_storage(notebook_id)
+        if not notebook_data:
+            raise HTTPException(status_code=404, detail="Notebook not found")
     
-    notebook_data.setdefault("notes", []).append(note_data)
+    # Add note to notebook
+    if "notes" not in notebook_data:
+        notebook_data["notes"] = []
+    notebook_data["notes"].append(note_data)
     notebook_data["note_count"] = len(notebook_data["notes"])
+    notebook_data["updated_at"] = now
+    
+    # Save to both session and global storage
     save_notebook_to_file(session_id, notebook_data)
     save_to_global_storage(notebook_data)
+    logger.info(f"✅ Note '{note.title}' saved to file storage (session + global)")
     
-    return {"note": note_data, "storage_type": "file"}
+    # Export to markdown
+    try:
+        export_notebook_as_markdown(session_id, notebook_id)
+        logger.info(f"✅ Notebook exported to markdown")
+    except Exception as e:
+        logger.error(f"Error exporting markdown: {e}")
+    
+    return {
+        "note": note_data, 
+        "storage_type": "neo4j" if saved_to_neo4j else "file",
+        "saved_to_neo4j": saved_to_neo4j
+    }
 
 @router.put("/{session_id}/{notebook_id}/notes/{note_id}/update")
 async def update_note(session_id: str, notebook_id: str, note_id: str, note: NoteUpdate):

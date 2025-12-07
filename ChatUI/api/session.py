@@ -111,11 +111,11 @@ async def start_session(resume_session_id: Optional[str] = None):
         
         # Wrap toolchain with monitoring
         if hasattr(vera, 'toolchain'):
-            # from Vera.ChatUI.api.toolchain_api import MonitoredToolChainPlanner
-            from Vera.ChatUI.api.toolchain_monitor_wrapper import EnhancedMonitoredToolChainPlanner
+            from Vera.ChatUI.api.Toolchain.toolchain_api import MonitoredToolChainPlanner
+            # from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import EnhancedMonitoredToolChainPlanner
             original_toolchain = vera.toolchain
-            # vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
-            vera.toolchain = EnhancedMonitoredToolChainPlanner(vera.toolchain, session_id)
+            vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
+            # vera.toolchain = EnhancedMonitoredToolChainPlanner(vera.toolchain, session_id)
             print(f"[Monitoring] Wrapped toolchain for {session_id}")
             logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
         
@@ -266,3 +266,4 @@ async def cleanup_expired_sessions():
 @router.on_event("startup")
 async def startup_event():
     asyncio.create_task(cleanup_expired_sessions())
+

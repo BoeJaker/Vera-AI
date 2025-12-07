@@ -15,7 +15,7 @@
     background: #0f172a;
     border-left: 1px solid #1e293b;
     box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
+    z-index: 100000;
     display: flex;
     flex-direction: column;
     transition: right 0.3s ease;

@@ -1,4 +1,4 @@
-/* Session History - Vanilla JavaScript Styles */
+Session History - Vanilla JavaScript Styles
 
 .session-history {
     display: flex;
@@ -15,7 +15,7 @@
 .sh-header {
     padding: 16px;
     border-bottom: 1px solid #333;
-    background-color: #0f0f0f;
+    /* background-color: #0f0f0f; */
     flex-shrink: 0; /* Don't shrink header */
 }
 
@@ -63,7 +63,7 @@
 .sh-search-input {
     width: 100%;
     padding: 10px 90px 10px 12px; /* More space on right for buttons */
-    background-color: #2a2a2a;
+    /* background-color: #2a2a2a; */
     border: 1px solid #444;
     border-radius: 6px;
     color: #e0e0e0;
@@ -134,7 +134,7 @@
     align-items: center;
     gap: 6px;
     padding: 6px 12px;
-    background-color: #2a2a2a;
+    /* background-color: #2a2a2a; */
     border: 1px solid #444;
     border-radius: 4px;
     color: #e0e0e0;
@@ -143,22 +143,22 @@
 }
 
 .sh-filter-btn.active {
-    background-color: #2a5a8a;
+    /* background-color: #2a5a8a; */
 }
 
 .sh-filter-btn:hover {
-    background-color: #333;
+    /* background-color: #333; */
 }
 
 .sh-filter-btn.active:hover {
-    background-color: #3a6a9a;
+    /* background-color: #3a6a9a; */
 }
 
 /* Filters */
 .sh-filters {
     margin-top: 12px;
     padding: 12px;
-    background-color: #2a2a2a;
+    /* background-color: #2a2a2a; */
     border-radius: 6px;
     border: 1px solid #444;
 }
@@ -183,7 +183,7 @@
 .sh-select,
 .sh-input {
     padding: 6px;
-    background-color: #1a1a1a;
+    /* background-color: #1a1a1a; */
     border: 1px solid #444;
     border-radius: 4px;
     color: #e0e0e0;
@@ -209,7 +209,7 @@
 }
 
 .sh-session-list::-webkit-scrollbar-track {
-    background: #1a1a1a;
+    /* background: #1a1a1a; */
 }
 
 .sh-session-list::-webkit-scrollbar-thumb {
@@ -232,7 +232,7 @@
 /* Session Card */
 .sh-session-card {
     margin-bottom: 8px;
-    background-color: #222;
+    /* background-color: #222; */
     border: 1px solid #333;
     border-radius: 8px;
     overflow: hidden;
@@ -241,11 +241,11 @@
 
 .sh-session-card:hover {
     border-color: #444;
-    background-color: #252525;
+    /* background-color: #252525; */
 }
 
 .sh-session-card.current {
-    background-color: #2a3a4a;
+    /* background-color: #2a3a4a; */
     border-color: #4a6a8a;
 }
 
@@ -361,7 +361,7 @@
 .sh-card-details {
     border-top: 1px solid #333;
     padding: 12px;
-    background-color: #1a1a1a;
+    /* background-color: #1a1a1a; */
 }
 
 .sh-details-section {
@@ -388,7 +388,7 @@
 
 .sh-entity-tag {
     padding: 4px 8px;
-    background-color: #2a2a2a;
+    /* background-color: #2a2a2a; */
     border: 1px solid #444;
     border-radius: 4px;
     font-size: 11px;
@@ -406,7 +406,7 @@
 .sh-message {
     padding: 6px;
     margin-bottom: 4px;
-    background-color: #222;
+    /* background-color: #222; */
     border-radius: 4px;
     border-left: 2px solid #444;
 }

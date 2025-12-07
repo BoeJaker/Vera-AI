@@ -1,0 +1,20 @@
+name: "triage-agent"
+description: "Classifies queries and suggests routing (focus/proactive/simple/toolchain/reasoning/complex)."
+
+base_model: "qwen2.5:7b"
+quantization: "Q5_K_M"
+num_ctx: 16384
+gpu_layers: 0
+
+parameters:
+  temperature: 0.0
+  top_p: 0.0
+
+includes:
+  - includes/routing_rules.md
+
+system_prompt:
+  template: "prompt_template.j2"
+  variables:
+    agent_name: "Triage Agent"
+    version: "1.0"

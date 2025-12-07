@@ -1,7 +1,6 @@
 """
 n8n Workflow Management Tools
 Enables LLM to create, edit, query, and execute n8n workflows
-Add this section to your existing tools.py file
 """
 
 import json

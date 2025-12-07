@@ -37,7 +37,7 @@ class ToolChainPlanner:
         # plan_json = self.agent.stream_llm_with_memory(self.agent.deep_llm, planning_prompt)
         plan_json=""
         # Get the plan from the LLM and clean up any leading/trailing ```json or ```
-        for r in self.agent.stream_llm(self.deep_llm, planning_prompt):
+        for r in self.agent.stream_llm(self.agent.tool_llm, planning_prompt):
             # print(r)
             yield(r)
             plan_json += r

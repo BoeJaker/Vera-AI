@@ -1,0 +1,121 @@
+<!-- Updated Graph Context Menu - Replace in your HTML -->
+<div id="context-menu" style="
+    position: fixed;
+    display: none;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    min-width: 220px;
+    padding: 6px 0;
+">
+    <!-- Discovery Section -->
+    <div class="context-menu-section-title">Discovery</div>
+    <div class="context-menu-item" data-action="hidden-relationships">
+        🔍 Find Hidden Relationships
+    </div>
+    <div class="context-menu-item" data-action="similar-nodes">
+        🎯 Find Similar Nodes
+    </div>
+    <div class="context-menu-item" data-action="find-paths">
+        🛤️ Find Paths To...
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- Expand Section - UPDATED -->
+    <div class="context-menu-section-title">Expand</div>
+    <div class="context-menu-item" data-action="expand-neighbors">
+        ➡️ Expand Neighbors...
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- View Section -->
+    <div class="context-menu-section-title">View</div>
+    <div class="context-menu-item" data-action="subgraph">
+        🗺️ Extract Subgraph
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- Analysis Section -->
+    <div class="context-menu-section-title">Analysis</div>
+    <div class="context-menu-item" data-action="search">
+        🔎 Search
+    </div>
+    <div class="context-menu-item" data-action="enrich">
+        🧠 Enrich (NLP)
+    </div>
+    <div class="context-menu-item" data-action="extract-entities">
+        📊 Extract Entities
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- Generate Section -->
+    <div class="context-menu-section-title">Generate</div>
+    <div class="context-menu-item" data-action="discover">
+        💡 Discover
+    </div>
+    <div class="context-menu-item" data-action="ideas">
+        ✨ Generate Idea Stubs
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- Tools Section -->
+    <div class="context-menu-section-title">Tools</div>
+    <div class="context-menu-item" data-action="execute-tool">
+        🔧 Execute Tool
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- AI Section -->
+    <div class="context-menu-section-title">AI</div>
+    <div class="context-menu-item" data-action="ask-vera">
+        💬 Ask Vera
+    </div>
+    
+    <div class="context-menu-divider"></div>
+    
+    <!-- Manage Section -->
+    <div class="context-menu-section-title">Manage</div>
+    <div class="context-menu-item" data-action="clear-discovered">
+        🗑️ Clear Discovered
+    </div>
+</div>
+
+<style>
+/* Context Menu Styles */
+.context-menu-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    color: #e2e8f0;
+    font-size: 13px;
+    transition: background-color 0.2s;
+    user-select: none;
+}
+
+.context-menu-item:hover {
+    background: #334155;
+}
+
+.context-menu-divider {
+    height: 1px;
+    background: #334155;
+    margin: 6px 0;
+}
+
+.context-menu-section-title {
+    padding: 8px 16px 4px;
+    color: #94a3b8;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    user-select: none;
+}
+</style>

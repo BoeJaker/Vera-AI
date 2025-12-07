@@ -39,9 +39,14 @@ from Vera.Toolchain.schemas import *
 import Vera.Toolchain.dynamic_tools as DynamicTools
 from Vera.Toolchain.mcp_manager import *
 from Vera.Toolchain.Tools.code_executor import *
-from Vera.Toolchain.Tools.microcontollers2 import *
+from Vera.Toolchain.Tools.Microcontrollers.microcontollers2 import *
 from Vera.Toolchain.Tools.version_manager import *
 from Vera.Toolchain.n8n_tools import *
+from Vera.Toolchain.Tools.Memory.memory_advanced_pt2 import *
+from Vera.Toolchain.Tools.Memory.memory_advanced import *
+from Vera.Toolchain.Tools.Memory.memory import *
+from Vera.Toolchain.Tools.orchestration import *
+from Vera.Toolchain.Tools.OSINT.loader import add_all_osint_tools
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -2407,10 +2412,51 @@ def ToolLoader(agent):
 
     # Add Web Crawler tools
     # add_web_crawler_tools(tool_list, agent)
+    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # ERROR:Vera.ChatUI.api.session:Session start error: "CrawlWebsiteTool" object has no field "config"
+    # Traceback (most recent call last):
+    # File "/home/boejaker/langchain/app/Vera/ChatUI/api/session.py", line 93, in start_session
+    #     vera = await loop.run_in_executor(executor, create_vera)
+    #         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/usr/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    #     result = self.fn(*self.args, **self.kwargs)
+    #             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/ChatUI/api/session.py", line 89, in create_vera
+    #     return Vera()
+    #         ^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/vera.py", line 589, in __init__
+    #     self.toolkit=ToolLoader(self)
+    #                 ^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/Toolchain/tools.py", line 2414, in ToolLoader
+    #     add_web_crawler_tools(tool_list, agent)
+    # File "/home/boejaker/langchain/app/Vera/Toolchain/tools.py", line 2121, in add_web_crawler_tools
+    #     web_tools = WebCrawlerTools(agent)
+    #                 ^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/Toolchain/tools.py", line 1772, in __init__
+    #     self.toolkit = WebCrawlerToolkit(self.config)
+    #                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/Toolchain/Tools/Crawlers/corpus_crawler.py", line 589, in __init__
+    #     self.crawl_tool = CrawlWebsiteTool(self.config)
+    #                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/app/Vera/Toolchain/Tools/Crawlers/corpus_crawler.py", line 437, in __init__
+    #     self.config = config
+    #     ^^^^^^^^^^^
+    # File "/home/boejaker/langchain/lib/python3.11/site-packages/pydantic/main.py", line 997, in __setattr__
+    #     elif (setattr_handler := self._setattr_handler(name, value)) is not None:
+    #                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    # File "/home/boejaker/langchain/lib/python3.11/site-packages/pydantic/main.py", line 1044, in _setattr_handler
+    #     raise ValueError(f'"{cls.__name__}" object has no field "{name}"')
+    # ValueError: "CrawlWebsiteTool" object has no field "config"
+
 
     # Add Babelfish tools
     add_babelfish_tools(tool_list, agent)
 
+    add_orchestrator_tools(tool_list, agent)
+    tool_list.extend(add_memory_tools(agent))
+    add_advanced_memory_search_tools(tool_list, agent)
+    add_extended_memory_search_tools(tool_list, agent)
+    add_all_osint_tools(tool_list, agent)
 
 
     # Add MCP tools if available

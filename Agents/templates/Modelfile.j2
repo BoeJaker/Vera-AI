@@ -1,0 +1,15 @@
+FROM {{ base_model }}
+
+PARAMETER temperature {{ parameters.temperature }}
+PARAMETER top_p {{ parameters.top_p }}
+PARAMETER repeat_penalty {{ parameters.repeat_penalty }}
+
+# Context size
+PARAMETER num_ctx {{ num_ctx }}
+# GPU offload
+PARAMETER gpu_layers {{ gpu_layers }}
+
+# Static system prompt baked into the model
+SYSTEM """
+{{ system_prompt }}
+"""

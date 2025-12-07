@@ -321,7 +321,6 @@ def get_main_loop_additions():
     """
     
     commands = '''
-# Add these to your main while loop in Vera.py:
 
 elif user_query.lower().startswith("/plan "):
     # Manual planning with strategy

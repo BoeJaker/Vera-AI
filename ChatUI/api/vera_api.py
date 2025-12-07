@@ -33,20 +33,26 @@ from neo4j import GraphDatabase
 # ============================================================
 
 from Vera.vera import Vera
-import Vera.ChatUI.api.execution as execution_api
+import Vera.ChatUI.api.Canvas.execution_api as execution_api
+import Vera.ChatUI.api.Canvas.canvas_api as canvas_api # < to be replaced by execution_api
 import Vera.ChatUI.api.vectorstore_api as vectorstore_api
-import Vera.ChatUI.api.toolchain_api as toolchain_api
-import Vera.ChatUI.api.toolchain_query as toolchain_query_api
-import Vera.ChatUI.api.n8n_proxy as n8n_proxy
-import Vera.ChatUI.api.graph_api as graph_api
-import Vera.ChatUI.api.chat_api as chat_api
-import Vera.ChatUI.api.chat_history_api as chat_history_api
-import Vera.ChatUI.api.orchestrator_api as orchestrator_api
+import Vera.ChatUI.api.Toolchain.toolchain_api as toolchain_api
+import Vera.ChatUI.api.Toolchain.toolchain_query_api as toolchain_query_api
+import Vera.ChatUI.api.Toolchain.n8n_proxy as n8n_proxy
+import Vera.ChatUI.api.Graph.graph_api as graph_api
+import Vera.ChatUI.api.Chat.chat_api as chat_api
+import Vera.ChatUI.api.Chat.chat_history_api as chat_history_api
+import Vera.ChatUI.api.Orchestrator.orchestrator_api as orchestrator_api
+import Vera.ChatUI.api.Orchestrator.api_api as api_api
+import Vera.ChatUI.api.Orchestrator.infra_api as infra_api
 import Vera.ChatUI.api.memory_api as memory_api
 import Vera.ChatUI.api.proactivefocus_api as proactivefocus_api
 import Vera.ChatUI.api.notebook_api as notebook_api
 import Vera.ChatUI.api.schemas as schemas
 import Vera.ChatUI.api.session as session
+import Vera.ChatUI.api.config as config_api
+import Vera.ChatUI.api.Orchestrator.ollama_api as ollama_api
+import Vera.ChatUI.api.agents_api as agents_api
 # from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
 # ============================================================
@@ -81,6 +87,7 @@ app.add_middleware(
 # ============================================================
 
 app.include_router(execution_api.router)
+app.include_router(canvas_api.router)
 app.include_router(chat_api.router)
 app.include_router(chat_api.wsrouter)
 app.include_router(chat_history_api.router)
@@ -90,13 +97,17 @@ app.include_router(toolchain_query_api.router)
 app.include_router(toolchain_api.wsrouter)
 app.include_router(n8n_proxy.router)
 app.include_router(orchestrator_api.router)
+app.include_router(api_api.router)
+app.include_router(infra_api.router)
 app.include_router(vectorstore_api.router)
 app.include_router(memory_api.router)
 app.include_router(proactivefocus_api.router)
 app.include_router(proactivefocus_api.wsrouter)
 app.include_router(session.router)
 app.include_router(notebook_api.router)
-
+app.include_router(config_api.router)
+app.include_router(ollama_api.router)
+app.include_router(agents_api.router)
 # ============================================================
 # Global storage
 # ============================================================
@@ -110,6 +121,13 @@ tts_playing = False
 toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_id -> execution_id -> execution_data
 active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
 websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
+
+from Vera.ChatUI.api.Toolchain.toolchain_api import set_main_loop
+
+@app.on_event("startup")
+async def startup_event():
+    set_main_loop()
+    print("✓ Main event loop captured for WebSocket broadcasts")
 
 # ============================================================
 # Health and Info Endpoints

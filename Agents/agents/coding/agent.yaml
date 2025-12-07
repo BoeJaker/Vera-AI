@@ -1,0 +1,20 @@
+name: "complex_reasoning-agent"
+description: "Deep reasoning agent; long chains of thought are allowed internally and streamable."
+
+base_model: "llama3.1:70b"
+quantization: "Q5_K_M"
+num_ctx: 65536
+gpu_layers: 50
+
+parameters:
+  temperature: 0.0
+  top_p: 0.2
+
+includes:
+  - includes/reasoning_policy.md
+
+system_prompt:
+  template: "prompt_template.j2"
+  variables:
+    agent_name: "Complex Reasoning"
+    version: "1.0"

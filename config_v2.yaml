@@ -1,0 +1,227 @@
+# Vera AI System Configuration
+# This file supports hot-reloading - changes will be automatically detected
+# Environment variables can override these settings (see VERA_* prefixes)
+
+# Ollama API Configuration
+ollama:
+  api_url: "http://localhost:11434"
+  timeout: 2400
+  use_local_fallback: true
+  connection_retry_attempts: 3
+  connection_retry_delay: 1.0
+  
+  # Thought capture (for models like DeepSeek, GPT-OSS, etc.)
+  enable_thought_capture: true
+  thought_display_format: "inline"  # inline, separate, minimal
+  
+  # Default inference parameters
+  temperature: 0.7
+  top_k: 40
+  top_p: 0.9
+  num_predict: -1  # -1 = unlimited tokens
+  repeat_penalty: 1.1
+  
+  # Model metadata
+  cache_model_metadata: true
+  metadata_cache_ttl: 3600  # seconds
+
+# Model Selection and Parameters
+models:
+  # Model names (must be available in Ollama)
+  embedding_model: "mistral:7b"
+  fast_llm: "gemma2"
+  intermediate_llm: "gemma3:12b"
+  deep_llm: "gemma3:27b"
+  reasoning_llm: "gpt-oss:20b"
+  tool_llm: "gemma2"
+  
+  # Temperature settings for each model type
+  fast_temperature: 0.6
+  intermediate_temperature: 0.4
+  deep_temperature: 0.6
+  reasoning_temperature: 0.7
+  tool_temperature: 0.1
+  
+  # Advanced parameters per model type
+  fast_top_k: 40
+  fast_top_p: 0.9
+  intermediate_top_k: 40
+  intermediate_top_p: 0.85
+  deep_top_k: 50
+  deep_top_p: 0.95
+  reasoning_top_k: 40
+  reasoning_top_p: 0.9
+  tool_top_k: 20
+  tool_top_p: 0.8
+  
+  # Context management
+  max_context_tokens: 4096
+  context_overflow_strategy: "truncate"  # truncate, summarize, error
+
+# Memory System Configuration
+memory:
+  chroma_path: "./Memory/vera_agent_memory"
+  chroma_dir: "./Memory/chroma_store"
+  archive_path: "./Memory/archive/memory_archive.jsonl"
+  
+  # Neo4j Graph Database
+  neo4j_uri: "bolt://localhost:7687"
+  neo4j_user: "neo4j"
+  neo4j_password: "testpassword"
+  
+  # Vector Store Settings
+  vector_search_k: 5
+  plan_vector_search_k: 5
+  
+  # Memory Management
+  enable_memory_triage: false
+  auto_persist: true
+  persist_interval: 300  # seconds
+
+# Task Orchestration
+orchestrator:
+  redis_url: "redis://localhost:6379"
+  cpu_threshold: 75.0
+  
+  # Worker pool sizes per task type
+  llm_workers: 3
+  whisper_workers: 1
+  tool_workers: 4
+  ml_model_workers: 1
+  background_workers: 2
+  general_workers: 2
+  
+  # Operation timeouts (seconds)
+  triage_timeout: 10.0
+  toolchain_timeout: 120.0
+  llm_timeout: 60.0
+  fast_llm_timeout: 30.0
+
+# Infrastructure Orchestration (Advanced)
+infrastructure:
+  enable_infrastructure: false
+  enable_docker: false
+  enable_proxmox: false
+  auto_scale: true
+  max_resources: 10
+  
+  # Docker Configuration
+  docker_url: "unix://var/run/docker.sock"
+  docker_registry: null  # Optional: private registry URL
+  
+  # Proxmox Configuration
+  proxmox_host: null  # e.g., "proxmox.example.com"
+  proxmox_user: null  # e.g., "root@pam"
+  proxmox_password: null
+  proxmox_verify_ssl: false
+  proxmox_node: "pve"
+  
+  # Resource Management
+  idle_resource_cleanup_interval: 300  # seconds
+  max_idle_time: 600  # seconds
+
+# Proactive Focus Manager
+proactive_focus:
+  enabled: true
+  default_focus: null  # Optional: set a default focus topic
+  iteration_interval: 600  # seconds between proactive thoughts
+  auto_execute: true
+  max_iterations: null  # null = unlimited
+
+# Playwright Browser Automation
+playwright:
+  enabled: true
+  headless: true
+  browser_type: "chromium"  # chromium, firefox, or webkit
+  timeout: 30000  # milliseconds
+
+# Logging Configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  component_levels:
+    vera: INFO           # Main Vera system
+    ollama: INFO         # Ollama API/LLM interactions
+    orchestrator: INFO   # Task orchestration
+    infrastructure: INFO # Resource management
+    memory: WARNING      # Memory operations
+    toolchain: INFO      # Tool execution
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "./logs/vera.log"
+  console: true
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+  # -------------------------------------------------------------------------
+  # Display Options
+  # -------------------------------------------------------------------------
+  
+  # Colors (ANSI color codes for terminal)
+  enable_colors: true
+  
+  # Timestamps
+  enable_timestamps: true
+  show_milliseconds: true
+  timestamp_format: "%Y-%m-%d %H:%M:%S.%f"
+  
+  # Context information
+  enable_thread_info: false      # Show thread names
+  enable_session_info: true      # Show session IDs
+  enable_model_info: true        # Show model names
+  
+  # Formatting
+  max_line_width: 100
+  
+  # -------------------------------------------------------------------------
+  # Special Output Formatting
+  # -------------------------------------------------------------------------
+  
+  # Box formatting for different output types
+  # When true, output is displayed in decorative boxes
+  box_thoughts: true       # Box model reasoning/thoughts
+  box_responses: false     # Box final responses
+  box_tools: true          # Box tool executions
+  
+  # -------------------------------------------------------------------------
+  # Verbose Debugging Options
+  # -------------------------------------------------------------------------
+  # These options provide extremely detailed output for troubleshooting
+  
+  # Show raw chunks from Ollama API (VERY VERBOSE)
+  # When enabled, every chunk from Ollama is printed in full
+  # Useful for debugging streaming issues or thought capture
+  show_raw_ollama_chunks: false
+  
+  # Show detailed orchestrator operations
+  # Task submissions, completions, worker activity
+  show_orchestrator_details: true
+  
+  # Show memory operations
+  # Graph operations, vector store updates, etc.
+  show_memory_operations: false
+  
+  # Show infrastructure events
+  # Container provisioning, resource cleanup, etc.
+  show_infrastructure_events: true
+  
+  # -------------------------------------------------------------------------
+  # Performance Tracking
+  # -------------------------------------------------------------------------
+  
+  # Enable automatic performance measurement
+  enable_performance_tracking: true
+  
+  # Track specific operation types
+  track_llm_latency: true      # Measure LLM generation time
+  track_tool_latency: true     # Measure tool execution time
+  
+  # -------------------------------------------------------------------------
+  # Stream Handling
+  # -------------------------------------------------------------------------
+  
+  # Stream thoughts inline as they're generated
+  # When false, thoughts are buffered and shown after completion
+  stream_thoughts_inline: true
+  
+# General Settings
+enable_hot_reload: true
+config_file: "Configuration/vera_config.yaml"

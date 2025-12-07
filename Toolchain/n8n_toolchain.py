@@ -10,17 +10,39 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import os
 
+def load_n8n_config(config_path: Path = None) -> dict:
+    config_path = config_path or Path.home() / ".vera" / "n8n_config.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    with open(config_path, "r") as f:
+        return json.load(f)
+
 
 class N8nToolchainBridge:
     """Bridge between Vera toolchains and n8n workflows"""
     
-    def __init__(self, n8n_url: str = "http://localhost:5678", api_key: Optional[str] = None):
-        self.n8n_url = n8n_url.rstrip('/')
-        self.api_key = api_key or os.getenv("N8N_API_KEY")
-        self.headers = {
-            "Content-Type": "application/json",
-            "X-N8N-API-KEY": self.api_key
-        } if self.api_key else {"Content-Type": "application/json"}
+    def __init__(
+            self, 
+            n8n_url: Optional[str] = None, 
+            api_key: Optional[str] = None, 
+            config_path: Path = None
+        ):
+            # Load JSON config
+            config = {}
+            try:
+                config = load_n8n_config(config_path)
+            except FileNotFoundError:
+                pass  # fallback to env + arguments
+
+            # Priority: explicit arguments → config file → env vars
+            self.n8n_url = (n8n_url or config.get("url") or "http://localhost:5678").rstrip("/")
+            self.api_key = api_key or config.get("api_key") or os.getenv("N8N_API_KEY")
+
+            self.headers = {
+                "Content-Type": "application/json",
+                "X-N8N-API-KEY": self.api_key
+            } if self.api_key else {"Content-Type": "application/json"}
     
     def toolchain_to_n8n_workflow(self, tool_plan: List[Dict], workflow_name: str = None) -> Dict:
         """
@@ -324,10 +346,7 @@ class N8nToolchainExecutor:
 # Example usage and integration points
 if __name__ == "__main__":
     # Initialize the bridge
-    bridge = N8nToolchainBridge(
-        n8n_url="http://localhost:5678",
-        api_key=os.getenv("N8N_API_KEY")
-    )
+    bridge = N8nToolchainBridge()
     
     # Example: Convert a Vera toolchain to n8n
     sample_toolchain = [
