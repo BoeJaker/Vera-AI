@@ -1,0 +1,847 @@
+{
+  "technologies": {
+    "WordPress": {
+      "description": "WordPress is a free and open-source content management system",
+      "website": "https://wordpress.org",
+      "category": "CMS",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "html": [
+          "<meta name=\"generator\" content=\"WordPress[\\s/]?([\\d.]+)?",
+          "/wp-content/",
+          "/wp-includes/",
+          "class=\"[^\"]*wp-"
+        ],
+        "headers": {
+          "X-Powered-By": "WordPress"
+        },
+        "cookies": {
+          "wordpress_": "",
+          "wp-settings-": "",
+          "wordpress_logged_in": ""
+        },
+        "scripts": [
+          "/wp-content/plugins/",
+          "/wp-content/themes/",
+          "/wp-includes/js/",
+          "wp-embed\\.min\\.js"
+        ],
+        "meta": {
+          "generator": "WordPress[\\s/]?([\\d.]+)?"
+        }
+      },
+      "version_pattern": "WordPress[\\s/]([\\d.]+)",
+      "implies": ["PHP", "MySQL"]
+    },
+
+    "React": {
+      "description": "React is an open-source JavaScript library for building user interfaces",
+      "website": "https://reactjs.org",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "data-react",
+          "data-reactid",
+          "data-reactroot",
+          "__REACT_DEVTOOLS_GLOBAL_HOOK__"
+        ],
+        "scripts": [
+          "react(?:\\.development|\\.production)?\\.min\\.js",
+          "react-dom(?:\\.development|\\.production)?\\.min\\.js",
+          "(?:https?:)?//unpkg\\.com/react",
+          "/static/js/.*\\.chunk\\.js"
+        ],
+        "dom": {
+          "div#root": "",
+          "div[data-reactroot]": ""
+        }
+      },
+      "version_pattern": "react[@/]([\\d.]+)",
+      "implies": ["JavaScript"]
+    },
+
+    "Vue.js": {
+      "description": "Vue.js is an open-source JavaScript framework",
+      "website": "https://vuejs.org",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "(?:data-)?v-(?:if|else|for|show|model|bind|on|cloak|html|text)",
+          "__VUE__"
+        ],
+        "scripts": [
+          "vue(?:\\.runtime)?(?:\\.esm)?(?:\\.prod)?(?:\\.min)?\\.js",
+          "/vue[@/]([\\d.]+)",
+          "https?://cdn\\.jsdelivr\\.net/npm/vue"
+        ],
+        "dom": {
+          "[v-cloak]": "",
+          "#app": ""
+        }
+      },
+      "version_pattern": "vue[@/]([\\d.]+)",
+      "implies": ["JavaScript"]
+    },
+
+    "Angular": {
+      "description": "Angular is a TypeScript-based web application framework",
+      "website": "https://angular.io",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "ng-app",
+          "ng-version",
+          "\\[ng-version\\]",
+          "_nghost-",
+          "_ngcontent-"
+        ],
+        "scripts": [
+          "angular(?:\\.min)?\\.js",
+          "@angular/core",
+          "zone\\.js"
+        ]
+      },
+      "version_pattern": "angular[/@]([\\d.]+)",
+      "implies": ["TypeScript", "JavaScript"]
+    },
+
+    "Next.js": {
+      "description": "Next.js is a React framework for production",
+      "website": "https://nextjs.org",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "__NEXT_DATA__",
+          "_next/static"
+        ],
+        "scripts": [
+          "/_next/static/",
+          "/_next/webpack"
+        ],
+        "headers": {
+          "x-powered-by": "Next.js"
+        }
+      },
+      "version_pattern": "next@([\\d.]+)",
+      "implies": ["React", "Node.js", "Webpack"]
+    },
+
+    "Nuxt.js": {
+      "description": "Nuxt.js is a Vue.js framework",
+      "website": "https://nuxtjs.org",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "__NUXT__",
+          "nuxt-link"
+        ],
+        "scripts": [
+          "/_nuxt/"
+        ]
+      },
+      "version_pattern": "nuxt[/@]([\\d.]+)",
+      "implies": ["Vue.js", "Node.js"]
+    },
+
+    "jQuery": {
+      "description": "jQuery is a JavaScript library",
+      "website": "https://jquery.com",
+      "category": "JavaScript Library",
+      "confidence_weight": 0.7,
+      "patterns": {
+        "scripts": [
+          "jquery[.-]([\\d.]+)(?:\\.min)?\\.js",
+          "/jquery\\.js",
+          "ajax\\.googleapis\\.com/ajax/libs/jquery"
+        ],
+        "html": [
+          "jQuery JavaScript Library v([\\d.]+)"
+        ]
+      },
+      "version_pattern": "jquery[.-]([\\d.]+)"
+    },
+
+    "Bootstrap": {
+      "description": "Bootstrap is a CSS framework",
+      "website": "https://getbootstrap.com",
+      "category": "CSS Framework",
+      "confidence_weight": 0.8,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*\\bbootstrap",
+          "class=\"[^\"]*\\bbs-"
+        ],
+        "scripts": [
+          "bootstrap(?:\\.bundle)?(?:\\.min)?\\.js"
+        ],
+        "css": [
+          "bootstrap(?:\\.min)?\\.css"
+        ]
+      },
+      "version_pattern": "bootstrap[/@]([\\d.]+)",
+      "implies": ["JavaScript"]
+    },
+
+    "Tailwind CSS": {
+      "description": "Tailwind CSS is a utility-first CSS framework",
+      "website": "https://tailwindcss.com",
+      "category": "CSS Framework",
+      "confidence_weight": 0.85,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*(?:flex|grid|hidden|block|inline|text-|bg-|border-|rounded-|shadow-|p-|m-|w-|h-)"
+        ],
+        "css": [
+          "tailwindcss"
+        ]
+      },
+      "version_pattern": "tailwindcss@([\\d.]+)"
+    },
+
+    "nginx": {
+      "description": "Nginx is a web server",
+      "website": "https://nginx.org",
+      "category": "Web Server",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "nginx(?:/([\\d.]+))?"
+        }
+      },
+      "version_pattern": "nginx/([\\d.]+)"
+    },
+
+    "Apache": {
+      "description": "Apache HTTP Server",
+      "website": "https://httpd.apache.org",
+      "category": "Web Server",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "Apache(?:/([\\d.]+))?"
+        }
+      },
+      "version_pattern": "Apache/([\\d.]+)"
+    },
+
+    "Microsoft IIS": {
+      "description": "Microsoft Internet Information Services",
+      "website": "https://www.iis.net",
+      "category": "Web Server",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "Microsoft-IIS/([\\d.]+)"
+        }
+      },
+      "version_pattern": "Microsoft-IIS/([\\d.]+)"
+    },
+
+    "PHP": {
+      "description": "PHP is a server-side scripting language",
+      "website": "https://php.net",
+      "category": "Programming Language",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "headers": {
+          "X-Powered-By": "PHP(?:/([\\d.]+))?",
+          "Server": "PHP(?:/([\\d.]+))?"
+        },
+        "cookies": {
+          "PHPSESSID": ""
+        },
+        "html": [
+          "\\.php(?:[\"'?]|$)"
+        ]
+      },
+      "version_pattern": "PHP/([\\d.]+)"
+    },
+
+    "Node.js": {
+      "description": "Node.js is a JavaScript runtime",
+      "website": "https://nodejs.org",
+      "category": "Runtime Environment",
+      "confidence_weight": 0.85,
+      "patterns": {
+        "headers": {
+          "X-Powered-By": "Express",
+          "Server": "Node\\.js"
+        }
+      },
+      "version_pattern": "Node\\.js/([\\d.]+)"
+    },
+
+    "Express": {
+      "description": "Express is a Node.js web framework",
+      "website": "https://expressjs.com",
+      "category": "Web Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "headers": {
+          "X-Powered-By": "Express"
+        },
+        "cookies": {
+          "connect.sid": ""
+        }
+      },
+      "implies": ["Node.js"]
+    },
+
+    "Django": {
+      "description": "Django is a Python web framework",
+      "website": "https://djangoproject.com",
+      "category": "Web Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "cookies": {
+          "csrftoken": "",
+          "sessionid": ""
+        },
+        "headers": {
+          "X-Frame-Options": "DENY"
+        },
+        "html": [
+          "csrfmiddlewaretoken"
+        ]
+      },
+      "implies": ["Python"]
+    },
+
+    "Flask": {
+      "description": "Flask is a Python web framework",
+      "website": "https://flask.palletsprojects.com",
+      "category": "Web Framework",
+      "confidence_weight": 0.85,
+      "patterns": {
+        "cookies": {
+          "session": ""
+        },
+        "headers": {
+          "Server": "Werkzeug"
+        }
+      },
+      "implies": ["Python"]
+    },
+
+    "Ruby on Rails": {
+      "description": "Ruby on Rails is a web framework",
+      "website": "https://rubyonrails.org",
+      "category": "Web Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "cookies": {
+          "_session_id": ""
+        },
+        "headers": {
+          "X-Powered-By": "Phusion Passenger"
+        },
+        "meta": {
+          "csrf-param": "",
+          "csrf-token": ""
+        }
+      },
+      "implies": ["Ruby"]
+    },
+
+    "Google Analytics": {
+      "description": "Google Analytics is a web analytics service",
+      "website": "https://analytics.google.com",
+      "category": "Analytics",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "google-analytics\\.com/analytics\\.js",
+          "google-analytics\\.com/ga\\.js",
+          "googletagmanager\\.com/gtag/js",
+          "gtag\\(",
+          "\\.google-analytics\\.com/collect"
+        ],
+        "html": [
+          "GoogleAnalyticsObject"
+        ]
+      }
+    },
+
+    "Google Tag Manager": {
+      "description": "Google Tag Manager is a tag management system",
+      "website": "https://tagmanager.google.com",
+      "category": "Tag Manager",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "googletagmanager\\.com/gtm\\.js",
+          "GTM-"
+        ],
+        "html": [
+          "googletagmanager"
+        ]
+      }
+    },
+
+    "Cloudflare": {
+      "description": "Cloudflare is a CDN and security service",
+      "website": "https://cloudflare.com",
+      "category": "CDN",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "cloudflare",
+          "CF-RAY": ""
+        },
+        "cookies": {
+          "__cfduid": "",
+          "cf_clearance": ""
+        }
+      }
+    },
+
+    "Akamai": {
+      "description": "Akamai is a CDN",
+      "website": "https://akamai.com",
+      "category": "CDN",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "AkamaiGHost"
+        }
+      }
+    },
+
+    "Amazon CloudFront": {
+      "description": "Amazon CloudFront is a CDN",
+      "website": "https://aws.amazon.com/cloudfront",
+      "category": "CDN",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "X-Amz-Cf-Id": "",
+          "Via": "CloudFront"
+        }
+      }
+    },
+
+    "Shopify": {
+      "description": "Shopify is an e-commerce platform",
+      "website": "https://shopify.com",
+      "category": "E-commerce",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "html": [
+          "cdn\\.shopify\\.com",
+          "Shopify\\.theme"
+        ],
+        "headers": {
+          "X-ShopId": ""
+        },
+        "scripts": [
+          "cdn\\.shopify\\.com"
+        ]
+      }
+    },
+
+    "WooCommerce": {
+      "description": "WooCommerce is a WordPress e-commerce plugin",
+      "website": "https://woocommerce.com",
+      "category": "E-commerce",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*woocommerce",
+          "/woocommerce"
+        ],
+        "scripts": [
+          "woocommerce"
+        ],
+        "meta": {
+          "generator": "WooCommerce ([\\d.]+)"
+        }
+      },
+      "version_pattern": "WooCommerce ([\\d.]+)",
+      "implies": ["WordPress", "PHP"]
+    },
+
+    "Magento": {
+      "description": "Magento is an e-commerce platform",
+      "website": "https://magento.com",
+      "category": "E-commerce",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "Mage\\.Cookies",
+          "/skin/frontend/"
+        ],
+        "scripts": [
+          "/skin/frontend/",
+          "Mage\\."
+        ],
+        "cookies": {
+          "frontend": ""
+        }
+      },
+      "implies": ["PHP"]
+    },
+
+    "Drupal": {
+      "description": "Drupal is a content management system",
+      "website": "https://drupal.org",
+      "category": "CMS",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "Drupal\\.settings",
+          "/sites/default/files/",
+          "data-drupal-"
+        ],
+        "headers": {
+          "X-Drupal-Cache": "",
+          "X-Generator": "Drupal ([\\d.]+)"
+        },
+        "meta": {
+          "generator": "Drupal ([\\d.]+)"
+        }
+      },
+      "version_pattern": "Drupal ([\\d.]+)",
+      "implies": ["PHP"]
+    },
+
+    "Joomla": {
+      "description": "Joomla is a content management system",
+      "website": "https://joomla.org",
+      "category": "CMS",
+      "confidence_weight": 0.95,
+      "patterns": {
+        "html": [
+          "Joomla!",
+          "/components/com_",
+          "/media/system/js/"
+        ],
+        "headers": {
+          "X-Content-Encoded-By": "Joomla! ([\\d.]+)"
+        },
+        "meta": {
+          "generator": "Joomla! ([\\d.]+)"
+        }
+      },
+      "version_pattern": "Joomla! ([\\d.]+)",
+      "implies": ["PHP"]
+    },
+
+    "Webpack": {
+      "description": "Webpack is a module bundler",
+      "website": "https://webpack.js.org",
+      "category": "Build Tool",
+      "confidence_weight": 0.7,
+      "patterns": {
+        "scripts": [
+          "webpack",
+          "/webpack-"
+        ],
+        "html": [
+          "webpackJsonp"
+        ]
+      },
+      "implies": ["JavaScript"]
+    },
+
+    "Vite": {
+      "description": "Vite is a build tool",
+      "website": "https://vitejs.dev",
+      "category": "Build Tool",
+      "confidence_weight": 0.8,
+      "patterns": {
+        "scripts": [
+          "/@vite/",
+          "/node_modules/vite/"
+        ],
+        "html": [
+          "/@vite/"
+        ]
+      },
+      "implies": ["JavaScript"]
+    },
+
+    "Svelte": {
+      "description": "Svelte is a JavaScript framework",
+      "website": "https://svelte.dev",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "class=\"svelte-"
+        ],
+        "scripts": [
+          "svelte"
+        ]
+      },
+      "implies": ["JavaScript"]
+    },
+
+    "htmx": {
+      "description": "htmx is a library for AJAX, CSS Transitions, WebSockets and Server Sent Events",
+      "website": "https://htmx.org",
+      "category": "JavaScript Library",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "hx-get=",
+          "hx-post=",
+          "hx-swap=",
+          "hx-target="
+        ],
+        "scripts": [
+          "htmx(?:\\.min)?\\.js"
+        ]
+      },
+      "version_pattern": "htmx@([\\d.]+)"
+    },
+
+    "Alpine.js": {
+      "description": "Alpine.js is a lightweight JavaScript framework",
+      "website": "https://alpinejs.dev",
+      "category": "JavaScript Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "x-data",
+          "x-show",
+          "x-if",
+          "@click"
+        ],
+        "scripts": [
+          "alpinejs",
+          "cdn\\.jsdelivr\\.net/npm/alpinejs"
+        ]
+      },
+      "version_pattern": "alpinejs@([\\d.]+)"
+    },
+
+    "Redis": {
+      "description": "Redis is an in-memory data structure store",
+      "website": "https://redis.io",
+      "category": "Database",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "headers": {
+          "X-Powered-By": "Redis"
+        }
+      }
+    },
+
+    "MongoDB": {
+      "description": "MongoDB is a NoSQL database",
+      "website": "https://mongodb.com",
+      "category": "Database",
+      "confidence_weight": 0.85,
+      "patterns": {
+        "headers": {
+          "Server": "MongoDB"
+        }
+      }
+    },
+
+    "MySQL": {
+      "description": "MySQL is a relational database",
+      "website": "https://mysql.com",
+      "category": "Database",
+      "confidence_weight": 0.8,
+      "patterns": {
+        "headers": {
+          "X-Powered-By": "MySQL"
+        }
+      }
+    },
+
+    "PostgreSQL": {
+      "description": "PostgreSQL is a relational database",
+      "website": "https://postgresql.org",
+      "category": "Database",
+      "confidence_weight": 0.8,
+      "patterns": {
+        "headers": {
+          "Server": "PostgreSQL"
+        }
+      }
+    },
+
+    "Docker": {
+      "description": "Docker is a containerization platform",
+      "website": "https://docker.com",
+      "category": "Container",
+      "confidence_weight": 0.85,
+      "patterns": {
+        "headers": {
+          "Server": "Docker"
+        }
+      }
+    },
+
+    "Kubernetes": {
+      "description": "Kubernetes is a container orchestration platform",
+      "website": "https://kubernetes.io",
+      "category": "Container Orchestration",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "headers": {
+          "Server": "nginx/([\\d.]+) \\(Kubernetes\\)"
+        }
+      }
+    },
+
+    "Font Awesome": {
+      "description": "Font Awesome is an icon library",
+      "website": "https://fontawesome.com",
+      "category": "Font Script",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*fa-",
+          "class=\"[^\"]*fas ",
+          "class=\"[^\"]*far ",
+          "class=\"[^\"]*fab "
+        ],
+        "css": [
+          "font-awesome",
+          "fontawesome"
+        ]
+      }
+    },
+
+    "Material-UI": {
+      "description": "Material-UI is a React UI framework",
+      "website": "https://mui.com",
+      "category": "UI Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*Mui",
+          "class=\"[^\"]*makeStyles-"
+        ],
+        "scripts": [
+          "@mui/material",
+          "@material-ui/core"
+        ]
+      },
+      "implies": ["React"]
+    },
+
+    "Ant Design": {
+      "description": "Ant Design is a React UI framework",
+      "website": "https://ant.design",
+      "category": "UI Framework",
+      "confidence_weight": 0.9,
+      "patterns": {
+        "html": [
+          "class=\"[^\"]*ant-"
+        ],
+        "css": [
+          "antd"
+        ]
+      },
+      "implies": ["React"]
+    },
+
+    "Stripe": {
+      "description": "Stripe is a payment processing platform",
+      "website": "https://stripe.com",
+      "category": "Payment",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "js\\.stripe\\.com",
+          "Stripe\\("
+        ]
+      }
+    },
+
+    "PayPal": {
+      "description": "PayPal is a payment processing platform",
+      "website": "https://paypal.com",
+      "category": "Payment",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "paypal\\.com/sdk/js",
+          "paypalobjects\\.com"
+        ]
+      }
+    },
+
+    "reCAPTCHA": {
+      "description": "reCAPTCHA is a bot detection service",
+      "website": "https://www.google.com/recaptcha",
+      "category": "Security",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "google\\.com/recaptcha",
+          "gstatic\\.com/recaptcha"
+        ],
+        "html": [
+          "g-recaptcha"
+        ]
+      }
+    },
+
+    "hCaptcha": {
+      "description": "hCaptcha is a bot detection service",
+      "website": "https://hcaptcha.com",
+      "category": "Security",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "scripts": [
+          "hcaptcha\\.com"
+        ],
+        "html": [
+          "h-captcha"
+        ]
+      }
+    },
+
+    "Netlify": {
+      "description": "Netlify is a hosting platform",
+      "website": "https://netlify.com",
+      "category": "Hosting",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "Netlify",
+          "X-NF-Request-ID": ""
+        }
+      }
+    },
+
+    "Vercel": {
+      "description": "Vercel is a hosting platform",
+      "website": "https://vercel.com",
+      "category": "Hosting",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "Vercel",
+          "X-Vercel-Cache": "",
+          "X-Vercel-ID": ""
+        }
+      }
+    },
+
+    "GitHub Pages": {
+      "description": "GitHub Pages is a static site hosting service",
+      "website": "https://pages.github.com",
+      "category": "Hosting",
+      "confidence_weight": 1.0,
+      "patterns": {
+        "headers": {
+          "Server": "GitHub\\.com"
+        },
+        "html": [
+          "\\.github\\.io"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+name: "training"
+description: "Agent specialised in analysing datasets, improving itself, and producing model refinements."
+
+system_prompt:
+  template: "prompt_template.j2"
+  variables:
+    agent_name: "Training"
+    version: "1.0" 
+
+model:
+  llm: "deep"            # fast | intermediate | deep | reasoning
+  max_tokens: 6000
+  temperature: 0.1
+  training_mode: "pattern-mining"   # supervised | reinforcement | pattern-mining | hybrid
+
+training:
+  enable: true
+  batch_size: 32
+  epochs: 3
+  online_learning: true
+  reinforcement_signal: "score"     # score | reward-model | logic-check | none
+  evaluation_metrics:
+    - "similarity"
+    - "semantic_accuracy"
+    - "reasoning_depth"
+    - "tool_quality"
+
+vectorstore_optimisation:
+  enabled: true
+  embedding_model: "text-embedding-3-large"
+  index_analysis:
+    compute_density: true
+    compute_cluster_health: true
+    compute_outlier_nodes: true
+    retraining_threshold: 0.15
+
+graphstore_optimisation:
+  enabled: true
+  neo4j_uri: "bolt://localhost:7687"
+  analyse_node_density: true
+  analyse_relation_cohesion: true
+  detect_sparse_paths: true
+  training_use_case: "knowledge-enrichment"
+
+tools:
+  enable_tool_training: true
+  require_tool_success_feedback: true
+  track_failure_modes: true
+
+logging:
+  level: "info"
+  save_training_artifacts: true
+  save_training_vectors: true

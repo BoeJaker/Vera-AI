@@ -1,5 +1,6 @@
 /**
- * Cypher Query Panel v3 - Visual Query Builder Styles (Fixed IDs)
+ * Cypher Query Panel v3 - Visual Query Builder Styles (Theme Compatible)
+ * Fully integrated with theme.js CSS variables
  * All selectors prefixed with 'cypher-' to avoid conflicts
  */
 
@@ -12,8 +13,8 @@
     right: -440px;
     width: 420px;
     height: 100vh;
-    background: #0f172a;
-    border-left: 1px solid #1e293b;
+    background: var(--panel-bg);
+    border-left: 1px solid var(--border);
     box-shadow: -8px 0 30px rgba(0, 0, 0, 0.5);
     z-index: 100000;
     display: flex;
@@ -21,7 +22,7 @@
     transition: right 0.3s ease;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     font-size: 13px;
-    color: #e2e8f0;
+    color: var(--text);
 }
 
 .cypher-panel.open {
@@ -36,8 +37,8 @@
     justify-content: space-between;
     align-items: center;
     padding: 14px 16px;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
 }
 
 .cypher-title {
@@ -46,6 +47,7 @@
     gap: 8px;
     font-weight: 600;
     font-size: 15px;
+    color: var(--text);
 }
 
 .cypher-header-btns {
@@ -59,18 +61,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 14px;
     transition: all 0.15s;
 }
 
 .cypher-panel .hdr-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 /* ============================================
@@ -80,17 +82,16 @@
     display: flex;
     padding: 12px 16px;
     gap: 8px;
-    background: #1e293b;
-    border-bottom: 1px solid #334155;
+    border-bottom: 1px solid var(--border);
 }
 
 .cypher-tab-btn {
     flex: 1;
     padding: 8px 12px;
-    background: transparent;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -98,14 +99,14 @@
 }
 
 .cypher-tab-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-tab-btn.active {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 /* ============================================
@@ -123,12 +124,16 @@
 }
 
 .cypher-body::-webkit-scrollbar-track {
-    background: #1e293b;
+    background: var(--bg);
 }
 
 .cypher-body::-webkit-scrollbar-thumb {
-    background: #475569;
+    background: var(--border);
     border-radius: 3px;
+}
+
+.cypher-body::-webkit-scrollbar-thumb:hover {
+    background: var(--hover);
 }
 
 .cypher-tab-content {
@@ -143,10 +148,11 @@
    Builder Sections
    ============================================ */
 .cypher-panel .section-box {
-    background: #1e293b;
+    background: var(--bg-surface);
     border-radius: 8px;
     margin-bottom: 10px;
     overflow: hidden;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .section-title {
@@ -154,12 +160,11 @@
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    background: rgba(51, 65, 85, 0.3);
     font-weight: 500;
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 .cypher-panel .section-toggle {
@@ -172,7 +177,7 @@
 .cypher-panel .section-toggle input {
     width: 16px;
     height: 16px;
-    accent-color: #3b82f6;
+    accent-color: var(--accent);
     cursor: pointer;
 }
 
@@ -205,7 +210,7 @@
     margin-bottom: 6px;
     font-size: 11px;
     font-weight: 500;
-    color: #94a3b8;
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.3px;
 }
@@ -214,10 +219,10 @@
 .cypher-panel .field-input {
     width: 100%;
     padding: 8px 10px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #e2e8f0;
+    color: var(--text);
     font-size: 13px;
     transition: border-color 0.15s;
 }
@@ -225,7 +230,7 @@
 .cypher-panel .field-select:focus,
 .cypher-panel .field-input:focus {
     outline: none;
-    border-color: #3b82f6;
+    border-color: var(--accent);
 }
 
 /* ============================================
@@ -234,7 +239,7 @@
 .cypher-panel .filters-area {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid #334155;
+    border-top: 1px solid var(--border);
 }
 
 .cypher-panel .filters-hdr {
@@ -247,24 +252,25 @@
 .cypher-panel .filters-hdr span {
     font-size: 11px;
     font-weight: 500;
-    color: #64748b;
+    color: var(--text-secondary);
     text-transform: uppercase;
 }
 
 .cypher-panel .btn-add {
     padding: 4px 10px;
-    background: transparent;
-    border: 1px dashed #475569;
+    background: var(--bg);
+    border: 1px dashed var(--border);
     border-radius: 4px;
-    color: #60a5fa;
+    color: var(--accent);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .btn-add:hover {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: #3b82f6;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 .cypher-panel .filter-row {
@@ -272,9 +278,9 @@
     gap: 6px;
     align-items: center;
     padding: 8px;
-    background: rgba(15, 23, 42, 0.5);
+    background: var(--bg);
     border-radius: 6px;
-    border: 1px solid #334155;
+    border: 1px solid var(--border);
     margin-bottom: 6px;
 }
 
@@ -282,20 +288,20 @@
     width: 100px;
     padding: 6px 8px;
     font-size: 12px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--text);
 }
 
 .cypher-panel .filter-row .filter-op {
     width: 110px;
     padding: 6px 8px;
     font-size: 12px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--text);
 }
 
 .cypher-panel .filter-row .filter-val {
@@ -303,10 +309,10 @@
     min-width: 80px;
     padding: 6px 8px;
     font-size: 12px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #e2e8f0;
+    color: var(--text);
 }
 
 .cypher-panel .filter-del {
@@ -317,7 +323,7 @@
     justify-content: center;
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--text-secondary);
     cursor: pointer;
     border-radius: 4px;
     font-size: 14px;
@@ -347,19 +353,19 @@
 
 .cypher-panel .date-quick {
     padding: 5px 12px;
-    background: transparent;
-    border: 1px solid #475569;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 20px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .date-quick:hover {
-    background: #334155;
-    color: #e2e8f0;
-    border-color: #64748b;
+    background: var(--hover);
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 /* ============================================
@@ -373,24 +379,24 @@
 .cypher-panel .dir-btn {
     flex: 1;
     padding: 8px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 16px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .dir-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-panel .dir-btn.active {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 /* ============================================
@@ -399,13 +405,13 @@
 .cypher-panel .subsection {
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid #334155;
+    border-top: 1px solid var(--border);
 }
 
 .cypher-panel .subsection-title {
     font-size: 11px;
     font-weight: 500;
-    color: #64748b;
+    color: var(--text-secondary);
     text-transform: uppercase;
     margin-bottom: 10px;
 }
@@ -425,18 +431,18 @@
 .cypher-panel .order-dir {
     width: 36px;
     padding: 8px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 16px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .order-dir:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 /* ============================================
@@ -451,29 +457,30 @@
 
 .cypher-panel .quick-btn {
     padding: 5px 12px;
-    background: transparent;
-    border: 1px solid #475569;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 20px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .quick-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
-    border-color: #64748b;
+    background: var(--hover);
+    color: var(--text);
+    border-color: var(--accent);
 }
 
 /* ============================================
    Query Preview
    ============================================ */
 .cypher-panel .query-preview-box {
-    background: #1e293b;
+    background: var(--bg-surface);
     border-radius: 8px;
     margin-bottom: 10px;
     overflow: hidden;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .preview-hdr {
@@ -481,11 +488,11 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: rgba(51, 65, 85, 0.3);
     font-size: 11px;
     font-weight: 500;
-    color: #64748b;
+    color: var(--text-secondary);
     text-transform: uppercase;
+    background: rgba(0, 0, 0, 0.2);
 }
 
 #cypher-query-preview {
@@ -494,28 +501,27 @@
     font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
     font-size: 11px;
     line-height: 1.5;
-    color: #60a5fa;
+    color: var(--accent);
     white-space: pre-wrap;
     word-break: break-all;
     max-height: 120px;
     overflow-y: auto;
-    background: #0f172a;
 }
 
 .cypher-panel .tiny-btn {
     padding: 4px 8px;
     background: transparent;
-    border: 1px solid #334155;
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .tiny-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 /* ============================================
@@ -538,12 +544,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     cursor: pointer;
 }
 
 .cypher-panel .exec-options input {
-    accent-color: #3b82f6;
+    accent-color: var(--accent);
     cursor: pointer;
 }
 
@@ -553,10 +559,10 @@
     justify-content: center;
     gap: 8px;
     padding: 12px 20px;
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    background: var(--accent);
     border: none;
     border-radius: 8px;
-    color: white;
+    color: var(--text-inverted);
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
@@ -564,9 +570,9 @@
 }
 
 .cypher-panel .btn-execute:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    background: var(--hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 4px 12px var(--accent-muted);
 }
 
 .cypher-panel .btn-execute:active {
@@ -577,10 +583,11 @@
    Results Section
    ============================================ */
 .cypher-panel .results-box {
-    background: #1e293b;
+    background: var(--bg-surface);
     border-radius: 8px;
     margin-bottom: 10px;
     overflow: hidden;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .results-hdr {
@@ -588,10 +595,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 8px 12px;
-    background: rgba(51, 65, 85, 0.3);
+    background: rgba(0, 0, 0, 0.2);
     font-size: 11px;
     font-weight: 500;
-    color: #64748b;
+    color: var(--text-secondary);
     text-transform: uppercase;
 }
 
@@ -603,12 +610,12 @@
     display: flex;
     gap: 16px;
     font-size: 12px;
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 .cypher-panel .results-stats span b {
     font-weight: 600;
-    color: #60a5fa;
+    color: var(--accent);
 }
 
 /* Stats Display */
@@ -619,7 +626,7 @@
 .cypher-panel .stat-big {
     font-size: 24px;
     font-weight: 700;
-    color: #60a5fa;
+    color: var(--accent);
     text-align: center;
     margin-bottom: 8px;
 }
@@ -632,35 +639,36 @@
 .cypher-panel .stat-section b {
     display: block;
     margin-bottom: 8px;
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 .cypher-panel .stat-row {
     display: flex;
     justify-content: space-between;
     padding: 6px 10px;
-    background: rgba(59, 130, 246, 0.1);
+    background: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
     margin-bottom: 4px;
     font-size: 11px;
 }
 
 .cypher-panel .stat-row span:first-child {
-    color: #94a3b8;
+    color: var(--text-secondary);
 }
 
 .cypher-panel .stat-row span:last-child {
     font-weight: 600;
-    color: #60a5fa;
+    color: var(--accent);
 }
 
 /* ============================================
    Collapsible Details
    ============================================ */
 .cypher-panel .detail-section {
-    background: #1e293b;
+    background: var(--bg-surface);
     border-radius: 8px;
     margin-bottom: 8px;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .detail-section summary {
@@ -668,7 +676,7 @@
     cursor: pointer;
     font-size: 12px;
     font-weight: 500;
-    color: #94a3b8;
+    color: var(--text-secondary);
     list-style: none;
     user-select: none;
 }
@@ -683,6 +691,7 @@
     margin-right: 8px;
     font-size: 10px;
     transition: transform 0.15s;
+    color: var(--accent);
 }
 
 .cypher-panel .detail-section[open] summary::before {
@@ -697,29 +706,29 @@
 
 .cypher-panel .list-item {
     padding: 8px 10px;
-    background: rgba(15, 23, 42, 0.5);
+    background: var(--bg);
     border-radius: 6px;
     margin-bottom: 6px;
     cursor: pointer;
     transition: all 0.15s;
-    border: 1px solid transparent;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .list-item:hover {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.3);
+    background: var(--hover);
+    border-color: var(--accent);
 }
 
 .cypher-panel .item-text {
     font-size: 12px;
     font-weight: 500;
-    color: #e2e8f0;
+    color: var(--text);
     margin-bottom: 2px;
 }
 
 .cypher-panel .item-meta {
     font-size: 10px;
-    color: #475569;
+    color: var(--text-secondary);
     margin-top: 4px;
 }
 
@@ -732,7 +741,7 @@
 .cypher-panel .del-btn {
     background: transparent;
     border: none;
-    color: #64748b;
+    color: var(--text-secondary);
     cursor: pointer;
     font-size: 12px;
     padding: 4px;
@@ -747,7 +756,7 @@
 .cypher-panel .empty-msg {
     text-align: center;
     padding: 16px;
-    color: #475569;
+    color: var(--text-secondary);
     font-size: 12px;
     font-style: italic;
 }
@@ -767,24 +776,24 @@
     align-items: center;
     gap: 6px;
     padding: 12px 8px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .layout-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-panel .layout-btn.active {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 .cypher-panel .layout-icon {
@@ -799,24 +808,24 @@
 .cypher-panel .toggle-btn {
     flex: 1;
     padding: 6px 10px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #64748b;
+    color: var(--text-secondary);
     font-size: 11px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .toggle-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-panel .toggle-btn.active {
-    background: #3b82f6;
-    border-color: #3b82f6;
-    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 .cypher-panel .physics-actions,
@@ -829,10 +838,10 @@
 
 .cypher-panel .action-btn {
     padding: 8px 12px;
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 6px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 12px;
     font-weight: 500;
     cursor: pointer;
@@ -841,68 +850,69 @@
 }
 
 .cypher-panel .action-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-panel .action-btn.primary {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    border-color: #3b82f6;
-    color: white;
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--text-inverted);
 }
 
 .cypher-panel .action-btn.primary:hover {
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    background: var(--hover);
 }
 
 /* ============================================
    Editor Mode
    ============================================ */
 .cypher-panel .editor-box {
-    background: #1e293b;
+    background: var(--bg-surface);
     border-radius: 8px;
     overflow: hidden;
+    border: 1px solid var(--border-subtle);
 }
 
 .cypher-panel .editor-toolbar {
     display: flex;
     gap: 6px;
     padding: 8px 12px;
-    background: rgba(51, 65, 85, 0.3);
-    border-bottom: 1px solid #334155;
+    background: rgba(0, 0, 0, 0.2);
+    border-bottom: 1px solid var(--border);
 }
 
 .cypher-panel .tool-btn {
     padding: 6px 10px;
     background: transparent;
-    border: 1px solid #334155;
+    border: 1px solid var(--border);
     border-radius: 4px;
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     transition: all 0.15s;
 }
 
 .cypher-panel .tool-btn:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--hover);
+    color: var(--text);
 }
 
 .cypher-panel .editor-wrapper {
     display: flex;
-    background: #0f172a;
+    background: var(--bg);
 }
 
 .cypher-panel .line-nums {
     min-width: 32px;
     padding: 12px 8px;
-    background: rgba(30, 41, 59, 0.5);
-    border-right: 1px solid #334155;
+    background: rgba(0, 0, 0, 0.3);
+    border-right: 1px solid var(--border);
     text-align: right;
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 11px;
     line-height: 1.6;
-    color: #475569;
+    color: var(--text-secondary);
     user-select: none;
 }
 
@@ -920,7 +930,7 @@
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 11px;
     line-height: 1.6;
-    color: #e2e8f0;
+    color: var(--text);
     tab-size: 2;
 }
 
@@ -929,7 +939,7 @@
 }
 
 #cypher-editor::placeholder {
-    color: #475569;
+    color: var(--text-secondary);
 }
 
 /* ============================================
@@ -941,7 +951,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(15, 23, 42, 0.95);
+    background: rgba(0, 0, 0, 0.95);
     display: none;
     flex-direction: column;
     align-items: center;
@@ -953,8 +963,8 @@
 .cypher-panel .loading-overlay .spinner {
     width: 32px;
     height: 32px;
-    border: 3px solid #334155;
-    border-top-color: #3b82f6;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: cypher-spin 0.8s linear infinite;
 }
@@ -971,7 +981,7 @@
     bottom: 20px;
     right: 440px;
     padding: 12px 20px;
-    background: #1e293b;
+    background: var(--panel-bg);
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
     z-index: 1001;
@@ -979,8 +989,8 @@
     opacity: 0;
     transition: all 0.3s ease;
     font-size: 13px;
-    color: #e2e8f0;
-    border-left: 4px solid #3b82f6;
+    color: var(--text);
+    border-left: 4px solid var(--accent);
 }
 
 .cypher-toast.show {
@@ -989,19 +999,19 @@
 }
 
 .cypher-toast.success {
-    border-left-color: #10b981;
+    border-left-color: var(--success, #10b981);
 }
 
 .cypher-toast.error {
-    border-left-color: #ef4444;
+    border-left-color: var(--error, #ef4444);
 }
 
 .cypher-toast.warning {
-    border-left-color: #f59e0b;
+    border-left-color: var(--warning, #f59e0b);
 }
 
 .cypher-toast.info {
-    border-left-color: #3b82f6;
+    border-left-color: var(--accent);
 }
 
 /* ============================================
@@ -1013,19 +1023,19 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--panel-bg) 0%, var(--accent) 100%);
+    background: var(--accent);
     border: none;
     border-radius: 10px;
-    color: white;
+    color: var(--text-inverted);
     font-size: 20px;
     cursor: pointer;
-    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 2px 10px var(--accent-muted);
     transition: all 0.2s;
 }
 
 #cypher-toggle-btn:hover {
     transform: scale(1.05);
-    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 4px 15px var(--accent-muted);
 }
 
 #cypher-toggle-container {

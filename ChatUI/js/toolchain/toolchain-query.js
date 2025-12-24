@@ -308,7 +308,7 @@
             <div style="padding: 20px; overflow-y: auto; height: 100%;">
                 <!-- Header -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2 style="margin: 0; color: #60a5fa;">🚀 Toolchain Query Builder</h2>
+                    <h2 style="margin: 0; color: #60a5fa;">Toolchain Query Builder</h2>
                     <div style="display: flex; gap: 8px;">
                         <button class="panel-btn" onclick="app.switchToolchainView('tools')">Tools</button>
                         <button class="panel-btn" onclick="app.switchToolchainView('executions')">Executions</button>

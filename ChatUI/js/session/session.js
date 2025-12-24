@@ -136,8 +136,21 @@
                 this.addSystemMessage('Connection failed. Running in offline mode.');
                 this.veraRobot.setState('error');
             }
-            VeraChat.prototype.initModernFeatures()
-            VeraChat.prototype.initOllama()
+            // VeraChat.prototype.initModernFeatures()
+            // VeraChat.prototype.initOllama()
+            // ✅ CALL THESE AFTER init() completes, with existence checks
+            if (typeof this.initModernFeatures === 'function') {
+                this.initModernFeatures();
+            } else {
+                console.warn('initModernFeatures not loaded yet');
+            }
+            
+            if (typeof this.initOllama === 'function') {
+                this.initOllama();
+            } else {
+                console.warn('initOllama not loaded yet');
+            }
+
             // Hide overlay when ready
             setTimeout(() => {
                 if (window.hideStartupOverlay) {
@@ -390,114 +403,537 @@
                             }
                         </style>
                     `;
+            
+                case 'organiser':
+                    return `
+                        <body>
+                            <!-- Calendar Tab Content for Vera AI -->
+<!-- Features: Collapsible sidebars, responsive layout, agent chat, minimal emojis -->
+
+<div id="calendar-container" style="display: grid; grid-template-columns: 250px 1fr 280px; gap: 15px; padding: 15px; height: 100%; transition: grid-template-columns 0.3s ease;">
+    
+    <!-- Left Sidebar -->
+    <div class="calendar-sidebar-left" style="background: var(--bg-darker); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; gap: 15px; overflow: hidden; transition: all 0.3s ease;">
+        
+        <!-- Header -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <div class="sidebar-header-content">
+                <h3 style="font-size: 1.2rem; font-weight: 600; margin: 0;">Calendar</h3>
+            </div>
+            <button id="toggleLeftSidebar" class="sidebar-toggle" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.2rem;" title="Toggle sidebar">‹</button>
+        </div>
+        
+        <!-- Connection Status -->
+        <div class="sidebar-content">
+            <div id="connectionStatus" class="connection-status status-disconnected" style="padding: 6px 10px; border-radius: 4px; font-size: 0.85rem; text-align: center;">
+                Disconnected
+            </div>
+            
+            <!-- Action Buttons -->
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
+                <button id="newEventBtn" class="btn btn-primary" style="width: 100%; padding: 10px; border: none; border-radius: 6px; cursor: pointer; background: var(--accent); color: white; font-size: 0.95rem;">
+                    + New Event
+                </button>
+                <button id="refreshCalendar" class="btn btn-secondary" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--bg); color: var(--text); font-size: 0.95rem;">
+                    Refresh
+                </button>
+            </div>
+            
+            <!-- Calendar Sources -->
+            <div style="margin-top: 20px;">
+                <div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; color: var(--text-muted);">Sources</div>
+                <div id="sourceFilters" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Calendar Area -->
+    <div style="background: var(--bg-darker); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; overflow: hidden;">
+        
+        <!-- Calendar Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <div id="calendarStats" style="font-size: 0.9rem; color: var(--text-muted);">
+                <!-- Stats populated by JS -->
+            </div>
+        </div>
+        
+        <!-- Calendar -->
+        <div id="calendar" style="flex: 1; overflow: auto;"></div>
+    </div>
+    
+    <!-- Right Sidebar -->
+    <div class="calendar-sidebar-right" style="background: var(--bg-darker); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; gap: 15px; overflow: hidden; transition: all 0.3s ease;">
+        
+        <!-- Header -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <button id="toggleRightSidebar" class="sidebar-toggle" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.2rem;" title="Toggle sidebar">›</button>
+            <div class="sidebar-header-content">
+                <h3 style="font-size: 1.2rem; font-weight: 600; margin: 0;">Assistant</h3>
+            </div>
+        </div>
+        
+        <div class="sidebar-content" style="flex: 1; display: flex; flex-direction: column; gap: 15px; overflow: hidden;">
+            
+            <!-- Agent Chat -->
+            <div style="flex: 1; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+                <div style="padding: 10px; background: var(--bg); border-bottom: 1px solid var(--border);">
+                    <div style="font-size: 0.9rem; font-weight: 600;">Scheduling Agent</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Ask about events, create tasks, manage schedule</div>
+                </div>
+                
+                <div id="agentChatMessages" style="flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-height: 200px; max-height: 400px;">
+                    <div class="chat-message chat-message-assistant">
+                        <div class="chat-message-content" style="background: var(--bg); padding: 10px; border-radius: 6px; font-size: 0.9rem;">
+                            Hi! I can help you manage your calendar. Try asking me to:
+                            <ul style="margin: 8px 0 0 20px; padding: 0;">
+                                <li>Schedule a meeting</li>
+                                <li>Check what's coming up</li>
+                                <li>Find free time</li>
+                                <li>Add a reminder</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="agentChatForm" style="padding: 12px; background: var(--bg); border-top: 1px solid var(--border); display: flex; gap: 8px;">
+                    <input type="text" id="agentChatInput" placeholder="Ask the scheduling agent..." style="flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.9rem;" />
+                    <button type="submit" id="agentChatSend" style="padding: 8px 15px; border: none; border-radius: 4px; background: var(--accent); color: white; cursor: pointer; font-size: 0.9rem;">
+                        Send
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Scheduled Jobs -->
+            <div style="border-top: 1px solid var(--border); padding-top: 15px;">
+                <div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; color: var(--text-muted);">Scheduled Jobs</div>
+                <div id="cronJobsList" style="display: flex; flex-direction: column; gap: 8px; max-height: 200px; overflow-y: auto;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Event Creation Modal -->
+<div id="eventModal" class="modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--bg); border-radius: 12px; padding: 25px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+            <h2 style="margin: 0; font-size: 1.4rem;">Create Event</h2>
+            <span class="close" style="font-size: 1.8rem; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <form id="eventForm">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventTitle" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted);">Title *</label>
+                <input type="text" id="eventTitle" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text);">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventStart" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted);">Start *</label>
+                <input type="datetime-local" id="eventStart" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text);">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventEnd" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted);">End *</label>
+                <input type="datetime-local" id="eventEnd" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text);">
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventSource" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted);">Calendar *</label>
+                <select id="eventSource" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text);"></select>
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventDescription" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted);">Description</label>
+                <textarea id="eventDescription" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); min-height: 80px; resize: vertical;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem;">
+                Create Event
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Event Details Modal -->
+<div id="eventDetailsModal" class="modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--bg); border-radius: 12px; padding: 25px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+            <h2 style="margin: 0; font-size: 1.4rem;">Event Details</h2>
+            <span class="close" style="font-size: 1.8rem; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <div id="eventDetailsContent">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+</div>
+
+<style>
+/* Sidebar collapse styles */
+.calendar-sidebar-left.collapsed,
+.calendar-sidebar-right.collapsed {
+    width: 50px;
+}
+
+.calendar-sidebar-left.collapsed .sidebar-content,
+.calendar-sidebar-right.collapsed .sidebar-content,
+.calendar-sidebar-left.collapsed .sidebar-header-content,
+.calendar-sidebar-right.collapsed .sidebar-header-content {
+    display: none;
+}
+
+.calendar-sidebar-left.collapsed #toggleLeftSidebar {
+    transform: rotate(180deg);
+}
+
+.calendar-sidebar-right.collapsed #toggleRightSidebar {
+    transform: rotate(180deg);
+}
+
+.sidebar-toggle {
+    transition: transform 0.3s ease;
+}
+
+.sidebar-toggle:hover {
+    color: var(--text) !important;
+}
+
+/* Source filter styles */
+.source-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 0.9rem;
+}
+
+.source-filter:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.source-filter.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.source-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Connection status */
+.connection-status {
+    transition: all 0.3s;
+}
+
+.status-connected {
+    background: rgba(52, 168, 83, 0.2);
+    color: var(--success, #34a853);
+}
+
+.status-disconnected {
+    background: rgba(234, 67, 53, 0.2);
+    color: var(--danger, #ea4335);
+}
+
+.status-error {
+    background: rgba(251, 188, 4, 0.2);
+    color: var(--warning, #fbbc04);
+}
+
+/* Cron job items */
+.cron-job-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    font-size: 0.85rem;
+}
+
+.cron-job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.cron-job-details {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.cron-job-details small {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+/* Chat messages */
+.chat-message {
+    display: flex;
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-message-user {
+    justify-content: flex-end;
+}
+
+.chat-message-user .chat-message-content {
+    background: var(--accent) !important;
+    color: white;
+}
+
+.chat-message-assistant .chat-message-content {
+    background: var(--bg);
+}
+
+.chat-message-content {
+    max-width: 85%;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+/* Stats */
+.stat-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: 10px;
+}
+
+.stat-color {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+/* Event details */
+.event-details h3 {
+    margin: 0 0 15px 0;
+    font-size: 1.3rem;
+}
+
+.event-info {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.info-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.info-row strong {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.source-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    width: fit-content;
+}
+
+.event-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 10px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+}
+
+.btn-danger {
+    background: var(--danger, #ea4335);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    opacity: 0.9;
+}
+
+.btn-secondary {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-darker);
+}
+
+.badge {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: rgba(52, 168, 83, 0.2);
+    color: var(--success, #34a853);
+}
+
+.badge-secondary {
+    background: rgba(154, 160, 166, 0.2);
+    color: var(--text-muted);
+}
+
+/* Notifications */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.calendar-notification {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 18px;
+    min-width: 250px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s ease-out;
+    font-size: 0.9rem;
+}
+
+.calendar-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification-success {
+    border-left: 4px solid var(--success, #34a853);
+}
+
+.notification-error {
+    border-left: 4px solid var(--danger, #ea4335);
+}
+
+.notification-warning {
+    border-left: 4px solid var(--warning, #fbbc04);
+}
+
+.notification-info {
+    border-left: 4px solid var(--accent, #4285f4);
+}
+
+/* FullCalendar theme */
+.fc {
+    --fc-border-color: var(--border);
+    --fc-button-bg-color: var(--accent, #4285f4);
+    --fc-button-border-color: var(--accent, #4285f4);
+    --fc-button-hover-bg-color: #3367d6;
+    --fc-button-active-bg-color: #2851a3;
+    --fc-today-bg-color: rgba(66, 133, 244, 0.1);
+}
+
+.fc .fc-toolbar-title {
+    color: var(--text);
+    font-size: 1.4rem;
+}
+
+.fc .fc-col-header-cell {
+    background: var(--bg);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    padding: 8px 0;
+}
+
+.fc .fc-daygrid-day-number {
+    color: var(--text);
+    padding: 6px;
+}
+
+.fc-event {
+    border-radius: 3px;
+    padding: 2px 4px;
+    cursor: pointer;
+}
+</style>
+                               
+                    `;
          case 'agents':
             return `
                 <div id="agents-container" style="padding: 24px; height: 100%; overflow-y: auto;">
-                    
-                    <!-- Header -->
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid var(--border);">
-                        <div>
-                            <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700;">Vera Agents</h2>
-                            <p style="margin: 0; color: var(--text-muted); font-size: 14px;">Configure, test, and manage AI agents</p>
-                        </div>
+                    <div class="header">
+                        <h1>Vera Agents Manager</h1>
+                        <p>YAML-based agent configuration system with Jinja2 templates and Ollama model building</p>
                     </div>
                     
-                    <!-- Navigation -->
-                    <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
-                        <button class="agents-nav-btn active" data-panel="browse" 
-                                onclick="app.switchAgentsPanel('browse')"
-                                style="padding: 12px 24px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                    <!-- Navigation Tabs -->
+                    <div class="nav-tabs">
+                        <button class="nav-tab agents-nav-btn active" data-panel="browse" onclick="app.switchAgentsV2Panel('browse')">
                             Browse Agents
                         </button>
-                        <button class="agents-nav-btn" data-panel="edit" 
-                                onclick="app.switchAgentsPanel('edit')"
-                                style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                        <button class="nav-tab agents-nav-btn" data-panel="edit" onclick="app.switchAgentsV2Panel('edit')">
                             Edit Agent
                         </button>
-                        <button class="agents-nav-btn" data-panel="test" 
-                                onclick="app.switchAgentsPanel('test')"
-                                style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                            Test Agent
+                        <button class="nav-tab agents-nav-btn" data-panel="build" onclick="app.switchAgentsV2Panel('build')">
+                            Build
                         </button>
-                        <button class="agents-nav-btn" data-panel="stats" 
-                                onclick="app.switchAgentsPanel('stats')"
-                                style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                            Statistics
+                        <button class="nav-tab agents-nav-btn" data-panel="system" onclick="app.switchAgentsV2Panel('system')">
+                            System
                         </button>
                     </div>
                     
                     <!-- Browse Panel -->
-                    <div id="agents-panel-browse" class="agents-panel">
-                        <div style="background: var(--bg-darker); padding: 20px; border-radius: 12px; margin-bottom: 20px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                                <div>
-                                    <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600;">Registered Agents</h3>
-                                    <p style="margin: 0; font-size: 13px; color: var(--text-muted);">Select an agent to edit, test, or configure</p>
-                                </div>
-                                
-                                <div style="display: flex; gap: 8px;">
-                                    <select onchange="app.setAgentFilter('category', this.value)" 
-                                            style="padding: 8px 12px; background: var(--bg); border: 2px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px;">
-                                        <option value="all">All Categories</option>
-                                        <option value="routing">Routing</option>
-                                        <option value="execution">Execution</option>
-                                        <option value="proactive">Proactive</option>
-                                        <option value="management">Management</option>
-                                        <option value="quality">Quality</option>
-                                        <option value="processing">Processing</option>
-                                        <option value="debugging">Debugging</option>
-                                        <option value="memory">Memory</option>
-                                    </select>
-                                    
-                                    <select onchange="app.setAgentFilter('enabled', this.value)" 
-                                            style="padding: 8px 12px; background: var(--bg); border: 2px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px;">
-                                        <option value="all">All Agents</option>
-                                        <option value="enabled">Enabled Only</option>
-                                        <option value="disabled">Disabled Only</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div id="agents-list" style="display: grid; gap: 16px;">
-                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
-                                <h3 style="margin: 0 0 8px 0;">Loading Agents...</h3>
-                                <p style="margin: 0;">Please wait</p>
-                            </div>
+                    <div id="agents-panel-browse" class="panel agents-panel">
+                        <div id="agents-list">
+                            <p style="color: var(--text-muted); text-align: center; padding: 48px;">Loading agents...</p>
                         </div>
                     </div>
                     
                     <!-- Edit Panel -->
-                    <div id="agents-panel-edit" class="agents-panel" style="display: none;">
+                    <div id="agents-panel-edit" class="panel agents-panel" style="display: none;">
                         <div id="agents-editor-content">
-                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">✏️</div>
-                                <h3 style="margin: 0 0 8px 0;">No Agent Selected</h3>
-                                <p style="margin: 0;">Select an agent from the Browse panel to edit</p>
-                            </div>
+                            <p style="color: var(--text-muted); text-align: center; padding: 48px;">Select an agent to edit</p>
                         </div>
                     </div>
                     
-                    <!-- Test Panel -->
-                    <div id="agents-panel-test" class="agents-panel" style="display: none;">
-                        <div id="agents-test-content">
-                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">🧪</div>
-                                <h3 style="margin: 0 0 8px 0;">No Agent Selected</h3>
-                                <p style="margin: 0;">Select an agent from the Browse panel to test</p>
-                            </div>
+                    <!-- Build Panel -->
+                    <div id="agents-panel-build" class="panel agents-panel" style="display: none;">
+                        <div id="agents-build-content">
+                            <p style="color: var(--text-muted); text-align: center; padding: 48px;">Loading build panel...</p>
                         </div>
                     </div>
                     
-                    <!-- Stats Panel -->
-                    <div id="agents-panel-stats" class="agents-panel" style="display: none;">
-                        <div id="agents-stats-content">
-                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
-                                <h3 style="margin: 0 0 8px 0;">Loading Statistics...</h3>
-                                <p style="margin: 0;">Please wait</p>
-                            </div>
+                    <!-- System Panel -->
+                    <div id="agents-panel-system" class="panel agents-panel" style="display: none;">
+                        <div id="agents-system-content">
+                            <p style="color: var(--text-muted); text-align: center; padding: 48px;">Loading system info...</p>
                         </div>
                     </div>
                     
@@ -522,6 +958,7 @@
                             <div class="input-wrapper">
                                 <textarea id="messageInput" placeholder="Type your message..." rows="1"></textarea>
                                 <button class="send-btn" id="sendBtn" onclick="app.sendMessage()">Send</button>
+                                <button class="stop-btn" id="stopBtn" onclick="app.stopMessage()">Stop</button>
                             </div>
                         </div>
                     `;
@@ -540,7 +977,7 @@
                                 <span class="panel-title">KNOWLEDGE GRAPH</span>
                             </span>
                             <div class="panel-controls">
-                                 <button class="panel-btn" onclick="window.GraphAddon && window.GraphAddon.toggleSettings()" title="Saved Graphs">Saved Graphs</button>
+                                 <button class="panel-btn" id="openGraphStorage" onclick="showGraphStorageMenu(app.VeraChat)" title="Saved Graphs">Saved Graphs</button>
                                 <button class="panel-btn" onclick="window.GraphAddon && window.GraphAddon.toggleSettings()" title="Settings">Settings</button>
                                 <button class="panel-btn" onclick="window.CypherQuery && window.CypherQuery.togglePanel()" title="Query Builder">Query</button>
                                 <button class="panel-btn" onclick="app.fitGraph()" title="Fit Graph to Window">Fit</button>
@@ -622,7 +1059,7 @@
                     // Container that proactive-focus-manager.js expects
                     return `
                         <div id="focus" style="padding: 20px; overflow-y: auto; height: 100%;">
-                            <h2 style="margin-bottom: 16px;">🎯 Proactive Focus</h2>
+                            <h2 style="margin-bottom: 16px;">Proactive Focus</h2>
                             <p style="color: #94a3b8;">Loading focus dashboard...</p>
                         </div>
                     `;
@@ -630,7 +1067,7 @@
                 case 'toolchain':
                     return `
                         <div id="toolchain" style="padding: 20px; overflow-y: auto; height: 100%;">
-                            <h2 style="margin-bottom: 16px;">🔧 Toolchain</h2>
+                            <h2 style="margin-bottom: 16px;">Toolchain</h2>
                             <p style="color: #94a3b8;">Loading toolchain...</p>
                         </div>
                     `;
@@ -1418,6 +1855,13 @@
                     }
                 }, 50);
             }
+            if (tabId === 'organiser') {
+                setTimeout(() => {
+                    if (this.initCalendar) {
+                        window.calendarManager.init();
+                    }
+                }, 50);
+            }
             if (tabId === 'chat-history') {
                 setTimeout(async () => {
                     if (!this.sessionHistoryReady) {
@@ -2027,6 +2471,554 @@
                 }, 100);
             }
         }
+
+// ==================== CALENDAR METHODS ====================
+
+initCalendar() {
+    console.log('[Calendar] Initializing...');
+    
+    // Initialize state
+    this.calendarInstance = null;
+    this.calendarWs = null;
+    this.calendarSources = [];
+    this.calendarEvents = [];
+    
+    // Load FullCalendar library if not already loaded
+    if (typeof FullCalendar === 'undefined') {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.css';
+        document.head.appendChild(link);
+        
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js';
+        script.onload = () => this.setupCalendar();
+        document.head.appendChild(script);
+    } else {
+        this.setupCalendar();
+    }
+    
+    // Setup WebSocket
+    this.setupCalendarWebSocket();
+    
+    // Load initial data
+    this.loadCalendarSources();
+    this.loadCalendarEvents();
+    this.loadScheduledJobs();
+}
+
+setupCalendar() {
+    const calendarEl = document.getElementById('vera-calendar');
+    if (!calendarEl) {
+        console.warn('[Calendar] Calendar element not found');
+        return;
+    }
+    
+    // Get theme colors
+    const styles = getComputedStyle(document.documentElement);
+    const bgColor = styles.getPropertyValue('--bg').trim();
+    const textColor = styles.getPropertyValue('--text').trim();
+    const borderColor = styles.getPropertyValue('--border').trim();
+    
+    this.calendarInstance = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+        },
+        editable: false,
+        selectable: true,
+        selectMirror: true,
+        dayMaxEvents: true,
+        height: '100%',
+        
+        // Theme colors
+        eventColor: styles.getPropertyValue('--accent').trim(),
+        
+        // Event handlers
+        select: (info) => this.handleDateSelect(info),
+        eventClick: (info) => this.handleEventClick(info),
+        
+        // Custom rendering
+        eventContent: (arg) => this.renderCalendarEvent(arg)
+    });
+    
+    this.calendarInstance.render();
+    console.log('[Calendar] FullCalendar rendered');
+}
+
+setupCalendarWebSocket() {
+    const wsUrl = `ws://llm.int:8888/api/calendar/ws`;
+    console.log('[Calendar WS] Connecting to:', wsUrl);
+    
+    this.calendarWs = new WebSocket(wsUrl);
+    
+    this.calendarWs.onopen = () => {
+        console.log('[Calendar WS] Connected');
+        this.updateCalendarStatus('connected', 'Connected');
+        this.calendarWs.send(JSON.stringify({ type: 'subscribe' }));
+    };
+    
+    this.calendarWs.onmessage = (event) => {
+        try {
+            const message = JSON.parse(event.data);
+            this.handleCalendarWebSocketMessage(message);
+        } catch (error) {
+            console.error('[Calendar WS] Error parsing message:', error);
+        }
+    };
+    
+    this.calendarWs.onerror = (error) => {
+        console.error('[Calendar WS] Error:', error);
+        this.updateCalendarStatus('error', 'Error');
+    };
+    
+    this.calendarWs.onclose = () => {
+        console.log('[Calendar WS] Disconnected');
+        this.updateCalendarStatus('disconnected', 'Disconnected');
+        // Attempt reconnect
+        setTimeout(() => this.setupCalendarWebSocket(), 3000);
+    };
+}
+
+handleCalendarWebSocketMessage(message) {
+    console.log('[Calendar WS] Received:', message.type);
+    
+    switch (message.type) {
+        case 'subscribed':
+            console.log('[Calendar WS] Subscription confirmed');
+            break;
+            
+        case 'events_update':
+            console.log('[Calendar WS] Events update received');
+            this.loadCalendarEvents();
+            break;
+            
+        case 'event_created':
+            console.log('[Calendar WS] New event created');
+            this.addCalendarEvent(message.data);
+            this.showCalendarNotification('Event created successfully', 'success');
+            break;
+            
+        case 'event_deleted':
+            console.log('[Calendar WS] Event deleted');
+            this.removeCalendarEvent(message.data.source, message.data.id);
+            this.showCalendarNotification('Event deleted', 'info');
+            break;
+            
+        case 'pong':
+            // Heartbeat response
+            break;
+    }
+}
+
+async loadCalendarSources() {
+    try {
+        const response = await fetch('http://llm.int:8888/api/calendar/sources');
+        const data = await response.json();
+        this.calendarSources = data.sources;
+        
+        this.renderCalendarSources();
+    } catch (error) {
+        console.error('[Calendar] Error loading sources:', error);
+    }
+}
+
+async loadCalendarEvents() {
+    try {
+        const response = await fetch('http://llm.int:8888/api/calendar/events?days_ahead=30');
+        const events = await response.json();
+        
+        this.calendarEvents = events;
+        
+        // Clear existing events
+        if (this.calendarInstance) {
+            this.calendarInstance.getEvents().forEach(e => e.remove());
+            
+            // Add events to calendar
+            events.forEach(event => {
+                this.calendarInstance.addEvent({
+                    id: `${event.source}_${event.id}`,
+                    title: event.title,
+                    start: event.start,
+                    end: event.end || event.start,
+                    backgroundColor: event.color || this.getSourceColor(event.source),
+                    borderColor: event.color || this.getSourceColor(event.source),
+                    extendedProps: {
+                        source: event.source,
+                        originalId: event.id,
+                        description: event.description,
+                        recurrence: event.recurrence
+                    }
+                });
+            });
+        }
+        
+        // Update stats
+        this.updateCalendarStats(events);
+        
+        console.log(`[Calendar] Loaded ${events.length} events`);
+    } catch (error) {
+        console.error('[Calendar] Error loading events:', error);
+        this.updateCalendarStatus('error', 'Failed to load events');
+    }
+}
+
+async loadScheduledJobs() {
+    try {
+        const response = await fetch('http://llm.int:8888/api/calendar/cron');
+        const jobs = await response.json();
+        
+        this.renderScheduledJobs(jobs);
+    } catch (error) {
+        console.error('[Calendar] Error loading jobs:', error);
+    }
+}
+
+renderCalendarSources() {
+    const container = document.getElementById('cal-sources-list');
+    if (!container) return;
+    
+    if (this.calendarSources.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">No sources</p>';
+        return;
+    }
+    
+    container.innerHTML = this.calendarSources.map(source => `
+        <label class="cal-source-filter">
+            <input type="checkbox" 
+                   value="${source.id}" 
+                   ${source.enabled ? 'checked' : ''}
+                   onchange="app.toggleCalendarSource('${source.id}', this.checked)">
+            <span class="cal-source-color" style="background-color: ${source.color}"></span>
+            <span style="font-size: 12px;">${source.name}</span>
+        </label>
+    `).join('');
+}
+
+renderScheduledJobs(jobs) {
+    const container = document.getElementById('cal-jobs-list');
+    if (!container) return;
+    
+    if (!jobs || jobs.length === 0) {
+        container.innerHTML = '<p style="color: var(--text-muted); font-size: 12px;">No scheduled jobs</p>';
+        return;
+    }
+    
+    container.innerHTML = jobs.map(job => `
+        <div class="cal-job-item">
+            <strong>${job.name}</strong>
+            <small>${job.schedule}</small>
+            ${job.next_run ? `<small>Next: ${this.formatDateTime(new Date(job.next_run))}</small>` : ''}
+        </div>
+    `).join('');
+}
+
+updateCalendarStats(events) {
+    const googleCount = events.filter(e => e.source === 'google').length;
+    const localCount = events.filter(e => e.source === 'local').length;
+    const jobsCount = events.filter(e => e.source === 'apscheduler').length;
+    
+    document.getElementById('cal-events-count').textContent = events.length;
+    document.getElementById('cal-google-count').textContent = googleCount;
+    document.getElementById('cal-local-count').textContent = localCount;
+    document.getElementById('cal-jobs-count').textContent = jobsCount;
+}
+
+updateCalendarStatus(status, text) {
+    const indicator = document.getElementById('cal-status-indicator');
+    const statusText = document.getElementById('cal-status-text');
+    
+    if (indicator) {
+        const colors = {
+            'connected': 'var(--success)',
+            'disconnected': 'var(--danger)',
+            'error': 'var(--danger)',
+            'loading': 'var(--warning)'
+        };
+        indicator.style.background = colors[status] || 'var(--text-muted)';
+    }
+    
+    if (statusText) {
+        statusText.textContent = text;
+    }
+}
+
+getSourceColor(source) {
+    const sourceObj = this.calendarSources.find(s => s.id === source);
+    return sourceObj?.color || '#999';
+}
+
+toggleCalendarSource(sourceId, enabled) {
+    console.log(`[Calendar] Toggle source ${sourceId}:`, enabled);
+    
+    if (!this.calendarInstance) return;
+    
+    const events = this.calendarInstance.getEvents();
+    events.forEach(event => {
+        if (event.extendedProps.source === sourceId) {
+            event.setProp('display', enabled ? 'auto' : 'none');
+        }
+    });
+}
+
+handleDateSelect(info) {
+    console.log('[Calendar] Date selected:', info.startStr, 'to', info.endStr);
+    this.showCreateEventModal(info.start, info.end);
+    this.calendarInstance.unselect();
+}
+
+handleEventClick(info) {
+    console.log('[Calendar] Event clicked:', info.event.title);
+    this.showEventDetails(info.event);
+}
+
+renderCalendarEvent(arg) {
+    const source = arg.event.extendedProps.source;
+    const icons = {
+        'google': '📅',
+        'local': '📋',
+        'apscheduler': '⏰'
+    };
+    const icon = icons[source] || '📌';
+    
+    return {
+        html: `
+            <div style="padding: 2px 4px; overflow: hidden;">
+                <span style="font-size: 0.85em;">${icon}</span>
+                <span style="font-size: 0.9em; margin-left: 4px;">${arg.event.title}</span>
+            </div>
+        `
+    };
+}
+
+showCreateEventModal(start = null, end = null) {
+    const modal = document.getElementById('cal-event-modal');
+    if (!modal) return;
+    
+    // Reset form
+    document.getElementById('cal-event-form').reset();
+    
+    // Set default times
+    if (start) {
+        document.getElementById('cal-event-start').value = this.formatDatetimeLocal(start);
+    } else {
+        const now = new Date();
+        document.getElementById('cal-event-start').value = this.formatDatetimeLocal(now);
+    }
+    
+    if (end) {
+        document.getElementById('cal-event-end').value = this.formatDatetimeLocal(end);
+    } else {
+        const oneHourLater = new Date(Date.now() + 3600000);
+        document.getElementById('cal-event-end').value = this.formatDatetimeLocal(oneHourLater);
+    }
+    
+    modal.style.display = 'flex';
+}
+
+closeEventModal() {
+    const modal = document.getElementById('cal-event-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async submitEvent(event) {
+    event.preventDefault();
+    
+    const eventData = {
+        title: document.getElementById('cal-event-title').value,
+        start: new Date(document.getElementById('cal-event-start').value).toISOString(),
+        end: new Date(document.getElementById('cal-event-end').value).toISOString(),
+        source: document.getElementById('cal-event-source').value,
+        description: document.getElementById('cal-event-description').value || null
+    };
+    
+    try {
+        const response = await fetch('http://llm.int:8888/api/calendar/events', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(eventData)
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to create event');
+        }
+        
+        const newEvent = await response.json();
+        console.log('[Calendar] Event created:', newEvent);
+        
+        this.closeEventModal();
+        this.showCalendarNotification('Event created successfully', 'success');
+        
+        // Reload events
+        await this.loadCalendarEvents();
+        
+    } catch (error) {
+        console.error('[Calendar] Error creating event:', error);
+        this.showCalendarNotification('Failed to create event', 'error');
+    }
+}
+
+showEventDetails(event) {
+    const modal = document.getElementById('cal-details-modal');
+    const content = document.getElementById('cal-event-details-content');
+    if (!modal || !content) return;
+    
+    const props = event.extendedProps;
+    const source = this.calendarSources.find(s => s.id === props.source);
+    
+    content.innerHTML = `
+        <div style="margin-bottom: 16px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 16px;">${event.title}</h4>
+            <div style="display: inline-block; padding: 4px 8px; background: ${source?.color || '#999'}; border-radius: 4px; color: white; font-size: 11px; font-weight: 600;">
+                ${source?.name || props.source}
+            </div>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+            <div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Start</div>
+                <div style="font-weight: 600;">${this.formatDateTime(event.start)}</div>
+            </div>
+            
+            <div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">End</div>
+                <div style="font-weight: 600;">${event.end ? this.formatDateTime(event.end) : 'N/A'}</div>
+            </div>
+            
+            ${props.description ? `
+                <div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Description</div>
+                    <div>${props.description}</div>
+                </div>
+            ` : ''}
+            
+            ${props.recurrence ? `
+                <div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Recurrence</div>
+                    <div style="font-family: monospace; font-size: 11px;">${props.recurrence}</div>
+                </div>
+            ` : ''}
+        </div>
+        
+        <div style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 16px; border-top: 1px solid var(--border);">
+            <button onclick="app.deleteCalendarEvent('${props.source}', '${props.originalId}')" 
+                    style="padding: 8px 16px; background: var(--danger); border: none; border-radius: 4px; color: white; cursor: pointer;">
+                Delete
+            </button>
+            <button onclick="app.closeDetailsModal()" 
+                    style="padding: 8px 16px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text); cursor: pointer;">
+                Close
+            </button>
+        </div>
+    `;
+    
+    modal.style.display = 'flex';
+}
+
+closeDetailsModal() {
+    const modal = document.getElementById('cal-details-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async deleteCalendarEvent(source, eventId) {
+    if (!confirm('Are you sure you want to delete this event?')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`http://llm.int:8888/api/calendar/events/${source}/${eventId}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to delete event');
+        }
+        
+        console.log('[Calendar] Event deleted');
+        this.closeDetailsModal();
+        this.showCalendarNotification('Event deleted', 'success');
+        
+        // Remove from calendar
+        const calendarEventId = `${source}_${eventId}`;
+        const event = this.calendarInstance.getEventById(calendarEventId);
+        if (event) {
+            event.remove();
+        }
+        
+        // Reload events
+        await this.loadCalendarEvents();
+        
+    } catch (error) {
+        console.error('[Calendar] Error deleting event:', error);
+        this.showCalendarNotification('Failed to delete event', 'error');
+    }
+}
+
+addCalendarEvent(eventData) {
+    if (!this.calendarInstance) return;
+    
+    this.calendarInstance.addEvent({
+        id: `${eventData.source}_${eventData.id}`,
+        title: eventData.title,
+        start: eventData.start,
+        end: eventData.end,
+        backgroundColor: eventData.color || this.getSourceColor(eventData.source),
+        borderColor: eventData.color || this.getSourceColor(eventData.source),
+        extendedProps: {
+            source: eventData.source,
+            originalId: eventData.id,
+            description: eventData.description
+        }
+    });
+}
+
+removeCalendarEvent(source, eventId) {
+    if (!this.calendarInstance) return;
+    
+    const calendarEventId = `${source}_${eventId}`;
+    const event = this.calendarInstance.getEventById(calendarEventId);
+    if (event) {
+        event.remove();
+    }
+}
+
+refreshCalendar() {
+    console.log('[Calendar] Refreshing...');
+    this.loadCalendarEvents();
+    this.loadScheduledJobs();
+}
+
+showCalendarNotification(message, type = 'info') {
+    // Reuse existing notification system if available
+    if (this.addSystemMessage) {
+        this.addSystemMessage(message);
+    } else {
+        console.log(`[Calendar] ${type.toUpperCase()}: ${message}`);
+    }
+}
+
+formatDateTime(date) {
+    if (!date) return 'N/A';
+    const d = new Date(date);
+    return d.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+formatDatetimeLocal(date) {
+    const d = new Date(date);
+    const offset = d.getTimezoneOffset();
+    const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+    return localDate.toISOString().slice(0, 16);
+}
+
+// ==================== END CALENDAR METHODS ====================
 
     }
 

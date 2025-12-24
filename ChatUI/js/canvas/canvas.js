@@ -35,7 +35,7 @@ VeraChat.prototype.initCanvasTab = function () {
         flex-shrink: 0;
     `;
     header.innerHTML = `
-        <span style="font-size: 24px;">Canvas</span>
+        <h2>Canvas</h2>
         <select id="canvasMode" class="panel-btn" style="padding: 6px 12px;">
             <option value="code">Code Editor (Monaco)</option>
             <option value="execute">Code Execution (Multi-Language)</option>

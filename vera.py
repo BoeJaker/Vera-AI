@@ -73,7 +73,9 @@ try:
         LogContext,
         LogLevel
     )
-except Exception as e:
+    from Vera.Agents.integration import integrate_agent_system
+
+except ImportError as e:
     print(f"Import error: {e}")
     from Agents.executive_0_9 import executive
     from Memory.memory import *
@@ -102,6 +104,18 @@ MODEL_CONFIG_FILE = "Configuration/vera_models.json"
 # Global manager instance (initialized on first use)
 _manager: Optional[OllamaConnectionManager] = None
 
+
+def extract_chunk_text(chunk):
+    """Extract text from chunk object"""
+    if hasattr(chunk, 'text'):
+        return chunk.text
+    elif hasattr(chunk, 'content'):
+        return chunk.content
+    elif isinstance(chunk, str):
+        return chunk
+    else:
+        return str(chunk)
+    
 
 class Vera:
     """
@@ -151,7 +165,9 @@ class Vera:
         
         # Now we can use structured logging
         self.logger.info("Configuration loaded successfully")
-        
+        self.logger.debug("Configuration details:")
+        self.logger.debug(json.dumps(self.config, indent=4, default=str))
+
         # Register config reload callback
         self.config_manager.register_callback(self._on_config_reload)
         
@@ -296,6 +312,7 @@ class Vera:
         )
         
         duration = self.logger.stop_timer("memory_initialization")
+        duration = duration if duration is not None else 0.0
         self.logger.success(f"Memory systems initialized in {duration:.2f}s")
         
         # --- Proactive Focus Manager ---
@@ -311,6 +328,8 @@ class Vera:
             self.focus_manager = None
             self.logger.debug("Proactive focus manager disabled")
         
+
+
         self.triage_memory = self.config.memory.enable_memory_triage
         self.memory = CombinedMemory(
             memories=[self.buffer_memory, self.vector_memory]
@@ -386,6 +405,37 @@ class Vera:
             )
             self.logger.debug("Proactive orchestrator integrated")
 
+        # ===== NEW: AGENT CONFIGURATION SYSTEM =====
+        if self.config.agents.enabled:
+            self.logger.info("Initializing agent configuration system...")
+            try:
+                self.agents = integrate_agent_system(
+                    self,
+                    self.config_manager,
+                    self.logger
+                )
+                
+                num_agents = len(self.agents.loaded_agents)
+                self.logger.success(f"Agent system initialized with {num_agents} agents")
+                self.logger.info(f"Loaded agents: {list(self.agents.loaded_agents.keys())}")
+                self.logger.debug(f"Agent setup complete: {self.agents}")
+                self.logger.debug(f"Agent system directories: agents_dir={self.agents.agents_dir}, templates_dir={self.agents.templates_dir}, build_dir={self.agents.build_dir}")
+
+
+
+                # Log loaded agents
+                for agent_info in self.agents.list_loaded_agents():
+                    self.logger.debug(
+                        f"  • {agent_info['name']}: {agent_info['description']}"
+                    )
+            
+            except Exception as e:
+                self.logger.error(f"Failed to initialize agent system: {e}", exc_info=True)
+                self.agents = None
+        else:
+            self.agents = None
+            self.logger.info("Agent system disabled (set agents.enabled: true in config)")
+
         # --- Playwright Browser Setup ---
         if self.config.playwright.enabled:
             self.logger.info("Initializing Playwright browser...")
@@ -398,12 +448,38 @@ class Vera:
         else:
             self.playwright_tools = []
             self.logger.debug("Playwright browser disabled")
-        
+
+        # # Initialize plugin manager - recon map backwards compatible
+        # try:
+        #     from Vera.Toolchain.plugin_manager import PluginManager
+        #     self.plugin_manager = PluginManager(
+        #         graph_manager=self.graph_manager if hasattr(self, 'graph_manager') else None,
+        #         socketio=self.socketio if hasattr(self, 'socketio') else None,
+        #         args=self.args if hasattr(self, 'args') else None
+        #     )
+        #     self.plugin_manager.start()
+        #     print(f"✓ Plugin manager initialized with {len(self.plugin_manager.plugins)} plugins")
+        # except Exception as e:
+        #     print(f"[Warning] Could not initialize plugin manager: {e}")
+        #     self.plugin_manager = None
+
         # --- Initialize Executive and Tools ---
         self.logger.info("Loading tools...")
         self.executive_instance = executive(vera_instance=self)
         self.toolkit = ToolLoader(self)
         self.tools = self.toolkit + self.playwright_tools
+
+        [(tool.name, tool.description) for tool in self.tools]
+        # Write the tool list to a file
+        tool_list_path = os.path.join(os.path.dirname(__file__), "Agents", "agents", "tool-agent", "includes", "tool_list.txt")
+        os.makedirs(os.path.dirname(tool_list_path), exist_ok=True)
+
+        with open(tool_list_path, "w") as tool_file:
+            for tool in self.tools:
+                tool_file.write(f"{tool.name}: {tool.description}\n")
+
+        self.logger.info(f"Tool list written to {tool_list_path}")
+
         self.logger.success(f"Loaded {len(self.tools)} total tools")
         
         # --- Initialize Agents ---
@@ -603,11 +679,11 @@ class Vera:
             self.thought_queue.put(thought)
     
     def _stream_with_thought_polling(self, llm, prompt):
-        """Wrap llm.stream() to poll thought queue more actively"""
+        """Stream LLM output with immediate thought injection"""
         import threading
         from queue import Empty
         
-        # Create a queue for chunks
+        # Create queues
         chunk_queue = queue.Queue()
         streaming_done = threading.Event()
         
@@ -616,44 +692,49 @@ class Vera:
             try:
                 for chunk in llm.stream(prompt):
                     chunk_queue.put(('chunk', chunk))
-                streaming_done.set()
             except Exception as e:
                 self.logger.error(f"Stream error: {e}", exc_info=True)
                 chunk_queue.put(('error', str(e)))
+            finally:
                 streaming_done.set()
         
-        # Start streaming in background
+        # Start streaming
         thread = threading.Thread(target=stream_in_thread, daemon=True)
         thread.start()
         
-        # Poll both queues
+        # Poll both queues with thought priority
+        last_check = time.time()
+        
         while not streaming_done.is_set() or not chunk_queue.empty() or not self.thought_queue.empty():
-            # Check for thoughts first (higher priority)
-            try:
-                thought = self.thought_queue.get_nowait()
-                yield thought
-                continue
-            except Empty:
-                pass
+            # Check thoughts FIRST (every 50ms)
+            if time.time() - last_check > 0.05:
+                try:
+                    while True:  # Drain all available thoughts
+                        thought = self.thought_queue.get_nowait()
+                        # Format thought distinctively
+                        yield f"\n\n💭 **THOUGHT**: {thought}\n\n"
+                except Empty:
+                    pass
+                last_check = time.time()
             
-            # Check for chunks
+            # Then check chunks
             try:
-                item_type, item_data = chunk_queue.get(timeout=0.1)
+                item_type, item_data = chunk_queue.get(timeout=0.05)
                 if item_type == 'chunk':
-                    yield str(item_data)
+                    yield extract_chunk_text(item_data)
                 elif item_type == 'error':
                     self.logger.error(f"Stream error: {item_data}")
                     break
             except Empty:
                 continue
         
-        # Final drain of thought queue
-        while not self.thought_queue.empty():
-            try:
+        # Final drain of thoughts
+        try:
+            while True:
                 thought = self.thought_queue.get_nowait()
-                yield thought
-            except Empty:
-                break
+                yield f"\n\n💭 **THOUGHT**: {thought}\n\n"
+        except Empty:
+            pass
         
         thread.join(timeout=1.0)
 
@@ -788,29 +869,29 @@ class Vera:
                 
                 for chunk in self.orchestrator.stream_result(triage_task_id, timeout=10.0):
                     full_triage += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             except TimeoutError:
                 self.logger.warning("Triage timeout, using direct fallback")
                 for chunk in self._triage_direct(query):
                     full_triage += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             except Exception as e:
                 self.logger.error(f"Triage failed: {e}", exc_info=True)
                 for chunk in self._triage_direct(query):
                     full_triage += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
         
         else:
             for chunk in self._triage_direct(query):
                 full_triage += chunk
-                yield chunk
+                yield extract_chunk_text(chunk)
         
         triage_duration = self.logger.stop_timer("triage", context=query_context)
         
         if hasattr(self, 'mem') and hasattr(self, 'sess'):
-            self.mem.add_session_memory(self.sess.id, full_triage, "Response", {"topic": "triage"}, promote=True)
+            self.mem.add_session_memory(self.sess.id, full_triage, "Triage", {"topic": "triage","duration": triage_duration}, promote=True)
         
         # ====================================================================
         # STEP 2: ROUTE based on triage
@@ -832,7 +913,7 @@ class Vera:
                 new_focus = full_triage.lower().split("focus", 1)[-1].strip()
                 self.focus_manager.set_focus(new_focus)
                 message = f"\n✓ Focus changed to: {self.focus_manager.focus}\n"
-                yield message
+                yield extract_chunk_text(message)
                 total_response = message
                 self.logger.success(f"Focus changed to: {self.focus_manager.focus}")
         
@@ -847,7 +928,7 @@ class Vera:
                         vera_instance=self
                     )
                     message = "\n[Proactive thought generation started in background]\n"
-                    yield message
+                    yield extract_chunk_text(message)
                     total_response = message
                     self.logger.success("Proactive task submitted")
                 
@@ -860,11 +941,11 @@ class Vera:
                             auto_execute=True
                         )
                         message = "\n[Proactive workflow started]\n"
-                        yield message
+                        yield extract_chunk_text(message)
                         total_response = message
                     else:
                         message = "\n[No active focus for proactive thinking]\n"
-                        yield message
+                        yield extract_chunk_text(message)
                         total_response = message
             
             else:
@@ -875,12 +956,20 @@ class Vera:
                         auto_execute=True
                     )
                     message = "\n[Proactive workflow started]\n"
-                    yield message
+                    yield extract_chunk_text(message)
                     total_response = message
                 else:
                     message = "\n[No active focus]\n"
-                    yield message
+                    yield extract_chunk_text(message)
                     total_response = message
+
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    total_response,
+                    "Thought",
+                    {"topic": "response", "agent": "toolchain", "task_id": task_id if task_id else None, "duration": duration}
+                )
         
         # Toolchain
         elif triage_lower.startswith("toolchain") or "tool" in triage_lower:
@@ -897,18 +986,18 @@ class Vera:
                     
                     for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
                         total_response += str(chunk)
-                        yield chunk
+                        yield extract_chunk_text(chunk)
                 
                 except Exception as e:
                     self.logger.error(f"Toolchain failed: {e}, using direct fallback")
                     for chunk in self.toolchain.execute_tool_chain(query):
                         total_response += str(chunk)
-                        yield chunk
+                        yield extract_chunk_text(chunk)
             
             else:
                 for chunk in self.toolchain.execute_tool_chain(query):
                     total_response += str(chunk)
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             duration = self.logger.stop_timer("toolchain_execution", context=route_context)
             
@@ -917,7 +1006,7 @@ class Vera:
                     self.sess.id,
                     total_response,
                     "Response",
-                    {"topic": "response", "agent": "toolchain"}
+                    {"topic": "response", "agent": "toolchain", "duration":duration}
                 )
         
         # Reasoning
@@ -925,11 +1014,22 @@ class Vera:
             self.logger.info("Routing to: Reasoning Agent", context=route_context)
             self.logger.start_timer("reasoning_generation")
             
-            agent_context = LogContext(
-                session_id=self.sess.id,
-                agent="reasoning",
-                model=self.selected_models.reasoning_llm
-            )
+            # Use reasoning agent if available
+            if self.agents:
+                agent_name = self.get_agent_for_task('reasoning')
+                reasoning_llm = self.create_llm_for_agent(agent_name)
+                agent_context = LogContext(
+                    session_id=self.sess.id,
+                    agent=agent_name,
+                    model=agent_name
+                )
+            else:
+                reasoning_llm = self.reasoning_llm
+                agent_context = LogContext(
+                    session_id=self.sess.id,
+                    agent="reasoning",
+                    model=self.selected_models.reasoning_llm
+                )
             
             if use_orchestrator:
                 try:
@@ -942,27 +1042,27 @@ class Vera:
                     
                     for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
                 
                 except Exception as e:
                     self.logger.error(f"Reasoning failed: {e}, using direct fallback")
-                    for chunk in self.stream_llm(self.reasoning_llm, query):
+                    for chunk in self.stream_llm(reasoning_llm, query):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
             
             else:
-                for chunk in self.stream_llm(self.reasoning_llm, query):
+                for chunk in self.stream_llm(reasoning_llm, query):
                     total_response += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             duration = self.logger.stop_timer("reasoning_generation", context=agent_context)
-            
+        
             if hasattr(self, 'mem') and hasattr(self, 'sess'):
                 self.mem.add_session_memory(
                     self.sess.id,
                     total_response,
                     "Response",
-                    {"topic": "response", "agent": "reasoning"}
+                    {"topic": "response", "agent": "reasoning", "duration":duration}
                 )
         
         # Complex
@@ -987,18 +1087,18 @@ class Vera:
                     
                     for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
                 
                 except Exception as e:
                     self.logger.error(f"Complex generation failed: {e}, using direct fallback")
                     for chunk in self.stream_llm(self.deep_llm, query):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
             
             else:
                 for chunk in self.stream_llm(self.deep_llm, query):
                     total_response += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             duration = self.logger.stop_timer("deep_generation", context=agent_context)
             
@@ -1007,7 +1107,7 @@ class Vera:
                     self.sess.id,
                     total_response,
                     "Response",
-                    {"topic": "response", "agent": "complex"}
+                    {"topic": "response", "agent": "complex", "duration":duration}
                 )
         
         # Simple/Default - Fast LLM
@@ -1032,18 +1132,18 @@ class Vera:
                     
                     for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
                 
                 except Exception as e:
                     self.logger.error(f"Fast LLM failed: {e}, using direct fallback")
                     for chunk in self.stream_llm(self.fast_llm, query):
                         total_response += chunk
-                        yield chunk
+                        yield extract_chunk_text(chunk)
             
             else:
                 for chunk in self.stream_llm(self.fast_llm, query):
                     total_response += chunk
-                    yield chunk
+                    yield extract_chunk_text(chunk)
             
             duration = self.logger.stop_timer("fast_generation", context=agent_context)
             
@@ -1072,11 +1172,20 @@ class Vera:
         """Direct triage without orchestrator (fallback)"""
         triage_context = LogContext(
             session_id=self.sess.id,
-            agent="triage",
-            model=self.selected_models.fast_llm
+            agent="triage"
         )
         
-        self.logger.debug("Using direct triage", context=triage_context)
+        # Use triage agent if available
+        if self.agents:
+            agent_name = self.get_agent_for_task('triage')
+            triage_llm = self.create_llm_for_agent(agent_name)
+            triage_context.agent = agent_name
+            triage_context.model = agent_name
+        else:
+            triage_llm = self.fast_llm
+            triage_context.model = self.selected_models.fast_llm
+        
+        self.logger.debug("Using triage agent", context=triage_context)
         
         triage_prompt = f"""
         Classify this Query into one of the following categories:
@@ -1094,7 +1203,7 @@ class Vera:
         Respond with a single classification term (e.g., 'simple', 'toolchain', 'complex') on the first line.
         """
         
-        for chunk in self.stream_llm(self.fast_llm, triage_prompt):
+        for chunk in self.stream_llm(triage_llm, triage_prompt):
             yield chunk
 
     def print_llm_models(self):
@@ -1127,6 +1236,73 @@ class Vera:
 
         inspect_obj(self)
         self.logger.info("=" * 40)
+
+    def get_agent_for_task(self, task_type: str) -> str:
+        """Get appropriate agent name for task type"""
+        if not self.agents:
+            # Fallback to model names
+            fallback_map = {
+                'triage': self.selected_models.fast_llm,
+                'tool_execution': self.selected_models.tool_llm,
+                'reasoning': self.selected_models.reasoning_llm,
+                'conversation': self.selected_models.fast_llm
+            }
+            return fallback_map.get(task_type, self.selected_models.fast_llm)
+        
+        return self.config.agents.default_agents.get(
+            task_type,
+            self.selected_models.fast_llm
+        )
+
+    def create_llm_for_agent(self, agent_name: str):
+        """Create LLM using agent configuration if available"""
+        if self.agents:
+            try:
+                llm = self.agents.create_llm_with_agent_config(
+                    agent_name,
+                    self.ollama_manager
+                )
+                
+                self.logger.debug(
+                    f"Created LLM from agent config: {agent_name}",
+                    context=LogContext(agent=agent_name)
+                )
+                
+                return llm
+            
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to create LLM from agent {agent_name}: {e}, using fallback"
+                )
+        
+        # Fallback to standard model
+        return self.ollama_manager.create_llm(
+            model=agent_name,
+            temperature=0.7
+        )
+
+    def list_available_agents(self) -> List[Dict[str, str]]:
+        """List all available agents"""
+        if not self.agents:
+            return []
+        
+        return self.agents.list_loaded_agents()
+
+    def reload_agent(self, agent_name: str, rebuild_model: bool = True):
+        """Reload an agent configuration (hot reload)"""
+        if not self.agents:
+            self.logger.warning("Agent system not enabled")
+            return None
+        
+        self.logger.info(f"Reloading agent: {agent_name}")
+        config = self.agents.reload_agent(agent_name, rebuild_model=rebuild_model)
+        
+        if config:
+            self.logger.success(f"Agent reloaded: {agent_name}")
+        else:
+            self.logger.error(f"Failed to reload agent: {agent_name}")
+        
+        return config
 
 
 # --- Example usage ---
@@ -1195,7 +1371,15 @@ if __name__ == "__main__":
             else:
                 vera.logger.warning("Infrastructure orchestration not enabled")
             continue
-        
+        if user_query.lower() == "/agents":
+            if vera.agents:
+                vera.logger.info("=== Available Agents ===")
+                for agent in vera.list_available_agents():
+                    vera.logger.info(f"  • {agent['name']}: {agent['description']}")
+                vera.logger.info("=" * 40)
+            else:
+                vera.logger.warning("Agent system not enabled")
+            continue       
         if user_query.lower() == "/clear":
             vera.logger.warning("Clearing memory...")
             vera.vectorstore.delete_collection("vera_agent_memory")

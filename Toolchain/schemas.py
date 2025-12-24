@@ -1,6 +1,63 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List, Union, Literal
+# ============================================================================
+# MISSING INPUT SCHEMAS
+# ============================================================================
 
+class SearchFilesInput(BaseModel):
+    """Input schema for searching files."""
+    path: str = Field(default=".", description="Directory path to search in")
+    pattern: str = Field(..., description="Pattern to match (glob or regex)")
+
+
+class TimezoneInput(BaseModel):
+    """Input schema for timezone operations."""
+    timezone: str = Field(default="UTC", description="Timezone name (e.g., UTC, America/New_York, Europe/London)")
+
+
+class TimeDeltaInput(BaseModel):
+    """Input schema for time delta calculation."""
+    start_time: str = Field(..., description="Start time in format YYYY-MM-DD HH:MM:SS or YYYY-MM-DD")
+    end_time: Optional[str] = Field(default=None, description="End time (defaults to current time if not provided)")
+
+
+class TokenCountInput(BaseModel):
+    """Input schema for token counting."""
+    text: str = Field(..., description="Text to count tokens for")
+    model: str = Field(default="gpt-3.5-turbo", description="Model to use for token counting")
+
+
+class RegexSearchInput(BaseModel):
+    """Input schema for regex search."""
+    pattern: str = Field(..., description="Regular expression pattern")
+    text: str = Field(..., description="Text to search in")
+    flags: str = Field(default="", description="Regex flags: i (ignore case), m (multiline), s (dotall)")
+
+
+class TextInput(BaseModel):
+    """Input schema for text processing."""
+    text: str = Field(..., description="Text to process")
+
+
+class HashInput(BaseModel):
+    """Input schema for hashing."""
+    text: str = Field(..., description="Text to hash")
+    algorithm: str = Field(default="sha256", description="Hash algorithm: md5, sha1, sha256, sha512")
+
+
+class EnvVarInput(BaseModel):
+    """Input schema for environment variable operations."""
+    var_name: str = Field(..., description="Name of the environment variable")
+
+
+class EmptyInput(BaseModel):
+    """Input schema for tools that take no parameters."""
+    pass
+
+class MemorySearchInput(BaseModel):
+    """Input schema for memory search operations."""
+    query: str = Field(..., description="Search query for long-term memory")
+    k: int = Field(default=5, description="Number of results to return")
 # ============================================================================
 # INPUT SCHEMAS - Strongly typed inputs for better LLM understanding
 # ============================================================================

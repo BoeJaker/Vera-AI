@@ -4,6 +4,7 @@
 """
 Vera Unified Logging System
 Provides structured, configurable logging with rich formatting and metadata.
+Enhanced with provenance tracking and full stack trace capabilities.
 """
 
 import sys
@@ -11,7 +12,8 @@ import logging
 import threading
 import time
 import json
-from typing import Optional, Dict, Any, List
+import inspect
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime
 from enum import Enum
 from dataclasses import dataclass, field
@@ -46,6 +48,68 @@ class OutputType(Enum):
 
 
 @dataclass
+class ProvenanceInfo:
+    """Information about where a log originated"""
+    filename: str
+    line_number: int
+    function_name: str
+    module_name: str
+    class_name: Optional[str] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'file': self.filename,
+            'line': self.line_number,
+            'function': self.function_name,
+            'module': self.module_name,
+            'class': self.class_name
+        }
+    
+    def format_short(self) -> str:
+        """Format as short string for display"""
+        parts = []
+        if self.class_name:
+            parts.append(f"{self.class_name}.{self.function_name}")
+        else:
+            parts.append(self.function_name)
+        parts.append(f"{Path(self.filename).name}:{self.line_number}")
+        return " @ ".join(parts)
+    
+    def format_long(self) -> str:
+        """Format as detailed string"""
+        return f"{self.module_name}::{self.function_name} ({self.filename}:{self.line_number})"
+
+
+@dataclass
+class StackTrace:
+    """Captured stack trace information"""
+    frames: List[Tuple[str, int, str, str]]  # (filename, line, function, code)
+    
+    def to_dict(self) -> List[Dict[str, Any]]:
+        """Convert to dictionary"""
+        return [
+            {
+                'file': frame[0],
+                'line': frame[1],
+                'function': frame[2],
+                'code': frame[3]
+            }
+            for frame in self.frames
+        ]
+    
+    def format(self, depth: Optional[int] = None) -> str:
+        """Format stack trace for display"""
+        frames = self.frames[:depth] if depth else self.frames
+        lines = ["Stack trace:"]
+        for i, (filename, line, function, code) in enumerate(frames):
+            lines.append(f"  {i+1}. {Path(filename).name}:{line} in {function}")
+            if code:
+                lines.append(f"     > {code.strip()}")
+        return "\n".join(lines)
+
+
+@dataclass
 class LogContext:
     """Context information for log messages"""
     session_id: Optional[str] = None
@@ -54,6 +118,8 @@ class LogContext:
     task_id: Optional[str] = None
     thread_id: Optional[int] = None
     timestamp: Optional[float] = None
+    provenance: Optional[ProvenanceInfo] = None
+    stack_trace: Optional[StackTrace] = None
     extra: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -66,6 +132,13 @@ class LogContext:
             'thread_id': self.thread_id,
             'timestamp': self.timestamp or time.time(),
         }
+        
+        if self.provenance:
+            data['provenance'] = self.provenance.to_dict()
+        
+        if self.stack_trace:
+            data['stack_trace'] = self.stack_trace.to_dict()
+        
         data.update(self.extra)
         return {k: v for k, v in data.items() if v is not None}
 
@@ -107,7 +180,7 @@ class ColorCodes:
 class LoggingConfig:
     """Configuration for Vera logging system"""
     # Verbosity levels per component
-    global_level: LogLevel = LogLevel.INFO
+    global_level: LogLevel = LogLevel.DEBUG
     component_levels: Dict[str, LogLevel] = field(default_factory=dict)
     
     # Output options
@@ -117,6 +190,14 @@ class LoggingConfig:
     enable_session_info: bool = True
     enable_model_info: bool = True
     enable_performance_tracking: bool = True
+    
+    # Provenance and tracing
+    enable_provenance: bool = True  # Show file, line, function in logs
+    enable_stack_traces: bool = False  # Include full stack traces
+    stack_trace_depth: int = 10  # Max frames to include in stack trace
+    stack_trace_on_error: bool = True  # Always include stack on errors
+    trace_mode: bool = False  # Master switch for full trace capabilities
+    trace_exclude_modules: List[str] = field(default_factory=lambda: ['logging', 'threading'])  # Modules to exclude from traces
     
     # Formatting
     timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"
@@ -156,11 +237,23 @@ class LoggingConfig:
     # Console output control
     stream_thoughts_inline: bool = True
     buffer_responses: bool = False
+    
+    def __post_init__(self):
+        """Apply trace mode settings if enabled"""
+        if self.trace_mode:
+            self.enable_provenance = True
+            self.enable_stack_traces = True
+            self.global_level = LogLevel.TRACE
+            self.enable_thread_info = True
+            self.enable_performance_tracking = True
+            self.show_orchestrator_details = True
+            self.show_infrastructure_stats = True
 
 
 class VeraLogger:
     """
     Unified logger for Vera with structured output and rich formatting
+    Enhanced with automatic provenance tracking and stack trace capture
     """
     
     def __init__(self, config: LoggingConfig, component: str = "vera"):
@@ -180,12 +273,14 @@ class VeraLogger:
             'errors_logged': 0,
             'thoughts_captured': 0,
             'tools_executed': 0,
+            'stack_traces_captured': 0,
         }
     
     def _setup_logging(self):
         """Setup Python logging handlers"""
         self.logger.setLevel(logging.DEBUG)
         self.logger.handlers.clear()
+        self.logger.propagate = False
         
         # Console handler
         console_handler = logging.StreamHandler(sys.stdout)
@@ -272,6 +367,85 @@ class VeraLogger:
             return text
         return f"{color}{text}{ColorCodes.RESET}"
     
+    def _capture_provenance(self, skip_frames: int = 2) -> ProvenanceInfo:
+        """Capture provenance information from call stack"""
+        frame = inspect.currentframe()
+        
+        # Skip internal frames
+        for _ in range(skip_frames):
+            if frame is not None:
+                frame = frame.f_back
+        
+        if frame is None:
+            return ProvenanceInfo(
+                filename="<unknown>",
+                line_number=0,
+                function_name="<unknown>",
+                module_name="<unknown>"
+            )
+        
+        frame_info = inspect.getframeinfo(frame)
+        
+        # Try to get class name if method
+        class_name = None
+        if 'self' in frame.f_locals:
+            class_name = frame.f_locals['self'].__class__.__name__
+        elif 'cls' in frame.f_locals:
+            class_name = frame.f_locals['cls'].__name__
+        
+        return ProvenanceInfo(
+            filename=frame_info.filename,
+            line_number=frame_info.lineno,
+            function_name=frame_info.function,
+            module_name=frame.f_globals.get('__name__', '<unknown>'),
+            class_name=class_name
+        )
+    
+    def _capture_stack_trace(self, skip_frames: int = 2) -> StackTrace:
+        """Capture full stack trace"""
+        stack = inspect.stack()
+        
+        # Skip internal frames and excluded modules
+        frames = []
+        for frame_info in stack[skip_frames:]:
+            module = inspect.getmodule(frame_info.frame)
+            module_name = module.__name__ if module else '<unknown>'
+            
+            # Skip excluded modules
+            if any(excluded in module_name for excluded in self.config.trace_exclude_modules):
+                continue
+            
+            frames.append((
+                frame_info.filename,
+                frame_info.lineno,
+                frame_info.function,
+                frame_info.code_context[0] if frame_info.code_context else ""
+            ))
+            
+            if len(frames) >= self.config.stack_trace_depth:
+                break
+        
+        self.stats['stack_traces_captured'] += 1
+        return StackTrace(frames=frames)
+    
+    def _enrich_context(self, context: Optional[LogContext], 
+                       capture_provenance: bool = True,
+                       capture_stack: bool = False) -> LogContext:
+        """Enrich context with provenance and stack trace if configured"""
+        # Start with provided context or create new one
+        if context is None:
+            context = LogContext()
+        
+        # Add provenance if enabled and not already present
+        if capture_provenance and self.config.enable_provenance and context.provenance is None:
+            context.provenance = self._capture_provenance(skip_frames=3)
+        
+        # Add stack trace if enabled and not already present
+        if capture_stack and self.config.enable_stack_traces and context.stack_trace is None:
+            context.stack_trace = self._capture_stack_trace(skip_frames=3)
+        
+        return context
+    
     def _format_context(self, context: Optional[LogContext] = None) -> str:
         """Format context information"""
         if not context and not self.context_stack:
@@ -295,10 +469,21 @@ class VeraLogger:
         if ctx.task_id:
             parts.append(f"task={ctx.task_id[:8]}")
         
+        # Add provenance if available
+        if self.config.enable_provenance and ctx.provenance:
+            parts.append(ctx.provenance.format_short())
+        
         if parts:
             return self._colorize(f"[{', '.join(parts)}]", ColorCodes.DIM) + " "
         
         return ""
+    
+    def _format_stack_trace(self, stack: StackTrace) -> str:
+        """Format stack trace for output"""
+        return "\n" + self._colorize(
+            stack.format(self.config.stack_trace_depth),
+            ColorCodes.DIM
+        )
     
     def push_context(self, context: LogContext):
         """Push a logging context"""
@@ -314,21 +499,34 @@ class VeraLogger:
     def trace(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log trace message (most verbose)"""
         if self._should_log(LogLevel.TRACE):
+            context = self._enrich_context(context, capture_stack=True)
             ctx_str = self._format_context(context)
-            self.logger.log(LogLevel.TRACE.value, f"{ctx_str}{message}", **kwargs)
+            
+            msg = f"{ctx_str}{message}"
+            if context and context.stack_trace:
+                msg += self._format_stack_trace(context.stack_trace)
+            
+            self.logger.log(LogLevel.TRACE.value, msg, **kwargs)
             self.stats['messages_logged'] += 1
     
     def debug(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log debug message"""
         if self._should_log(LogLevel.DEBUG):
+            context = self._enrich_context(context, capture_stack=self.config.trace_mode)
             ctx_str = self._format_context(context)
-            msg = self._colorize(f"{ctx_str}{message}", ColorCodes.BRIGHT_BLACK)
+            
+            msg = f"{ctx_str}{message}"
+            if context and context.stack_trace and self.config.trace_mode:
+                msg += self._format_stack_trace(context.stack_trace)
+            
+            msg = self._colorize(msg, ColorCodes.BRIGHT_BLACK)
             self.logger.debug(msg, **kwargs)
             self.stats['messages_logged'] += 1
     
     def info(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log info message"""
         if self._should_log(LogLevel.INFO):
+            context = self._enrich_context(context, capture_stack=False)
             ctx_str = self._format_context(context)
             self.logger.info(f"{ctx_str}{message}", **kwargs)
             self.stats['messages_logged'] += 1
@@ -336,6 +534,7 @@ class VeraLogger:
     def success(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log success message"""
         if self._should_log(LogLevel.SUCCESS):
+            context = self._enrich_context(context, capture_stack=False)
             ctx_str = self._format_context(context)
             msg = self._colorize(f"✓ {ctx_str}{message}", ColorCodes.GREEN)
             self.logger.log(LogLevel.SUCCESS.value, msg, **kwargs)
@@ -344,24 +543,42 @@ class VeraLogger:
     def warning(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log warning message"""
         if self._should_log(LogLevel.WARNING):
+            context = self._enrich_context(context, capture_stack=self.config.stack_trace_on_error)
             ctx_str = self._format_context(context)
-            msg = self._colorize(f"⚠ {ctx_str}{message}", ColorCodes.YELLOW)
+            
+            msg = f"⚠ {ctx_str}{message}"
+            if context and context.stack_trace and self.config.stack_trace_on_error:
+                msg += self._format_stack_trace(context.stack_trace)
+            
+            msg = self._colorize(msg, ColorCodes.YELLOW)
             self.logger.warning(msg, **kwargs)
             self.stats['messages_logged'] += 1
     
     def error(self, message: str, exc_info: bool = False, context: Optional[LogContext] = None, **kwargs):
         """Log error message"""
         if self._should_log(LogLevel.ERROR):
+            context = self._enrich_context(context, capture_stack=True)
             ctx_str = self._format_context(context)
-            msg = self._colorize(f"✗ {ctx_str}{message}", ColorCodes.RED)
+            
+            msg = f"✗ {ctx_str}{message}"
+            if context and context.stack_trace:
+                msg += self._format_stack_trace(context.stack_trace)
+            
+            msg = self._colorize(msg, ColorCodes.RED)
             self.logger.error(msg, exc_info=exc_info, **kwargs)
             self.stats['errors_logged'] += 1
     
     def critical(self, message: str, exc_info: bool = True, context: Optional[LogContext] = None, **kwargs):
         """Log critical message"""
         if self._should_log(LogLevel.CRITICAL):
+            context = self._enrich_context(context, capture_stack=True)
             ctx_str = self._format_context(context)
-            msg = self._colorize(f"🔥 {ctx_str}{message}", ColorCodes.BG_RED + ColorCodes.WHITE)
+            
+            msg = f"🔥 {ctx_str}{message}"
+            if context and context.stack_trace:
+                msg += self._format_stack_trace(context.stack_trace)
+            
+            msg = self._colorize(msg, ColorCodes.BG_RED + ColorCodes.WHITE)
             self.logger.critical(msg, exc_info=exc_info, **kwargs)
             self.stats['errors_logged'] += 1
     
@@ -370,6 +587,7 @@ class VeraLogger:
         if not self._should_log(LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=False)
         self.stats['thoughts_captured'] += 1
         
         if self.config.box_thoughts:
@@ -388,6 +606,8 @@ class VeraLogger:
         if not self._should_log(LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=False)
+        
         if stream:
             # For streaming, just write directly
             sys.stdout.write(content)
@@ -395,13 +615,13 @@ class VeraLogger:
         elif self.config.box_responses:
             self._print_boxed(
                 content,
-                title="🤖 Response",
+                title="Response",
                 color=ColorCodes.GREEN,
                 context=context
             )
         else:
             ctx_str = self._format_context(context)
-            print(f"\n{self._colorize('🤖 Response:', ColorCodes.GREEN)} {ctx_str}\n{content}\n")
+            print(f"\n{self._colorize('Response:', ColorCodes.GREEN)} {ctx_str}\n{content}\n")
     
     def tool_execution(self, tool_name: str, args: Dict[str, Any], result: Any = None, 
                        duration: Optional[float] = None, context: Optional[LogContext] = None):
@@ -409,6 +629,7 @@ class VeraLogger:
         if not self._should_log(LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=self.config.trace_mode)
         self.stats['tools_executed'] += 1
         
         ctx_str = self._format_context(context)
@@ -428,6 +649,10 @@ class VeraLogger:
                     result_str = result_str[:200] + "..."
                 lines.append(f"Result: {result_str}")
             
+            # Add stack trace in trace mode
+            if context and context.stack_trace and self.config.trace_mode:
+                lines.append("\n" + context.stack_trace.format(5))
+            
             self._print_boxed(
                 "\n".join(lines),
                 title="🔧 Tool Execution",
@@ -445,9 +670,10 @@ class VeraLogger:
         if not self._should_log(LogLevel.DEBUG if self.config.show_memory_triage else LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=self.config.trace_mode)
         ctx_str = self._format_context(context)
         detail_str = ", ".join(f"{k}={v}" for k, v in details.items())
-        msg = f"{self._colorize('💾 Memory:', ColorCodes.MAGENTA)} {ctx_str}{operation} ({detail_str})"
+        msg = f"{self._colorize('Memory:', ColorCodes.MAGENTA)} {ctx_str}{operation} ({detail_str})"
         print(msg)
     
     def orchestrator_event(self, event: str, task_id: Optional[str] = None, 
@@ -456,6 +682,7 @@ class VeraLogger:
         if not self._should_log(LogLevel.DEBUG if not self.config.show_orchestrator_details else LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=self.config.trace_mode)
         ctx_str = self._format_context(context)
         detail_str = f" ({json.dumps(details)})" if details else ""
         task_str = f"[task={task_id[:8]}]" if task_id else ""
@@ -468,10 +695,11 @@ class VeraLogger:
         if not self._should_log(LogLevel.INFO if self.config.show_infrastructure_stats else LogLevel.DEBUG):
             return
         
+        context = self._enrich_context(context, capture_stack=self.config.trace_mode)
         ctx_str = self._format_context(context)
         resource_str = f"[{resource_type}]" if resource_type else ""
         detail_str = f" ({json.dumps(details)})" if details else ""
-        msg = f"{self._colorize('🏗️ Infrastructure:', ColorCodes.BRIGHT_BLUE)} {ctx_str}{resource_str} {event}{detail_str}"
+        msg = f"{self._colorize('Infrastructure:', ColorCodes.BRIGHT_BLUE)} {ctx_str}{resource_str} {event}{detail_str}"
         print(msg)
     
     def performance_metric(self, metric_name: str, value: float, unit: str = "s",
@@ -480,8 +708,9 @@ class VeraLogger:
         if not self._should_log(LogLevel.DEBUG if not self.config.enable_performance_tracking else LogLevel.INFO):
             return
         
+        context = self._enrich_context(context, capture_stack=False)
         ctx_str = self._format_context(context)
-        msg = f"{self._colorize('📊 Performance:', ColorCodes.BRIGHT_MAGENTA)} {ctx_str}{metric_name}: {value:.3f}{unit}"
+        msg = f"{self._colorize('Performance:', ColorCodes.BRIGHT_MAGENTA)} {ctx_str}{metric_name}: {value:.3f}{unit}"
         print(msg)
     
     def raw_stream_chunk(self, chunk_data: Dict[str, Any], chunk_num: int):
@@ -596,6 +825,10 @@ class JSONFormatter(logging.Formatter):
         if record.exc_info:
             log_data['exception'] = ''.join(traceback.format_exception(*record.exc_info))
         
+        # Add any extra context from LogContext if present
+        if hasattr(record, 'context'):
+            log_data['context'] = record.context.to_dict()
+        
         return json.dumps(log_data)
 
 
@@ -625,36 +858,97 @@ def configure_logging(config: LoggingConfig):
     _global_logger = VeraLogger(config, "vera")
 
 
-# Example usage
+# Example usage and tests
 if __name__ == "__main__":
-    # Create config with various options
+    print("=" * 80)
+    print("VERA LOGGING SYSTEM - ENHANCED WITH PROVENANCE AND STACK TRACING")
+    print("=" * 80)
+    print()
+    
+    # Test 1: Normal mode
+    print("Test 1: Normal mode with provenance")
+    print("-" * 80)
     config = LoggingConfig(
         global_level=LogLevel.DEBUG,
         enable_colors=True,
         enable_timestamps=True,
-        enable_thread_info=True,
-        enable_session_info=True,
-        enable_model_info=True,
-        box_thoughts=True,
-        box_responses=False,
-        box_tools=True,
-        show_ollama_raw_chunks=False,
-        enable_performance_tracking=True,
-        log_to_file=True,
-        log_to_json=True,
+        enable_provenance=True,
+        enable_stack_traces=False,
+        trace_mode=False,
     )
     
-    # Get logger
     logger = get_logger("test", config)
     
-    # Test various log types
-    logger.info("Vera initialized successfully")
-    logger.debug("Loading configuration from file")
-    logger.success("Model loaded: gemma2:latest")
-    logger.warning("High memory usage detected")
-    logger.error("Connection timeout", exc_info=False)
+    def test_function():
+        """Test function to show provenance"""
+        logger.info("This log shows where it came from")
+        logger.debug("Debug message with provenance")
+        logger.success("Success with provenance")
     
-    # Test with context
+    test_function()
+    
+    print("\n")
+    
+    # Test 2: Trace mode (everything enabled)
+    print("Test 2: TRACE MODE - Full provenance and stack traces")
+    print("-" * 80)
+    
+    trace_config = LoggingConfig(
+        trace_mode=True,  # This enables everything
+        enable_colors=True,
+    )
+    
+    trace_logger = get_logger("trace_test", trace_config)
+    
+    def nested_function():
+        """Nested function to show stack trace"""
+        trace_logger.debug("Debug with full stack trace")
+    
+    def calling_function():
+        """Calling function"""
+        nested_function()
+    
+    calling_function()
+    
+    print("\n")
+    
+    # Test 3: Error with automatic stack trace
+    print("Test 3: Error logging with automatic stack trace")
+    print("-" * 80)
+    
+    error_config = LoggingConfig(
+        global_level=LogLevel.INFO,
+        enable_provenance=True,
+        stack_trace_on_error=True,
+        enable_colors=True,
+    )
+    
+    error_logger = get_logger("error_test", error_config)
+    
+    def buggy_function():
+        """Function that logs an error"""
+        error_logger.error("Something went wrong!")
+        error_logger.warning("This is also concerning")
+    
+    buggy_function()
+    
+    print("\n")
+    
+    # Test 4: Complex scenario with context
+    print("Test 4: Complex scenario with rich context")
+    print("-" * 80)
+    
+    complex_config = LoggingConfig(
+        global_level=LogLevel.DEBUG,
+        enable_provenance=True,
+        enable_stack_traces=False,
+        enable_session_info=True,
+        enable_model_info=True,
+        trace_mode=False,
+    )
+    
+    complex_logger = get_logger("complex_test", complex_config)
+    
     context = LogContext(
         session_id="abc123def456",
         agent="fast",
@@ -662,53 +956,32 @@ if __name__ == "__main__":
         task_id="task-001"
     )
     
-    logger.info("Processing query", context=context)
+    complex_logger.info("Processing query", context=context)
     
-    # Test thought output
-    logger.thought(
-        "Let me analyze this query step by step:\n"
-        "1. First, I need to understand the user's intent\n"
-        "2. Then, I should break down the problem\n"
-        "3. Finally, I can formulate a response",
-        context=context
-    )
-    
-    # Test tool execution
-    logger.tool_execution(
+    # Test tool execution with provenance
+    complex_logger.tool_execution(
         "web_search",
         {"query": "quantum computing", "max_results": 5},
-        result={"found": 5, "sources": ["arxiv.org", "nature.com"]},
+        result={"found": 5, "sources": ["arxiv.org"]},
         duration=1.234,
         context=context
     )
     
-    # Test memory operation
-    logger.memory_operation(
-        "add_to_graph",
-        {"node_type": "Entity", "properties": {"name": "Tesla"}},
-        context=context
-    )
+    print("\n")
     
-    # Test orchestrator event
-    logger.orchestrator_event(
-        "task_submitted",
-        task_id="task-001",
-        details={"type": "llm.generate", "priority": "high"},
-        context=context
-    )
+    # Test 5: Performance tracking
+    print("Test 5: Performance tracking with provenance")
+    print("-" * 80)
     
-    # Test infrastructure event
-    logger.infrastructure_event(
-        "container_provisioned",
-        resource_type="docker",
-        details={"image": "vera-worker:latest", "cpu": 2, "memory": "2GB"},
-        context=context
-    )
-    
-    # Test performance tracking
-    logger.start_timer("query_processing")
+    complex_logger.start_timer("operation")
     time.sleep(0.1)
-    logger.stop_timer("query_processing", context=context)
+    complex_logger.stop_timer("operation", context=context)
+    
+    print("\n")
     
     # Print statistics
-    logger.print_stats()
+    complex_logger.print_stats()
+    
+    print("=" * 80)
+    print("Tests completed!")
+    print("=" * 80)

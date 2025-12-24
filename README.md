@@ -413,7 +413,7 @@ pip install -r requirements.txt
 ```
 
 Key dependencies:
-- `streamlit` - Python web UI framework
+<!-- - `streamlit` - Python web UI framework -->
 - `chromadb` – Vector database for semantic memory
 - `playwright` – Browser automation and web scraping
 - `requests` – HTTP client
@@ -550,20 +550,31 @@ make check-chromadb              # Check ChromaDB status
 
 ## Quick Start
 
+### Download
+
+```bash
+mkdir ./VeraAI
+cd ./VeraAI
+git clone https://github.com/BoeJaker/Vera-AI.git
+cp ./Vera-AI ./Vera
+```
+
 ### Terminal Interface
 
 ```bash
-cd <your/path/to/vera>
-python3 ./vera.py
+cd <your/path/to/VeraAI>
+python -m Vera.vera
 ```
 
 ### Web Interface
 
 ```bash
-cd <your/path/to/vera>
-streamlit ./ui.py
+cd <your/path/to/VeraAI>
+python -m Vera.ChatUI.api.vera_api.py
+
 # Opens on localhost:8000
 ```
+Open a prowser and visit http://localhost:8000
 
 ### Python API
 

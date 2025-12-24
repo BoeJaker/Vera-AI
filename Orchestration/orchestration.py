@@ -14,6 +14,22 @@ Architecture:
 - Pub/Sub: Redis-based event broadcasting and coordination
 - Integration: Seamless ProactiveFocusManager integration
 """
+"""
+Vera Task Orchestration System (With Streaming Support & Enhanced Logging)
+===========================================================================
+Distributed task execution substrate with priority queuing, worker pools,
+streaming support, and integration with ProactiveFocusManager.
+
+NEW: Tasks can now yield results (generators) for streaming!
+
+Architecture:
+- Task Registry: Decorator-based task registration with metadata
+- Worker Pools: Specialized pools for LLM, Whisper, Tools, ML models
+- Priority Queue: Task prioritization with CPU-aware throttling
+- Streaming: Native support for generator tasks
+- Pub/Sub: Redis-based event broadcasting and coordination
+- Integration: Seamless ProactiveFocusManager integration
+"""
 
 import asyncio
 import threading
@@ -39,7 +55,18 @@ except ImportError:
     REDIS_AVAILABLE = False
     print("[Orchestrator] Redis not available - pub/sub features disabled")
 
-
+def extract_chunk_text(chunk):
+    """Extract text from chunk object"""
+    if hasattr(chunk, 'text'):
+        return chunk.text
+    elif hasattr(chunk, 'content'):
+        return chunk.content
+    elif isinstance(chunk, str):
+        return chunk
+    else:
+        return str(chunk)
+    
+    
 # ============================================================================
 # ENUMS & DATA CLASSES
 # ============================================================================
@@ -183,7 +210,10 @@ class TaskRegistry:
             )
             
             self._metadata[name] = metadata
-            self.logger.info(f"Registered task: {name} (type={task_type.value}, priority={priority.value})")
+            self.logger.info(
+                f"Registered: {name} [type={task_type.value}, priority={priority.value}, "
+                f"duration={estimated_duration}s, gpu={requires_gpu}]"
+            )
             
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -254,23 +284,32 @@ class Worker(threading.Thread):
                 if not task_id:
                     continue
                 
+                self.logger.debug(f"Acquired task: {task_name} ({task_id[:8]}...)")
+                
                 self.current_task = task_id
                 self._execute_task(task_id, task_name, args, kwargs, metadata)
                 self.current_task = None
                 
             except Exception as e:
-                self.logger.error(f"Worker error: {e}")
+                self.logger.error(f"Worker error: {e}", exc_info=True)
                 if self.current_task:
                     self.task_queue.mark_failed(self.current_task, str(e))
                     self.current_task = None
         
-        self.logger.info("Worker stopped")
+        self.logger.info(
+            f"Worker stopped (completed={self.stats.tasks_completed}, "
+            f"failed={self.stats.tasks_failed})"
+        )
     
     def _execute_task(self, task_id: str, task_name: str, 
                      args: tuple, kwargs: dict, metadata: TaskMetadata):
         """Execute a single task (with streaming support)"""
         started_at = time.time()
-        self.logger.info(f"Executing task {task_id}: {task_name}")
+        
+        self.logger.info(
+            f"Executing: {task_name} [{metadata.priority.name}] "
+            f"(est: {metadata.estimated_duration:.1f}s, timeout: {metadata.timeout:.1f}s)"
+        )
         
         # Get the result object from pending
         with self.task_queue._lock:
@@ -294,6 +333,8 @@ class Worker(threading.Thread):
             if not handler:
                 raise ValueError(f"Task handler not found: {task_name}")
             
+            self.logger.debug(f"Invoking handler for {task_name}")
+            
             # Execute
             output = handler(*args, **kwargs)
             
@@ -306,15 +347,19 @@ class Worker(threading.Thread):
                     result.is_streaming = True
                     result.stream_queue = queue.Queue()
                 
-                self.logger.debug(f"Task {task_id} is streaming")
+                self.logger.debug(f"Task streaming: {task_name}")
                 
                 # Consume generator and queue chunks
+                chunk_count = 0
                 try:
                     for chunk in output:
                         result.stream_queue.put(chunk)
+                        chunk_count += 1
                     
                     # Signal end of stream
                     result.stream_queue.put(StopIteration)
+                    
+                    self.logger.debug(f"Stream complete: {chunk_count} chunks")
                     
                 except Exception as e:
                     result.stream_queue.put(e)
@@ -323,6 +368,7 @@ class Worker(threading.Thread):
             else:
                 # Regular result
                 result.result = output
+                self.logger.debug(f"Result captured: {type(output).__name__}")
             
             # Record success
             completed_at = time.time()
@@ -346,7 +392,19 @@ class Worker(threading.Thread):
                 "is_streaming": is_generator
             })
             
-            self.logger.info(f"Task {task_id} completed in {duration:.2f}s")
+            # Calculate duration variance
+            duration_diff = duration - metadata.estimated_duration
+            variance_pct = (duration_diff / metadata.estimated_duration) * 100 if metadata.estimated_duration > 0 else 0
+            
+            self.logger.info(
+                f"✓ Completed: {task_name} in {duration:.2f}s [{metadata.priority.name}]"
+            )
+            
+            if abs(variance_pct) > 20:
+                self.logger.debug(
+                    f"Duration variance: {duration:.2f}s vs {metadata.estimated_duration:.2f}s est "
+                    f"({duration_diff:+.2f}s, {variance_pct:+.1f}%)"
+                )
             
         except Exception as e:
             # Record failure
@@ -371,10 +429,11 @@ class Worker(threading.Thread):
                 "duration": duration
             })
             
-            self.logger.error(f"Task {task_id} failed: {e}")
+            self.logger.error(f"✗ Failed: {task_name} after {duration:.2f}s - {e}")
     
     def stop(self):
         """Stop the worker"""
+        self.logger.debug("Stopping worker")
         self.running = False
 
 
@@ -395,27 +454,31 @@ class WorkerPool:
     
     def start(self):
         """Start all workers in the pool"""
-        self.logger.info(f"Starting {self.num_workers} workers")
+        self.logger.info(f"Starting {self.num_workers} workers for {self.worker_type.value}")
         
         for i in range(self.num_workers):
             worker_id = f"{self.worker_type.value}-{i}"
             worker = Worker(worker_id, self.worker_type, self.task_queue, self.event_bus)
             worker.start()
             self.workers.append(worker)
+            self.logger.debug(f"  Started worker: {worker_id}")
         
-        self.logger.info("All workers started")
+        self.logger.info(f"All {self.num_workers} workers started")
     
     def stop(self):
         """Stop all workers in the pool"""
-        self.logger.info("Stopping workers")
+        self.logger.info(f"Stopping {len(self.workers)} workers")
         
         for worker in self.workers:
             worker.stop()
         
+        stopped_count = 0
         for worker in self.workers:
             worker.join(timeout=5.0)
+            if not worker.is_alive():
+                stopped_count += 1
         
-        self.logger.info("All workers stopped")
+        self.logger.info(f"Stopped {stopped_count}/{len(self.workers)} workers")
     
     def get_stats(self) -> List[WorkerStats]:
         """Get statistics for all workers"""
@@ -427,25 +490,32 @@ class WorkerPool:
         
         if num_workers > current:
             # Scale up
+            self.logger.info(f"Scaling up: {current} → {num_workers}")
+            
             for i in range(current, num_workers):
                 worker_id = f"{self.worker_type.value}-{i}"
                 worker = Worker(worker_id, self.worker_type, self.task_queue, self.event_bus)
                 worker.start()
                 self.workers.append(worker)
-            self.logger.info(f"Scaled up from {current} to {num_workers} workers")
+                self.logger.debug(f"  Added worker: {worker_id}")
+            
+            self.logger.info(f"Scaled up to {num_workers} workers")
         
         elif num_workers < current:
             # Scale down
+            self.logger.info(f"Scaling down: {current} → {num_workers}")
+            
             workers_to_stop = self.workers[num_workers:]
             self.workers = self.workers[:num_workers]
             
             for worker in workers_to_stop:
                 worker.stop()
+                self.logger.debug(f"  Stopping worker: {worker.worker_id}")
             
             for worker in workers_to_stop:
                 worker.join(timeout=5.0)
             
-            self.logger.info(f"Scaled down from {current} to {num_workers} workers")
+            self.logger.info(f"Scaled down to {num_workers} workers")
 
 
 # ============================================================================
@@ -468,6 +538,8 @@ class TaskQueue:
         self._last_cpu_check = 0
         self._cached_cpu = 0
         self._cpu_check_interval = 1.0  # Check once per second
+        
+        self.logger.info(f"TaskQueue initialized (cpu_threshold={cpu_threshold}%)")
     
     def submit(self, task_name: str, *args, **kwargs) -> str:
         """Submit a task for execution"""
@@ -513,13 +585,21 @@ class TaskQueue:
             # Sort by priority (lower number = higher priority), then by creation time
             queue.sort(key=lambda x: (x[0].value, x[1]))
             
+            queue_position = next((i for i, item in enumerate(queue) if item[2] == task_id), -1) + 1
+            
             # Initialize result tracking
             self._pending[task_id] = TaskResult(
                 task_id=task_id,
                 status=TaskStatus.QUEUED
             )
+            
+            self.logger.info(
+                f"Task queued: {task_name} ({task_id[:8]}...) [{metadata.priority.name}] "
+                f"pos={queue_position}/{len(queue)}"
+            )
+            
+            self.logger.info(f"Queue state: {metadata.task_type.value} has {len(queue)} tasks")
         
-        self.logger.debug(f"Task {task_id} queued: {task_name} (priority={metadata.priority.value})")
         return task_id
     
     def get_next(self, worker_type: TaskType, timeout: float = 1.0) -> Tuple[Optional[str], ...]:
@@ -531,7 +611,10 @@ class TaskQueue:
             self._last_cpu_check = now
         
         if self._cached_cpu >= self.cpu_threshold:
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(f"CPU throttle: {self._cached_cpu:.1f}% >= {self.cpu_threshold}%")
             return None, None, None, None, None
+        
         with self._lock:
             queue = self._queues[worker_type]
             
@@ -540,6 +623,13 @@ class TaskQueue:
             
             # Get highest priority task
             priority, created_at, task_id, task_name, args, kwargs, metadata = queue.pop(0)
+            
+            wait_time = now - created_at
+            
+            self.logger.debug(
+                f"Dequeued: {task_name} ({task_id[:8]}...) wait={wait_time:.3f}s "
+                f"queue_remaining={len(queue)}"
+            )
             
             # Update status
             if task_id in self._pending:
@@ -553,6 +643,11 @@ class TaskQueue:
             if task_id in self._pending:
                 self._completed[task_id] = result
                 del self._pending[task_id]
+                
+                self.logger.info(
+                    f"Marked completed: {task_id[:8]}... "
+                    f"(pending={len(self._pending)}, completed={len(self._completed)})"
+                )
     
     def mark_failed(self, task_id: str, error: str):
         """Mark a task as failed"""
@@ -564,6 +659,11 @@ class TaskQueue:
                 result.completed_at = time.time()
                 self._completed[task_id] = result
                 del self._pending[task_id]
+                
+                self.logger.info(
+                    f"Marked failed: {task_id[:8]}... "
+                    f"(pending={len(self._pending)}, completed={len(self._completed)})"
+                )
     
     def get_result(self, task_id: str, timeout: Optional[float] = None) -> Optional[TaskResult]:
         """Get task result (blocking if timeout specified)"""
@@ -604,64 +704,82 @@ class TaskQueue:
         start_time = time.time()
         result = None
         
+        self.logger.debug(f"Waiting for task to start: {task_id[:8]}...")
+        
         while True:
             result = self.get_result(task_id, timeout=0.1)
             if result:
                 break
             
             if timeout and (time.time() - start_time) > timeout:
-                raise TimeoutError(f"Task {task_id} timed out waiting to start")
+                raise TimeoutError(f"Task {task_id[:8]}... timed out waiting to start")
             
             time.sleep(0.1)
         
         # Check if task failed
         if result.status == TaskStatus.FAILED:
+            self.logger.error(f"Task failed: {result.error}")
             raise Exception(f"Task failed: {result.error}")
         
         # If streaming task
         if result.is_streaming and result.stream_queue:
-            self.logger.debug(f"Streaming results for task {task_id}")
+            self.logger.debug(f"Streaming results for task {task_id[:8]}...")
             
+            chunk_count = 0
             while True:
                 try:
                     chunk = result.stream_queue.get(timeout=timeout or 300)
                     
                     # Check for end of stream
                     if chunk is StopIteration:
+                        self.logger.debug(f"Stream ended: {chunk_count} chunks")
                         break
                     
                     # Check for exception
                     if isinstance(chunk, Exception):
                         raise chunk
                     
+                    chunk_count += 1
                     yield chunk
                 
                 except queue.Empty:
                     # Check if task is completed
                     with self._lock:
                         if task_id in self._completed:
+                            self.logger.debug(f"Task completed externally: {chunk_count} chunks")
                             break
                     continue
         
         else:
             # Non-streaming task, yield complete result once
             if result.result is not None:
+                self.logger.debug(f"Yielding non-streaming result")
                 yield result.result
     
     def get_queue_sizes(self) -> Dict[str, int]:
         """Get size of each queue"""
         with self._lock:
-            return {
+            sizes = {
                 task_type.value: len(queue)
                 for task_type, queue in self._queues.items()
             }
+            
+            if sizes:
+                self.logger.info(f"Queue sizes: {sizes}")
+            
+            return sizes
     
     def clear(self):
         """Clear all queues"""
         with self._lock:
+            total_pending = len(self._pending)
+            total_completed = len(self._completed)
+            
             self._queues.clear()
             self._pending.clear()
             self._completed.clear()
+            
+            self.logger.info(f"Cleared queues (pending={total_pending}, completed={total_completed})")
 
 
 # ============================================================================
@@ -696,26 +814,34 @@ class EventBus:
         if self.redis_client:
             try:
                 self.redis_client.publish(channel, json.dumps(message))
+                self.logger.info(f"Published to Redis channel: {channel}")
             except Exception as e:
                 self.logger.error(f"Redis publish error: {e}")
         
         # Also trigger local subscribers
+        subscriber_count = len(self.local_subscribers.get(channel, []))
+        if subscriber_count > 0:
+            self.logger.info(f"Notifying {subscriber_count} local subscribers on {channel}")
+        
         for callback in self.local_subscribers.get(channel, []):
             try:
                 callback(message)
             except Exception as e:
-                self.logger.error(f"Local subscriber error: {e}")
+                self.logger.error(f"Local subscriber error on {channel}: {e}")
     
     def subscribe(self, channel: str, callback: Callable[[Dict[str, Any]], None]):
         """Subscribe to a channel with a callback"""
         self.local_subscribers[channel].append(callback)
-        self.logger.debug(f"Subscribed to channel: {channel}")
+        subscriber_count = len(self.local_subscribers[channel])
+        self.logger.debug(f"Subscribed to channel: {channel} ({subscriber_count} subscribers)")
     
     def unsubscribe(self, channel: str, callback: Callable):
         """Unsubscribe from a channel"""
         if channel in self.local_subscribers:
             try:
                 self.local_subscribers[channel].remove(callback)
+                subscriber_count = len(self.local_subscribers[channel])
+                self.logger.debug(f"Unsubscribed from channel: {channel} ({subscriber_count} remaining)")
             except ValueError:
                 pass
 
@@ -767,6 +893,13 @@ class Orchestrator:
             level=logging.INFO,
             format='[%(asctime)s] %(name)s - %(levelname)s - %(message)s'
         )
+        
+        # Log initialization
+        total_workers = sum(self.config.values())
+        self.logger.info(f"Orchestrator initialized ({total_workers} total workers)")
+        for task_type, count in self.config.items():
+            if count > 0:
+                self.logger.debug(f"  {task_type.value}: {count} workers")
     
     def start(self):
         """Start the orchestrator and all worker pools"""
@@ -778,17 +911,19 @@ class Orchestrator:
         self.running = True
         
         # Start worker pools
+        started_pools = 0
         for task_type, num_workers in self.config.items():
             if num_workers > 0:
                 pool = WorkerPool(task_type, num_workers, self.task_queue, self.event_bus)
                 pool.start()
                 self.worker_pools[task_type] = pool
+                started_pools += 1
         
         # Subscribe to events for monitoring
         self.event_bus.subscribe("task.completed", self._on_task_completed)
         self.event_bus.subscribe("task.failed", self._on_task_failed)
         
-        self.logger.info("Orchestrator started")
+        self.logger.info(f"Orchestrator started ({started_pools} pools active)")
     
     def stop(self):
         """Stop the orchestrator and all worker pools"""
@@ -799,7 +934,8 @@ class Orchestrator:
         self.running = False
         
         # Stop all worker pools
-        for pool in self.worker_pools.values():
+        for task_type, pool in self.worker_pools.items():
+            self.logger.debug(f"Stopping {task_type.value} pool")
             pool.stop()
         
         self.logger.info("Orchestrator stopped")
@@ -838,21 +974,31 @@ class Orchestrator:
                 "workers": [asdict(s) for s in pool.get_stats()]
             }
         
+        self.logger.info(f"Generated stats: {len(stats['worker_pools'])} pools")
+        
         return stats
     
     def scale_pool(self, task_type: TaskType, num_workers: int):
         """Scale a worker pool"""
         if task_type in self.worker_pools:
+            self.logger.info(f"Scaling {task_type.value} pool to {num_workers} workers")
             self.worker_pools[task_type].scale(num_workers)
             self.config[task_type] = num_workers
+        else:
+            self.logger.warning(f"Cannot scale - pool not found: {task_type.value}")
     
     def _on_task_completed(self, message: Dict[str, Any]):
         """Handle task completion event"""
-        self.logger.info(f"Task completed: {message['task_id']} in {message['duration']:.2f}s")
+        self.logger.info(
+            f"Task completed: {message['task_name']} ({message['task_id'][:8]}...) "
+            f"in {message['duration']:.2f}s by {message['worker_id']}"
+        )
     
     def _on_task_failed(self, message: Dict[str, Any]):
         """Handle task failure event"""
-        self.logger.error(f"Task failed: {message['task_id']} - {message['error']}")
+        self.logger.error(
+            f"Task failed: {message['task_name']} ({message['task_id'][:8]}...) - {message['error']}"
+        )
 
 
 # ============================================================================
@@ -873,16 +1019,19 @@ class ProactiveFocusOrchestrator:
         # Subscribe to focus events
         orchestrator.event_bus.subscribe("focus.changed", self._on_focus_changed)
         orchestrator.event_bus.subscribe("task.completed", self._on_task_completed)
+        
+        self.logger.info("ProactiveFocusOrchestrator initialized")
     
     def submit_proactive_task(self, task_name: str, *args, **kwargs) -> str:
         """Submit a task marked for proactive focus"""
         # Add focus context
-        kwargs['focus_context'] = self.focus_manager.focus
+        focus = self.focus_manager.focus
+        kwargs['focus_context'] = focus
         
         # Submit through orchestrator
         task_id = self.orchestrator.submit_task(task_name, *args, **kwargs)
         
-        self.logger.info(f"Submitted proactive task: {task_name} (focus={self.focus_manager.focus})")
+        self.logger.info(f"Submitted proactive task: {task_name} (focus={focus}, task_id={task_id[:8]}...)")
         
         return task_id
     
@@ -893,6 +1042,7 @@ class ProactiveFocusOrchestrator:
     
     def _on_task_completed(self, message: Dict[str, Any]):
         """Handle task completion for proactive tasks"""
+        # Could add focus-specific handling here
         pass
 
 

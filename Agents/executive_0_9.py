@@ -47,7 +47,7 @@ from langchain.memory import ConversationBufferMemory
 MODEL = "gemma3:12b"
 PROJECTS_DIR = Path("./projects")
 LOCAL_CALENDAR_FILE = Path("./local_calendar.ics")
-SERVICE_ACCOUNT_FILE = "./Configuration/keys/service.json"  # <-- New
+SERVICE_ACCOUNT_FILE = "./Vera/Configuration/keys/service.json"  # <-- New
 GOOGLE_CALENDAR_ID = "primary"  # Replace with calendar ID if not using primary
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 

@@ -1,0 +1,183 @@
+<!-- agents-v2-ui.html - Insert into your main HTML -->
+
+<!-- Agents V2 Tab Content -->
+<div id="agents-tab" class="tab-content">
+    <!-- Navigation -->
+    <div style="background: var(--bg); padding: 16px; border-bottom: 2px solid var(--border); display: flex; gap: 8px; flex-wrap: wrap;">
+        <button class="agents-nav-btn active" data-panel="browse" onclick="app.switchAgentsV2Panel('browse')"
+                style="padding: 10px 16px; background: var(--accent); border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            🗂️ Browse
+        </button>
+        <button class="agents-nav-btn" data-panel="config" onclick="app.switchAgentsV2Panel('config')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            ⚙️ Config
+        </button>
+        <button class="agents-nav-btn" data-panel="template" onclick="app.switchAgentsV2Panel('template')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            📝 Template
+        </button>
+        <button class="agents-nav-btn" data-panel="prompt" onclick="app.switchAgentsV2Panel('prompt')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            👁️ Prompt
+        </button>
+        <button class="agents-nav-btn" data-panel="modelfile" onclick="app.switchAgentsV2Panel('modelfile')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            📄 Modelfile
+        </button>
+        <button class="agents-nav-btn" data-panel="test" onclick="app.switchAgentsV2Panel('test')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            🧪 Test
+        </button>
+        <button class="agents-nav-btn" data-panel="files" onclick="app.switchAgentsV2Panel('files')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            📁 Files
+        </button>
+        <button class="agents-nav-btn" data-panel="stats" onclick="app.switchAgentsV2Panel('stats')"
+                style="padding: 10px 16px; background: var(--bg-darker); border: none; border-radius: 6px; color: var(--text); cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s;">
+            📊 Stats
+        </button>
+    </div>
+
+    <!-- Panels Container -->
+    <div style="padding: 20px; overflow-y: auto; height: calc(100vh - 140px);">
+        
+        <!-- Browse Panel -->
+        <div id="agents-panel-browse" class="agents-panel" style="display: block;">
+            <div id="agents-list">
+                <!-- Agent cards will be rendered here -->
+            </div>
+        </div>
+
+        <!-- Config Editor Panel -->
+        <div id="agents-panel-config" class="agents-panel" style="display: none;">
+            <div id="agents-config-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to edit its configuration
+                </div>
+            </div>
+        </div>
+
+        <!-- Template Editor Panel -->
+        <div id="agents-panel-template" class="agents-panel" style="display: none;">
+            <div id="agents-template-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to edit its template
+                </div>
+            </div>
+        </div>
+
+        <!-- System Prompt Viewer Panel -->
+        <div id="agents-panel-prompt" class="agents-panel" style="display: none;">
+            <div id="agents-prompt-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to view its rendered system prompt
+                </div>
+            </div>
+        </div>
+
+        <!-- Modelfile Viewer Panel -->
+        <div id="agents-panel-modelfile" class="agents-panel" style="display: none;">
+            <div id="agents-modelfile-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to view its Modelfile
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Panel -->
+        <div id="agents-panel-test" class="agents-panel" style="display: none;">
+            <div id="agents-test-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to test it with Ollama
+                </div>
+            </div>
+        </div>
+
+        <!-- Files Manager Panel -->
+        <div id="agents-panel-files" class="agents-panel" style="display: none;">
+            <div id="agents-files-content">
+                <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                    Select an agent to manage its files
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Panel -->
+        <div id="agents-panel-stats" class="agents-panel" style="display: none;">
+            <div id="agents-stats-content">
+                <!-- Stats will be rendered here -->
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- Required Libraries -->
+<!-- Add to your HTML head -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+
+<!-- Include the three JavaScript parts -->
+<script src="agents-v2-ui-manager-part1.js"></script>
+<script src="agents-v2-ui-manager-part2.js"></script>
+<script src="agents-v2-ui-manager-part3.js"></script>
+
+<!-- Initialization -->
+<script>
+    // Initialize when Agents tab is opened
+    document.addEventListener('DOMContentLoaded', function() {
+        // Assuming you have a tab switching mechanism
+        // Initialize when agents tab becomes active
+        if (window.app) {
+            app.initAgentsV2();
+        }
+    });
+</script>
+
+<style>
+    /* Agent UI Styles */
+    .agents-nav-btn:hover {
+        opacity: 0.8 !important;
+    }
+    
+    .agents-nav-btn.active {
+        background: var(--accent) !important;
+        color: white !important;
+    }
+    
+    .agents-panel {
+        animation: fadeIn 0.3s ease-in;
+    }
+    
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Modal styles */
+    .modal-overlay {
+        animation: fadeIn 0.2s ease-in;
+    }
+    
+    /* Scrollbar styling for code blocks */
+    .agents-panel pre::-webkit-scrollbar,
+    .agents-panel textarea::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .agents-panel pre::-webkit-scrollbar-track,
+    .agents-panel textarea::-webkit-scrollbar-track {
+        background: var(--bg-darker);
+    }
+    
+    .agents-panel pre::-webkit-scrollbar-thumb,
+    .agents-panel textarea::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 4px;
+    }
+    
+    .agents-panel pre::-webkit-scrollbar-thumb:hover,
+    .agents-panel textarea::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+    }
+</style>

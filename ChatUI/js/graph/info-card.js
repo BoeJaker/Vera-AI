@@ -53,7 +53,7 @@
                 right: 20px;
                 width: 320px;
                 max-height: 400px;
-                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 50%);
                 border: 1px solid #334155;
                 border-radius: 12px;
                 box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);

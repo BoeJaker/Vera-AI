@@ -1,0 +1,43 @@
+fast_llm: Query fast LLM for quick tasks: creative writing, text review, summarization. Fast but less accurate.
+deep_llm: Query deep LLM for complex reasoning and detailed analysis. Slower but more accurate.
+read_file: Read contents of a text file. Provide full file path.
+write_file: Write content to a file. Creates directories if needed. Overwrites existing files.
+list_directory: List directory contents with file sizes and types.
+search_files: Search for files matching a pattern recursively. Supports glob and regex patterns.
+python: Execute Python code. Use print() for output. Supports both expressions and statements.
+bash: Execute bash command. Returns command output. Use with caution.
+web_search: Advanced web search using Playwright for robustness.Supports multiple search engines with automatic fallback.
+news_search: Search recent news using DuckDuckGo News. Best for current events.
+web_search_deep: Comprehensive web search with full page scraping. Use for in-depth information.
+http_request: Make HTTP requests to APIs. Supports GET, POST, PUT, DELETE methods.
+sqlite_query: Execute SQLite queries. Supports SELECT, INSERT, UPDATE, DELETE.
+git: Execute git commands: status, log, diff, branch, add, commit, push, pull.
+get_time: Get current date and time in specified timezone.
+time_delta: Calculate time difference between two dates or from date to now.
+count_tokens: Estimate token count for text. Useful for managing context windows.
+regex_search: Search text using regular expressions with optional flags.
+text_stats: Generate comprehensive statistics about text (word count, sentences, etc).
+parse_json: Parse and validate JSON, returning formatted output.
+csv_to_json: Convert CSV file to JSON format.
+hash_text: Generate cryptographic hash (md5, sha1, sha256, sha512) of text.
+system_info: Get system information including OS, Python version, etc.
+get_env: Get environment variable value.
+list_env: List all environment variables (sanitized).
+search_memory: Search agent's long-term memory for relevant past information.
+list_modules: List all currently loaded Python modules in the runtime.
+discover_tools: Discover and list available custom tools in the tools directory. Shows functions and their parameters. Tools with 🔧 are auto-loaded via @tool decorator.
+call_custom_tool: Call a function from a custom tool file. Provide tool name, function name, and arguments. Use for tools not auto-loaded or for dynamic execution.
+list_tool_functions: List all functions in a specific custom tool file with their parameters. Shows docstrings and whether functions are auto-loadable.
+reload_tools: Reload all custom tool modules. Use after editing tool files to pick up changes without restarting.
+discover_hosts: HOST DISCOVERY ONLY. Find live hosts from targets (IP/CIDR/range/hostname). ONLY creates nodes for reachable hosts. Fast parallel checking. Use when you only need to know which hosts are up.
+scan_ports: PORT SCANNING ONLY. Scan ports on target hosts. Can use previously discovered hosts or scan new targets. Creates port nodes for open ports only. Fast multi-threaded scanning. Use when you need to find open ports on known hosts.
+detect_services: SERVICE DETECTION ONLY. Identify services on discovered ports. Grabs banners, detects versions, identifies service types. Creates service nodes with version info. Use after port scanning to identify what's running.
+scan_vulnerabilities: VULNERABILITY SCANNING ONLY. Look up CVEs for discovered services. Queries NVD database, filters by severity, creates CVE nodes. Use after service detection to find known vulnerabilities. Rate-limited to avoid API throttling.
+comprehensive_network_scan: FULL COMPREHENSIVE SCAN. Runs all scan phases in sequence: 1) Host discovery, 2) Port scanning, 3) Service detection, 4) CVE lookup. ONLY creates nodes for live/reachable entities. Modes: 'quick' (common ports), 'standard' (1-1000), 'full' (all ports). Creates complete network topology map. Use for thorough network assessment.
+click_element: Click on an element with the given CSS selector
+navigate_browser: Navigate a browser to the specified URL
+previous_webpage: Navigate back to the previous page in the browser history
+extract_text: Extract all the text on the current webpage
+extract_hyperlinks: Extract all hyperlinks on the current webpage
+get_elements: Retrieve elements in the current web page matching the given CSS selector
+current_webpage: Returns the URL of the current page

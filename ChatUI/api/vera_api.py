@@ -33,6 +33,7 @@ from neo4j import GraphDatabase
 # ============================================================
 
 from Vera.vera import Vera
+import Vera.ChatUI.api.plugins_api as plugins_api
 import Vera.ChatUI.api.Canvas.execution_api as execution_api
 import Vera.ChatUI.api.Canvas.canvas_api as canvas_api # < to be replaced by execution_api
 import Vera.ChatUI.api.vectorstore_api as vectorstore_api
@@ -53,6 +54,7 @@ import Vera.ChatUI.api.session as session
 import Vera.ChatUI.api.config as config_api
 import Vera.ChatUI.api.Orchestrator.ollama_api as ollama_api
 import Vera.ChatUI.api.agents_api as agents_api
+import Vera.ChatUI.api.scheduling as scheduling_api 
 # from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
 # ============================================================
@@ -85,7 +87,16 @@ app.add_middleware(
 # ============================================================
 # Router setup
 # ============================================================
+from Vera.Agents.executive_0_9 import executive as executive
 
+# BEFORE including the router, initialize the service:
+print("[Startup] Initializing executive agent...")
+executive_agent = executive(vera_instance=None)  # Or your vera instance
+
+print("[Startup] Initializing calendar service...")
+scheduling_api.initialize_calendar_service(executive_agent)
+
+app.include_router(plugins_api.router)
 app.include_router(execution_api.router)
 app.include_router(canvas_api.router)
 app.include_router(chat_api.router)
@@ -108,6 +119,7 @@ app.include_router(notebook_api.router)
 app.include_router(config_api.router)
 app.include_router(ollama_api.router)
 app.include_router(agents_api.router)
+app.include_router(scheduling_api.router)
 # ============================================================
 # Global storage
 # ============================================================

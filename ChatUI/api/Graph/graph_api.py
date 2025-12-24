@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # Timestamp Utilities
 # ============================================================
+
 def extract_timestamp_from_id(id_string: str) -> Optional[int]:
     """
     Extract timestamp (in milliseconds) from IDs like:
@@ -56,46 +57,101 @@ def format_timestamp(timestamp_ms: int) -> str:
     """Format timestamp for display."""
     dt = timestamp_to_datetime(timestamp_ms)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
-
-
-def get_cypher_time_filter(
-    field_name: str = "id",
+def get_cypher_time_filter_multifield(
+    node_var: str = "n",
+    time_field: str = "auto",  # "auto", "id", "created_at", "updated_at", "timestamp"
     after: Optional[datetime] = None,
     before: Optional[datetime] = None
 ) -> tuple[str, dict]:
     """
-    Generate Cypher WHERE clause and parameters for time-based filtering on ID fields.
+    Generate Cypher WHERE clause and parameters for time-based filtering with multiple field support.
+    
+    Supports extracting timestamps from:
+    1. Node ID (e.g., mem_1765280473682)
+    2. created_at property (ISO format)
+    3. updated_at property (ISO format)
+    4. timestamp property (ISO format)
     
     Args:
-        field_name: The property name containing the ID (e.g., "n.id", "n.session_id")
-        after: Filter for IDs created after this datetime
-        before: Filter for IDs created before this datetime
+        node_var: The node variable name (e.g., "n", "m")
+        time_field: Which field to use for time filtering:
+                   - "auto": Try id -> created_at -> updated_at -> timestamp (fallback chain)
+                   - "id": Extract from node ID only
+                   - "created_at": Use created_at property
+                   - "updated_at": Use updated_at property
+                   - "timestamp": Use timestamp property
+        after: Filter for nodes created after this datetime
+        before: Filter for nodes created before this datetime
     
     Returns:
         Tuple of (where_clause, parameters_dict)
-    
-    Example:
-        clause, params = get_cypher_time_filter("n.id", after=datetime(2024, 1, 1))
-        # Returns: ("toInteger(substring(n.id, ...)) > $after_ts", {"after_ts": 1704067200000})
     """
-    conditions = []
+    if not after and not before:
+        return "", {}
+    
     params = {}
     
-    # Extract timestamp from the ID field
-    # Pattern matches: prefix_TIMESTAMP or prefix_TIMESTAMP_suffix
-    timestamp_extract = f"toInteger(substring({field_name}, size(split({field_name}, '_')[0]) + 1, 13))"
-    
+    # Convert datetimes to both milliseconds and ISO strings
     if after:
         after_ts = datetime_to_timestamp(after)
-        conditions.append(f"{timestamp_extract} >= $after_ts")
+        after_iso = after.isoformat()
         params["after_ts"] = after_ts
+        params["after_iso"] = after_iso
     
     if before:
         before_ts = datetime_to_timestamp(before)
-        conditions.append(f"{timestamp_extract} <= $before_ts")
+        before_iso = before.isoformat()
         params["before_ts"] = before_ts
+        params["before_iso"] = before_iso
     
-    where_clause = " AND ".join(conditions) if conditions else ""
+    # Build the time extraction expression based on field selection
+    if time_field == "id":
+        # Extract from ID only
+        time_expr = f"toInteger(substring({node_var}.id, size(split({node_var}.id, '_')[0]) + 1, 13))"
+        conditions = []
+        if after:
+            conditions.append(f"{time_expr} >= $after_ts")
+        if before:
+            conditions.append(f"{time_expr} <= $before_ts")
+        where_clause = " AND ".join(conditions)
+        
+    elif time_field in ["created_at", "updated_at", "timestamp"]:
+        # Use specific datetime property
+        conditions = []
+        if after:
+            conditions.append(f"{node_var}.{time_field} >= datetime($after_iso)")
+        if before:
+            conditions.append(f"{node_var}.{time_field} <= datetime($before_iso)")
+        where_clause = f"{node_var}.{time_field} IS NOT NULL AND " + " AND ".join(conditions)
+        
+    else:  # "auto" - fallback chain
+        # Use COALESCE to try multiple sources in order
+        # Priority: ID timestamp -> created_at -> updated_at -> timestamp
+        
+        # Build the COALESCE expression for timestamp extraction
+        id_ts_expr = f"toInteger(substring({node_var}.id, size(split({node_var}.id, '_')[0]) + 1, 13))"
+        
+        # Convert datetime properties to millisecond timestamps for comparison
+        created_ts_expr = f"toInteger(datetime({node_var}.created_at).epochMillis)"
+        updated_ts_expr = f"toInteger(datetime({node_var}.updated_at).epochMillis)"
+        timestamp_ts_expr = f"toInteger(datetime({node_var}.timestamp).epochMillis)"
+        
+        # COALESCE to get first available timestamp
+        time_expr = f"""COALESCE(
+            CASE WHEN {node_var}.id =~ '.*_\\d{{13}}.*' THEN {id_ts_expr} ELSE null END,
+            CASE WHEN {node_var}.created_at IS NOT NULL THEN {created_ts_expr} ELSE null END,
+            CASE WHEN {node_var}.updated_at IS NOT NULL THEN {updated_ts_expr} ELSE null END,
+            CASE WHEN {node_var}.timestamp IS NOT NULL THEN {timestamp_ts_expr} ELSE null END
+        )"""
+        
+        conditions = []
+        if after:
+            conditions.append(f"{time_expr} >= $after_ts")
+        if before:
+            conditions.append(f"{time_expr} <= $before_ts")
+        
+        where_clause = f"{time_expr} IS NOT NULL AND " + " AND ".join(conditions)
+    
     return where_clause, params
 
 # ============================================================
@@ -184,8 +240,8 @@ async def get_session_graph(session_id: str):
                             nodes_list.append(GraphNode(
                                 id=node_id,
                                 label=node_type,
-                                title=f"{node_type}: {text}",
-                                color=node.get("color",color),
+                                title=f"{node_type}: {text[:min(len(text), 20)]}",
+                                color=node.get("color", color),
                                 properties=properties,
                                 size=min(properties.get("importance", 20), 40)
                             ))
@@ -363,6 +419,8 @@ async def execute_cypher_query(request: CypherQueryRequest):
                             
                             color = get_node_color(node_type, properties, labels)
                             
+                            properties["labels"] = labels
+                            logger.debug(properties)
                             nodes_list.append(GraphNode(
                                 id=node_id,
                                 label=node_type,
@@ -532,14 +590,22 @@ async def get_nodes_by_timerange(
     after: Optional[str] = Query(None, description="ISO format datetime (e.g., 2024-01-01T00:00:00)"),
     before: Optional[str] = Query(None, description="ISO format datetime (e.g., 2024-12-31T23:59:59)"),
     node_types: Optional[str] = Query(None, description="Comma-separated node types to filter (e.g., 'thought,memory')"),
+    time_field: str = Query("auto", description="Time field to use: 'auto', 'id', 'created_at', 'updated_at', 'timestamp'"),
     max_nodes: int = Query(100, description="Maximum number of nodes to return", le=1000)
 ):
     """
-    Get nodes created within a specific time range based on their ID timestamps.
+    Get nodes created within a specific time range based on multiple timestamp sources.
+    
+    Time field options:
+    - auto: Try id -> created_at -> updated_at -> timestamp (default)
+    - id: Extract timestamp from node ID only
+    - created_at: Use created_at property
+    - updated_at: Use updated_at property  
+    - timestamp: Use timestamp property
     
     Examples:
     - /api/graph/timerange?after=2024-01-01T00:00:00
-    - /api/graph/timerange?before=2024-12-31T23:59:59
+    - /api/graph/timerange?after=2024-01-01T00:00:00&time_field=created_at
     - /api/graph/timerange?after=2024-01-01T00:00:00&before=2024-01-31T23:59:59&node_types=thought,memory
     """
     try:
@@ -547,27 +613,51 @@ async def get_nodes_by_timerange(
         after_dt = datetime.fromisoformat(after) if after else None
         before_dt = datetime.fromisoformat(before) if before else None
         
-        # Get time filter
-        time_where, time_params = get_cypher_time_filter("n.id", after_dt, before_dt)
+        # Get time filter with multi-field support
+        time_where, time_params = get_cypher_time_filter_multifield(
+            node_var="n",
+            time_field=time_field,
+            after=after_dt,
+            before=before_dt
+        )
         
         # Build type filter
         type_filter = ""
         if node_types:
             types_list = [t.strip() for t in node_types.split(',')]
-            type_filter = "AND n.type IN $types"
+            type_filter = "n.type IN $types"
             time_params["types"] = types_list
         
         # Combine filters
         where_clause = f"WHERE {time_where}" if time_where else ""
         if type_filter:
-            where_clause = f"{where_clause} {type_filter}" if where_clause else f"WHERE {type_filter.replace('AND ', '')}"
+            where_clause = f"{where_clause} AND {type_filter}" if where_clause else f"WHERE {type_filter}"
+        
+        # Build ordering based on time_field
+        if time_field == "id":
+            order_expr = "toInteger(substring(n.id, size(split(n.id, '_')[0]) + 1, 13))"
+        elif time_field in ["created_at", "updated_at", "timestamp"]:
+            order_expr = f"n.{time_field}"
+        else:  # auto
+            # Use COALESCE for ordering too
+            id_ts_expr = "toInteger(substring(n.id, size(split(n.id, '_')[0]) + 1, 13))"
+            created_ts_expr = "toInteger(datetime(n.created_at).epochMillis)"
+            updated_ts_expr = "toInteger(datetime(n.updated_at).epochMillis)"
+            timestamp_ts_expr = "toInteger(datetime(n.timestamp).epochMillis)"
+            
+            order_expr = f"""COALESCE(
+                CASE WHEN n.id =~ '.*_\\d{{13}}.*' THEN {id_ts_expr} ELSE null END,
+                CASE WHEN n.created_at IS NOT NULL THEN {created_ts_expr} ELSE null END,
+                CASE WHEN n.updated_at IS NOT NULL THEN {updated_ts_expr} ELSE null END,
+                CASE WHEN n.timestamp IS NOT NULL THEN {timestamp_ts_expr} ELSE null END
+            )"""
         
         # Build query
         query = f"""
             MATCH (n)
             {where_clause}
-            WITH n
-            ORDER BY n.id DESC
+            WITH n, {order_expr} as sort_time
+            ORDER BY sort_time DESC
             LIMIT $max_nodes
             OPTIONAL MATCH (n)-[r]-(connected)
             RETURN n, collect(DISTINCT r) as relationships, collect(DISTINCT connected) as connected_nodes
@@ -608,10 +698,32 @@ async def get_nodes_by_timerange(
                         node_type = properties.get("type", labels[0] if labels else "node")
                         color = get_node_color(node_type, properties, labels)
                         
-                        # Extract timestamp for display
+                        # Extract timestamp for display (try all sources)
                         timestamp = extract_timestamp_from_id(node_id)
                         if timestamp:
                             properties["_timestamp"] = format_timestamp(timestamp)
+                            properties["_timestamp_source"] = "id"
+                        elif properties.get("created_at"):
+                            try:
+                                dt = datetime.fromisoformat(str(properties["created_at"]))
+                                properties["_timestamp"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                properties["_timestamp_source"] = "created_at"
+                            except:
+                                pass
+                        elif properties.get("updated_at"):
+                            try:
+                                dt = datetime.fromisoformat(str(properties["updated_at"]))
+                                properties["_timestamp"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                properties["_timestamp_source"] = "updated_at"
+                            except:
+                                pass
+                        elif properties.get("timestamp"):
+                            try:
+                                dt = datetime.fromisoformat(str(properties["timestamp"]))
+                                properties["_timestamp"] = dt.strftime("%Y-%m-%d %H:%M:%S")
+                                properties["_timestamp_source"] = "timestamp"
+                            except:
+                                pass
                         
                         nodes_list.append(GraphNode(
                             id=node_id,
@@ -677,7 +789,8 @@ async def get_nodes_by_timerange(
                 "edge_count": len(edges),
                 "after": after,
                 "before": before,
-                "node_types": node_types
+                "node_types": node_types,
+                "time_field": time_field
             }
         )
         
@@ -687,19 +800,19 @@ async def get_nodes_by_timerange(
         logger.error(f"Time range query error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/recent", response_model=GraphResponse)
 async def get_recent_nodes(
     hours: int = Query(24, description="Number of hours to look back", ge=1, le=168),
     node_types: Optional[str] = Query(None, description="Comma-separated node types to filter"),
+    time_field: str = Query("auto", description="Time field to use: 'auto', 'id', 'created_at', 'updated_at', 'timestamp'"),
     max_nodes: int = Query(50, description="Maximum number of nodes to return", le=500)
 ):
     """
-    Get nodes created in the last N hours based on their ID timestamps.
+    Get nodes created in the last N hours based on multiple timestamp sources.
     
     Examples:
     - /api/graph/recent?hours=24
-    - /api/graph/recent?hours=1&node_types=thought,decision
+    - /api/graph/recent?hours=1&node_types=thought,decision&time_field=created_at
     """
     from datetime import timedelta
     
@@ -711,10 +824,9 @@ async def get_recent_nodes(
         after=after.isoformat(),
         before=None,
         node_types=node_types,
+        time_field=time_field,
         max_nodes=max_nodes
     )
-
-
 # ============================================================
 # Additional Utility Endpoints
 # ============================================================

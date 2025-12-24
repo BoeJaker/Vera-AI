@@ -177,10 +177,10 @@
                 }
                 
                 // Show message if current session is empty but global notebooks exist
-                if (this.notebooks.length === 0 && data.global_notebooks_available > 0) {
-                    console.log(`   ℹ️ ${data.global_notebooks_available} notebooks available in other sessions`);
-                    this.showGlobalNotebooksPrompt(data.global_notebooks_available);
-                }
+                // if (this.notebooks.length === 0 && data.global_notebooks_available > 0) {
+                //     console.log(`   ℹ️ ${data.global_notebooks_available} notebooks available in other sessions`);
+                //     this.showGlobalNotebooksPrompt(data.global_notebooks_available);
+                // }
             }
             
             this.updateNotebookSelector();

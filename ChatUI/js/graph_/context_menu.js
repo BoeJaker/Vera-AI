@@ -1,6 +1,7 @@
 /**
  * GraphContextMenu Module
  * Handles all context menu interactions and routing to appropriate handlers
+ * Uses unified tool selector from GraphCanvasMenu
  */
 
 (function() {
@@ -12,7 +13,8 @@
         graphAddon: null,
         graphDiscovery: null,
         contextMenuNode: null,
-        
+        canvasContextMenuNode: null,
+
         /**
          * Initialize the module
          */
@@ -51,17 +53,26 @@
             // Right-click on network to show context menu
             network.on("oncontext", function(params) {
                 params.event.preventDefault();
-                
+
                 const nodeId = network.getNodeAt(params.pointer.DOM);
+
                 if (nodeId) {
-                    console.log('Context menu triggered for node:', nodeId);
+                    console.log('Node context menu triggered for node:', nodeId);
                     self.contextMenuNode = nodeId;
                     self.showContextMenu(params.event.clientX, params.event.clientY);
+                } else {
+                    console.log('Canvas context menu triggered');
+                    self.showCanvasContextMenu(params.event.clientX, params.event.clientY);
                 }
             });
+
             
             // Click anywhere to hide context menu
-            document.addEventListener('click', () => self.hideContextMenu());
+            document.addEventListener('click', () => {
+                self.hideContextMenu();
+                self.hideCanvasContextMenu();
+            });
+
             
             // Handle context menu item clicks
             const contextMenu = document.getElementById('context-menu');
@@ -76,8 +87,6 @@
                     }
                 });
                 console.log('Context menu event listeners set up successfully');
-            } else {
-                console.warn('Context menu element #context-menu not found!');
             }
         },
         
@@ -103,6 +112,24 @@
             }
         },
         
+        showCanvasContextMenu: function(x, y) {
+            this.hideContextMenu();
+
+            const menu = document.getElementById('canvas-context-menu');
+            if (menu) {
+                menu.style.display = 'block';
+                menu.style.left = x + 'px';
+                menu.style.top = y + 'px';
+            }
+        },
+
+        hideCanvasContextMenu: function() {
+            const menu = document.getElementById('canvas-context-menu');
+            if (menu) {
+                menu.style.display = 'none';
+            }
+        },
+
         /**
          * Handle context menu action
          */
@@ -143,9 +170,11 @@
                     this.graphDiscovery.showPathFinder(this.contextMenuNode);
                     break;
                     
-                // Expansion Actions - Show slider dialog
+                // Expansion Actions - Show slider dialog in GraphInfoCard
                 case 'expand-neighbors':
-                    this.showExpandDialog(this.contextMenuNode);
+                    if (window.GraphInfoCard) {
+                        window.GraphInfoCard.showExpandDialog(this.contextMenuNode);
+                    }
                     break;
                     
                 // View Actions - Route to GraphAddon
@@ -160,7 +189,7 @@
                     this.graphDiscovery.clearDiscoveredRelationships();
                     break;
                     
-                // Analysis Actions - Placeholder implementations
+                // Analysis Actions - Route to GraphInfoCard
                 case 'search':
                     this.handleSearch(nodeName);
                     break;
@@ -173,7 +202,7 @@
                     this.handleExtractEntities(nodeName);
                     break;
                     
-                // Generate Actions - Placeholder implementations
+                // Generate Actions - Route to GraphInfoCard
                 case 'discover':
                     this.handleDiscover(nodeName);
                     break;
@@ -182,18 +211,23 @@
                     this.handleGenerateIdeas(nodeName);
                     break;
                     
-                // AI Actions - Integrated implementation
+                // AI Actions
                 case 'ask-vera':
                     this.handleAskVera(this.contextMenuNode, nodeName, nodeData);
                     break;
-                
-                // Tool Execution
+
+                // Tool Execution - USE UNIFIED TOOL SELECTOR
                 case 'execute-tool':
-                    if (window.GraphToolExecutor) {
+                    // Route to unified tool selector in GraphCanvasMenu OR GraphToolExecutor
+                    if (window.GraphToolExecutor && window.GraphToolExecutor.showToolSelector) {
+                        // Prefer GraphToolExecutor for full plugin support
                         window.GraphToolExecutor.showToolSelector(this.contextMenuNode);
+                    } else if (window.GraphCanvasMenu && window.GraphCanvasMenu.showToolSelector) {
+                        // Fallback to GraphCanvasMenu's unified tool selector
+                        window.GraphCanvasMenu.showToolSelector(this.contextMenuNode);
                     } else {
-                        console.warn('GraphToolExecutor not loaded');
-                        alert('Tool executor not available');
+                        console.error('No tool selector available');
+                        alert('Tool executor not available. Please reload the page.');
                     }
                     break;
                     
@@ -201,34 +235,89 @@
                     console.warn(`Unknown action: ${action}`);
             }
         },
-        
+
         // ============================================================
-        // PLACEHOLDER IMPLEMENTATIONS
+        // PLACEHOLDER IMPLEMENTATIONS - USE GRAPHINFOCARD
         // ============================================================
         
         handleSearch: function(nodeName) {
             console.log('Search action for node:', nodeName);
-            alert(`Search functionality will be implemented for: ${nodeName}`);
+            if (window.GraphInfoCard) {
+                window.GraphInfoCard.showInlineContent(
+                    '🔍 Search',
+                    `<div style="padding: 20px; text-align: center; color: #94a3b8;">
+                        Search functionality for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
+                        <br><br>
+                        Coming soon...
+                    </div>`
+                );
+            } else {
+                alert(`Search functionality will be implemented for: ${nodeName}`);
+            }
         },
         
         handleEnrich: function(nodeName) {
             console.log('Enrich (NLP) action for node:', nodeName);
-            alert(`NLP Analysis will be performed on: ${nodeName}`);
+            if (window.GraphInfoCard) {
+                window.GraphInfoCard.showInlineContent(
+                    '🧠 NLP Analysis',
+                    `<div style="padding: 20px; text-align: center; color: #94a3b8;">
+                        NLP Analysis for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
+                        <br><br>
+                        Coming soon...
+                    </div>`
+                );
+            } else {
+                alert(`NLP Analysis will be performed on: ${nodeName}`);
+            }
         },
         
         handleExtractEntities: function(nodeName) {
             console.log('Extract entities action for node:', nodeName);
-            alert(`Entity extraction will be performed on: ${nodeName}`);
+            if (window.GraphInfoCard) {
+                window.GraphInfoCard.showInlineContent(
+                    '🏷️ Extract Entities',
+                    `<div style="padding: 20px; text-align: center; color: #94a3b8;">
+                        Entity extraction for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
+                        <br><br>
+                        Coming soon...
+                    </div>`
+                );
+            } else {
+                alert(`Entity extraction will be performed on: ${nodeName}`);
+            }
         },
         
         handleDiscover: function(nodeName) {
             console.log('Discover action for node:', nodeName);
-            alert(`Discovery mode for: ${nodeName}`);
+            if (window.GraphInfoCard) {
+                window.GraphInfoCard.showInlineContent(
+                    '🔭 Discovery Mode',
+                    `<div style="padding: 20px; text-align: center; color: #94a3b8;">
+                        Discovery mode for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
+                        <br><br>
+                        Coming soon...
+                    </div>`
+                );
+            } else {
+                alert(`Discovery mode for: ${nodeName}`);
+            }
         },
         
         handleGenerateIdeas: function(nodeName) {
             console.log('Generate ideas action for node:', nodeName);
-            alert(`Generating idea stubs for: ${nodeName}`);
+            if (window.GraphInfoCard) {
+                window.GraphInfoCard.showInlineContent(
+                    '💡 Generate Ideas',
+                    `<div style="padding: 20px; text-align: center; color: #94a3b8;">
+                        Generating idea stubs for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
+                        <br><br>
+                        Coming soon...
+                    </div>`
+                );
+            } else {
+                alert(`Generating idea stubs for: ${nodeName}`);
+            }
         },
         
         handleAskVera: function(nodeId, nodeName, nodeData) {
@@ -259,12 +348,12 @@
             // Pre-fill the chat input
             const question = `Can you tell me more about this node?\n\n${nodeContext}`;
             
-            const chatInput = document.getElementById('message-input');
+            const chatInput = document.getElementById('messageInput');
             if (chatInput) {
                 chatInput.value = question;
                 chatInput.focus();
                 
-                const chatSection = document.getElementById('chat-section');
+                const chatSection = document.getElementById('chatMessages');
                 if (chatSection) {
                     chatSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 }
@@ -274,123 +363,6 @@
                 console.warn('Chat input not found');
                 alert(`Ask Vera about: ${nodeName}\n\n${nodeContext}\n\nCopy this to the chat.`);
             }
-        },
-        
-        /**
-         * Show expand neighbors dialog with slider
-         */
-        showExpandDialog: function(nodeId) {
-            const nodeData = this.graphAddon.nodesData[nodeId];
-            const nodeName = nodeData ? nodeData.display_name : nodeId;
-            
-            const panel = document.getElementById('property-panel');
-            const content = document.getElementById('panel-content');
-            
-            content.innerHTML = `
-                <div style="padding: 20px;">
-                    <div class="section">
-                        <div class="section-title">🔎 Expand Neighbors</div>
-                        <div style="color: #94a3b8; font-size: 13px; margin-bottom: 16px;">
-                            Expand connections for: <strong style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</strong>
-                        </div>
-                        
-                        <div style="background: #0f172a; padding: 16px; border-radius: 8px; border: 1px solid #1e293b;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-                                <label style="color: #94a3b8; font-size: 13px; font-weight: 600;">Depth (Hops)</label>
-                                <div style="display: flex; align-items: center; gap: 12px;">
-                                    <input 
-                                        type="number" 
-                                        id="expand-depth-input" 
-                                        value="2" 
-                                        min="1" 
-                                        max="10"
-                                        style="
-                                            width: 60px; padding: 6px 10px;
-                                            background: #1e293b; color: #e2e8f0;
-                                            border: 1px solid #334155; border-radius: 6px;
-                                            font-size: 14px; font-weight: 600; text-align: center;
-                                        "
-                                        oninput="document.getElementById('expand-depth-slider').value = this.value"
-                                    >
-                                </div>
-                            </div>
-                            
-                            <input 
-                                type="range" 
-                                id="expand-depth-slider" 
-                                value="2" 
-                                min="1" 
-                                max="10" 
-                                step="1"
-                                style="
-                                    width: 100%; height: 8px;
-                                    background: linear-gradient(to right, #3b82f6 0%, #60a5fa 100%);
-                                    border-radius: 4px; outline: none;
-                                    -webkit-appearance: none;
-                                "
-                                oninput="document.getElementById('expand-depth-input').value = this.value"
-                            >
-                            
-                            <div style="display: flex; justify-content: space-between; margin-top: 8px; color: #64748b; font-size: 11px;">
-                                <span>1 hop</span>
-                                <span>5 hops</span>
-                                <span>10 hops</span>
-                            </div>
-                            
-                            <div style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.1); border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.2);">
-                                <div style="color: #60a5fa; font-size: 11px; font-weight: 600; margin-bottom: 4px;">💡 Tip</div>
-                                <div style="color: #94a3b8; font-size: 11px; line-height: 1.4;">
-                                    Higher depths find more connections but may take longer.<br>
-                                    Start with 2-3 hops for best results.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div style="display: flex; gap: 8px; margin-top: 20px;">
-                        <button onclick="
-                            const depth = parseInt(document.getElementById('expand-depth-input').value);
-                            window.GraphContextMenu.graphDiscovery.expandNeighbors('${nodeId}', depth);
-                        " style="
-                            flex: 1; padding: 12px;
-                            background: #3b82f6; color: white; border: none;
-                            border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
-                        ">Expand</button>
-                        <button onclick="window.GraphAddon.closePanel()" style="
-                            padding: 12px 24px;
-                            background: #334155; color: #e2e8f0; border: 1px solid #475569;
-                            border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
-                        ">Cancel</button>
-                    </div>
-                </div>
-                
-                <style>
-                    /* Custom slider styling */
-                    #expand-depth-slider::-webkit-slider-thumb {
-                        -webkit-appearance: none;
-                        appearance: none;
-                        width: 20px;
-                        height: 20px;
-                        border-radius: 50%;
-                        background: #3b82f6;
-                        cursor: pointer;
-                        border: 3px solid #ffffff;
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-                    }
-                    
-                    #expand-depth-slider::-moz-range-thumb {
-                        width: 20px;
-                        height: 20px;
-                        border-radius: 50%;
-                        background: #3b82f6;
-                        cursor: pointer;
-                        border: 3px solid #ffffff;
-                        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-                    }
-                </style>
-            `;
-            
-            panel.style.display = 'flex';
         },
         
         /**

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toolchain Rendering Demo</title>
+    
+    <!-- Mermaid for diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    
+    <style>
+        :root {
+            --bg: #0f172a;
+            --panel-bg: #1e293b;
+            --border: #334155;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            margin-bottom: 10px;
+            color: var(--accent);
+        }
+        
+        .subtitle {
+            color: var(--text-muted);
+            margin-bottom: 30px;
+        }
+        
+        .demo-section {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        
+        .demo-section h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .example-input {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            color: var(--text-muted);
+        }
+        
+        .render-button {
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .render-button:hover {
+            background: #2563eb;
+        }
+        
+        .output {
+            min-height: 100px;
+        }
+        
+        .message {
+            padding: 15px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Toolchain Rendering Demo</h1>
+        <p class="subtitle">Automatic visualization of AI toolchain execution plans</p>
+        
+        <!-- Example 1: Simple Sequential -->
+        <div class="demo-section">
+            <h2>Example 1: Simple Sequential Plan</h2>
+            <div class="example-input">toolchain[
+  { "tool": "deep_llm", "input": "Generate an ESP32 sketch that sets up a simple server to receive commands and control a WiFi scanner." },
+  { "tool": "write_file", "input": "esp32_wifi_scanner.ino" }
+]</div>
+            <button class="render-button" onclick="renderExample1()">Render Visualization</button>
+            <div class="output" id="output1"></div>
+        </div>
+        
+        <!-- Example 2: With Step References -->
+        <div class="demo-section">
+            <h2>Example 2: Plan with Step References</h2>
+            <div class="example-input">toolchain```json
+[
+  { "tool": "web_search", "input": "Find ESP32 WiFi examples" },
+  { "tool": "deep_llm", "input": "Based on {step_0}, generate a comprehensive ESP32 sketch" },
+  { "tool": "write_file", "input": "esp32_advanced.ino with code from {step_1}" },
+  { "tool": "validate", "input": "Check syntax of {step_2}" }
+]
+```</div>
+            <button class="render-button" onclick="renderExample2()">Render Visualization</button>
+            <div class="output" id="output2"></div>
+        </div>
+        
+        <!-- Example 3: Complex Dependencies -->
+        <div class="demo-section">
+            <h2>Example 3: Complex Multi-Stage Plan</h2>
+            <div class="example-input">toolchain[
+  { "tool": "read_file", "input": "requirements.txt" },
+  { "tool": "parse_dependencies", "input": "{step_0}" },
+  { "tool": "fetch_docs", "input": "Get documentation for {step_1}" },
+  { "tool": "deep_llm", "input": "Analyze {step_2} and generate implementation plan" },
+  { "tool": "generate_code", "input": "Create code based on {step_3}" },
+  { "tool": "run_tests", "input": "Test {step_4}" },
+  { "tool": "write_file", "input": "Save {step_4} if {step_5} passes" }
+]</div>
+            <button class="render-button" onclick="renderExample3()">Render Visualization</button>
+            <div class="output" id="output3"></div>
+        </div>
+        
+        <!-- Example 4: Parallel Processing -->
+        <div class="demo-section">
+            <h2>Example 4: Parallel Data Processing</h2>
+            <div class="example-input">toolchain```
+[
+  { "tool": "fetch_data", "input": "api/users" },
+  { "tool": "fetch_data", "input": "api/posts" },
+  { "tool": "fetch_data", "input": "api/comments" },
+  { "tool": "merge_datasets", "input": "Combine {step_0}, {step_1}, and {step_2}" },
+  { "tool": "analyze", "input": "Generate insights from {step_3}" },
+  { "tool": "create_report", "input": "Format {step_4} as markdown" }
+]
+```</div>
+            <button class="render-button" onclick="renderExample4()">Render Visualization</button>
+            <div class="output" id="output4"></div>
+        </div>
+    </div>
+    
+    <!-- Load the toolchain rendering module -->
+    <script src="toolchain-render.js"></script>
+    
+    <script>
+        // Initialize Mermaid
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#3b82f6',
+                primaryTextColor: '#e2e8f0',
+                primaryBorderColor: '#60a5fa',
+                lineColor: '#475569',
+                secondaryColor: '#1e293b',
+                tertiaryColor: '#0f172a'
+            }
+        });
+        
+        // Create a minimal VeraChat instance for demo
+        class DemoChat {
+            constructor() {
+                // Copy the necessary methods from VeraChat
+                if (typeof VeraChat !== 'undefined') {
+                    this.detectAndRenderToolchain = VeraChat.prototype.detectAndRenderToolchain;
+                    this.generateToolchainMermaid = VeraChat.prototype.generateToolchainMermaid;
+                    this.findStepReferences = VeraChat.prototype.findStepReferences;
+                    this.getInputPreview = VeraChat.prototype.getInputPreview;
+                    this.generateStepDetails = VeraChat.prototype.generateStepDetails;
+                    this.escapeHtml = VeraChat.prototype.escapeHtml || this.defaultEscapeHtml;
+                }
+            }
+            
+            defaultEscapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            async renderToOutput(content, outputId) {
+                const output = document.getElementById(outputId);
+                const processed = this.detectAndRenderToolchain(content);
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.innerHTML = processed;
+                
+                output.innerHTML = '';
+                output.appendChild(messageDiv);
+                
+                // Render any mermaid diagrams
+                const diagrams = messageDiv.querySelectorAll('.mermaid-diagram');
+                for (let i = 0; i < diagrams.length; i++) {
+                    const diagram = diagrams[i];
+                    const code = diagram.textContent.trim();
+                    const id = `mermaid-demo-${outputId}-${i}`;
+                    
+                    try {
+                        const result = await mermaid.render(id, code);
+                        diagram.innerHTML = result.svg;
+                    } catch (error) {
+                        console.error('Mermaid render error:', error);
+                        diagram.innerHTML = `<div style="color: #ef4444; padding: 10px;">Error rendering diagram</div>`;
+                    }
+                }
+            }
+        }
+        
+        const demo = new DemoChat();
+        
+        function renderExample1() {
+            const content = `toolchain[
+  { "tool": "deep_llm", "input": "Generate an ESP32 sketch that sets up a simple server to receive commands and control a WiFi scanner." },
+  { "tool": "write_file", "input": "esp32_wifi_scanner.ino" }
+]`;
+            demo.renderToOutput(content, 'output1');
+        }
+        
+        function renderExample2() {
+            const content = `toolchain\`\`\`json
+[
+  { "tool": "web_search", "input": "Find ESP32 WiFi examples" },
+  { "tool": "deep_llm", "input": "Based on {step_0}, generate a comprehensive ESP32 sketch" },
+  { "tool": "write_file", "input": "esp32_advanced.ino with code from {step_1}" },
+  { "tool": "validate", "input": "Check syntax of {step_2}" }
+]
+\`\`\``;
+            demo.renderToOutput(content, 'output2');
+        }
+        
+        function renderExample3() {
+            const content = `toolchain[
+  { "tool": "read_file", "input": "requirements.txt" },
+  { "tool": "parse_dependencies", "input": "{step_0}" },
+  { "tool": "fetch_docs", "input": "Get documentation for {step_1}" },
+  { "tool": "deep_llm", "input": "Analyze {step_2} and generate implementation plan" },
+  { "tool": "generate_code", "input": "Create code based on {step_3}" },
+  { "tool": "run_tests", "input": "Test {step_4}" },
+  { "tool": "write_file", "input": "Save {step_4} if {step_5} passes" }
+]`;
+            demo.renderToOutput(content, 'output3');
+        }
+        
+        function renderExample4() {
+            const content = `toolchain\`\`\`
+[
+  { "tool": "fetch_data", "input": "api/users" },
+  { "tool": "fetch_data", "input": "api/posts" },
+  { "tool": "fetch_data", "input": "api/comments" },
+  { "tool": "merge_datasets", "input": "Combine {step_0}, {step_1}, and {step_2}" },
+  { "tool": "analyze", "input": "Generate insights from {step_3}" },
+  { "tool": "create_report", "input": "Format {step_4} as markdown" }
+]
+\`\`\``;
+            demo.renderToOutput(content, 'output4');
+        }
+        
+        // Auto-render first example on load
+        window.addEventListener('load', () => {
+            setTimeout(renderExample1, 500);
+        });
+    </script>
+</body>
+</html>

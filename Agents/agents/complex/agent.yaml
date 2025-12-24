@@ -4,7 +4,7 @@ description: "Deep reasoning agent; long chains of thought are allowed internall
 base_model: "llama3.1:70b"
 quantization: "Q5_K_M"
 num_ctx: 65536
-gpu_layers: 50
+# gpu_layers: 50
 
 parameters:
   temperature: 0.0

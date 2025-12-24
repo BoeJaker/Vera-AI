@@ -1,18 +1,25 @@
 /**
- * Graph Modules Initialization
- * Call this AFTER all modules are loaded
+ * Graph Modules Initialization - Optimized Event-Driven Version
+ * Eliminates polling delays by using custom events
  */
 
 (function() {
     'use strict';
     
+    let initializationAttempted = false;
+    
     function initGraphModules() {
         console.log('=== INIT: Starting graph modules initialization ===');
+        
+        // Prevent double initialization
+        if (initializationAttempted) {
+            console.log('INIT: Already attempted, skipping...');
+            return;
+        }
         
         // Check if required objects exist
         if (typeof window.GraphAddon === 'undefined') {
             console.error('INIT: GraphAddon not found!');
-            setTimeout(initGraphModules, 500);
             return;
         }
         
@@ -26,33 +33,45 @@
             return;
         }
         
-        // Wait for GraphAddon to have nodesData ready
-        if (!window.GraphAddon.nodesData || Object.keys(window.GraphAddon.nodesData).length === 0) {
-            console.log('INIT: GraphAddon not ready yet (nodesData empty), waiting...');
-            setTimeout(initGraphModules, 500);
-            return;
-        }
-        
-        // Check if already initialized (prevent double init)
+        // Check if GraphDiscovery is already initialized (better check than nodesData)
         if (window.GraphDiscovery.graphAddon) {
-            console.log('INIT: Modules already initialized, skipping...');
+            console.log('INIT: Modules already initialized');
             return;
         }
         
-        console.log('INIT: GraphAddon ready with', Object.keys(window.GraphAddon.nodesData).length, 'nodes');
+        // Mark as attempted to prevent retries
+        initializationAttempted = true;
         
+        // Check if GraphAddon has data (allow empty graphs to initialize)
+        const hasNodesData = window.GraphAddon.nodesData && 
+                            typeof window.GraphAddon.nodesData === 'object';
+        
+        if (!hasNodesData) {
+            console.warn('INIT: GraphAddon nodesData not initialized yet');
+            initializationAttempted = false; // Allow retry
+            return;
+        }
+        
+        const nodeCount = Object.keys(window.GraphAddon.nodesData).length;
+        console.log('INIT: GraphAddon ready with', nodeCount, 'nodes');
+        
+        // Initialize modules
         console.log('INIT: Initializing GraphDiscovery...');
         window.GraphDiscovery.init(window.GraphAddon);
         
         console.log('INIT: Initializing GraphContextMenu...');
         window.GraphContextMenu.init(window.GraphAddon, window.GraphDiscovery);
         
+        // Initialize canvas context menu if available
+        if (window.GraphCanvasMenu) {
+            console.log('INIT: Initializing GraphCanvasMenu...');
+            window.GraphCanvasMenu.init(window.GraphAddon, window.GraphDiscovery);
+        }
+
         // Initialize GraphToolExecutor if available
         if (window.GraphToolExecutor && window.app && window.app.sessionId) {
             console.log('INIT: Initializing GraphToolExecutor...');
             window.GraphToolExecutor.init(window.GraphAddon, window.app.sessionId);
-        } else {
-            console.warn('INIT: GraphToolExecutor not available or session ID not found');
         }
         
         // Initialize GraphInfoCard if available
@@ -60,27 +79,33 @@
             console.log('INIT: Initializing GraphInfoCard...');
             window.GraphInfoCard.init(window.GraphAddon);
         }
-        
+        // Initialize GraphStyleControl
+        if (window.GraphStyleControl) {
+            console.log('INIT: Initializing GraphStyleControl...');
+            window.GraphStyleControl.init(window.GraphAddon);
+        }
         console.log('=== INIT: ✓ Graph modules initialized successfully ===');
-        console.log('  - GraphAddon:', window.GraphAddon ? 'LOADED' : 'NULL');
-        console.log('  - GraphDiscovery.graphAddon:', window.GraphDiscovery.graphAddon ? 'SET' : 'NULL');
-        console.log('  - GraphContextMenu.graphAddon:', window.GraphContextMenu.graphAddon ? 'SET' : 'NULL');
-        console.log('  - GraphContextMenu.graphDiscovery:', window.GraphContextMenu.graphDiscovery ? 'SET' : 'NULL');
-        console.log('  - GraphToolExecutor.sessionId:', window.GraphToolExecutor?.sessionId || 'NULL');
-        console.log('  - GraphInfoCard:', window.GraphInfoCard ? 'LOADED' : 'NULL');
+        
+        // Dispatch event to signal completion
+        window.dispatchEvent(new CustomEvent('graphModulesReady', {
+            detail: { nodeCount, timestamp: Date.now() }
+        }));
     }
     
-    // Expose globally so it can be called manually
+    // Expose globally
     window.initGraphModules = initGraphModules;
     
-    // // Also try to auto-init when DOM is ready
-    // if (document.readyState === 'loading') {
-    //     document.addEventListener('DOMContentLoaded', () => {
-    //         console.log('INIT: DOM loaded, waiting 1 second before init...');
-    //         setTimeout(initGraphModules, 1000);
-    //     });
-    // } else {
-    //     console.log('INIT: DOM already loaded, waiting 1 second before init...');
-    //     setTimeout(initGraphModules, 1000);
-    // }
+    // Listen for GraphAddon ready event
+    window.addEventListener('graphAddonReady', () => {
+        console.log('INIT: Received graphAddonReady event, initializing modules...');
+        initGraphModules();
+    });
+    
+    // Listen for network stabilization (alternative trigger)
+    window.addEventListener('graphNetworkStabilized', () => {
+        console.log('INIT: Received graphNetworkStabilized event');
+        if (!initializationAttempted) {
+            initGraphModules();
+        }
+    });
 })();

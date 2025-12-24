@@ -1,0 +1,173 @@
+# Calendar Configuration Template
+# Copy this to calendar_config.yaml and update with your settings
+
+calendar:
+  # Local calendar settings
+  local:
+    enabled: true
+    file_path: "./local_calendar.ics"
+    auto_backup: true
+    backup_interval_hours: 24
+    backup_location: "./backups/calendar"
+  
+  # Google Calendar settings
+  google:
+    enabled: true
+    service_account_file: "./Configuration/keys/service.json"
+    calendar_id: "primary"  # or specific calendar ID
+    scopes:
+      - "https://www.googleapis.com/auth/calendar"
+    # Optional: Additional calendars to sync
+    additional_calendars: []
+      # - id: "work@example.com"
+      #   name: "Work Calendar"
+      #   color: "#FF5733"
+  
+  # APScheduler settings
+  scheduler:
+    enabled: true
+    timezone: "UTC"  # or your local timezone
+    job_defaults:
+      coalesce: false
+      max_instances: 3
+    # Optional: Persistent job store
+    # jobstore:
+    #   type: "sqlalchemy"
+    #   url: "sqlite:///jobs.sqlite"
+  
+  # WebSocket settings
+  websocket:
+    ping_interval: 30  # seconds
+    max_connections: 100
+    broadcast_interval: 300  # seconds (5 minutes)
+  
+  # Event display settings
+  display:
+    default_days_ahead: 30
+    max_days_ahead: 365
+    default_view: "dayGridMonth"  # dayGridMonth, timeGridWeek, timeGridDay, listWeek
+    
+    # Color scheme for different sources
+    colors:
+      google: "#4285f4"
+      local: "#34a853"
+      apscheduler: "#fbbc04"
+      default: "#999999"
+    
+    # Event icons
+    icons:
+      google: "📅"
+      local: "📋"
+      apscheduler: "⏰"
+      cron: "🔄"
+  
+  # Feature flags
+  features:
+    enable_event_creation: true
+    enable_event_deletion: true
+    enable_event_editing: true
+    enable_drag_drop: true
+    enable_resize: true
+    enable_recurring_events: true
+    enable_reminders: false  # Not implemented yet
+  
+  # Proactive scheduling settings
+  proactive:
+    enabled: true
+    check_interval_minutes: 60
+    cpu_threshold_percent: 20
+    auto_approve: false  # Set to true to auto-schedule suggestions
+    
+    # Days ahead to check for conflicts and opportunities
+    planning_horizon_days: 7
+    
+    # Minimum free time block to suggest (in minutes)
+    min_free_block_minutes: 60
+  
+  # Notification settings
+  notifications:
+    enabled: false  # Not fully implemented
+    methods:
+      - "websocket"  # Push to connected clients
+      # - "email"    # Future: email notifications
+      # - "slack"    # Future: Slack integration
+    
+    # Reminder times (minutes before event)
+    reminder_times:
+      - 15
+      - 60
+      - 1440  # 1 day
+  
+  # API settings
+  api:
+    rate_limit:
+      enabled: true
+      requests_per_minute: 60
+    
+    # Pagination
+    default_page_size: 50
+    max_page_size: 200
+  
+  # Security settings
+  security:
+    require_auth: false  # Set to true in production
+    allowed_origins:
+      - "http://localhost:8000"
+      - "https://yourdomain.com"
+    
+    # Service account security
+    rotate_credentials_days: 90
+  
+  # Integration settings
+  integrations:
+    # Vera AI integration
+    vera:
+      enabled: true
+      use_vera_memory: true
+      use_vera_llm: true
+    
+    # Email integration (future)
+    email:
+      enabled: false
+      smtp_server: "smtp.gmail.com"
+      smtp_port: 587
+      
+    # Slack integration (future)
+    slack:
+      enabled: false
+      webhook_url: ""
+  
+  # Logging settings
+  logging:
+    level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+    file: "./logs/calendar.log"
+    format: "[%(asctime)s] %(levelname)s - %(message)s"
+    
+    # Log rotation
+    max_bytes: 10485760  # 10MB
+    backup_count: 5
+
+# Example: Override settings for development
+development:
+  calendar:
+    proactive:
+      check_interval_minutes: 5
+      auto_approve: false
+    logging:
+      level: "DEBUG"
+    security:
+      require_auth: false
+
+# Example: Settings for production
+production:
+  calendar:
+    google:
+      calendar_id: "production-calendar@example.com"
+    websocket:
+      max_connections: 1000
+    security:
+      require_auth: true
+      allowed_origins:
+        - "https://vera.yourdomain.com"
+    logging:
+      level: "WARNING"

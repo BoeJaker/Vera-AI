@@ -33,7 +33,7 @@ models:
   intermediate_llm: "gemma3:12b"
   deep_llm: "gemma3:27b"
   reasoning_llm: "gpt-oss:20b"
-  tool_llm: "gemma2"
+  tool_llm: "gemma3:12b"
   
   # Temperature settings for each model type
   fast_temperature: 0.6
@@ -136,6 +136,52 @@ playwright:
   timeout: 30000  # milliseconds
 
 # ============================================================================
+# Agent Configuration System
+# ============================================================================
+
+agents:
+  # Enable/disable agent system
+  enabled: true
+  
+  # Auto-load agent configs on startup
+  auto_load: true
+  
+  # Auto-build Ollama models on startup (can be slow)
+  auto_build: false
+  
+  # Directories
+  agents_dir: "./Vera/Agents/agents"
+  templates_dir: "./Vera/Agents/templates"
+  build_dir: "./Vera/Agents/build/agents"
+  
+  # Default agents for different task types
+  default_agents:
+    triage: "triage-agent"           # Fast query classification
+    tool_execution: "tool-agent"     # Precise tool execution
+    reasoning: "reasoning-agent"     # Deep thinking
+    conversation: "gemma2"           # General chat
+  
+  # Agent-specific overrides (optional)
+  agent_configs:
+    tool-agent:
+      temperature: 0.05              # Even lower for production
+      memory:
+        vector_top_k: 10
+    
+    reasoning-agent:
+      num_ctx: 65536                 # Extra large context
+      memory:
+        enable_triage: true
+  
+  # Hot reload settings
+  hot_reload: true
+  check_interval: 60
+  
+  # Validation
+  validate_on_load: true
+  strict_validation: false
+
+# ============================================================================
 # Enhanced Logging Configuration (Unified Logging System)
 # ============================================================================
 logging:
@@ -145,17 +191,17 @@ logging:
   
   # Global log level - applies to all components unless overridden
   # Options: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL, SILENT
-  level: "INFO"
+  level: "DEBUG"
   
   # Component-specific levels (override global setting)
   # Allows fine-grained control over verbosity per component
   component_levels:
-    vera: "INFO"           # Main Vera system
-    ollama: "INFO"         # Ollama API/LLM interactions
-    orchestrator: "INFO"   # Task orchestration
-    infrastructure: "INFO" # Resource management
+    vera: "DEBUG"           # Main Vera system
+    ollama: "DEBUG"         # Ollama API/LLM interactions
+    orchestrator: "DEBUG"   # Task orchestration
+    infrastructure: "DEBUG" # Resource management
     memory: "WARNING"      # Memory operations (less verbose)
-    toolchain: "INFO"      # Tool execution
+    toolchain: "DEBUG"      # Tool execution
     
     # Example: Enable debug for specific components
     # ollama: "DEBUG"      # Detailed Ollama logging
@@ -187,7 +233,7 @@ logging:
   timestamp_format: "%Y-%m-%d %H:%M:%S.%f"
   
   # Context information in log messages
-  enable_thread_info: false        # Show thread names (useful for debugging)
+  enable_thread_info: true        # Show thread names (useful for debugging)
   enable_session_info: true        # Show session IDs
   enable_model_info: true          # Show model names in context
   
@@ -200,7 +246,7 @@ logging:
   
   # Box formatting for different output types
   # When enabled, special content is displayed in decorative boxes
-  box_thoughts: true       # Box model reasoning/thoughts
+  box_thoughts: false       # Box model reasoning/thoughts
   box_responses: false     # Box final responses (can be noisy)
   box_tools: true          # Box tool executions
   

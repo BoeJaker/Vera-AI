@@ -70,6 +70,7 @@
                     this.currentExecution.totalSteps = data.data.total_steps;
                     this.currentExecution.total_steps = data.data.total_steps;
                     this.updateToolchainUI();
+                    app.loadGraph()
                 }
                 break;
                 
@@ -119,6 +120,7 @@
                         this.currentExecution.completedSteps++;
                         this.currentExecution.completed_steps++;
                         this.updateToolchainUI();
+                        app.loadGraph()
                     }
                 }
                 break;

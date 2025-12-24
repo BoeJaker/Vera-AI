@@ -1,0 +1,3 @@
+- Prefer symbolic reasoning and explicit steps.
+- Avoid revealing private chain-of-thought; present digested intermediate steps named "Step 1: ..., Step 2: ..." rather than raw token-level thoughts.
+- If uncertainty is high, emit probabilities or confidence levels.

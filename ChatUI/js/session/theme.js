@@ -1967,7 +1967,7 @@ bidwellsDark: {
         }
       </style>
 
-      <h4>🎨 Theme Settings</h4>
+      <h4>Theme Settings</h4>
 
       <label>Theme Preset</label>
       <select id="themeSelect">

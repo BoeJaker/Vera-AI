@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-# Vera/Ollama/manager.py (Updated with Unified Logging)
+# Vera/Ollama/manager.py
 
 """
-Enhanced Ollama Connection Manager with Unified Logging
-- Structured logging instead of print statements
-- Model metadata retrieval
-- Universal thought capture
-- Performance tracking built-in
+Enhanced Ollama Connection Manager with Comprehensive Logging
 """
 
 import sys
@@ -23,16 +19,21 @@ from langchain_core.outputs import GenerationChunk
 from langchain_community.llms import Ollama
 from langchain_community.embeddings import OllamaEmbeddings
 
-# Import LogContext for structured logging
 try:
     from Vera.Logging.logging import LogContext
 except ImportError:
-    from Logging.logging import LogContext
+    try:
+        from Logging.logging import LogContext
+    except ImportError:
+        from dataclasses import dataclass
+        @dataclass
+        class LogContext:
+            pass
 
 
 @dataclass
 class OllamaModelInfo:
-    """Model information retrieved from Ollama"""
+    """Model information with comprehensive metadata"""
     name: str
     size: int = 0
     format: str = ""
@@ -45,14 +46,12 @@ class OllamaModelInfo:
     license: str = ""
     modified_at: str = ""
     
-    # Inference parameters
     temperature: float = 0.7
     top_k: int = 40
     top_p: float = 0.9
     num_predict: int = -1
     stop: List[str] = field(default_factory=list)
     
-    # Performance hints
     supports_thought: bool = False
     supports_streaming: bool = True
     supports_vision: bool = False
@@ -62,7 +61,7 @@ class OllamaModelInfo:
 
 
 class ThoughtCapture:
-    """Universal thought capture system with integrated logging"""
+    """Universal thought capture with detailed logging"""
     
     def __init__(self, enabled: bool = True, callback: Optional[Callable[[str], None]] = None, logger=None):
         self.enabled = enabled
@@ -71,68 +70,67 @@ class ThoughtCapture:
         self.thought_buffer = []
         self.in_thought_mode = False
         self.chunk_count = 0
+        self.thoughts_captured = 0
+        
+        if self.logger:
+            self.logger.debug(f"ThoughtCapture initialized (enabled={enabled})")
     
     def process_chunk(self, chunk_data: Dict[str, Any]) -> Optional[str]:
-        """
-        Process a chunk and extract thought content if present.
-        Supports multiple formats:
-        - {"thought": "..."} (DeepSeek)
-        - {"reasoning": "..."} (GPT-OSS)
-        - {"thinking": "..."} (Generic)
-        - Content wrapped in <think>...</think> tags
-        
-        Returns:
-            - Modified response text (with thoughts removed) if content present
-            - None if chunk was entirely thought content
-            - Original response if no thought detected
-        """
-        # Log raw chunk if configured
-        if self.logger:
+        """Process chunk with detailed logging"""
+        if self.logger and hasattr(self.logger, 'config') and self.logger.config.show_ollama_raw_chunks:
             self.logger.raw_stream_chunk(chunk_data, self.chunk_count)
         
         self.chunk_count += 1
         
         if not self.enabled:
-            return chunk_data.get('response', '')
+            response = chunk_data.get('response', '')
+            if self.logger:
+                self.logger.trace(f"Thought capture disabled, passing through: {len(response)} chars")
+            return response
         
         if self.logger:
-            self.logger.trace(f"Processing chunk: {json.dumps(chunk_data, indent=2)[:200]}...")
+            self.logger.trace(f"Processing chunk #{self.chunk_count}: {list(chunk_data.keys())}")
         
-        # Direct thought fields
+        # Check direct thought fields
         for field in ['thought', 'reasoning', 'thinking', 'internal']:
             if field in chunk_data and chunk_data[field]:
                 thought = chunk_data[field]
+                
                 if self.logger:
-                    self.logger.debug(f"Found thought in '{field}' field: {thought[:100]}...")
+                    self.logger.debug(f"Direct thought field '{field}': {len(thought)} chars")
+                
                 self._handle_thought(thought)
                 return chunk_data.get('response', '')
         
-        # Check response content for thought markers
+        # Check response content for markers
         response = chunk_data.get('response', '')
         if response:
-            # Handle <think> tags
             if '<think>' in response:
                 if self.logger:
-                    self.logger.debug("Found <think> opening tag")
+                    self.logger.debug("Opening <think> tag detected")
                 
                 self.in_thought_mode = True
                 thought_start = response.find('<think>') + 7
                 thought_end = response.find('</think>')
                 
                 if thought_end > thought_start:
-                    # Complete thought in this chunk
+                    # Complete thought
                     thought = response[thought_start:thought_end]
+                    
                     if self.logger:
-                        self.logger.debug(f"Complete thought in chunk: {thought[:100]}...")
+                        self.logger.debug(f"Complete thought: {len(thought)} chars")
+                    
                     self._handle_thought(thought)
                     self.in_thought_mode = False
                     clean_response = response[:response.find('<think>')] + response[thought_end + 8:]
                     return clean_response if clean_response else None
                 else:
-                    # Thought continues beyond this chunk
+                    # Partial thought (start)
                     thought = response[thought_start:]
+                    
                     if self.logger:
-                        self.logger.debug(f"Partial thought (start): {thought[:100]}...")
+                        self.logger.debug(f"Partial thought start: {len(thought)} chars buffered")
+                    
                     self.thought_buffer.append(thought)
                     prefix = response[:response.find('<think>')]
                     return prefix if prefix else None
@@ -140,12 +138,13 @@ class ThoughtCapture:
             elif '</think>' in response and self.in_thought_mode:
                 # End of thought
                 if self.logger:
-                    self.logger.debug("Found </think> closing tag")
+                    self.logger.debug("Closing </think> tag detected")
                 
                 thought_end = response.find('</think>')
                 thought = response[:thought_end]
+                
                 if self.logger:
-                    self.logger.debug(f"Partial thought (end): {thought[:100]}...")
+                    self.logger.debug(f"Partial thought end: {len(thought)} chars")
                 
                 self.thought_buffer.append(thought)
                 self._flush_thought_buffer()
@@ -156,28 +155,32 @@ class ThoughtCapture:
             elif self.in_thought_mode:
                 # Middle of thought
                 if self.logger:
-                    self.logger.debug(f"Middle of thought: {response[:100]}...")
+                    self.logger.trace(f"Thought continuation: {len(response)} chars buffered")
+                
                 self.thought_buffer.append(response)
                 return None
             
             else:
-                # No thought markers
+                # Normal response
+                if self.logger:
+                    self.logger.trace(f"Normal response: {len(response)} chars")
                 return response
         
         return None
     
     def _handle_thought(self, thought: str):
-        """Handle extracted thought content"""
+        """Handle thought with logging"""
         if not thought:
             return
         
-        # Use logger if available
+        self.thoughts_captured += 1
+        
         if self.logger:
             self.logger.thought(thought)
+            self.logger.info(f"Thought captured #{self.thoughts_captured}: {len(thought)} chars")
         else:
-            # Fallback to direct output
             sys.stdout.write("\n" + "="*60 + "\n")
-            sys.stdout.write("💭 THOUGHT CAPTURED:\n")
+            sys.stdout.write(f"💭 THOUGHT #{self.thoughts_captured}:\n")
             sys.stdout.write("="*60 + "\n")
             sys.stdout.write(thought)
             sys.stdout.write("\n" + "="*60 + "\n\n")
@@ -186,43 +189,38 @@ class ThoughtCapture:
         if self.callback:
             try:
                 self.callback(thought)
+                if self.logger:
+                    self.logger.trace("Thought callback executed successfully")
             except Exception as e:
                 if self.logger:
-                    self.logger.error(f"Thought callback error: {e}")
+                    self.logger.error(f"Thought callback error: {e}", exc_info=True)
     
     def _flush_thought_buffer(self):
-        """Flush accumulated thought buffer"""
+        """Flush buffer with logging"""
         if self.thought_buffer:
+            buffer_size = sum(len(s) for s in self.thought_buffer)
             full_thought = "".join(self.thought_buffer)
+            
             if self.logger:
-                self.logger.debug(f"Flushing thought buffer ({len(full_thought)} chars)")
+                self.logger.debug(f"Flushing thought buffer: {len(self.thought_buffer)} segments, {buffer_size} chars")
+            
             self._handle_thought(full_thought)
             self.thought_buffer.clear()
     
     def reset(self):
-        """Reset thought capture state"""
+        """Reset with logging"""
         if self.logger:
-            self.logger.trace("Resetting thought capture state")
+            self.logger.trace(f"Resetting thought capture (captured={self.thoughts_captured}, chunks={self.chunk_count})")
+        
         self.thought_buffer.clear()
         self.in_thought_mode = False
         self.chunk_count = 0
 
 
 class OllamaConnectionManager:
-    """
-    Enhanced Ollama connection manager with unified logging
-    """
+    """Ollama manager with comprehensive logging"""
     
     def __init__(self, config=None, thought_callback: Optional[Callable[[str], None]] = None, logger=None):
-        """
-        Initialize Ollama manager with unified logging
-        
-        Args:
-            config: OllamaConfig object or None for defaults
-            thought_callback: Optional callback for thought output
-            logger: VeraLogger instance for structured logging
-        """
-        # Import here to avoid circular dependency
         if config is None:
             from Vera.Configuration.config_manager import OllamaConfig
             config = OllamaConfig()
@@ -234,35 +232,55 @@ class OllamaConnectionManager:
         self.connection_tested = False
         self.model_metadata_cache: Dict[str, OllamaModelInfo] = {}
         
-        # Setup logging
         if logger is None:
-            # Create basic logger if none provided
             from Vera.Logging.logging import get_logger, LoggingConfig, LogLevel
             log_config = LoggingConfig(global_level=LogLevel.INFO)
             self.logger = get_logger("ollama", log_config)
         else:
             self.logger = logger
         
-        # Create thought capture with logger
+        self.logger.info(f"OllamaConnectionManager initialized (api_url={self.api_url}, timeout={self.timeout})")
+        
         self.thought_capture = ThoughtCapture(
             enabled=getattr(config, 'enable_thought_capture', True),
             callback=thought_callback,
             logger=self.logger
         )
+        
+        self.logger.debug("OllamaConnectionManager ready")
     
     def test_connection(self) -> bool:
-        """Test if Ollama API is accessible"""
-        self.logger.debug(f"Testing connection to {self.api_url}")
+        """Test connection with detailed logging"""
+        self.logger.info(f"Testing connection to {self.api_url}")
+        self.logger.start_timer("connection_test")
         
         try:
+            self.logger.debug("Attempting API connection...")
             response = requests.get(f"{self.api_url}/api/tags", timeout=5)
+            
             if response.status_code == 200:
-                self.logger.success(f"Connected to API at {self.api_url}")
+                duration = self.logger.stop_timer("connection_test")
+                
+                models_data = response.json().get("models", [])
+                self.logger.success(f"API connection successful in {duration:.3f}s ({len(models_data)} models available)")
+                
                 self.use_local = False
                 self.connection_tested = True
                 return True
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-            self.logger.warning(f"API connection failed: {e}")
+            else:
+                self.logger.warning(f"API returned status {response.status_code}")
+        
+        except requests.exceptions.ConnectionError as e:
+            duration = self.logger.stop_timer("connection_test")
+            self.logger.warning(f"API connection failed after {duration:.3f}s: {type(e).__name__}")
+        
+        except requests.exceptions.Timeout as e:
+            duration = self.logger.stop_timer("connection_test")
+            self.logger.warning(f"API connection timeout after {duration:.3f}s")
+        
+        except Exception as e:
+            duration = self.logger.stop_timer("connection_test")
+            self.logger.error(f"Unexpected connection error after {duration:.3f}s: {e}", exc_info=True)
         
         if self.config.use_local_fallback:
             self.logger.info("Falling back to local Ollama process")
@@ -270,71 +288,99 @@ class OllamaConnectionManager:
             self.connection_tested = True
             return True
         
-        self.logger.error("Connection failed and no fallback available")
+        self.logger.error("Connection failed with no fallback available")
         return False
     
     def list_models(self) -> List[Dict]:
-        """List available models"""
+        """List models with comprehensive logging"""
         if not self.connection_tested:
+            self.logger.debug("Connection not tested, testing now...")
             self.test_connection()
         
-        self.logger.debug("Listing available models")
+        self.logger.info("Listing available models")
+        self.logger.start_timer("list_models")
         
         for attempt in range(self.config.connection_retry_attempts):
             if not self.use_local:
                 try:
+                    self.logger.debug(f"API list attempt {attempt + 1}/{self.config.connection_retry_attempts}")
                     response = requests.get(f"{self.api_url}/api/tags", timeout=5)
+                    
                     if response.status_code == 200:
+                        duration = self.logger.stop_timer("list_models")
                         models_data = response.json().get("models", [])
                         model_list = [{"model": m.get("name", m.get("model", ""))} for m in models_data]
-                        self.logger.success(f"Found {len(model_list)} models")
+                        
+                        self.logger.success(f"Found {len(model_list)} models via API in {duration:.3f}s")
+                        
+                        if model_list:
+                            model_names = [m['model'] for m in model_list[:5]]
+                            self.logger.debug(f"Models: {', '.join(model_names)}")
+                            if len(model_list) > 5:
+                                self.logger.debug(f"... and {len(model_list) - 5} more")
+                        
                         return model_list
+                
                 except Exception as e:
+                    self.logger.debug(f"API list attempt {attempt + 1} failed: {e}")
+                    
                     if attempt < self.config.connection_retry_attempts - 1:
-                        self.logger.debug(f"Retry {attempt + 1}/{self.config.connection_retry_attempts}")
                         import time
+                        self.logger.debug(f"Retrying in {self.config.connection_retry_delay}s...")
                         time.sleep(self.config.connection_retry_delay)
                         continue
-                    self.logger.warning(f"API list failed: {e}")
+                    
+                    self.logger.warning("API list failed, switching to local")
                     self.use_local = True
             
+            # Local fallback
             try:
+                self.logger.debug(f"Local list attempt {attempt + 1}/{self.config.connection_retry_attempts}")
                 models = ollama.list()["models"]
-                self.logger.success(f"Found {len(models)} models (local)")
+                duration = self.logger.stop_timer("list_models")
+                
+                self.logger.success(f"Found {len(models)} models via local in {duration:.3f}s")
+                
+                if models:
+                    model_names = [m.get('model', m.get('name', 'unknown')) for m in models[:5]]
+                    self.logger.debug(f"Models: {', '.join(model_names)}")
+                    if len(models) > 5:
+                        self.logger.debug(f"... and {len(models) - 5} more")
+                
                 return models
+            
             except Exception as e:
+                self.logger.debug(f"Local list attempt {attempt + 1} failed: {e}")
+                
                 if attempt < self.config.connection_retry_attempts - 1:
                     import time
                     time.sleep(self.config.connection_retry_delay)
                     continue
-                self.logger.error(f"Connection failed: {e}")
-                raise RuntimeError(f"[Ollama] Connection failed: {e}")
+                
+                self.logger.error(f"All {self.config.connection_retry_attempts} attempts failed", exc_info=True)
+                raise RuntimeError(f"Connection failed after {self.config.connection_retry_attempts} attempts")
         
         return []
     
     def get_model_metadata(self, model_name: str, force_refresh: bool = False) -> OllamaModelInfo:
-        """
-        Retrieve detailed model metadata including token limits
+        """Get metadata with detailed logging"""
+        context = LogContext(model=model_name)
         
-        Args:
-            model_name: Name of the model
-            force_refresh: Force refresh from API
-        
-        Returns:
-            OllamaModelInfo object with comprehensive model information
-        """
         # Check cache
         if not force_refresh and model_name in self.model_metadata_cache:
-            self.logger.trace(f"Using cached metadata for {model_name}")
+            self.logger.trace(f"Using cached metadata for {model_name}", context=context)
             return self.model_metadata_cache[model_name]
         
-        self.logger.debug(f"Fetching metadata for {model_name}")
+        self.logger.info(f"Fetching metadata for {model_name}", context=context)
+        self.logger.start_timer(f"metadata_{model_name}")
+        
         model_info = OllamaModelInfo(name=model_name)
         
         try:
-            # Try API endpoint
+            # Try API
             if not self.use_local:
                 try:
+                    self.logger.debug("Attempting API metadata fetch", context=context)
                     response = requests.post(
                         f"{self.api_url}/api/show",
                         json={"name": model_name},
@@ -343,100 +389,125 @@ class OllamaConnectionManager:
                     
                     if response.status_code == 200:
                         data = response.json()
+                        self.logger.debug(f"API metadata received: {list(data.keys())}", context=context)
                         self._parse_model_metadata(model_info, data)
+                    else:
+                        self.logger.debug(f"API metadata returned {response.status_code}", context=context)
+                
                 except Exception as e:
-                    self.logger.debug(f"API metadata fetch failed: {e}")
+                    self.logger.debug(f"API metadata failed: {e}", context=context)
             
-            # Fallback to local
+            # Try local
             if self.use_local or model_info.context_length == 2048:
                 try:
+                    self.logger.debug("Attempting local metadata fetch", context=context)
                     data = ollama.show(model_name)
+                    self.logger.debug(f"Local metadata received: {list(data.keys())}", context=context)
                     self._parse_model_metadata(model_info, data)
+                
                 except Exception as e:
-                    self.logger.debug(f"Local metadata fetch failed: {e}")
+                    self.logger.debug(f"Local metadata failed: {e}", context=context)
             
-            # Cache the metadata
+            # Cache
             self.model_metadata_cache[model_name] = model_info
+            duration = self.logger.stop_timer(f"metadata_{model_name}", context=context)
             
-            self.logger.debug(
-                f"Model metadata: {model_info.name} "
-                f"(ctx={model_info.context_length}, "
-                f"thought={model_info.supports_thought})"
+            self.logger.success(
+                f"Metadata loaded in {duration:.3f}s: {model_info.family} {model_info.parameter_size}, "
+                f"ctx={model_info.context_length}, thought={model_info.supports_thought}",
+                context=context
             )
             
         except Exception as e:
-            self.logger.warning(f"Failed to get metadata for {model_name}: {e}")
+            duration = self.logger.stop_timer(f"metadata_{model_name}", context=context)
+            self.logger.warning(f"Metadata fetch failed after {duration:.3f}s: {e}", context=context)
         
         return model_info
     
     def _parse_model_metadata(self, model_info: OllamaModelInfo, data: Dict[str, Any]):
-        """Parse model metadata from Ollama response"""
-        # Basic info
+        """Parse metadata with detailed logging"""
+        context = LogContext(model=model_info.name)
+        
+        self.logger.trace(f"Parsing metadata: {len(data)} fields", context=context)
+        
+        # Details
         if 'details' in data:
             details = data['details']
             model_info.family = details.get('family', '')
             model_info.parameter_size = details.get('parameter_size', '')
             model_info.quantization_level = details.get('quantization_level', '')
             model_info.format = details.get('format', '')
+            
+            self.logger.trace(f"Details: family={model_info.family}, params={model_info.parameter_size}", context=context)
         
-        # Model file info
+        # Modelfile
         if 'modelfile' in data:
             modelfile = data['modelfile']
             
-            # Parse context length
             if 'num_ctx' in modelfile:
                 try:
                     model_info.context_length = int(modelfile.split('num_ctx')[1].split()[0])
-                except:
-                    pass
+                    self.logger.trace(f"Context from modelfile: {model_info.context_length}", context=context)
+                except Exception as e:
+                    self.logger.trace(f"Failed to parse num_ctx: {e}", context=context)
         
-        # Parameters from model info
+        # Model info
         if 'model_info' in data:
             info = data['model_info']
             
-            # Context length
             for key in ['context_length', 'max_position_embeddings', 'n_ctx']:
                 if key in info:
                     model_info.context_length = info[key]
+                    self.logger.trace(f"Context from {key}: {model_info.context_length}", context=context)
                     break
             
-            # Embedding dimensions
             for key in ['embedding_length', 'hidden_size', 'n_embd']:
                 if key in info:
                     model_info.embedding_length = info[key]
+                    self.logger.trace(f"Embeddings: {model_info.embedding_length} dims", context=context)
                     break
         
-        # License and metadata
+        # License
         model_info.license = data.get('license', '')
         model_info.modified_at = data.get('modified_at', '')
         
         if 'size' in data:
             model_info.size = data['size']
+            size_mb = model_info.size / (1024 * 1024)
+            self.logger.trace(f"Model size: {size_mb:.1f} MB", context=context)
         
         # Detect capabilities
         model_lower = model_info.name.lower()
         
-        # Thought capability
         model_info.supports_thought = any(x in model_lower for x in [
             'deepseek', 'gpt-oss', 'reasoning', 'o1', 'qwen-think', 'r1'
         ])
         
-        # Vision capability
         model_info.supports_vision = any(x in model_lower for x in [
             'vision', 'llava', 'minicpm', 'cogvlm', 'internvl'
         ])
         
         model_info.supports_streaming = True
+        
+        self.logger.debug(
+            f"Capabilities: thought={model_info.supports_thought}, "
+            f"vision={model_info.supports_vision}, streaming={model_info.supports_streaming}",
+            context=context
+        )
     
     def pull_model(self, model_name: str, stream: bool = True) -> bool:
-        """Pull/download a model"""
+        """Pull model with progress logging"""
+        context = LogContext(model=model_name)
+        
         if not self.connection_tested:
             self.test_connection()
         
-        self.logger.info(f"Pulling model: {model_name}")
+        self.logger.info(f"Pulling model: {model_name}", context=context)
+        self.logger.start_timer(f"pull_{model_name}")
         
         if not self.use_local:
             try:
+                self.logger.debug("Initiating API pull", context=context)
                 response = requests.post(
                     f"{self.api_url}/api/pull",
                     json={"name": model_name, "stream": stream},
@@ -445,53 +516,72 @@ class OllamaConnectionManager:
                 )
                 
                 if stream:
+                    last_pct = -1
                     for line in response.iter_lines():
                         if line:
                             try:
                                 data = json.loads(line)
                                 status = data.get('status', '')
+                                
                                 if 'total' in data and 'completed' in data:
-                                    pct = (data['completed'] / data['total']) * 100
-                                    self.logger.debug(f"{status}: {pct:.1f}%")
+                                    pct = int((data['completed'] / data['total']) * 100)
+                                    
+                                    if pct != last_pct and pct % 10 == 0:
+                                        self.logger.info(f"Pull progress: {pct}% - {status}", context=context)
+                                        last_pct = pct
                                 else:
-                                    self.logger.debug(status)
+                                    self.logger.debug(f"Pull status: {status}", context=context)
                             except:
                                 pass
                 
                 if response.status_code == 200:
-                    self.logger.success(f"Model pulled: {model_name}")
+                    duration = self.logger.stop_timer(f"pull_{model_name}", context=context)
+                    self.logger.success(f"Model pulled successfully in {duration:.1f}s", context=context)
                     return True
+                else:
+                    self.logger.warning(f"API pull returned {response.status_code}", context=context)
                     
             except Exception as e:
-                self.logger.warning(f"API pull failed: {e}")
+                duration = self.logger.stop_timer(f"pull_{model_name}", context=context)
+                self.logger.warning(f"API pull failed after {duration:.1f}s: {e}", context=context)
                 self.use_local = True
         
+        # Local fallback
         try:
+            self.logger.debug("Using local pull", context=context)
             ollama.pull(model_name)
-            self.logger.success(f"Model pulled (local): {model_name}")
+            duration = self.logger.stop_timer(f"pull_{model_name}", context=context)
+            
+            self.logger.success(f"Model pulled (local) in {duration:.1f}s", context=context)
             return True
+        
         except Exception as e:
-            self.logger.error(f"Failed to pull model: {e}")
+            duration = self.logger.stop_timer(f"pull_{model_name}", context=context)
+            self.logger.error(f"Pull failed after {duration:.1f}s: {e}", context=context, exc_info=True)
             return False
     
-    def create_llm(
-        self, 
-        model: str, 
-        temperature: Optional[float] = None,
-        **kwargs
-    ):
-        """Create an Ollama LLM instance with logging support"""
+    def create_llm(self, model: str, temperature: Optional[float] = None, **kwargs):
+        """Create LLM with comprehensive logging"""
+        context = LogContext(model=model)
+        
         if not self.connection_tested:
+            self.logger.debug("Connection not tested, testing now...", context=context)
             self.test_connection()
         
-        # Get model metadata
+        self.logger.info(f"Creating LLM: {model}", context=context)
+        self.logger.start_timer(f"create_llm_{model}")
+        
+        # Get metadata
         model_info = self.get_model_metadata(model)
         
-        # Use config temperature if not specified
+        # Temperature
         if temperature is None:
             temperature = self.config.temperature if hasattr(self.config, 'temperature') else 0.7
+            self.logger.trace(f"Using default temperature: {temperature}", context=context)
+        else:
+            self.logger.trace(f"Using specified temperature: {temperature}", context=context)
         
-        # Merge kwargs with defaults
+        # Merge kwargs
         merged_kwargs = {
             'top_k': getattr(self.config, 'top_k', model_info.top_k),
             'top_p': getattr(self.config, 'top_p', model_info.top_p),
@@ -499,22 +589,14 @@ class OllamaConnectionManager:
         }
         merged_kwargs.update(kwargs)
         
+        self.logger.debug(
+            f"LLM params: temp={temperature}, top_k={merged_kwargs['top_k']}, "
+            f"top_p={merged_kwargs['top_p']}, num_predict={merged_kwargs['num_predict']}",
+            context=context
+        )
+        
         if not self.use_local:
-            from Vera.Logging.logging import LogContext
-            self.logger.info(
-                f"Creating LLM (API mode)",
-                context=LogContext(
-                    model=model,
-                    extra={
-                        'mode': 'api',
-                        'context_length': model_info.context_length,
-                        'supports_thought': model_info.supports_thought,
-                        'temperature': temperature
-                    }
-                )
-            )
-            
-            return OllamaAPIWrapper(
+            llm = OllamaAPIWrapper(
                 model=model,
                 temperature=temperature,
                 api_url=self.api_url,
@@ -524,55 +606,65 @@ class OllamaConnectionManager:
                 logger=self.logger,
                 **merged_kwargs
             )
-        else:
-            self.logger.info(
-                f"Creating LLM (local mode)",
-                context=LogContext(
-                    model=model,
-                    extra={
-                        'mode': 'local',
-                        'context_length': model_info.context_length,
-                        'temperature': temperature
-                    }
-                )
+            
+            duration = self.logger.stop_timer(f"create_llm_{model}", context=context)
+            
+            self.logger.success(
+                f"LLM created (API mode) in {duration:.3f}s - "
+                f"ctx={model_info.context_length}, thought={model_info.supports_thought}",
+                context=context
             )
             
-            return Ollama(
+            return llm
+        
+        else:
+            llm = Ollama(
                 model=model,
                 temperature=temperature,
                 **merged_kwargs
             )
+            
+            duration = self.logger.stop_timer(f"create_llm_{model}", context=context)
+            
+            self.logger.success(
+                f"LLM created (local mode) in {duration:.3f}s - ctx={model_info.context_length}",
+                context=context
+            )
+            
+            return llm
     
     def create_embeddings(self, model: str, **kwargs):
-        """Create an Ollama embeddings instance"""
+        """Create embeddings with logging"""
+        context = LogContext(model=model)
+        
         if not self.connection_tested:
             self.test_connection()
         
+        self.logger.info(f"Creating embeddings: {model}", context=context)
+        self.logger.start_timer(f"create_embeddings_{model}")
+        
         model_info = self.get_model_metadata(model)
         
-        self.logger.debug(
-            f"Creating embeddings",
-            context=LogContext(
-                model=model,
-                extra={'embedding_dim': model_info.embedding_length}
-            )
-        )
+        self.logger.debug(f"Embedding dimensions: {model_info.embedding_length}", context=context)
         
         if not self.use_local:
-            return OllamaEmbeddings(
-                model=model,
-                base_url=self.api_url,
-                **kwargs
-            )
+            embeddings = OllamaEmbeddings(model=model, base_url=self.api_url, **kwargs)
+            mode = "API"
         else:
-            return OllamaEmbeddings(
-                model=model,
-                **kwargs
-            )
+            embeddings = OllamaEmbeddings(model=model, **kwargs)
+            mode = "local"
+        
+        duration = self.logger.stop_timer(f"create_embeddings_{model}", context=context)
+        
+        self.logger.success(f"Embeddings created ({mode}) in {duration:.3f}s", context=context)
+        
+        return embeddings
     
     def print_model_info(self, model_name: str):
-        """Pretty print model information"""
+        """Print detailed model info"""
         model_info = self.get_model_metadata(model_name)
+        
+        context = LogContext(model=model_name)
         
         self.logger.info("=" * 60)
         self.logger.info(f"Model: {model_info.name}")
@@ -581,24 +673,37 @@ class OllamaConnectionManager:
         self.logger.info(f"Parameters:    {model_info.parameter_size}")
         self.logger.info(f"Quantization:  {model_info.quantization_level}")
         self.logger.info(f"Context:       {model_info.context_length} tokens")
+        
         if model_info.embedding_length:
             self.logger.info(f"Embeddings:    {model_info.embedding_length} dimensions")
+        
         self.logger.info(f"Format:        {model_info.format}")
+        
+        if model_info.size:
+            size_gb = model_info.size / (1024 * 1024 * 1024)
+            self.logger.info(f"Size:          {size_gb:.2f} GB")
+        
         self.logger.info("\nCapabilities:")
         self.logger.info(f"  • Thought Output:  {'✓' if model_info.supports_thought else '✗'}")
         self.logger.info(f"  • Streaming:       {'✓' if model_info.supports_streaming else '✗'}")
         self.logger.info(f"  • Vision:          {'✓' if model_info.supports_vision else '✗'}")
+        
         self.logger.info("\nDefault Parameters:")
         self.logger.info(f"  • Temperature:     {model_info.temperature}")
         self.logger.info(f"  • Top-K:           {model_info.top_k}")
         self.logger.info(f"  • Top-P:           {model_info.top_p}")
+        
         if model_info.license:
             self.logger.info(f"\nLicense:       {model_info.license}")
+        
+        if model_info.modified_at:
+            self.logger.info(f"Modified:      {model_info.modified_at}")
+        
         self.logger.info("=" * 60)
 
 
 class OllamaAPIWrapper(LLM):
-    """Enhanced Ollama API wrapper with thought capture and logging"""
+    """API wrapper with comprehensive logging"""
     
     model: str
     temperature: float = 0.7
@@ -617,16 +722,21 @@ class OllamaAPIWrapper(LLM):
         return "ollama_api_enhanced"
     
     def _call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
-        """Call Ollama API with thought capture and logging"""
+        """Call with detailed logging"""
+        context = LogContext(model=self.model)
+        
         try:
             if self.thought_capture:
                 self.thought_capture.reset()
             
             if self.logger:
                 self.logger.start_timer("llm_call")
-                self.logger.debug(f"Calling API", context=LogContext(model=self.model))
+                self.logger.info(f"API call: {len(prompt)} char prompt", context=context)
             
             api_kwargs = self._build_api_kwargs(kwargs)
+            
+            if self.logger:
+                self.logger.debug(f"Request params: {list(api_kwargs.keys())}", context=context)
             
             response = requests.post(
                 f"{self.api_url}/api/generate",
@@ -643,39 +753,47 @@ class OllamaAPIWrapper(LLM):
             if response.status_code == 200:
                 response_data = response.json()
                 
-                # Capture thought if present
+                if self.logger:
+                    self.logger.debug(f"Response received: {list(response_data.keys())}", context=context)
+                
+                # Capture thought
                 if self.thought_capture:
                     modified_response = self.thought_capture.process_chunk(response_data)
                     if modified_response is not None:
                         if self.logger:
-                            duration = self.logger.stop_timer("llm_call")
+                            duration = self.logger.stop_timer("llm_call", context=context)
+                            self.logger.success(f"Call complete in {duration:.2f}s: {len(modified_response)} chars", context=context)
                         return modified_response
                 
                 result = response_data.get("response", "")
                 
                 if self.logger:
-                    duration = self.logger.stop_timer("llm_call")
-                    self.logger.debug(f"API call complete: {len(result)} chars")
+                    duration = self.logger.stop_timer("llm_call", context=context)
+                    self.logger.success(f"Call complete in {duration:.2f}s: {len(result)} chars", context=context)
                 
                 return result
+            
             else:
                 if self.logger:
-                    self.logger.warning(f"API request failed ({response.status_code}), using fallback")
+                    self.logger.warning(f"API call failed (status {response.status_code}), using fallback", context=context)
                 return self._fallback_call(prompt, stop, run_manager, **kwargs)
                 
         except Exception as e:
             if self.logger:
-                self.logger.error(f"API call error: {e}", exc_info=True)
+                self.logger.error(f"API call error: {e}, using fallback", context=context, exc_info=True)
             return self._fallback_call(prompt, stop, run_manager, **kwargs)
     
     def _stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> Iterator[GenerationChunk]:
-        """Stream responses with thought capture and logging"""
+        """Stream with comprehensive logging"""
+        context = LogContext(model=self.model)
+        
         try:
             if self.thought_capture:
                 self.thought_capture.reset()
             
             if self.logger:
-                self.logger.debug(f"Starting stream", context=LogContext(model=self.model))
+                self.logger.info(f"Starting stream: {len(prompt)} char prompt", context=context)
+                self.logger.start_timer("llm_stream")
             
             api_kwargs = self._build_api_kwargs(kwargs)
             
@@ -693,48 +811,61 @@ class OllamaAPIWrapper(LLM):
             )
             
             if response.status_code == 200:
+                chunk_count = 0
+                total_chars = 0
+                
                 for line in response.iter_lines():
                     if line:
                         try:
                             json_response = json.loads(line)
                             
-                            # Process for thoughts
+                            # Process thoughts
                             if self.thought_capture:
                                 modified_response = self.thought_capture.process_chunk(json_response)
                                 
                                 if modified_response is None:
-                                    # Entirely thought content
                                     continue
                                 
                                 chunk_text = modified_response
                             else:
                                 chunk_text = json_response.get('response', '')
                             
-                            # Yield chunk
+                            # Yield
                             if chunk_text:
+                                chunk_count += 1
+                                total_chars += len(chunk_text)
+                                
                                 chunk = GenerationChunk(text=chunk_text)
                                 if run_manager:
                                     run_manager.on_llm_new_token(chunk_text)
                                 yield chunk
                                     
-                        except json.JSONDecodeError:
+                        except json.JSONDecodeError as e:
+                            if self.logger:
+                                self.logger.trace(f"JSON decode error: {e}", context=context)
                             continue
+                        
                         except Exception as e:
                             if self.logger:
-                                self.logger.error(f"Chunk processing error: {e}")
+                                self.logger.error(f"Chunk processing error: {e}", context=context)
                             continue
+                
+                if self.logger:
+                    duration = self.logger.stop_timer("llm_stream", context=context)
+                    self.logger.success(f"Stream complete in {duration:.2f}s: {chunk_count} chunks, {total_chars} chars", context=context)
+            
             else:
                 if self.logger:
-                    self.logger.warning(f"Stream request failed ({response.status_code}), using fallback")
+                    self.logger.warning(f"Stream failed (status {response.status_code}), using fallback", context=context)
                 yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
                 
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Stream error: {e}", exc_info=True)
+                self.logger.error(f"Stream error: {e}, using fallback", context=context, exc_info=True)
             yield from self._fallback_stream(prompt, stop, run_manager, **kwargs)
     
     def _build_api_kwargs(self, kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        """Build API kwargs with filtering"""
+        """Build kwargs with logging"""
         api_kwargs = {k: v for k, v in kwargs.items() 
                      if k not in ['run_manager', 'callbacks'] and 
                      isinstance(v, (str, int, float, bool, list, dict, type(None)))}
@@ -746,12 +877,17 @@ class OllamaAPIWrapper(LLM):
         if self.num_predict != -1:
             api_kwargs['num_predict'] = self.num_predict
         
+        if self.logger and api_kwargs:
+            self.logger.trace(f"API kwargs: {api_kwargs}", context=LogContext(model=self.model))
+        
         return api_kwargs
     
     def _fallback_call(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs) -> str:
-        """Fallback to local Ollama"""
+        """Fallback with logging"""
+        context = LogContext(model=self.model)
+        
         if self.logger:
-            self.logger.debug("Using fallback local call")
+            self.logger.info("Using local fallback for call", context=context)
         
         fallback_llm = Ollama(
             model=self.model, 
@@ -759,15 +895,19 @@ class OllamaAPIWrapper(LLM):
             top_k=self.top_k,
             top_p=self.top_p,
         )
-        call_kwargs = kwargs.copy()
+        
+        call_kwargs = {k: v for k, v in kwargs.items() if k != 'run_manager'}
         if run_manager:
             call_kwargs['run_manager'] = run_manager
+        
         return fallback_llm.invoke(prompt, stop=stop, **call_kwargs)
     
     def _fallback_stream(self, prompt: str, stop: Optional[List[str]] = None, run_manager=None, **kwargs):
-        """Fallback streaming to local Ollama"""
+        """Fallback stream with logging"""
+        context = LogContext(model=self.model)
+        
         if self.logger:
-            self.logger.debug("Using fallback local stream")
+            self.logger.info("Using local fallback for stream", context=context)
         
         fallback_llm = Ollama(
             model=self.model, 
@@ -775,11 +915,15 @@ class OllamaAPIWrapper(LLM):
             top_k=self.top_k,
             top_p=self.top_p,
         )
-        stream_kwargs = kwargs.copy()
+        
+        stream_kwargs = {k: v for k, v in kwargs.items() if k != 'run_manager'}
         if run_manager:
             stream_kwargs['run_manager'] = run_manager
         
+        chunk_count = 0
         for chunk in fallback_llm.stream(prompt, stop=stop, **stream_kwargs):
+            chunk_count += 1
+            
             if isinstance(chunk, str):
                 yield GenerationChunk(text=chunk)
             elif hasattr(chunk, 'text'):
@@ -788,61 +932,50 @@ class OllamaAPIWrapper(LLM):
                 yield GenerationChunk(text=chunk.content)
             else:
                 yield GenerationChunk(text=str(chunk))
+        
+        if self.logger:
+            self.logger.debug(f"Fallback stream complete: {chunk_count} chunks", context=context)
     
     async def _acall(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> str:
-        """Async call - falls back to sync"""
         return self._call(prompt, stop, **kwargs)
 
 
-# Example usage
 if __name__ == "__main__":
     from Vera.Configuration.config_manager import OllamaConfig
     from Vera.Logging.logging import get_logger, LoggingConfig, LogLevel
     
-    # Create logging config
     log_config = LoggingConfig(
         global_level=LogLevel.DEBUG,
-        show_ollama_raw_chunks=False,  # Set to True for full verbosity
+        show_ollama_raw_chunks=False,
         enable_colors=True,
         box_thoughts=True
     )
     
-    # Create logger
     logger = get_logger("ollama", log_config)
     
-    # Create Ollama config
     config = OllamaConfig(
         api_url="http://localhost:11434",
         timeout=2400,
         use_local_fallback=True
     )
     
-    # Create manager with logger
-    manager = OllamaConnectionManager(
-        config, 
-        logger=logger
-    )
+    manager = OllamaConnectionManager(config, logger=logger)
     
-    # Test connection
     manager.test_connection()
     
-    # List models
     logger.info("Available models:")
     models = manager.list_models()
     for model in models[:5]:
         logger.info(f"  • {model['model']}")
     
-    # Get detailed info
     if models:
         test_model = models[0]['model']
         logger.info(f"\nDetailed info for {test_model}:")
         manager.print_model_info(test_model)
         
-        # Create LLM
         llm = manager.create_llm(test_model, temperature=0.8)
         logger.success(f"Created LLM: {llm}")
         
-        # Test with prompt
         logger.info("\n" + "="*60)
         logger.info("TESTING LLM")
         logger.info("="*60 + "\n")

@@ -1,0 +1,14 @@
+# Vera Terminal UI Requirements
+
+# Core TUI Framework
+textual>=0.47.0
+
+# Event loop handling (for running alongside Vera's async components)
+nest-asyncio>=1.5.0
+
+# Already required by Vera
+rich>=13.0.0
+psutil>=5.9.0
+
+# Optional enhancements
+plotext>=5.2.8  # Terminal plotting for graphs

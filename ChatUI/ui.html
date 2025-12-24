@@ -8,6 +8,8 @@
     <!-- Syntax Highlighting-->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- Agent YAML Parsing-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/cypher.css">
@@ -119,8 +121,10 @@
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
             z-index: 10000;
+            max-height: 40vh;
             min-width: 220px;
             padding: 6px 0;
+            overflow-y: auto;
         ">
             <!-- Discovery Section -->
             <div class="context-menu-section-title">Discovery</div>
@@ -200,6 +204,272 @@
             </div>
         </div>
 
+       <div id="canvas-context-menu" class="context-menu" style="display: none;">
+        <!-- View Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">View</div>
+            <div class="context-menu-item" data-action="reset-view">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Reset View</span>
+            </div>
+            <div class="context-menu-item" data-action="fit-view">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Fit to Screen</span>
+            </div>
+            <div class="context-menu-item" data-action="zoom-in">
+                <!-- <span class="context-menu-icon">🔍+</span> -->
+                <span>Zoom In</span>
+            </div>
+            <div class="context-menu-item" data-action="zoom-out">
+                <!-- <span class="context-menu-icon">🔍-</span> -->
+                <span>Zoom Out</span>
+            </div>
+        </div>
+
+        <!-- Add Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Add</div>
+            <div class="context-menu-item" data-action="add-node">
+                <!-- <span class="context-menu-icon">➕</span> -->
+                <span>Add Node</span>
+            </div>
+            <div class="context-menu-item" data-action="add-edge">
+                <!-- <span class="context-menu-icon">🔗</span> -->
+                <span>Add Edge</span>
+            </div>
+        </div>
+
+        <!-- Selection Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Selection</div>
+            <div class="context-menu-item" data-action="select-all">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Select All</span>
+            </div>
+            <div class="context-menu-item" data-action="clear-selection">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Clear Selection</span>
+            </div>
+            <div class="context-menu-item" data-action="invert-selection">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Invert Selection</span>
+            </div>
+        </div>
+
+        <!-- Layout Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Layout</div>
+            <div class="context-menu-item" data-action="layout-hierarchical">
+                <!-- <span class="context-menu-icon">🌳</span> -->
+                <span>Hierarchical</span>
+            </div>
+            <div class="context-menu-item" data-action="layout-force">
+                <!-- <span class="context-menu-icon">⚡</span> -->
+                <span>Force-Directed</span>
+            </div>
+            <div class="context-menu-item" data-action="layout-circular">
+                <!-- <span class="context-menu-icon">⭕</span> -->
+                <span>Circular</span>
+            </div>
+            <div class="context-menu-item" data-action="layout-random">
+                <!-- <span class="context-menu-icon">🎲</span> -->
+                <span>Random</span>
+            </div>
+        </div>
+
+        <!-- Style Section -->
+        <!-- <div class="context-menu-section">
+            <div class="context-menu-section-title">Style</div>
+            <div class="context-menu-item" data-action="style-default">
+                <span class="context-menu-icon"></span>
+                <span>Default Style</span>
+            </div>
+            <div class="context-menu-item" data-action="style-minimal">
+                <span class="context-menu-icon"></span>
+                <span>Minimal Style</span>
+            </div>
+            <div class="context-menu-item" data-action="style-vibrant">
+                <span class="context-menu-icon"></span>
+                <span>Vibrant Style</span>
+            </div>
+        </div> -->
+
+        <!-- Tools Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Tools</div>
+            <div class="context-menu-item" data-action="execute-tool-direct">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Run Tool</span>
+            </div>
+            <div class="context-menu-item" data-action="run-tool">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Execute Tool</span>
+            </div>
+            <div class="context-menu-item" data-action="generate-nodes">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Generate Nodes</span>
+            </div>
+            <div class="context-menu-item" data-action="generate-edges">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Generate Edges</span>
+            </div>
+        </div>
+
+        <!-- Search & Insights Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">AI Insights</div>
+            <div class="context-menu-item" data-action="ai-assistant">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>ai-assistant</span>
+            </div>
+            <div class="context-menu-item" data-action="execute-tool-ai">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>execute-tool-ai</span>
+            </div>
+            <div class="context-menu-item" data-action="ai-summarize">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>ai-summarize</span>
+            </div>
+            <div class="context-menu-item" data-action="ai-find-key">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>ai-find-key</span>
+            </div>
+                        <div class="context-menu-item" data-action="ai-patterns">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>ai-patterns</span>
+            </div>
+                        <div class="context-menu-item" data-action="ai-suggest">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>ai-suggest</span>
+            </div>
+        </div>
+
+        <!-- Search & Insights Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Search & Insights</div>
+            <div class="context-menu-item" data-action="search-graph">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Search Graph</span>
+            </div>
+            <div class="context-menu-item" data-action="find-patterns">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Find Patterns</span>
+            </div>
+            <div class="context-menu-item" data-action="analyze-structure">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Analyze Structure</span>
+            </div>
+            <div class="context-menu-item" data-action="find-communities">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Find Communities</span>
+            </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Export</div>
+            <div class="context-menu-item" data-action="export-image">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Export as Image</span>
+            </div>
+            <div class="context-menu-item" data-action="export-json">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Export as JSON</span>
+            </div>
+        </div>
+
+        <!-- Settings Section -->
+        <div class="context-menu-section">
+            <div class="context-menu-section-title">Settings</div>
+            <div class="context-menu-item" data-action="physics-toggle">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Toggle Physics</span>
+            </div>
+            <div class="context-menu-item" data-action="canvas-settings">
+                <!-- <span class="context-menu-icon"></span> -->
+                <span>Canvas Settings</span>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Context Menu Styling (shared between node and canvas menus) */
+        .context-menu {
+            position: fixed;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            min-width: 220px;
+            max-height: 40vh;
+            overflow-y: auto;
+            padding: 4px;
+        }
+
+        .context-menu-section {
+            margin: 4px 0;
+        }
+
+        .context-menu-section:not(:last-child) {
+            border-bottom: 1px solid #334155;
+            padding-bottom: 4px;
+        }
+
+        .context-menu-section-title {
+            color: #64748b;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 12px 4px;
+            margin-top: 4px;
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #e2e8f0;
+            font-size: 13px;
+            border-radius: 4px;
+            transition: all 0.15s ease;
+        }
+
+        .context-menu-item:hover {
+            background: #334155;
+            color: #ffffff;
+        }
+
+        .context-menu-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Scrollbar styling for context menu */
+        .context-menu::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .context-menu::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-radius: 4px;
+        }
+
+        .context-menu::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+
+        .context-menu::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+
+
 
     </div>
     <div id="floating-widgets"></div>
@@ -211,9 +481,16 @@
     <script src="js/session/session.js"></script>
     <script src="js/ollama.js"></script>
     <script src="js/graph_/discovery.js"></script>
+    <script src="js/graph_/assistant.js"></script>
+    <script src="js/graph_/tools.js"></script>
     <script src="js/graph_/context_menu.js"></script>
+    <script src="js/graph_/canvas_context_menu.js"></script>
     <script src="js/graph_/tool-menu.js"></script>
     <script src="js/graph_/info-card.js"></script>
+    <script src="js/graph_/style.js"></script>
+    <script src="js/graph_/loader.js"></script>
+    <script src="js/graph_/graph_storage.js"></script>
+    
     <!-- <script src="js/graph/data.js"></script>
     <script src="js/graph/style.js"></script>
     <script src="js/graph/filters.js"></script>
@@ -238,7 +515,12 @@
     <link rel="stylesheet" href="css/enhanced-chat.css">
     <script src="js/chat/enhanced_chat.js"></script>
     <script src="js/chat/history.js"></script>
-  
+    <script src="js/chat/chat-box-enhancements.js"></script>
+    <script src="js/chat/graph.js"></script>
+    <script src="js/chat/graph-init.js"></script>
+    <script src="js/chat/toolchain-render.js"></script>
+    <script src="js/calendar/scheduling,js"></script>
+
     <script>// Header minimize/expand functionality
         function toggleHeader() {
             const header = document.getElementById('header');

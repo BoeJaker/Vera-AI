@@ -13,27 +13,58 @@ class ToolChainPlanner:
     def plan_tool_chain(self, query: str, history_context: str = "") -> List[Dict[str, str]]:
         """Generate a plan from the LLM."""
         planning_prompt = f"""
-            You are a rigorous expert planning assistant.
-            Available tools: {[(tool.name, tool.description) for tool in self.tools]}.
-            The query is: {query}
+            You are a rigorous, disciplined system planner. You generate ONLY a JSON array describing tool invocations. No commentary, no markdown, no prose.
 
-            Previous attempts and their outputs:\n{history_context if history_context else ""}
+            The user query is:
+            {query}
+            """
+        #     Available tools:
+        #     {[(tool.name, tool.description) for tool in self.tools]}
 
-            Plan a comprehensive sequence of tool calls to solve the request.
+        #     Previous steps and outputs:
+        #     {history_context if history_context else "None"}
 
+        #     Your job:
+        #     Produce a correct, minimal, deterministic sequence of tool calls to solve the request.
 
-            Rules for planning:
-            - You can reference ANY previous step output using {{step_1}}, {{step_2}}, etc.
-            - You can still use {{prev}} to mean the last step's output.
-            - DO NOT guess values that depend on previous outputs.
-            - Use the exact tool names provided above.
+        #     STRICT RULES (follow exactly):
 
-            Respond ONLY in this pure JSON format, no markdown:
-            [
-            {{ "tool": "<tool name>", "input": "<tool input or '{{step_1}}'>" }},
-            {{ "tool": "<tool name>", "input": "<tool input or '{{prev}}'>" }}
-            ]
-        """
+        #     1. Your output MUST be a JSON array of objects:
+            
+        #     [
+        #         {{ "tool": "<tool name>", "input": "<STRING>" }},
+        #         ...
+        #     ]
+
+        #     2. The ONLY fields allowed:
+        #     - "tool": must match a tool name **exactly** from the tool list.
+        #     - "input": always a **string** containing the data for that tool.
+
+        #     3. The placeholders {{step_1}}, {{step_2}}, … and {{prev}}:
+        #     - MAY ONLY appear *inside* the **value of the input string**.
+        #     - MUST NEVER be used as filenames.
+        #     - MUST NEVER be used as part of a filesystem path.
+        #     - MUST NEVER be used literally inside a bash command unless the prior tool produces raw shell-safe content.
+        #     - MUST NEVER appear outside a quoted JSON string.
+
+        #     4. Do NOT guess any data that depends on prior tool outputs.
+        #     - If a filename is unknown, generate it deterministically yourself (e.g. "scan.py", "output.json").
+        #     - If a tool requires input based on earlier output, use {{step_N}} or {{prev}} rather than inventing data.
+
+        #     5. The JSON must be syntactically valid:
+        #     - No trailing commas.
+        #     - No comments.
+        #     - No markdown fences.
+        #     - No code blocks.
+        #     - No unescaped quotes.
+
+        #     6. Your plan must be complete:
+        #     - All required intermediate steps (e.g., write_file → bash → read_file → parse_json) must be included.
+        #     - Avoid unnecessary steps.
+
+        #     Produce ONLY the JSON array. Nothing else.
+
+        # """
         # plan_json = self.agent.stream_llm_with_memory(self.agent.deep_llm, planning_prompt)
         plan_json=""
         # Get the plan from the LLM and clean up any leading/trailing ```json or ```

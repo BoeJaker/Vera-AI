@@ -15,7 +15,7 @@ from langchain_core.tools import StructuredTool
 
 # Import all OSINT components
 try:
-    from osint_tools_core import (
+    from Vera.Toolchain.Tools.OSINT.osint import (
         OSINTTools, CVESearchInput, SubdomainEnumInput, SocialScanInput
     )
     CORE_AVAILABLE = True
@@ -24,7 +24,7 @@ except ImportError:
     print("[Warning] OSINT core tools not available")
 
 try:
-    from osint_tools_webrecon import (
+    from Vera.Toolchain.Tools.OSINT.webrecon import (
         WebReconTools, WebReconInput, PlaywrightScraperInput, TechFingerprintInput
     )
     WEBRECON_AVAILABLE = True

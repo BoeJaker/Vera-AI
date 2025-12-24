@@ -586,8 +586,7 @@ async def execute_toolchain(request: ToolchainRequest):
     except Exception as e:
         logger.error(f"Toolchain execution error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 @wsrouter.websocket("/{session_id}")
 async def websocket_toolchain(websocket: WebSocket, session_id: str):
     """WebSocket endpoint for monitoring toolchain executions."""
@@ -598,20 +597,13 @@ async def websocket_toolchain(websocket: WebSocket, session_id: str):
         set_main_loop()
     
     if session_id not in sessions:
-        # Send error message before closing
-        try:
-            await websocket.send_json({
-                "type": "error",
-                "error": "Session not found",
-                "timestamp": datetime.utcnow().isoformat()
-            })
-        except Exception:
-            pass
-        finally:
-            try:
-                await websocket.close()
-            except Exception:
-                pass
+        logger.warning(f"Session not found for toolchain WebSocket: {session_id}")
+        await websocket.send_json({
+            "type": "error",
+            "error": "Session not found",
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        await websocket.close()
         return
     
     # Register this websocket for broadcasts
@@ -619,11 +611,21 @@ async def websocket_toolchain(websocket: WebSocket, session_id: str):
     logger.info(f"Toolchain WebSocket connected for session: {session_id}")
     
     try:
-        # Keep connection alive
+        # Keep connection alive with heartbeat
         while True:
             try:
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=1.0)
+                # Add ping/pong for keepalive
+                await websocket.send_json({
+                    "type": "ping",
+                    "timestamp": datetime.utcnow().isoformat()
+                })
+                
+                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)  # Increased timeout
                 message_data = json.loads(data)
+                
+                # Handle pong from client
+                if message_data.get("type") == "pong":
+                    continue
                 
                 # Optional: Allow manual toolchain execution via websocket
                 if "query" in message_data:
@@ -652,6 +654,7 @@ async def websocket_toolchain(websocket: WebSocket, session_id: str):
                         await loop.run_in_executor(executor, run_toolchain)
                     
             except asyncio.TimeoutError:
+                # Send periodic ping to keep connection alive
                 continue
             except json.JSONDecodeError:
                 await websocket.send_json({"type": "error", "error": "Invalid JSON"})
@@ -661,13 +664,12 @@ async def websocket_toolchain(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.error(f"Toolchain WebSocket error: {str(e)}", exc_info=True)
     finally:
-        # Clean up websocket connection - handle all possible error cases
+        # Clean up
         try:
             if session_id in websocket_connections and websocket in websocket_connections[session_id]:
                 websocket_connections[session_id].remove(websocket)
-        except (ValueError, KeyError, AttributeError) as e:
+        except Exception as e:
             logger.debug(f"Cleanup warning: {e}")
-
 
 @router.get("/{session_id}/executions")
 async def get_toolchain_executions(session_id: str):

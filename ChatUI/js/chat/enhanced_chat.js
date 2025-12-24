@@ -133,34 +133,70 @@
             return blocks;
         };
         
+        // VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
+        //     const messageEl = document.getElementById(messageId);
+        //     if (!messageEl) return;
+            
+        //     // Use the message-content div, NOT the inner rendered div
+        //     const contentContainer = messageEl.querySelector('.message-content');
+        //     if (!contentContainer) return;
+            
+        //     // Check if we have modern UI structure (with message-rendered div)
+        //     let renderedView = contentContainer.querySelector('.message-rendered');
+            
+        //     if (renderedView) {
+        //         // MODERN UI: Update the rendered view
+        //         if (typeof this.renderMessageContent === 'function') {
+        //             // Use modern renderMessageContent (has mermaid, advanced features)
+        //             renderedView.innerHTML = this.renderMessageContent(content);
+        //         } else {
+        //             // Fallback to basic if modern not loaded yet
+        //             renderedView.innerHTML = this.parseMessageContent(content);
+        //         }
+        //     } else {
+        //         // BASIC UI: Just update the content directly
+        //         if (typeof this.renderMessageContent === 'function') {
+        //             contentContainer.innerHTML = this.renderMessageContent(content);
+        //         } else {
+        //             const updatedContent = content.replace(/^(\w+)/, '**Agent: $1**');
+        //             contentContainer.innerHTML = this.parseMessageContent(updatedContent);
+        //         }
+        //     }
+            
+        //     // Add/update streaming indicator
+        //     let indicator = contentContainer.querySelector('.streaming-indicator');
+        //     if (!indicator) {
+        //         indicator = document.createElement('div');
+        //         indicator.className = 'streaming-indicator';
+        //         indicator.style.cssText = 'color: #60a5fa; font-size: 12px; margin-top: 8px; padding: 4px 8px; background: rgba(59, 130, 246, 0.0); border-radius: 4px; display: inline-block;';
+        //         indicator.textContent = '● Streaming...';
+        //         contentContainer.appendChild(indicator);
+        //     }
+            
+        //     // Auto-scroll if near bottom
+        //     const container = document.getElementById('chatMessages');
+        //     if (container) {
+        //         const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+        //         if (isScrolledToBottom) {
+        //             container.scrollTop = container.scrollHeight;
+        //         }
+        //     }
+        // };
+
         VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
             const messageEl = document.getElementById(messageId);
             if (!messageEl) return;
             
-            // Use the message-content div, NOT the inner rendered div
             const contentContainer = messageEl.querySelector('.message-content');
             if (!contentContainer) return;
             
-            // Check if we have modern UI structure (with message-rendered div)
             let renderedView = contentContainer.querySelector('.message-rendered');
             
             if (renderedView) {
-                // MODERN UI: Update the rendered view
-                if (typeof this.renderMessageContent === 'function') {
-                    // Use modern renderMessageContent (has mermaid, advanced features)
-                    renderedView.innerHTML = this.renderMessageContent(content);
-                } else {
-                    // Fallback to basic if modern not loaded yet
-                    renderedView.innerHTML = this.parseMessageContent(content);
-                }
+                // STREAMING: Just update raw text (fast!)
+                renderedView.textContent = content;
             } else {
-                // BASIC UI: Just update the content directly
-                if (typeof this.renderMessageContent === 'function') {
-                    contentContainer.innerHTML = this.renderMessageContent(content);
-                } else {
-                    const updatedContent = content.replace(/^(\w+)/, '**Agent: $1**');
-                    contentContainer.innerHTML = this.parseMessageContent(updatedContent);
-                }
+                contentContainer.textContent = content;
             }
             
             // Add/update streaming indicator
@@ -169,11 +205,11 @@
                 indicator = document.createElement('div');
                 indicator.className = 'streaming-indicator';
                 indicator.style.cssText = 'color: #60a5fa; font-size: 12px; margin-top: 8px; padding: 4px 8px; background: rgba(59, 130, 246, 0.0); border-radius: 4px; display: inline-block;';
-                indicator.textContent = '● Streaming...';
+                indicator.innerHTML = '<span style="display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-right: 6px;"></span>Streaming...';
                 contentContainer.appendChild(indicator);
             }
             
-            // Auto-scroll if near bottom
+            // Auto-scroll
             const container = document.getElementById('chatMessages');
             if (container) {
                 const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
@@ -181,15 +217,13 @@
                     container.scrollTop = container.scrollHeight;
                 }
             }
-        };
-
-        
+        };        
         VeraChat.prototype.sendMessageViaWebSocket = async function(message) {
             this.veraRobot.setState('thinking');
             if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
                 return false;
             }
-            
+            app.loadGraph()
             try {
                 this.websocket.send(JSON.stringify({
                     message: message,
@@ -201,7 +235,43 @@
                 return false;
             }
         }
-        
+        VeraChat.prototype.stopMessage = async function() {
+            if (!this.processing) {
+                console.warn('No message is currently being processed.');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://llm.int:8888/api/stop', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: this.sessionId })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to stop the message');
+                }
+
+                const data = await response.json();
+                console.log('Message stopped:', data);
+
+                this.processing = false;
+                this.currentStreamingMessageId = null;
+
+                const sendBtn = document.getElementById('sendBtn');
+                const messageInput = document.getElementById('messageInput');
+                if (sendBtn) sendBtn.disabled = false;
+                if (messageInput) {
+                    messageInput.disabled = false;
+                    messageInput.focus();
+                }
+
+                this.setControlStatus('🛑 Message processing stopped');
+            } catch (error) {
+                console.error('Error stopping message:', error);
+                this.addSystemMessage(`Error: ${error.message}`);
+            }
+        };
         VeraChat.prototype.sendMessage = async function() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -251,7 +321,7 @@
         
         VeraChat.prototype.addMessage = function(role, content, id = null) {
             const messageId = id || `msg-${Date.now()}`;
-            const message = { id: messageId, role, content, timestamp: new Date() };
+            const message = { id: messageId, role, content, timestamp: Date.now() }; // Store as number, not Date object
             this.messages.push(message);
             this.renderMessage(message);
         }
@@ -509,23 +579,42 @@
     // =====================================================================
     
     VeraChat.prototype.startTimestampUpdater = function() {
-        // Update timestamps every minute
-
-        // BROKEN
-
-        // setInterval(() => {
-        //     document.querySelectorAll('.message-timestamp').forEach(el => {
-        //         const messageId = el.closest('.message')?.id;
-        //         if (messageId) {
-        //             const message = this.messages.find(m => m.id === messageId);
-        //             if (message && message.timestamp) {
-        //                 el.textContent = this.formatTimestamp(message.timestamp);
-        //             }
-        //         }
-        //     });
-        // }, 60000); // Update every minute
+        const self = this;
+        
+        // Update timestamps every 10 seconds (for testing, change to 60000 for production)
+        this.timestampInterval = setInterval(() => {
+            const timestamps = document.querySelectorAll('.message-timestamp');
+            console.log(`🕐 Updating ${timestamps.length} timestamps`);
+            
+            // Check if messages array exists
+            if (!self.messages || !Array.isArray(self.messages)) {
+                console.warn('⚠️ Messages array not available yet');
+                return;
+            }
+            
+            console.log(`📊 Messages in array: ${self.messages.length}`);
+            
+            timestamps.forEach(el => {
+                const messageEl = el.closest('.message');
+                if (!messageEl) return;
+                
+                const messageId = messageEl.id;
+                console.log(`🔍 Looking for message: ${messageId}`);
+                
+                const message = self.messages.find(m => m.id === messageId);
+                
+                if (message && message.timestamp) {
+                    const newText = self.formatTimestamp(message.timestamp);
+                    if (el.textContent !== newText) {
+                        el.textContent = newText;
+                        console.log(`🕐 Updated ${messageId}: ${newText}`);
+                    }
+                } else {
+                    console.warn(`⚠️ Message not found: ${messageId}`);
+                }
+            });
+        }, 60000); // 10 seconds for testing, change to 60000 for production
     };
-    
     // =====================================================================
     // Control Bar - ENHANCED WITH NEW BUTTONS
     // =====================================================================
@@ -1777,6 +1866,7 @@
                 <div class="code-toolbar">
                     <span class="code-language">${language.toUpperCase()}</span>
                     <div class="code-actions">
+                        <button class="code-action-btn" onclick="app.execute_code(this); event.stopPropagation();" title="Execute">Execute</button>
                         <button class="code-action-btn" onclick="app.copyCodeBlock(this); event.stopPropagation();" title="Copy">📋</button>
                         <button class="code-action-btn" onclick="app.showCanvasModeSelector(this); event.stopPropagation();" title="Send to Canvas">🎨</button>
                     </div>
@@ -2264,29 +2354,29 @@ VeraChat.prototype.createMessageMenu = function(messageId, message) {
     // NEW: Notebook section
     sections.push({
         title: 'Save to Notebook',
-        icon: '📓',
+        icon: '',
         items: [
-            { label: 'Save as Note', icon: '💾', action: () => this.captureMessageAsNote(messageId) },
-            { label: 'Quick Save', icon: '⚡', action: () => this.quickSaveToNotebook(message) }
+            { label: 'Save as Note', icon: '', action: () => this.captureMessageAsNote(messageId) },
+            { label: 'Quick Save', icon: '', action: () => this.quickSaveToNotebook(message) }
         ]
     });
     
     // Canvas section - ENHANCED
     sections.push({
         title: 'Send to Canvas',
-        icon: '🎨',
+        icon: '',
         items: [
-            { label: 'Auto-detect', icon: '🤖', action: () => this.sendToCanvasAuto(message) },
-            { label: 'Code Editor', icon: '💻', action: () => this.sendToCanvasMode(message, 'code') },
-            { label: 'Markdown', icon: '📝', action: () => this.sendToCanvasMode(message, 'markdown') },
-            { label: 'Jupyter', icon: '📓', action: () => this.sendToCanvasMode(message, 'jupyter') },
-            { label: 'JSON Viewer', icon: '🗂️', action: () => this.sendToCanvasMode(message, 'json') },
-            { label: 'Table', icon: '📊', action: () => this.sendToCanvasMode(message, 'table') },
-            { label: 'Diagram', icon: '📈', action: () => this.sendToCanvasMode(message, 'diagram') },
-            { label: 'Preview', icon: '🌐', action: () => this.sendToCanvasMode(message, 'preview') },
-            { label: 'Terminal', icon: '💻', action: () => this.sendToCanvasMode(message, 'terminal') },
-            { label: 'Embedded IDE', icon: '🔌', action: () => this.sendToCanvasMode(message, 'embedded-ide') },
-            { label: 'TIC-80', icon: '🎮', action: () => this.sendToCanvasMode(message, 'tic80') }
+            { label: 'Auto-detect', icon: '', action: () => this.sendToCanvasAuto(message) },
+            { label: 'Code Editor', icon: '', action: () => this.sendToCanvasMode(message, 'code') },
+            { label: 'Markdown', icon: '', action: () => this.sendToCanvasMode(message, 'markdown') },
+            { label: 'Jupyter', icon: '', action: () => this.sendToCanvasMode(message, 'jupyter') },
+            { label: 'JSON Viewer', icon: '', action: () => this.sendToCanvasMode(message, 'json') },
+            { label: 'Table', icon: '', action: () => this.sendToCanvasMode(message, 'table') },
+            { label: 'Diagram', icon: '', action: () => this.sendToCanvasMode(message, 'diagram') },
+            { label: 'Preview', icon: '', action: () => this.sendToCanvasMode(message, 'preview') },
+            { label: 'Terminal', icon: '', action: () => this.sendToCanvasMode(message, 'terminal') },
+            { label: 'Embedded IDE', icon: '', action: () => this.sendToCanvasMode(message, 'embedded-ide') },
+            { label: 'TIC-80', icon: '', action: () => this.sendToCanvasMode(message, 'tic80') }
         ]
     });
     
@@ -2294,21 +2384,21 @@ VeraChat.prototype.createMessageMenu = function(messageId, message) {
     if (this.availableTools && Object.keys(this.availableTools).length > 0) {
         const toolItems = Object.values(this.availableTools).slice(0, 8).map(tool => ({
             label: tool.name,
-            icon: '🔧',
+            icon: '',
             action: () => this.runToolOnMessage(message, tool.name)
         }));
         
         if (Object.keys(this.availableTools).length > 8) {
             toolItems.push({
                 label: 'More tools...',
-                icon: '⋯',
+                icon: '',
                 action: () => this.showAllToolsForMessage(message)
             });
         }
         
         sections.push({
             title: 'Run Tool',
-            icon: '🔧',
+            icon: '',
             items: toolItems
         });
     }
@@ -2316,12 +2406,12 @@ VeraChat.prototype.createMessageMenu = function(messageId, message) {
     // Actions section
     sections.push({
         title: 'Actions',
-        icon: '⚡',
+        icon: '',
         items: [
-            { label: 'Focus in Graph', icon: '🎯', action: () => this.focusMessageInGraph(message) },
-            { label: 'Copy', icon: '📋', action: () => this.copyMessageContent(messageId) },
-            { label: 'Star', icon: '⭐', action: () => this.starMessage(messageId) },
-            { label: 'Delete', icon: '🗑️', action: () => this.deleteMessage(messageId), className: 'danger' }
+            { label: 'Focus in Graph', icon: '', action: () => this.focusMessageInGraph(message) },
+            { label: 'Copy', icon: '', action: () => this.copyMessageContent(messageId) },
+            { label: 'Star', icon: '', action: () => this.starMessage(messageId) },
+            { label: 'Delete', icon: '', action: () => this.deleteMessage(messageId), className: 'danger' }
         ]
     });
     
@@ -3484,6 +3574,15 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
         });
     };
     
+    VeraChat.prototype.execute_code = function(button) {
+        // const block = button.closest('.enhanced-code-block');
+        // const code = block.querySelector('code').textContent;
+        
+        // navigator.clipboard.writeText(code).then(() => {
+        //     button.textContent = '✅';
+        //     setTimeout(() => button.textContent = '📋', 2000);
+        // });
+    };
     // FIXED: Canvas button now properly extracts code from data attributes
     VeraChat.prototype.showCanvasModeSelector = function(button) {
         console.log('🎨 Direct send to canvas (no popup)');
@@ -3588,7 +3687,8 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
     // };
     
     VeraChat.prototype.formatTimestamp = function(timestamp) {
-        const date = new Date(timestamp);
+        // Handle both Date objects and timestamp numbers
+        const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
         const now = new Date();
         const diff = now - date;
         
@@ -3598,7 +3698,6 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
         
         return date.toLocaleString();
     };
-    
     VeraChat.prototype.copyMessageContent = function(messageId) {
         const message = this.messages.find(m => m.id === messageId);
         if (!message) return;
@@ -3722,4 +3821,5 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
     }
     
     console.log('🚀 Modern Interactive Chat UI (COMPLETE FIX) loaded successfully');
+
 })();

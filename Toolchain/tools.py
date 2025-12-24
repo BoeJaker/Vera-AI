@@ -47,6 +47,9 @@ from Vera.Toolchain.Tools.Memory.memory_advanced import *
 from Vera.Toolchain.Tools.Memory.memory import *
 from Vera.Toolchain.Tools.orchestration import *
 from Vera.Toolchain.Tools.OSINT.loader import add_all_osint_tools
+from Vera.Toolchain.Tools.OSINT.network_loader import add_all_network_osint_tools
+from Vera.Toolchain.Tools.OSINT.network_ingestor_integration import add_network_infrastructure_tools
+from Vera.Toolchain.Tools.OSINT.network_scanning import  add_network_scanning_tools
 
 # ============================================================================
 # UTILITY FUNCTIONS
@@ -2249,7 +2252,7 @@ def ToolLoader(agent):
             func=tools.search_files,
             name="search_files",
             description="Search for files matching a pattern recursively. Supports glob and regex patterns.",
-            args_schema=SearchInput
+            args_schema=SearchFilesInput  # FIXED
         ),
         
         # Code Execution Tools
@@ -2315,34 +2318,34 @@ def ToolLoader(agent):
             func=tools.get_current_time,
             name="get_time",
             description="Get current date and time in specified timezone.",
-            args_schema=LLMQueryInput
+            args_schema=TimezoneInput  # FIXED
         ),
         StructuredTool.from_function(
             func=tools.calculate_time_delta,
             name="time_delta",
             description="Calculate time difference between two dates or from date to now.",
-            args_schema=SearchInput
+            args_schema=TimeDeltaInput  # FIXED
         ),
-        
         # Text Processing Tools
         StructuredTool.from_function(
             func=tools.count_tokens,
             name="count_tokens",
             description="Estimate token count for text. Useful for managing context windows.",
-            args_schema=SearchInput
+            args_schema=TokenCountInput  # FIXED
         ),
         StructuredTool.from_function(
             func=tools.regex_search,
             name="regex_search",
             description="Search text using regular expressions with optional flags.",
-            args_schema=SearchInput
+            args_schema=RegexSearchInput  # FIXED - NOW UNCOMMENTED
         ),
         StructuredTool.from_function(
             func=tools.text_statistics,
             name="text_stats",
             description="Generate comprehensive statistics about text (word count, sentences, etc).",
-            args_schema=LLMQueryInput
+            args_schema=TextInput  # FIXED
         ),
+        
         
         # Data Processing Tools
         StructuredTool.from_function(
@@ -2361,25 +2364,27 @@ def ToolLoader(agent):
             func=tools.hash_text,
             name="hash_text",
             description="Generate cryptographic hash (md5, sha1, sha256, sha512) of text.",
-            args_schema=SearchInput
+            args_schema=HashInput  # FIXED
         ),
-        
+
         # System Tools
         StructuredTool.from_function(
             func=tools.get_system_info,
             name="system_info",
             description="Get system information including OS, Python version, etc.",
+            args_schema=EmptyInput  # FIXED
         ),
         StructuredTool.from_function(
             func=tools.get_env_variable,
             name="get_env",
             description="Get environment variable value.",
-            args_schema=LLMQueryInput
+            args_schema=EnvVarInput  # FIXED
         ),
         StructuredTool.from_function(
             func=tools.list_env_variables,
             name="list_env",
             description="List all environment variables (sanitized).",
+            args_schema=EmptyInput  # FIXED
         ),
         
         # Memory & Search Tools
@@ -2387,17 +2392,21 @@ def ToolLoader(agent):
             func=tools.search_memory,
             name="search_memory",
             description="Search agent's long-term memory for relevant past information.",
-            args_schema=LLMQueryInput
+            args_schema=MemorySearchInput  # FIXED
         ),
         StructuredTool.from_function(
             func=tools.list_python_modules,
             name="list_modules",
             description="List all currently loaded Python modules in the runtime.",
+            args_schema=EmptyInput  # FIXED
         ),
     ]
     
     DynamicTools.add_dynamic_tools(tool_list, agent)
 
+
+    # Disabled temporarily to reduce prompt size 
+    ##############################################
     add_ssh_postgres_neo4j_tools(tool_list, agent)
 
     add_mcp_docker_tools(tool_list, agent)
@@ -2409,6 +2418,9 @@ def ToolLoader(agent):
     add_versioned_file_tools(tool_list, agent)
 
     add_n8n_tools(tool_list, agent)
+
+
+
 
     # Add Web Crawler tools
     # add_web_crawler_tools(tool_list, agent)
@@ -2449,7 +2461,11 @@ def ToolLoader(agent):
     # ValueError: "CrawlWebsiteTool" object has no field "config"
 
 
-    # Add Babelfish tools
+
+    # Disabled temporarily to reduce prompt size 
+    ##############################################
+
+    # # Add Babelfish tools
     add_babelfish_tools(tool_list, agent)
 
     add_orchestrator_tools(tool_list, agent)
@@ -2457,6 +2473,10 @@ def ToolLoader(agent):
     add_advanced_memory_search_tools(tool_list, agent)
     add_extended_memory_search_tools(tool_list, agent)
     add_all_osint_tools(tool_list, agent)
+    add_all_network_osint_tools(tool_list, agent)
+    add_network_infrastructure_tools(tool_list, agent)
+    add_network_scanning_tools(tool_list, agent)
+
 
 
     # Add MCP tools if available
@@ -2485,7 +2505,19 @@ def ToolLoader(agent):
                 description="Run the executive scheduling assistant. Access to calendars, todos, scheduling apps. Input: query string.",
             )
         )
-    
+    # ============================================================================
+    # PLUGIN INTEGRATION - Recon Map Backwards Compatibility
+    # ============================================================================
+    # Add plugins as tools if plugin manager is available
+    if hasattr(agent, 'plugin_manager') and agent.plugin_manager:
+        try:
+            from Vera.Toolchain.plugin_tool_bridge import add_plugin_tools
+            tool_list = add_plugin_tools(tool_list, agent)
+        except ImportError as e:
+            print(f"[Warning] Could not load plugin bridge: {e}")
+        except Exception as e:
+            print(f"[Warning] Error loading plugin tools: {e}")
+
     return tool_list
 
     

@@ -1,4 +1,6 @@
-cd /home/boejaker/langchain
+project_root=$("/home/boejaker/langchain")
+
+cd $project_root
 
 source ./bin/activate
 

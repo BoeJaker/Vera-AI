@@ -1,0 +1,616 @@
+/**
+ * Calendar Module for Vera AI
+ * Provides interactive calendar interface with multi-source support
+ * Features: FullCalendar integration, WebSocket updates, event CRUD
+ */
+
+class CalendarManager {
+    constructor() {
+        this.calendar = null;
+        this.ws = null;
+        this.sources = [];
+        this.currentView = 'dayGridMonth';
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        
+        this.init();
+    }
+    
+    async init() {
+        console.log('[Calendar] Initializing...');
+        
+        // Load calendar sources
+        await this.loadSources();
+        
+        // Initialize FullCalendar
+        this.initCalendar();
+        
+        // Setup WebSocket
+        this.setupWebSocket();
+        
+        // Load initial events
+        await this.loadEvents();
+        
+        // Setup UI event handlers
+        this.setupEventHandlers();
+        
+        // Load cron jobs
+        await this.loadCronJobs();
+        
+        console.log('[Calendar] Initialization complete');
+    }
+    
+    async loadSources() {
+        try {
+            const response = await fetch('/api/calendar/sources');
+            const data = await response.json();
+            this.sources = data.sources;
+            
+            // Update source filter UI
+            this.renderSourceFilters();
+        } catch (error) {
+            console.error('[Calendar] Error loading sources:', error);
+            this.showNotification('Failed to load calendar sources', 'error');
+        }
+    }
+    
+    initCalendar() {
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) {
+            console.error('[Calendar] Calendar element not found');
+            return;
+        }
+        
+        this.calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: this.currentView,
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+            },
+            editable: true,
+            selectable: true,
+            selectMirror: true,
+            dayMaxEvents: true,
+            weekends: true,
+            height: 'auto',
+            
+            // Event handlers
+            select: (info) => this.handleDateSelect(info),
+            eventClick: (info) => this.handleEventClick(info),
+            eventDrop: (info) => this.handleEventDrop(info),
+            eventResize: (info) => this.handleEventResize(info),
+            
+            // Custom event rendering
+            eventContent: (arg) => this.renderEventContent(arg),
+            
+            // View change handler
+            datesSet: (info) => {
+                this.currentView = info.view.type;
+            }
+        });
+        
+        this.calendar.render();
+    }
+    
+    async loadEvents() {
+        try {
+            const response = await fetch('/api/calendar/events?days_ahead=30');
+            const events = await response.json();
+            
+            // Clear existing events
+            this.calendar.removeAllEvents();
+            
+            // Add events to calendar
+            events.forEach(event => {
+                this.calendar.addEvent({
+                    id: `${event.source}_${event.id}`,
+                    title: event.title,
+                    start: event.start,
+                    end: event.end || event.start,
+                    backgroundColor: event.color || this.getSourceColor(event.source),
+                    borderColor: event.color || this.getSourceColor(event.source),
+                    extendedProps: {
+                        source: event.source,
+                        originalId: event.id,
+                        description: event.description,
+                        recurrence: event.recurrence
+                    },
+                    allDay: event.all_day || false
+                });
+            });
+            
+            console.log(`[Calendar] Loaded ${events.length} events`);
+        } catch (error) {
+            console.error('[Calendar] Error loading events:', error);
+            this.showNotification('Failed to load events', 'error');
+        }
+    }
+    
+    setupWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/calendar/ws`;
+        
+        console.log('[Calendar WS] Connecting to:', wsUrl);
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+            console.log('[Calendar WS] Connected');
+            this.reconnectAttempts = 0;
+            
+            // Subscribe to updates
+            this.ws.send(JSON.stringify({ type: 'subscribe' }));
+            
+            // Start heartbeat
+            this.startHeartbeat();
+        };
+        
+        this.ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                this.handleWebSocketMessage(message);
+            } catch (error) {
+                console.error('[Calendar WS] Error parsing message:', error);
+            }
+        };
+        
+        this.ws.onerror = (error) => {
+            console.error('[Calendar WS] Error:', error);
+        };
+        
+        this.ws.onclose = () => {
+            console.log('[Calendar WS] Disconnected');
+            this.stopHeartbeat();
+            this.attemptReconnect();
+        };
+    }
+    
+    handleWebSocketMessage(message) {
+        console.log('[Calendar WS] Received:', message.type);
+        
+        switch (message.type) {
+            case 'subscribed':
+                console.log('[Calendar WS] Subscription confirmed');
+                break;
+                
+            case 'events_update':
+                console.log('[Calendar WS] Events update received');
+                // Reload events
+                this.loadEvents();
+                break;
+                
+            case 'event_created':
+                console.log('[Calendar WS] New event created');
+                const newEvent = message.data;
+                this.calendar.addEvent({
+                    id: `${newEvent.source}_${newEvent.id}`,
+                    title: newEvent.title,
+                    start: newEvent.start,
+                    end: newEvent.end,
+                    backgroundColor: newEvent.color || this.getSourceColor(newEvent.source),
+                    extendedProps: { source: newEvent.source, originalId: newEvent.id }
+                });
+                this.showNotification('New event created', 'success');
+                break;
+                
+            case 'event_deleted':
+                console.log('[Calendar WS] Event deleted');
+                const deletedId = `${message.data.source}_${message.data.id}`;
+                const eventToRemove = this.calendar.getEventById(deletedId);
+                if (eventToRemove) {
+                    eventToRemove.remove();
+                    this.showNotification('Event deleted', 'info');
+                }
+                break;
+                
+            case 'pong':
+                // Heartbeat response
+                break;
+                
+            default:
+                console.log('[Calendar WS] Unknown message type:', message.type);
+        }
+    }
+    
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000); // Every 30 seconds
+    }
+    
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+    
+    attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            console.log('[Calendar WS] Max reconnection attempts reached');
+            this.showNotification('WebSocket disconnected. Please refresh the page.', 'warning');
+            return;
+        }
+        
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        
+        console.log(`[Calendar WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        
+        setTimeout(() => {
+            this.setupWebSocket();
+        }, delay);
+    }
+    
+    handleDateSelect(info) {
+        console.log('[Calendar] Date selected:', info.startStr, 'to', info.endStr);
+        
+        // Show create event modal
+        this.showCreateEventModal(info.start, info.end, info.allDay);
+        
+        // Clear selection
+        this.calendar.unselect();
+    }
+    
+    handleEventClick(info) {
+        console.log('[Calendar] Event clicked:', info.event.title);
+        
+        // Show event details modal
+        this.showEventDetailsModal(info.event);
+    }
+    
+    async handleEventDrop(info) {
+        console.log('[Calendar] Event dropped:', info.event.title);
+        
+        // In a full implementation, you'd update the event on the server
+        // For now, just show a notification
+        this.showNotification(`Event "${info.event.title}" moved`, 'info');
+        
+        // Optionally revert if update fails
+        // info.revert();
+    }
+    
+    async handleEventResize(info) {
+        console.log('[Calendar] Event resized:', info.event.title);
+        this.showNotification(`Event "${info.event.title}" resized`, 'info');
+    }
+    
+    renderEventContent(arg) {
+        const source = arg.event.extendedProps.source;
+        const sourceIcon = this.getSourceIcon(source);
+        
+        return {
+            html: `
+                <div class="fc-event-main-frame">
+                    <div class="fc-event-time">${arg.timeText}</div>
+                    <div class="fc-event-title-container">
+                        <span class="fc-event-source-icon">${sourceIcon}</span>
+                        <div class="fc-event-title">${arg.event.title}</div>
+                    </div>
+                </div>
+            `
+        };
+    }
+    
+    showCreateEventModal(start, end, allDay = false) {
+        const modal = document.getElementById('eventModal');
+        const form = document.getElementById('eventForm');
+        const titleInput = document.getElementById('eventTitle');
+        const startInput = document.getElementById('eventStart');
+        const endInput = document.getElementById('eventEnd');
+        const sourceSelect = document.getElementById('eventSource');
+        const descriptionInput = document.getElementById('eventDescription');
+        
+        // Reset form
+        form.reset();
+        
+        // Set default values
+        startInput.value = this.formatDatetimeLocal(start);
+        endInput.value = this.formatDatetimeLocal(end);
+        
+        // Populate source dropdown
+        sourceSelect.innerHTML = this.sources
+            .filter(s => s.enabled && s.id !== 'apscheduler')
+            .map(s => `<option value="${s.id}">${s.name}</option>`)
+            .join('');
+        
+        // Show modal
+        modal.style.display = 'block';
+        titleInput.focus();
+        
+        // Handle form submission
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            
+            const eventData = {
+                title: titleInput.value,
+                start: new Date(startInput.value).toISOString(),
+                end: new Date(endInput.value).toISOString(),
+                source: sourceSelect.value,
+                description: descriptionInput.value || null
+            };
+            
+            await this.createEvent(eventData);
+            modal.style.display = 'none';
+        };
+    }
+    
+    showEventDetailsModal(event) {
+        const modal = document.getElementById('eventDetailsModal');
+        const content = document.getElementById('eventDetailsContent');
+        
+        const props = event.extendedProps;
+        const source = this.sources.find(s => s.id === props.source);
+        
+        content.innerHTML = `
+            <div class="event-details">
+                <h3>${event.title}</h3>
+                <div class="event-info">
+                    <div class="info-row">
+                        <strong>Source:</strong>
+                        <span class="source-badge" style="background-color: ${source?.color || '#999'}">
+                            ${source?.name || props.source}
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <strong>Start:</strong>
+                        <span>${this.formatDatetime(event.start)}</span>
+                    </div>
+                    <div class="info-row">
+                        <strong>End:</strong>
+                        <span>${event.end ? this.formatDatetime(event.end) : 'N/A'}</span>
+                    </div>
+                    ${props.description ? `
+                        <div class="info-row">
+                            <strong>Description:</strong>
+                            <p>${props.description}</p>
+                        </div>
+                    ` : ''}
+                    ${props.recurrence ? `
+                        <div class="info-row">
+                            <strong>Recurrence:</strong>
+                            <span>${props.recurrence}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="event-actions">
+                    <button class="btn btn-danger" onclick="calendarManager.deleteEvent('${props.source}', '${props.originalId}')">
+                        Delete Event
+                    </button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('eventDetailsModal').style.display='none'">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    }
+    
+    async createEvent(eventData) {
+        try {
+            const response = await fetch('/api/calendar/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(eventData)
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to create event');
+            }
+            
+            const newEvent = await response.json();
+            this.showNotification('Event created successfully', 'success');
+            
+            // Event will be added via WebSocket, but we can add it immediately for responsiveness
+            this.calendar.addEvent({
+                id: `${newEvent.source}_${newEvent.id}`,
+                title: newEvent.title,
+                start: newEvent.start,
+                end: newEvent.end,
+                backgroundColor: newEvent.color || this.getSourceColor(newEvent.source),
+                extendedProps: { source: newEvent.source, originalId: newEvent.id }
+            });
+            
+        } catch (error) {
+            console.error('[Calendar] Error creating event:', error);
+            this.showNotification('Failed to create event', 'error');
+        }
+    }
+    
+    async deleteEvent(source, eventId) {
+        if (!confirm('Are you sure you want to delete this event?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/calendar/events/${source}/${eventId}`, {
+                method: 'DELETE'
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to delete event');
+            }
+            
+            // Remove from calendar
+            const calendarEventId = `${source}_${eventId}`;
+            const event = this.calendar.getEventById(calendarEventId);
+            if (event) {
+                event.remove();
+            }
+            
+            // Close modal
+            document.getElementById('eventDetailsModal').style.display = 'none';
+            
+            this.showNotification('Event deleted successfully', 'success');
+            
+        } catch (error) {
+            console.error('[Calendar] Error deleting event:', error);
+            this.showNotification('Failed to delete event', 'error');
+        }
+    }
+    
+    async loadCronJobs() {
+        try {
+            const response = await fetch('/api/calendar/cron');
+            const jobs = await response.json();
+            
+            this.renderCronJobs(jobs);
+        } catch (error) {
+            console.error('[Calendar] Error loading cron jobs:', error);
+        }
+    }
+    
+    renderCronJobs(jobs) {
+        const container = document.getElementById('cronJobsList');
+        if (!container) return;
+        
+        if (jobs.length === 0) {
+            container.innerHTML = '<p class="text-muted">No scheduled jobs</p>';
+            return;
+        }
+        
+        container.innerHTML = jobs.map(job => `
+            <div class="cron-job-item">
+                <div class="cron-job-header">
+                    <strong>${job.name}</strong>
+                    <span class="badge badge-${job.enabled ? 'success' : 'secondary'}">
+                        ${job.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                </div>
+                <div class="cron-job-details">
+                    <small>Schedule: ${job.schedule}</small>
+                    ${job.next_run ? `<small>Next run: ${this.formatDatetime(new Date(job.next_run))}</small>` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    renderSourceFilters() {
+        const container = document.getElementById('sourceFilters');
+        if (!container) return;
+        
+        container.innerHTML = this.sources.map(source => `
+            <label class="source-filter">
+                <input type="checkbox" 
+                       value="${source.id}" 
+                       ${source.enabled ? 'checked' : ''}
+                       onchange="calendarManager.toggleSource('${source.id}', this.checked)">
+                <span class="source-color" style="background-color: ${source.color}"></span>
+                ${source.name}
+            </label>
+        `).join('');
+    }
+    
+    toggleSource(sourceId, enabled) {
+        console.log(`[Calendar] Toggle source ${sourceId}:`, enabled);
+        
+        // Filter events by source
+        const events = this.calendar.getEvents();
+        events.forEach(event => {
+            if (event.extendedProps.source === sourceId) {
+                event.setProp('display', enabled ? 'auto' : 'none');
+            }
+        });
+    }
+    
+    setupEventHandlers() {
+        // Modal close buttons
+        const modals = document.querySelectorAll('.modal');
+        modals.forEach(modal => {
+            const closeBtn = modal.querySelector('.close');
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    modal.style.display = 'none';
+                };
+            }
+        });
+        
+        // Click outside modal to close
+        window.onclick = (event) => {
+            modals.forEach(modal => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                }
+            });
+        };
+        
+        // Refresh button
+        const refreshBtn = document.getElementById('refreshCalendar');
+        if (refreshBtn) {
+            refreshBtn.onclick = () => this.loadEvents();
+        }
+        
+        // Today button (already handled by FullCalendar)
+    }
+    
+    // Utility methods
+    
+    getSourceColor(source) {
+        const sourceObj = this.sources.find(s => s.id === source);
+        return sourceObj?.color || '#999';
+    }
+    
+    getSourceIcon(source) {
+        const icons = {
+            'google': '📅',
+            'local': '📋',
+            'apscheduler': '⏰',
+            'cron': '🔄'
+        };
+        return icons[source] || '📌';
+    }
+    
+    formatDatetime(date) {
+        if (!date) return 'N/A';
+        const d = new Date(date);
+        return d.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    formatDatetimeLocal(date) {
+        const d = new Date(date);
+        const offset = d.getTimezoneOffset();
+        const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+        return localDate.toISOString().slice(0, 16);
+    }
+    
+    showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification notification-${type}`;
+        notification.textContent = message;
+        
+        // Add to page
+        const container = document.getElementById('notificationContainer') || document.body;
+        container.appendChild(notification);
+        
+        // Fade in
+        setTimeout(() => notification.classList.add('show'), 10);
+        
+        // Remove after delay
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+}
+
+// Initialize calendar when DOM is ready
+let calendarManager;
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        calendarManager = new CalendarManager();
+    });
+} else {
+    calendarManager = new CalendarManager();
+}

@@ -107,7 +107,7 @@
             panel.innerHTML = `
                 <div class="cypher-header">
                     <div class="cypher-title">
-                        <span>⚡</span> Query Builder
+                        Query Builder
                     </div>
                     <div class="cypher-header-btns">
                         <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">🔄</button>
@@ -229,7 +229,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-date-enabled">
-                            <span>📅 Date Range</span>
+                            <span>Date Range</span>
                         </label>
                     </div>
                     <div id="cypher-date-content" class="section-body collapsed">
@@ -265,7 +265,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-rels-enabled">
-                            <span>🔗 Relationships</span>
+                            <span>Relationships</span>
                         </label>
                     </div>
                     <div id="cypher-rels-content" class="section-body collapsed">
@@ -308,7 +308,7 @@
                 
                 <!-- Return Options -->
                 <div class="section-box">
-                    <div class="section-title">📤 Return</div>
+                    <div class="section-title">Return</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Return</label>

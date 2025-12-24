@@ -17,9 +17,36 @@ from dataclasses import dataclass, asdict, field
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import logging
+from dataclasses import dataclass, asdict, field
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class AgentSystemConfig:
+    """Agent configuration system settings"""
+    enabled: bool = True
+    auto_load: bool = True
+    auto_build: bool = False
+    
+    agents_dir: str = "./Vera/Agents/agents"
+    templates_dir: str = "./Vera/Agents/templates"
+    build_dir: str = "./Vera/build/agents"
+    
+    # Default agents for different tasks
+    default_agents: Dict[str, str] = field(default_factory=lambda: {
+        'triage': 'triage-agent',
+        'tool_execution': 'tool-agent',
+        'reasoning': 'reasoning-agent',
+        'conversation': 'gemma2'
+    })
+    
+    # Agent-specific config overrides
+    agent_configs: Dict[str, Dict] = field(default_factory=dict)
+    
+    hot_reload: bool = True
+    check_interval: int = 60
+    validate_on_load: bool = True
+    strict_validation: bool = False
 
 @dataclass
 class OllamaConfig:
@@ -194,11 +221,11 @@ class VeraConfig:
     proactive_focus: ProactiveFocusConfig = field(default_factory=ProactiveFocusConfig)
     playwright: PlaywrightConfig = field(default_factory=PlaywrightConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    agents: AgentSystemConfig = field(default_factory=AgentSystemConfig) 
     
     # General settings
     enable_hot_reload: bool = True
     config_file: str = "Configuration/vera_config.yaml"
-
 
 class ConfigFileHandler(FileSystemEventHandler):
     """Watch for config file changes"""
@@ -363,7 +390,7 @@ class ConfigManager:
                 logger.debug(f"Applied env override: {env_var} -> {section}.{key}")
         
         return data
-    
+        
     def _dict_to_config(self, data: Dict) -> VeraConfig:
         """Convert dictionary to VeraConfig object"""
         config_dict = {
@@ -375,11 +402,12 @@ class ConfigManager:
             'proactive_focus': ProactiveFocusConfig(**data.get('proactive_focus', {})),
             'playwright': PlaywrightConfig(**data.get('playwright', {})),
             'logging': LoggingConfig(**data.get('logging', {})),
+            'agents': AgentSystemConfig(**data.get('agents', {})),
             'enable_hot_reload': data.get('enable_hot_reload', True),
             'config_file': data.get('config_file', str(self.config_path)),
         }
         return VeraConfig(**config_dict)
-    
+        
     def _config_to_dict(self, config: VeraConfig) -> Dict:
         """Convert VeraConfig object to dictionary"""
         return {
@@ -391,6 +419,7 @@ class ConfigManager:
             'proactive_focus': asdict(config.proactive_focus),
             'playwright': asdict(config.playwright),
             'logging': asdict(config.logging),
+            'agents': asdict(config.agents),
             'enable_hot_reload': config.enable_hot_reload,
             'config_file': config.config_file,
         }
