@@ -1,6 +1,21 @@
 performance issues, graph-info-card / rcm context menus
 
 ability to restrict graph view to current session only / switch to current view + context
+Color legend doesnt always show
+
+unified graph loading system - 
+graphs loaded via query have the wrong edge tags, 
+graphs loaded using the memory tab lack porperties,
+graphs loaded using chat event handlers work great
+none load in with correct styling, need a master style control combined with style.js
+
+unified graph styling from query to context menu
+
+query should slide ito the graph element not the window
+
+settings should be moved to the query window
+
+add a button - layout - that opens the query slider on layout
 
 FOLDER:
 GRAPH_
@@ -21,7 +36,16 @@ proactive focus - suggest similar focus or ask if you would like to create a new
 
 💭 Generating proactive thought... bubbles need to format the json output into "thoughts"
 
+Add controls for complexity of thought, number of iterations, 
+
 Finish proactive background thought - improve scaling - docker
+
+"Error streaming ideas response: 'run_manager'" in Actions & Next Steps
+
+Actions stage must deconstruct next steps into toolplans using the toolchain planner and action prompt
+Should optionally be able to prompt the user before each action
+
+PFB Orchestrator agent that ensrues each stages output makes sense - manages marco progress toward the focus
 
 FILES:
 
@@ -47,7 +71,14 @@ Graph that updates live - continuously rescans/reanalyses nodes
 Unify UI output of single tool run vs toolchain tool run
 
 tools need to link their output to the current sessions last node in the "execution chain" (plan, step, conclusion) usually step as this is where tools are run.
-i.e. plan -> step -> network_scan - detected_ip -> detected_service -> known_vulnerability
+i.e.
+    plan -> step -> network_scan - detected_ip -> detected_service -> known_vulnerability
+    branch from step -> next step -> web search -> result
+    branch from next step etc
+
+    or
+
+    plan -> step -> network_scan - detected_ip -> detected_service -> known_vulnerability
     branch from step -> next step -> web search -> result
     branch from next step etc
 
@@ -87,6 +118,10 @@ Infrastructure section needs more control and more proxmox
 Add a redis / pubsub page - with some kind of push system?
 
 
+Scaffold_project tool that can create the perfect project stub and file structure
+
+
+
 Organiser overlays - 
     plot sessions and nodes onto the calendar
     plot scheduled tasks onto the calendar
@@ -117,3 +152,4 @@ Visualiser / backtester
 Worker/ Agent / Task / Tool / Plugin Framework
     Define the architecture of the framework its componnts & how it all fits together
 
+Status bar with current task, progress, load, notifications
