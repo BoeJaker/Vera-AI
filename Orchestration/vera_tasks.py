@@ -210,6 +210,8 @@ def llm_triage(vera_instance, query: str):
                     pass  # Ignore preview capture errors
                 
                 yield chunk_text
+            else:
+                yield '\n'
             
             if logger:
                 duration = logger.stop_timer("llm_triage", context=LogContext(agent=agent_name, extra=context.extra))

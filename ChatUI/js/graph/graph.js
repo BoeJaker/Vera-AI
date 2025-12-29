@@ -229,14 +229,23 @@
                 window.applyThemeToGraph();
             }
         });
-        
-        // Auto-cluster huge graphs
-        if (nodeCount > PERF_THRESHOLDS.HUGE_GRAPH) {
-            console.log('Large graph detected, applying automatic clustering...');
-            setTimeout(() => {
-                this.autoClusterLargeGraph();
-            }, 1000);
-        }
+
+        // Initialize GraphStyleControl with session ID
+        // if (window.GraphStyleControl && window.GraphAddon) {
+        //     console.log('Initializing GraphStyleControl with session:', this.sessionId);
+        //     window.GraphStyleControl.init(window.GraphAddon, this.sessionId);
+            
+        //     // Optional: Enable session view by default
+        //     window.GraphStyleControl.toggleSessionView(true);
+        //     window.GraphStyleControl.setSessionViewMode('linked');
+        // }
+        // // Auto-cluster huge graphs
+        // if (nodeCount > PERF_THRESHOLDS.HUGE_GRAPH) {
+        //     console.log('Large graph detected, applying automatic clustering...');
+        //     setTimeout(() => {
+        //         this.autoClusterLargeGraph();
+        //     }, 1000);
+        // }
         
         // Initialize GraphAddon immediately
         if (window.GraphAddon) {
@@ -854,6 +863,503 @@ VeraChat.prototype.addNodesToGraphWithWaves = function(nodes, edges) {
             this.addNodesToGraph(waveNodes, waveEdges);
         }, waveIndex * waveDelay);
     });
+    
 };
-
+/**
+ * Unified Graph Data Loader - PERFORMANCE OPTIMIZED
+ * Single source of truth for loading data into the graph
+ * Includes chunked processing, physics management, and theme handling
+ */
+(() => {
+    'use strict';
+    
+    window.GraphDataLoader = {
+        PERF_THRESHOLDS: {
+            LARGE_GRAPH: 500,
+            HUGE_GRAPH: 1000,
+            MASSIVE_GRAPH: 5000,
+            PHYSICS_DISABLE: 2000,
+            ANIMATE_THRESHOLD: 200
+        },
+        
+        /**
+         * Normalize a node to standard format
+         * Preserves ALL properties and ensures correct styling
+         */
+        normalizeNode: function(node) {
+            const properties = node.properties || {};
+            
+            const labelText = node.label || 
+                            properties.text?.substring(0, 30) || 
+                            properties.name || 
+                            properties.display_name ||
+                            node.id;
+            
+            const titleText = node.title || 
+                            properties.text || 
+                            properties.name ||
+                            properties.display_name ||
+                            node.id;
+            
+            const nodeType = node.type || node.labels || properties.type || [];
+            const nodeLabels = Array.isArray(nodeType) ? nodeType : [nodeType];
+            
+            let nodeColor = node.color || properties.color || '#3b82f6';
+            
+            if (properties.type === 'extracted_entity' || 
+                nodeLabels.includes('extracted_entity')) {
+                nodeColor = '#10b981';
+            }
+            
+            const nodeSize = node.size || properties.size || 25;
+            
+            return {
+                id: node.id,
+                label: labelText,
+                title: titleText,
+                properties: properties,
+                type: nodeLabels,
+                labels: nodeLabels,
+                color: nodeColor,
+                size: nodeSize,
+                font: {
+                    color: '#ffffff',
+                    size: 14
+                },
+                borderWidth: 2,
+                borderWidthSelected: 3
+            };
+        },
+        
+        /**
+         * Normalize an edge to standard format
+         * CRITICAL FIX: Checks properties.rel (your custom property)
+         */
+        normalizeEdge: function(edge, index = 0) {
+            const properties = edge.properties || {};
+            
+            // Priority: edge.label > edge.type > properties.rel > properties.relationship > 'RELATED_TO'
+            const edgeLabel = edge.label || 
+                            edge.type || 
+                            properties.rel ||
+                            properties.relationship ||
+                            properties.label ||
+                            'RELATED_TO';
+            
+            const edgeId = edge.id || 
+                          `edge_${edge.from || edge.start}_${edge.to || edge.end}_${index}`;
+            
+            const fromNode = edge.from || edge.start;
+            const toNode = edge.to || edge.end;
+            
+            return {
+                id: edgeId,
+                from: fromNode,
+                to: toNode,
+                label: edgeLabel,
+                title: edgeLabel,
+                properties: properties,
+                font: {
+                    color: '#ffffff',
+                    strokeWidth: 0,
+                    size: 12
+                },
+                width: 2,
+                arrows: {
+                    to: {
+                        enabled: true,
+                        scaleFactor: 1.0
+                    }
+                },
+                smooth: {
+                    enabled: true,
+                    type: 'dynamic'
+                }
+            };
+        },
+        
+        /**
+         * Process nodes in chunks (for large datasets)
+         * Yields to UI to prevent blocking
+         */
+        processNodesInChunks: async function(rawNodes, chunkSize = 1000) {
+            const nodeCount = rawNodes.length;
+            const processedNodes = new Array(nodeCount);
+            
+            for (let i = 0; i < nodeCount; i += chunkSize) {
+                const end = Math.min(i + chunkSize, nodeCount);
+                for (let j = i; j < end; j++) {
+                    processedNodes[j] = this.normalizeNode(rawNodes[j]);
+                }
+                
+                // Yield to UI every chunk
+                if (end < nodeCount) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+            
+            return processedNodes;
+        },
+        
+        /**
+         * Process edges in chunks (for large datasets)
+         * Yields to UI to prevent blocking
+         */
+        processEdgesInChunks: async function(rawEdges, chunkSize = 1000) {
+            const edgeCount = rawEdges.length;
+            const processedEdges = new Array(edgeCount);
+            
+            for (let i = 0; i < edgeCount; i += chunkSize) {
+                const end = Math.min(i + chunkSize, edgeCount);
+                for (let j = i; j < end; j++) {
+                    processedEdges[j] = this.normalizeEdge(rawEdges[j], j);
+                }
+                
+                // Yield to UI every chunk
+                if (end < edgeCount) {
+                    await new Promise(resolve => setTimeout(resolve, 0));
+                }
+            }
+            
+            return processedEdges;
+        },
+        
+        /**
+         * Get optimal physics configuration based on graph size
+         */
+        getPhysicsConfig: function(nodeCount) {
+            if (nodeCount > this.PERF_THRESHOLDS.PHYSICS_DISABLE) {
+                return { enabled: false };
+            } else if (nodeCount > this.PERF_THRESHOLDS.HUGE_GRAPH) {
+                return {
+                    enabled: true,
+                    solver: 'forceAtlas2Based',
+                    forceAtlas2Based: {
+                        gravitationalConstant: -50,
+                        centralGravity: 0.01,
+                        springLength: 200,
+                        springConstant: 0.05,
+                        damping: 0.4,
+                        avoidOverlap: 0
+                    },
+                    stabilization: {
+                        enabled: true,
+                        iterations: 100,
+                        updateInterval: 50,
+                        fit: false
+                    }
+                };
+            } else if (nodeCount > this.PERF_THRESHOLDS.LARGE_GRAPH) {
+                return {
+                    enabled: true,
+                    barnesHut: {
+                        gravitationalConstant: -5000,
+                        centralGravity: 0.05,
+                        springLength: 250,
+                        springConstant: 0.02,
+                        damping: 0.5,
+                        avoidOverlap: 0.1
+                    },
+                    stabilization: {
+                        enabled: true,
+                        iterations: 150,
+                        updateInterval: 25
+                    }
+                };
+            } else {
+                return {
+                    enabled: true,
+                    barnesHut: {
+                        gravitationalConstant: -9000,
+                        centralGravity: 0.06,
+                        springLength: 300,
+                        springConstant: 0.01,
+                        damping: 0.62
+                    },
+                    stabilization: {
+                        enabled: true,
+                        iterations: 200
+                    }
+                };
+            }
+        },
+        
+        /**
+         * Main loading function - PERFORMANCE OPTIMIZED
+         * Handles both initial load (replace) and incremental updates
+         */
+        loadData: async function(rawNodes, rawEdges, options = {}) {
+            if (!window.network) {
+                console.error('Network not initialized');
+                return null;
+            }
+            
+            const defaults = {
+                replace: false,           // Replace all data or add incrementally
+                fit: true,               // Fit view after loading
+                animate: null,           // Auto-detect based on size
+                applyLayout: false,      // Apply layout after loading
+                focusNodes: null,        // Specific nodes to focus on
+                chunkSize: 1000,        // Chunk size for processing
+                applyTheme: true,       // Apply theme after loading
+                updateGraphAddon: true  // Update GraphAddon data
+            };
+            
+            const opts = { ...defaults, ...options };
+            const nodeCount = rawNodes.length;
+            const edgeCount = rawEdges.length;
+            
+            console.log(`GraphDataLoader: Loading ${nodeCount} nodes, ${edgeCount} edges (replace: ${opts.replace})`);
+            
+            // Show loader for large graphs
+            if (window.graphLoaderUtils && nodeCount > this.PERF_THRESHOLDS.LARGE_GRAPH) {
+                window.graphLoaderUtils.show(`Loading ${nodeCount} nodes...`);
+            }
+            
+            // Auto-detect animation threshold
+            if (opts.animate === null) {
+                opts.animate = nodeCount < this.PERF_THRESHOLDS.ANIMATE_THRESHOLD;
+            }
+            
+            // Process nodes and edges in chunks (prevents UI blocking)
+            const processedNodes = await this.processNodesInChunks(rawNodes, opts.chunkSize);
+            const processedEdges = await this.processEdgesInChunks(rawEdges, opts.chunkSize);
+            
+            // INITIAL LOAD (REPLACE MODE) - Optimized path
+            if (opts.replace) {
+                return await this._loadDataReplace(processedNodes, processedEdges, opts);
+            }
+            
+            // INCREMENTAL LOAD (ADD MODE) - Different strategy
+            return await this._loadDataIncremental(processedNodes, processedEdges, opts);
+        },
+        
+        /**
+         * Replace mode - optimized for initial graph load
+         * Uses setData for best performance
+         */
+        _loadDataReplace: async function(nodes, edges, opts) {
+            const nodeCount = nodes.length;
+            const edgeCount = edges.length;
+            
+            if (window.graphLoaderUtils) {
+                window.graphLoaderUtils.show('Rendering graph');
+            }
+            
+            // Store in networkData if available
+            if (window.app && window.app.networkData) {
+                window.app.networkData.nodes = nodes;
+                window.app.networkData.edges = edges;
+            }
+            
+            // Get current physics state
+            const hadPhysics = network.physics.options.enabled;
+            
+            // Disable physics temporarily for large graphs
+            if (hadPhysics && nodeCount > this.PERF_THRESHOLDS.LARGE_GRAPH) {
+                network.setOptions({ physics: { enabled: false } });
+            }
+            
+            // Use setData for best performance
+            network.setData({
+                nodes: nodes,
+                edges: edges
+            });
+            
+            // Re-enable physics with optimized settings
+            await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                    if (hadPhysics && nodeCount > this.PERF_THRESHOLDS.LARGE_GRAPH) {
+                        network.setOptions({
+                            physics: this.getPhysicsConfig(nodeCount)
+                        });
+                    }
+                    
+                    // Fit view
+                    if (opts.fit) {
+                        network.fit();
+                    }
+                    
+                    requestAnimationFrame(() => {
+                        // Apply theme
+                        if (opts.applyTheme) {
+                            if (window.app && window.app.initThemeSettings) {
+                                window.app.initThemeSettings();
+                            }
+                            if (window.applyThemeToGraph) {
+                                window.applyThemeToGraph();
+                            }
+                        }
+                        
+                        // Hide loader
+                        if (window.graphLoaderUtils) {
+                            window.graphLoaderUtils.hide(true);
+                        }
+                        
+                        resolve();
+                    });
+                });
+            });
+            
+            // Update counters
+            this._updateCounters(nodeCount, edgeCount);
+            
+            // Update GraphAddon
+            if (opts.updateGraphAddon) {
+                this._updateGraphAddon();
+            }
+            
+            return {
+                nodesAdded: nodeCount,
+                edgesAdded: edgeCount,
+                totalNodes: nodeCount,
+                totalEdges: edgeCount,
+                mode: 'replace'
+            };
+        },
+        
+        /**
+         * Incremental mode - add nodes/edges to existing graph
+         * Uses animated loading for small sets, batch for large
+         */
+        _loadDataIncremental: async function(nodes, edges, opts) {
+            const nodeCount = nodes.length;
+            const edgeCount = edges.length;
+            
+            // Use animated loading for small datasets
+            if (opts.animate && window.app && window.app.addNodesToGraph) {
+                window.app.addNodesToGraph(nodes, edges);
+                
+                // Update counters after animation
+                setTimeout(() => {
+                    const totalNodes = network.body.data.nodes.length;
+                    const totalEdges = network.body.data.edges.length;
+                    this._updateCounters(totalNodes, totalEdges);
+                }, 2000);
+                
+                return {
+                    nodesAdded: nodeCount,
+                    edgesAdded: edgeCount,
+                    totalNodes: network.body.data.nodes.length + nodeCount,
+                    totalEdges: network.body.data.edges.length + edgeCount,
+                    mode: 'incremental-animated'
+                };
+            }
+            
+            // Batch loading for large datasets
+            const existingNodeIds = new Set(network.body.data.nodes.getIds());
+            const existingEdgeIds = new Set(network.body.data.edges.getIds());
+            
+            const newNodes = nodes.filter(n => !existingNodeIds.has(n.id));
+            const newEdges = edges.filter(e => !existingEdgeIds.has(e.id));
+            const updateNodes = nodes.filter(n => existingNodeIds.has(n.id));
+            
+            let actualNodesAdded = 0;
+            let actualEdgesAdded = 0;
+            
+            // Add new nodes
+            if (newNodes.length > 0) {
+                network.body.data.nodes.add(newNodes);
+                actualNodesAdded = newNodes.length;
+                console.log(`Added ${newNodes.length} new nodes`);
+            }
+            
+            // Update existing nodes
+            if (updateNodes.length > 0) {
+                network.body.data.nodes.update(updateNodes);
+                console.log(`Updated ${updateNodes.length} existing nodes`);
+            }
+            
+            // Add new edges
+            if (newEdges.length > 0) {
+                network.body.data.edges.add(newEdges);
+                actualEdgesAdded = newEdges.length;
+                console.log(`Added ${newEdges.length} new edges`);
+            }
+            
+            // Apply layout if requested
+            if (opts.applyLayout && window.CypherQuery) {
+                setTimeout(() => {
+                    window.CypherQuery.applyCurrentLayout();
+                }, 200);
+            }
+            
+            // Fit view
+            if (opts.fit) {
+                setTimeout(() => {
+                    if (opts.focusNodes && opts.focusNodes.length > 0) {
+                        network.fit({
+                            nodes: opts.focusNodes,
+                            animation: {
+                                duration: 1000,
+                                easingFunction: 'easeInOutQuad'
+                            }
+                        });
+                    } else {
+                        network.fit({
+                            animation: {
+                                duration: 1000,
+                                easingFunction: 'easeInOutQuad'
+                            }
+                        });
+                    }
+                }, 300);
+            }
+            
+            // Update counters
+            const totalNodes = network.body.data.nodes.length;
+            const totalEdges = network.body.data.edges.length;
+            this._updateCounters(totalNodes, totalEdges);
+            
+            // Update GraphAddon
+            if (opts.updateGraphAddon) {
+                this._updateGraphAddon();
+            }
+            
+            // Hide loader
+            if (window.graphLoaderUtils) {
+                setTimeout(() => {
+                    window.graphLoaderUtils.hide(true);
+                }, 500);
+            }
+            
+            return {
+                nodesAdded: actualNodesAdded,
+                edgesAdded: actualEdgesAdded,
+                totalNodes: totalNodes,
+                totalEdges: totalEdges,
+                mode: 'incremental-batch'
+            };
+        },
+        
+        /**
+         * Update node/edge counters in UI
+         */
+        _updateCounters: function(nodeCount, edgeCount) {
+            const nodeCountEl = document.getElementById('nodeCount');
+            const edgeCountEl = document.getElementById('edgeCount');
+            
+            if (nodeCountEl) nodeCountEl.textContent = nodeCount;
+            if (edgeCountEl) edgeCountEl.textContent = edgeCount;
+        },
+        
+        /**
+         * Update GraphAddon data (deferred to avoid blocking)
+         */
+        _updateGraphAddon: function() {
+            if (window.GraphAddon && window.GraphAddon.networkReady) {
+                setTimeout(() => {
+                    if (window.GraphAddon.buildNodesData) {
+                        window.GraphAddon.buildNodesData();
+                    }
+                    if (window.GraphAddon.initializeFilters) {
+                        window.GraphAddon.initializeFilters();
+                    }
+                }, 100);
+            }
+        }
+    };
+    
+    console.log('GraphDataLoader initialized (PERFORMANCE OPTIMIZED)');
+})();
 })();

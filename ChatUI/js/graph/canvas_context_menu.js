@@ -658,39 +658,268 @@
                 return;
             }
             
-            const nodeId = 'node_' + Date.now();
             const nodeData = {
-                id: nodeId,
                 label: label,
+                type: type,
+                description: description,
                 x: x,
-                y: y,
-                color: this.getColorForType(type),
+                y: y
+            };
+            
+            // Check for duplicates first
+            try {
+                const checkResponse = await fetch(`${this.apiBase}/api/graph/node/check-duplicate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(nodeData)
+                });
+                
+                if (checkResponse.ok) {
+                    const checkResult = await checkResponse.json();
+                    
+                    if (checkResult.exists) {
+                        // Show duplicate dialog
+                        this.showDuplicateNodeDialog(nodeData, checkResult.node);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Duplicate check failed, proceeding with creation:', e);
+            }
+            
+            // No duplicate, proceed with creation
+            await this.createNodeDirect(nodeData, false);
+        },
+
+        /**
+         * Show dialog when duplicate node is detected
+         */
+        showDuplicateNodeDialog: function(newNodeData, existingNode) {
+            const content = `
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="
+                        background: #451a03; border: 1px solid #f59e0b;
+                        padding: 16px; border-radius: 8px;
+                    ">
+                        <div style="color: #fbbf24; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 20px;">⚠️</span>
+                            Duplicate Node Detected
+                        </div>
+                        <div style="color: #fde68a; font-size: 13px; line-height: 1.5;">
+                            A node with this name and type already exists in the graph.
+                        </div>
+                    </div>
+                    
+                    <div style="
+                        background: #0f172a; padding: 14px;
+                        border-radius: 8px; border: 1px solid #1e293b;
+                    ">
+                        <div style="color: #60a5fa; font-size: 11px; font-weight: 700; margin-bottom: 8px; text-transform: uppercase;">
+                            Existing Node
+                        </div>
+                        <div style="color: #e2e8f0; font-size: 13px; margin-bottom: 4px;">
+                            <strong>Name:</strong> ${this.escapeHtml(existingNode.name)}
+                        </div>
+                        <div style="color: #e2e8f0; font-size: 13px; margin-bottom: 4px;">
+                            <strong>Type:</strong> ${this.escapeHtml(existingNode.type)}
+                        </div>
+                        <div style="color: #94a3b8; font-size: 11px; margin-top: 8px;">
+                            <strong>ID:</strong> ${this.escapeHtml(existingNode.id)}
+                        </div>
+                        ${existingNode.properties?.description ? `
+                            <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">
+                                <strong>Description:</strong> ${this.escapeHtml(existingNode.properties.description)}
+                            </div>
+                        ` : ''}
+                    </div>
+                    
+                    <div style="color: #94a3b8; font-size: 12px; line-height: 1.5;">
+                        What would you like to do?
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button 
+                            onclick="window.GraphCanvasMenu.loadExistingNode('${this.escapeHtml(existingNode.id)}')"
+                            style="
+                                padding: 14px;
+                                background: #3b82f6; color: white; border: none;
+                                border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
+                                display: flex; align-items: center; justify-content: center; gap: 8px;
+                            "
+                        >
+                            <span>📥</span>
+                            Load Existing Node to Graph
+                        </button>
+                        
+                        <button 
+                            onclick='window.GraphCanvasMenu.createNodeDirect(${JSON.stringify(newNodeData)}, true)'
+                            style="
+                                padding: 14px;
+                                background: #f59e0b; color: white; border: none;
+                                border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
+                                display: flex; align-items: center; justify-content: center; gap: 8px;
+                            "
+                        >
+                            <span>➕</span>
+                            Create New Node Anyway (with unique ID)
+                        </button>
+                        
+                        <button 
+                            onclick="window.GraphInfoCard.collapse()"
+                            style="
+                                padding: 12px;
+                                background: #334155; color: #e2e8f0;
+                                border: 1px solid #475569; border-radius: 6px;
+                                cursor: pointer; font-weight: 600; font-size: 14px;
+                            "
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            window.GraphInfoCard.showInlineContent('⚠️ Duplicate Node', content);
+        },
+
+        /**
+         * Load existing node from Neo4j into the graph visualization
+         */
+        loadExistingNode: async function(nodeId) {
+            try {
+                // Fetch node details from Neo4j
+                const response = await fetch(`${this.apiBase}/api/graph/cypher`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: "MATCH (n {id: $id}) RETURN n",
+                        parameters: { id: nodeId }
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch node');
+                }
+                
+                const result = await response.json();
+                
+                if (result.nodes && result.nodes.length > 0) {
+                    const node = result.nodes[0];
+                    
+                    // Check if already in visualization
+                    const existing = network.body.data.nodes.get(node.id);
+                    if (existing) {
+                        network.selectNodes([node.id]);
+                        network.focus(node.id, { animation: true });
+                        this.showToast('Node already in graph - selected');
+                    } else {
+                        // Add to network
+                        network.body.data.nodes.add({
+                            id: node.id,
+                            label: node.properties.name || node.properties.text || node.id,
+                            color: node.color || this.getColorForType(node.properties.type),
+                            title: `${node.properties.type}: ${node.properties.name || node.properties.text}`,
+                            ...node.properties
+                        });
+                        
+                        // Store in graphAddon
+                        if (this.graphAddon && this.graphAddon.nodesData) {
+                            this.graphAddon.nodesData[node.id] = {
+                                display_name: node.properties.name || node.properties.text,
+                                labels: node.labels || [],
+                                properties: node.properties
+                            };
+                        }
+                        
+                        // Select and focus
+                        network.selectNodes([node.id]);
+                        network.focus(node.id, { animation: true });
+                        
+                        this.showToast('Existing node loaded');
+                    }
+                }
+                
+                if (window.GraphInfoCard) {
+                    window.GraphInfoCard.collapse();
+                }
+                
+            } catch (e) {
+                console.error('Error loading existing node:', e);
+                alert('Failed to load existing node: ' + e.message);
+            }
+        },
+
+        /**
+         * Create node directly (with force option for duplicates)
+         */
+        createNodeDirect: async function(nodeData, forceCreate = false) {
+            const nodeId = 'node_' + Date.now();
+            const visualNodeData = {
+                id: nodeId,
+                label: nodeData.label,
+                x: nodeData.x || 0,
+                y: nodeData.y || 0,
+                color: this.getColorForType(nodeData.type),
                 properties: {
-                    type: type,
-                    description: description,
+                    type: nodeData.type,
+                    description: nodeData.description,
                     created_at: new Date().toISOString()
                 }
             };
             
             // Add to network
-            network.body.data.nodes.add(nodeData);
+            network.body.data.nodes.add(visualNodeData);
             
-            // Store in graphAddon if available
+            // Store in graphAddon
             if (this.graphAddon && this.graphAddon.nodesData) {
                 this.graphAddon.nodesData[nodeId] = {
-                    display_name: label,
-                    labels: [type],
-                    properties: nodeData.properties
+                    display_name: nodeData.label,
+                    labels: [nodeData.type],
+                    properties: visualNodeData.properties
                 };
             }
             
             // Try to persist to Neo4j
             try {
-                await this.persistNodeToNeo4j(nodeData);
-                this.showToast('Node created and saved');
+                const url = forceCreate 
+                    ? `${this.apiBase}/api/graph/node/create?force_create=true`
+                    : `${this.apiBase}/api/graph/node/create`;
+                    
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        label: nodeData.label,
+                        type: nodeData.type,
+                        description: nodeData.description || '',
+                        x: nodeData.x || 0,
+                        y: nodeData.y || 0,
+                        properties: {
+                            ...visualNodeData.properties,
+                            original_id: nodeId
+                        }
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail?.message || error.detail || 'Failed to persist node');
+                }
+                
+                const result = await response.json();
+                
+                // Update with backend ID
+                if (result.node_id !== nodeId) {
+                    network.body.data.nodes.update({
+                        id: nodeId,
+                        backend_id: result.node_id
+                    });
+                }
+                
+                this.showToast(forceCreate ? 'Node created (duplicate allowed)' : 'Node created and saved');
             } catch (e) {
                 console.warn('Could not persist to Neo4j:', e);
-                this.showToast('Node created (local only)');
+                this.showToast('Node created (local only): ' + e.message);
             }
             
             // Select the new node
@@ -701,43 +930,45 @@
                 window.GraphInfoCard.collapse();
             }
         },
-
         /**
-         * Persist node to Neo4j
+         * Persist node to Neo4j using the node creation API
          */
         persistNodeToNeo4j: async function(nodeData) {
-            const query = `
-                CREATE (n:${nodeData.properties.type} {
-                    id: $id,
-                    name: $label,
-                    type: $type,
-                    description: $description,
-                    created_at: datetime($created_at)
-                })
-                RETURN n
-            `;
-            
-            const response = await fetch(`${this.apiBase}/api/graph/cypher`, {
+            const response = await fetch(`${this.apiBase}/api/graph/node/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    query: query,
-                    parameters: {
-                        id: nodeData.id,
-                        label: nodeData.label,
-                        type: nodeData.properties.type,
-                        description: nodeData.properties.description || '',
-                        created_at: nodeData.properties.created_at
+                    label: nodeData.label,
+                    type: nodeData.properties.type,
+                    description: nodeData.properties.description || '',
+                    x: nodeData.x || 0,
+                    y: nodeData.y || 0,
+                    properties: {
+                        ...nodeData.properties,
+                        original_id: nodeData.id  // Store the frontend ID
                     }
                 })
             });
             
             if (!response.ok) {
-                throw new Error('Failed to persist node');
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to persist node');
             }
             
-            return await response.json();
+            const result = await response.json();
+            
+            // Update the node with the backend ID if different
+            if (result.node_id !== nodeData.id) {
+                // Update network with new ID from backend
+                network.body.data.nodes.update({
+                    id: nodeData.id,
+                    backend_id: result.node_id
+                });
+            }
+            
+            return result;
         },
+
 
         addEdge: function() {
             const selectedNodes = network.getSelectedNodes();
@@ -874,42 +1105,40 @@
             }
         },
 
+
         /**
-         * Persist edge to Neo4j
+         * Persist edge to Neo4j using the edge creation API
          */
         persistEdgeToNeo4j: async function(edgeData) {
-            const query = `
-                MATCH (a {id: $fromId}), (b {id: $toId})
-                CREATE (a)-[r:${edgeData.properties.type} {
-                    id: $id,
-                    label: $label,
-                    created_at: datetime($created_at)
-                }]->(b)
-                RETURN r
-            `;
+            // Get backend IDs if they exist
+            const sourceNode = network.body.data.nodes.get(edgeData.from);
+            const targetNode = network.body.data.nodes.get(edgeData.to);
             
-            const response = await fetch(`${this.apiBase}/api/graph/cypher`, {
+            const sourceId = sourceNode?.backend_id || edgeData.from;
+            const targetId = targetNode?.backend_id || edgeData.to;
+            
+            const response = await fetch(`${this.apiBase}/api/graph/edge/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    query: query,
-                    parameters: {
-                        id: edgeData.id,
-                        fromId: edgeData.from,
-                        toId: edgeData.to,
-                        label: edgeData.label,
-                        created_at: edgeData.properties.created_at
+                    source_id: sourceId,
+                    target_id: targetId,
+                    relationship_type: edgeData.properties.type,
+                    label: edgeData.label,
+                    properties: {
+                        ...edgeData.properties,
+                        original_id: edgeData.id
                     }
                 })
             });
             
             if (!response.ok) {
-                throw new Error('Failed to persist edge');
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to persist edge');
             }
             
             return await response.json();
         },
-
         // ============================================================
         // SELECTION ACTIONS
         // ============================================================

@@ -16,6 +16,7 @@
         savedQueries: [],
         maxHistory: 50,
         currentResults: null,
+        timeField: 'auto',
         
         // Builder state
         builder: {
@@ -225,14 +226,27 @@
                 </div>
                 
                 <!-- Date Range -->
-                <div class="section-box">
+                 <div class="section-box">
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-date-enabled">
-                            <span>Date Range</span>
+                            <span>📅 Date Range</span>
                         </label>
                     </div>
                     <div id="cypher-date-content" class="section-body collapsed">
+                        <div class="field">
+                            <label>Time Source</label>
+                            <select id="cypher-time-field" class="field-select">
+                                <option value="auto">Auto (fallback chain)</option>
+                                <option value="id">Node ID timestamp</option>
+                                <option value="created_at">created_at property</option>
+                                <option value="updated_at">updated_at property</option>
+                                <option value="timestamp">timestamp property</option>
+                            </select>
+                            <small style="color: #888; font-size: 11px; margin-top: 4px; display: block;">
+                                Auto tries: ID → created_at → updated_at → timestamp
+                            </small>
+                        </div>
                         <div class="field">
                             <label>Preset</label>
                             <select id="cypher-date-preset" class="field-select">
@@ -265,7 +279,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-rels-enabled">
-                            <span>Relationships</span>
+                            <span>🔗 Relationships</span>
                         </label>
                     </div>
                     <div id="cypher-rels-content" class="section-body collapsed">
@@ -308,7 +322,7 @@
                 
                 <!-- Return Options -->
                 <div class="section-box">
-                    <div class="section-title">Return</div>
+                    <div class="section-title">📤 Return</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Return</label>
@@ -545,20 +559,30 @@
             this.on('cypher-btn-add-target-filter', 'click', () => self.addFilter('cypher-target-filters'));
             
             // Date controls
+            // this.on('cypher-date-enabled', 'change', (e) => {
+            //     document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
+            //     self.builder.dateEnabled = e.target.checked;
+            //     self.updateBuilder();
+            // });
+            // this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
+            
+            // document.querySelectorAll('.date-quick').forEach(btn => {
+            //     btn.addEventListener('click', () => {
+            //         const hours = parseInt(btn.dataset.hours);
+            //         self.setDateRange(hours);
+            //     });
+            // });
+            // Date controls
             this.on('cypher-date-enabled', 'change', (e) => {
                 document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
                 self.builder.dateEnabled = e.target.checked;
                 self.updateBuilder();
             });
             this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
-            
-            document.querySelectorAll('.date-quick').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const hours = parseInt(btn.dataset.hours);
-                    self.setDateRange(hours);
-                });
+            this.on('cypher-time-field', 'change', (e) => {  // NEW
+                self.builder.timeField = e.target.value;
+                self.updateBuilder();
             });
-            
             // Relationships
             this.on('cypher-rels-enabled', 'change', (e) => {
                 document.getElementById('cypher-rels-content').classList.toggle('collapsed', !e.target.checked);
@@ -954,6 +978,9 @@
             
             document.getElementById('cypher-node-filters').innerHTML = '';
             document.getElementById('cypher-target-filters').innerHTML = '';
+            // Sync time field selector
+            const timeField = document.getElementById('cypher-time-field');
+            if (timeField) timeField.value = b.timeField;
         },
         
         /**
@@ -977,7 +1004,8 @@
                 if (fromEl?.value) b.dateFrom = new Date(fromEl.value).toISOString();
                 if (toEl?.value) b.dateTo = new Date(toEl.value).toISOString();
             }
-            
+            const timeFieldEl = document.getElementById('cypher-time-field');
+            if (timeFieldEl) b.timeField = timeFieldEl.value;
             this.updatePreview();
         },
         
@@ -1043,10 +1071,11 @@
             
             // Date filter
             if (b.dateEnabled && b.dateFrom) {
-                query += (hasWhere ? '\n  AND ' : '\nWHERE ') + `n.created_at >= datetime('${b.dateFrom}')`;
+                const timeSource = b.timeField === 'auto' ? 'created_at/updated_at/timestamp' : b.timeField;
+                query += (hasWhere ? '\n  AND ' : '\nWHERE ') + `n.${timeSource} >= datetime('${b.dateFrom}')`;
                 hasWhere = true;
                 if (b.dateTo) {
-                    query += `\n  AND n.created_at <= datetime('${b.dateTo}')`;
+                    query += `\n  AND n.${timeSource} <= datetime('${b.dateTo}')`;
                 }
             }
             
@@ -1159,28 +1188,62 @@
             this.showLoading(true, 'Executing...');
             
             try {
-                const response = await fetch('http://llm.int:8888/api/graph/cypher', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, parameters: {}, limit: this.builder.limit })
-                });
+                // Build API URL based on whether we're using date range
+                let apiUrl = 'http://llm.int:8888/api/graph/cypher';
+                let requestBody = { 
+                    query, 
+                    parameters: {}, 
+                    limit: this.builder.limit 
+                };
                 
-                const data = await response.json();
-                
-                if (!data.success) {
-                    this.showError(data.error || 'Query failed');
-                    return;
-                }
-                
-                this.currentResults = data;
-                this.addToHistory(query, data);
-                this.showResults(data);
-                
-                if (data.nodes.length > 0 || data.edges.length > 0) {
-                    this.updateGraph(data, replace, fit, applyLayout);
-                    this.notify(`${data.nodes.length} nodes, ${data.edges.length} edges`, 'success');
+                // If using date range via builder, use the timerange endpoint instead
+                if (this.builder.dateEnabled && this.builder.dateFrom && this.mode === 'builder') {
+                    const params = new URLSearchParams();
+                    if (this.builder.dateFrom) params.append('after', this.builder.dateFrom);
+                    if (this.builder.dateTo) params.append('before', this.builder.dateTo);
+                    if (this.builder.nodeLabel) params.append('node_types', this.builder.nodeLabel);
+                    params.append('time_field', this.builder.timeField);  // NEW
+                    params.append('max_nodes', this.builder.limit);
+                    
+                    apiUrl = `http://llm.int:8888/api/graph/timerange?${params.toString()}`;
+                    
+                    const response = await fetch(apiUrl);
+                    const data = await response.json();
+                    
+                    this.currentResults = data;
+                    this.showResults(data);
+                    
+                    if (data.nodes.length > 0 || data.edges.length > 0) {
+                        this.updateGraph(data, replace, fit, applyLayout);
+                        this.notify(`${data.nodes.length} nodes, ${data.edges.length} edges (using ${this.builder.timeField})`, 'success');
+                    } else {
+                        this.notify('No results', 'info');
+                    }
                 } else {
-                    this.notify('No results', 'info');
+                    // Use regular cypher endpoint
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!data.success) {
+                        this.showError(data.error || 'Query failed');
+                        return;
+                    }
+                    
+                    this.currentResults = data;
+                    this.addToHistory(query, data);
+                    this.showResults(data);
+                    
+                    if (data.nodes.length > 0 || data.edges.length > 0) {
+                        this.updateGraph(data, replace, fit, applyLayout);
+                        this.notify(`${data.nodes.length} nodes, ${data.edges.length} edges`, 'success');
+                    } else {
+                        this.notify('No results', 'info');
+                    }
                 }
                 
             } catch (e) {
@@ -1190,79 +1253,32 @@
                 this.showLoading(false);
             }
         },
-        
         /**
-         * Update graph with results
+         * Update graph with results - NOW USES UNIFIED LOADER
          */
         updateGraph: function(data, replace, fit, applyLayout) {
-            if (!window.network) return;
+            if (!window.network || !window.GraphDataLoader) {
+                console.error('Network or GraphDataLoader not available');
+                return;
+            }
             
             try {
-                const nodes = data.nodes.map(n => ({
-                    id: n.id,
-                    label: n.label || n.id,
-                    title: n.title || n.label,
-                    color: n.color || '#3b82f6',
-                    size: n.size || 25,
-                    properties: n.properties,
-                    type: n.label,
-                    created_at: n.properties?.created_at
-                }));
-                
-                const edges = data.edges.map((e, idx) => ({
-                    id: e.id || `edge_${e.from}_${e.to}_${idx}`,
-                    from: e.from,
-                    to: e.to,
-                    label: e.label,
-                    title: e.label
-                }));
-                
-                if (replace) {
-                    network.body.data.nodes.clear();
-                    network.body.data.edges.clear();
-                }
-                
-                const existingNodes = new Set(network.body.data.nodes.getIds());
-                const existingEdges = new Set(network.body.data.edges.getIds());
-                
-                const newNodes = nodes.filter(n => !existingNodes.has(n.id));
-                const newEdges = edges.filter(e => !existingEdges.has(e.id));
-                
-                if (newNodes.length) network.body.data.nodes.add(newNodes);
-                if (newEdges.length) network.body.data.edges.add(newEdges);
-                
-                // Apply layout if enabled
-                if (applyLayout) {
-                    setTimeout(() => this.applyCurrentLayout(), 100);
-                }
-                
-                // Update GraphAddon
-                if (window.GraphAddon) {
-                    setTimeout(() => {
-                        window.GraphAddon.buildNodesData();
-                        window.GraphAddon.initializeFilters();
-                    }, 300);
-                }
-                
-                // Update counts
-                const nodeCount = document.getElementById('nodeCount');
-                const edgeCount = document.getElementById('edgeCount');
-                if (nodeCount) nodeCount.textContent = network.body.data.nodes.length;
-                if (edgeCount) edgeCount.textContent = network.body.data.edges.length;
-                
-                if (fit) setTimeout(() => this.fitView(), 500);
-                
-                // Hide loader
-                if (window.graphLoaderUtils) window.graphLoaderUtils.hide(true);
-                
-                // Apply theme
-                // if (window.applyThemeToGraph) setTimeout(() => window.applyThemeToGraph(), 500);
-                
+                window.GraphDataLoader.loadData(
+                    data.nodes || [],
+                    data.edges || [],
+                    {
+                        replace: replace,
+                        fit: fit,
+                        animate: (data.nodes?.length || 0) < 200,
+                        applyLayout: applyLayout,
+                        applyTheme: false,        // Don't re-apply theme for queries
+                        updateGraphAddon: true
+                    }
+                );
             } catch (e) {
                 console.error('Graph update error:', e);
             }
         },
-        
         // ==========================================
         // LAYOUT FUNCTIONS
         // ==========================================
@@ -1340,185 +1356,358 @@
                 }
             });
         },
-        
-        /**
-         * Apply timeline layout
-         */
-        applyTimelineLayout: function(nodes) {
-            const prop = this.layout.timelineProperty;
-            
-            // Sort nodes by time
-            const sortedNodes = nodes.filter(n => {
-                const props = n.properties || {};
-                return props[prop] || n[prop];
-            }).sort((a, b) => {
-                const aTime = new Date(a.properties?.[prop] || a[prop] || 0).getTime();
-                const bTime = new Date(b.properties?.[prop] || b[prop] || 0).getTime();
-                return aTime - bTime;
-            });
-            
-            const noTimeNodes = nodes.filter(n => {
-                const props = n.properties || {};
-                return !(props[prop] || n[prop]);
-            });
-            
-            if (sortedNodes.length === 0) {
-                this.notify('No nodes with timestamp found', 'warning');
-                return;
+/**
+ * Extract timestamp from node based on timeField setting
+ */
+getNodeTimestamp: function(node) {
+    const props = node.properties || {};
+    
+    // Helper to extract timestamp from ID (MongoDB ObjectId style)
+    const getTimestampFromId = (id) => {
+        if (!id || typeof id !== 'string') return null;
+        // MongoDB ObjectId: first 8 hex chars are timestamp
+        if (id.length >= 8) {
+            const timestamp = parseInt(id.substring(0, 8), 16);
+            if (!isNaN(timestamp) && timestamp > 0) {
+                return timestamp * 1000; // Convert to milliseconds
             }
-            
-            const container = document.getElementById('graph');
-            const width = container?.clientWidth || 1200;
-            const height = container?.clientHeight || 600;
-            
-            // Disable physics for positioning
-            network.setOptions({ physics: { enabled: false } });
-            
-            const updates = [];
-            const spacing = Math.max(150, width / (sortedNodes.length + 1));
-            
-            sortedNodes.forEach((node, i) => {
-                updates.push({
-                    id: node.id,
-                    x: spacing * (i + 1) - width / 2,
-                    y: (Math.random() - 0.5) * 200
-                });
-            });
-            
-            // Place nodes without timestamps below
-            noTimeNodes.forEach((node, i) => {
-                updates.push({
-                    id: node.id,
-                    x: (i % 10) * 100 - 450,
-                    y: height / 2 - 100
-                });
-            });
-            
-            network.body.data.nodes.update(updates);
-            
-            setTimeout(() => {
-                network.fit({ animation: { duration: 500 } });
-            }, 100);
-            
-            this.notify('Timeline layout applied', 'success');
-        },
+        }
+        return null;
+    };
+    
+    switch (this.builder.timeField) {
+        case 'id':
+            return getTimestampFromId(node.id);
+        case 'created_at':
+            return props.created_at ? new Date(props.created_at).getTime() : null;
+        case 'updated_at':
+            return props.updated_at ? new Date(props.updated_at).getTime() : null;
+        case 'timestamp':
+            return props.timestamp ? new Date(props.timestamp).getTime() : null;
+        case 'auto':
+        default:
+            // Fallback chain: id -> created_at -> updated_at -> timestamp
+            return getTimestampFromId(node.id) ||
+                   (props.created_at ? new Date(props.created_at).getTime() : null) ||
+                   (props.updated_at ? new Date(props.updated_at).getTime() : null) ||
+                   (props.timestamp ? new Date(props.timestamp).getTime() : null);
+    }
+},
+
+/**
+ * Apply collision-free positioning using force-based separation
+ */
+applyCollisionAvoidance: function(positions, nodeRadius = 30, iterations = 50) {
+    const nodes = positions.slice();
+    const repulsionStrength = nodeRadius * 2;
+    
+    for (let iter = 0; iter < iterations; iter++) {
+        const forces = nodes.map(() => ({ x: 0, y: 0 }));
         
-        /**
-         * Apply hierarchical layout
-         */
-        applyHierarchicalLayout: function() {
-            network.setOptions({
-                layout: {
-                    hierarchical: {
-                        enabled: true,
-                        direction: 'UD',
-                        sortMethod: 'directed',
-                        nodeSpacing: 150,
-                        levelSeparation: 150,
-                        treeSpacing: 200
-                    }
-                },
-                physics: {
-                    enabled: false
+        // Calculate repulsion forces between all pairs
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const dx = nodes[j].x - nodes[i].x;
+                const dy = nodes[j].y - nodes[i].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < repulsionStrength && dist > 0) {
+                    const force = (repulsionStrength - dist) / dist;
+                    const fx = (dx / dist) * force;
+                    const fy = (dy / dist) * force;
+                    
+                    forces[i].x -= fx;
+                    forces[i].y -= fy;
+                    forces[j].x += fx;
+                    forces[j].y += fy;
                 }
-            });
-            
-            setTimeout(() => {
-                network.fit({ animation: { duration: 500 } });
-                setTimeout(() => {
-                    network.setOptions({ layout: { hierarchical: { enabled: false } } });
-                }, 100);
-            }, 500);
-            
-            this.notify('Hierarchical layout applied', 'success');
-        },
+            }
+        }
         
-        /**
-         * Apply grouped layout
-         */
-        applyGroupedLayout: function(nodes) {
-            const groupProp = this.layout.groupBy;
-            
-            // Group nodes
-            const groups = {};
-            nodes.forEach(n => {
-                const props = n.properties || {};
-                const groupVal = props[groupProp] || n[groupProp] || n.type || 'Other';
-                if (!groups[groupVal]) groups[groupVal] = [];
-                groups[groupVal].push(n);
+        // Apply forces with damping
+        const damping = 0.5;
+        for (let i = 0; i < nodes.length; i++) {
+            nodes[i].x += forces[i].x * damping;
+            nodes[i].y += forces[i].y * damping;
+        }
+    }
+    
+    return nodes;
+},    
+/**
+ * Apply timeline layout - FIXED VERSION
+ */
+applyTimelineLayout: function(nodes) {
+    if (!window.network) return;
+    
+    // Get timestamps for all nodes using the same logic as time range search
+    const nodesWithTime = nodes.map(node => ({
+        node: node,
+        timestamp: this.getNodeTimestamp(node)
+    })).filter(item => item.timestamp !== null);
+    
+    const noTimeNodes = nodes.filter(node => this.getNodeTimestamp(node) === null);
+    
+    if (nodesWithTime.length === 0) {
+        this.notify(`No nodes with ${this.builder.timeField} timestamp found`, 'warning');
+        return;
+    }
+    
+    // Sort by timestamp
+    nodesWithTime.sort((a, b) => a.timestamp - b.timestamp);
+    
+    const container = document.getElementById('graph');
+    const width = container?.clientWidth || 1200;
+    const height = container?.clientHeight || 600;
+    
+    // Disable physics for positioning
+    network.setOptions({ physics: { enabled: false } });
+    
+    // Calculate positions with proper spacing
+    const xSpacing = Math.max(100, width / (nodesWithTime.length + 1));
+    const yRange = height * 0.6; // Use 60% of height for main timeline
+    
+    let positions = nodesWithTime.map((item, i) => ({
+        id: item.node.id,
+        x: xSpacing * (i + 1) - width / 2,
+        y: 0 // Start on centerline
+    }));
+    
+    // Apply collision avoidance
+    positions = this.applyCollisionAvoidance(positions, 25, 40);
+    
+    // Constrain Y positions to reasonable range
+    positions = positions.map(pos => ({
+        ...pos,
+        y: Math.max(-yRange/2, Math.min(yRange/2, pos.y))
+    }));
+    
+    network.body.data.nodes.update(positions);
+    
+    // Place nodes without timestamps at the bottom
+    if (noTimeNodes.length > 0) {
+        const bottomY = height / 2 - 150;
+        const bottomSpacing = Math.min(100, width / (noTimeNodes.length + 1));
+        
+        let bottomPositions = noTimeNodes.map((node, i) => ({
+            id: node.id,
+            x: bottomSpacing * (i + 1) - width / 2,
+            y: bottomY
+        }));
+        
+        bottomPositions = this.applyCollisionAvoidance(bottomPositions, 25, 30);
+        network.body.data.nodes.update(bottomPositions);
+    }
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    const timeFieldLabel = this.builder.timeField === 'auto' ? 'auto (fallback chain)' : this.builder.timeField;
+    this.notify(`Timeline layout applied (${nodesWithTime.length} nodes, using ${timeFieldLabel})`, 'success');
+},
+
+/**
+ * Apply hierarchical layout - IMPROVED VERSION
+ */
+applyHierarchicalLayout: function() {
+    if (!window.network) return;
+    
+    const nodeCount = network.body.data.nodes.length;
+    const baseSpacing = 150;
+    const scaledSpacing = Math.max(baseSpacing, Math.min(300, baseSpacing + nodeCount * 2));
+    
+    network.setOptions({
+        layout: {
+            hierarchical: {
+                enabled: true,
+                direction: 'UD',
+                sortMethod: 'directed',
+                nodeSpacing: scaledSpacing,
+                levelSeparation: scaledSpacing,
+                treeSpacing: Math.max(200, scaledSpacing * 1.2),
+                blockShifting: true,
+                edgeMinimization: true,
+                parentCentralization: true
+            }
+        },
+        physics: {
+            enabled: false
+        }
+    });
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+        
+        // Get current positions after hierarchical layout
+        const nodes = network.body.data.nodes.get();
+        let positions = nodes.map(n => {
+            const pos = network.getPositions([n.id])[n.id];
+            return { id: n.id, x: pos.x, y: pos.y };
+        });
+        
+        // Apply gentle collision avoidance to clean up any overlaps
+        positions = this.applyCollisionAvoidance(positions, 30, 20);
+        
+        // Update with collision-free positions
+        network.body.data.nodes.update(positions);
+        
+        setTimeout(() => {
+            network.setOptions({ layout: { hierarchical: { enabled: false } } });
+            network.fit({ animation: { duration: 300 } });
+        }, 200);
+    }, 500);
+    
+    this.notify('Hierarchical layout applied', 'success');
+},
+
+/**
+ * Apply grouped layout - IMPROVED VERSION
+ */
+applyGroupedLayout: function(nodes) {
+    if (!window.network) return;
+    
+    const groupProp = this.layout.groupBy;
+    
+    // Group nodes
+    const groups = {};
+    nodes.forEach(n => {
+        const props = n.properties || {};
+        const groupVal = props[groupProp] || n[groupProp] || n.type || 'Other';
+        if (!groups[groupVal]) groups[groupVal] = [];
+        groups[groupVal].push(n);
+    });
+    
+    const groupNames = Object.keys(groups);
+    const container = document.getElementById('graph');
+    const width = container?.clientWidth || 1200;
+    const height = container?.clientHeight || 600;
+    
+    // Disable physics for positioning
+    network.setOptions({ physics: { enabled: false } });
+    
+    const groupCount = groupNames.length;
+    const cols = Math.ceil(Math.sqrt(groupCount));
+    const rows = Math.ceil(groupCount / cols);
+    const cellWidth = width / cols;
+    const cellHeight = height / rows;
+    
+    let allPositions = [];
+    
+    groupNames.forEach((groupName, gi) => {
+        const col = gi % cols;
+        const row = Math.floor(gi / cols);
+        const centerX = col * cellWidth + cellWidth / 2 - width / 2;
+        const centerY = row * cellHeight + cellHeight / 2 - height / 2;
+        
+        const groupNodes = groups[groupName];
+        const nodeCount = groupNodes.length;
+        
+        // Calculate appropriate radius based on node count
+        const baseRadius = Math.min(cellWidth, cellHeight) * 0.3;
+        const layers = Math.ceil(Math.sqrt(nodeCount / 8)); // Nodes per layer
+        
+        let groupPositions = [];
+        
+        if (nodeCount === 1) {
+            // Single node at center
+            groupPositions.push({
+                id: groupNodes[0].id,
+                x: centerX,
+                y: centerY
             });
-            
-            const groupNames = Object.keys(groups);
-            const container = document.getElementById('graph');
-            const width = container?.clientWidth || 1200;
-            const height = container?.clientHeight || 600;
-            
-            // Disable physics for positioning
-            network.setOptions({ physics: { enabled: false } });
-            
-            const updates = [];
-            const groupCount = groupNames.length;
-            const cols = Math.ceil(Math.sqrt(groupCount));
-            const cellWidth = width / cols;
-            const cellHeight = height / Math.ceil(groupCount / cols);
-            
-            groupNames.forEach((groupName, gi) => {
-                const col = gi % cols;
-                const row = Math.floor(gi / cols);
-                const centerX = col * cellWidth + cellWidth / 2 - width / 2;
-                const centerY = row * cellHeight + cellHeight / 2 - height / 2;
-                
-                const groupNodes = groups[groupName];
-                const nodeCount = groupNodes.length;
-                const radius = Math.min(cellWidth, cellHeight) * 0.35;
-                
-                groupNodes.forEach((node, ni) => {
-                    const angle = (2 * Math.PI * ni) / nodeCount;
-                    const r = nodeCount > 1 ? radius * (0.5 + Math.random() * 0.5) : 0;
-                    updates.push({
-                        id: node.id,
-                        x: centerX + r * Math.cos(angle),
-                        y: centerY + r * Math.sin(angle)
-                    });
+        } else if (nodeCount <= 8) {
+            // Single circle
+            groupNodes.forEach((node, ni) => {
+                const angle = (2 * Math.PI * ni) / nodeCount;
+                groupPositions.push({
+                    id: node.id,
+                    x: centerX + baseRadius * Math.cos(angle),
+                    y: centerY + baseRadius * Math.sin(angle)
                 });
             });
-            
-            network.body.data.nodes.update(updates);
-            
-            setTimeout(() => {
-                network.fit({ animation: { duration: 500 } });
-            }, 100);
-            
-            this.notify(`Grouped by ${groupProp} (${groupCount} groups)`, 'success');
-        },
+        } else {
+            // Multiple concentric circles
+            let nodeIndex = 0;
+            for (let layer = 0; layer < layers && nodeIndex < nodeCount; layer++) {
+                const layerRadius = baseRadius * (0.3 + 0.7 * (layer / Math.max(1, layers - 1)));
+                const nodesInLayer = Math.min(
+                    nodeCount - nodeIndex,
+                    Math.ceil(8 * (layer + 1))
+                );
+                
+                for (let i = 0; i < nodesInLayer && nodeIndex < nodeCount; i++, nodeIndex++) {
+                    const angle = (2 * Math.PI * i) / nodesInLayer;
+                    groupPositions.push({
+                        id: groupNodes[nodeIndex].id,
+                        x: centerX + layerRadius * Math.cos(angle),
+                        y: centerY + layerRadius * Math.sin(angle)
+                    });
+                }
+            }
+        }
         
-        /**
-         * Apply circular layout
-         */
-        applyCircularLayout: function(nodes) {
-            network.setOptions({ physics: { enabled: false } });
+        // Apply collision avoidance within the group
+        if (groupPositions.length > 1) {
+            groupPositions = this.applyCollisionAvoidance(groupPositions, 25, 30);
             
-            const count = nodes.length;
-            const radius = Math.max(200, count * 20);
-            
-            const updates = nodes.map((node, i) => {
-                const angle = (2 * Math.PI * i) / count;
-                return {
-                    id: node.id,
-                    x: radius * Math.cos(angle),
-                    y: radius * Math.sin(angle)
-                };
-            });
-            
-            network.body.data.nodes.update(updates);
-            
-            setTimeout(() => {
-                network.fit({ animation: { duration: 500 } });
-            }, 100);
-            
-            this.notify('Circular layout applied', 'success');
-        },
+            // Re-center the group after collision avoidance
+            const avgX = groupPositions.reduce((sum, p) => sum + p.x, 0) / groupPositions.length;
+            const avgY = groupPositions.reduce((sum, p) => sum + p.y, 0) / groupPositions.length;
+            groupPositions = groupPositions.map(p => ({
+                id: p.id,
+                x: p.x - avgX + centerX,
+                y: p.y - avgY + centerY
+            }));
+        }
         
+        allPositions.push(...groupPositions);
+    });
+    
+    network.body.data.nodes.update(allPositions);
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    this.notify(`Grouped by ${groupProp} (${groupCount} groups)`, 'success');
+},
+
+/**
+ * Apply circular layout - IMPROVED VERSION
+ */
+applyCircularLayout: function(nodes) {
+    if (!window.network) return;
+    
+    network.setOptions({ physics: { enabled: false } });
+    
+    const count = nodes.length;
+    // Calculate radius to ensure adequate spacing
+    const minSpacing = 80; // Minimum distance between adjacent nodes
+    const radius = Math.max(300, (count * minSpacing) / (2 * Math.PI));
+    
+    let positions = nodes.map((node, i) => {
+        const angle = (2 * Math.PI * i) / count - Math.PI / 2; // Start at top
+        return {
+            id: node.id,
+            x: radius * Math.cos(angle),
+            y: radius * Math.sin(angle)
+        };
+    });
+    
+    // Apply light collision avoidance (shouldn't be needed but just in case)
+    if (count > 3) {
+        positions = this.applyCollisionAvoidance(positions, 25, 15);
+    }
+    
+    network.body.data.nodes.update(positions);
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    this.notify('Circular layout applied', 'success');
+},
         /**
          * Apply force-directed layout
          */

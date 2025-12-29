@@ -119,27 +119,43 @@ class GraphClient:
         with self._driver.session() as sess:
             for stmt in cypher_stmts:
                 sess.run(stmt)
-
+    
     def upsert_entity(self, node: Node):
         logger.debug(f"[GraphClient] Upserting entity: {node.id} of type {node.type}")
         if node.properties is None:
             node.properties = {}
         if "created_at" not in (node.properties or {}):
             node.properties["created_at"] = datetime.utcnow().isoformat()
-        labels = ":".join(["Entity"] + node.labels)
+        
+        # Build labels - always include Entity base label
+        labels = ["Entity"] + [l for l in node.labels if l != "Entity"]
+        labels_str = ":".join(labels)
+        
+        # CRITICAL FIX: MERGE on ID only, then SET labels and properties
+        # This prevents constraint violations when labels differ
         cypher = f"""
-        MERGE (n:{labels} {{id: $id}})
+        MERGE (n:Entity {{id: $id}})
+        SET n:{labels_str}
         SET n.type = $type,
             n += $properties
         RETURN n
         """
+        
         with self._driver.session() as sess:
-            sess.run(cypher, {
-                "id": node.id,
-                "type": node.type,
-                "properties": node.properties,
-            })
-
+            try:
+                result = sess.execute_write(
+                    lambda tx: tx.run(cypher, {
+                        "id": node.id,
+                        "type": node.type,
+                        "properties": node.properties,
+                    }).single()
+                )
+                logger.debug(f"[GraphClient] Upsert result: {result}")
+                return result
+            except Exception as e:
+                logger.error(f"[GraphClient] Upsert failed for {node.id}: {e}")
+                raise
+                
     def upsert_session(self, session: Session):
         logger.debug(f"[GraphClient] Upserting session: {session.id}")
         cypher = """
@@ -174,7 +190,11 @@ class GraphClient:
         RETURN r
         """
         with self._driver.session() as sess:
-            sess.run(cypher, edge.model_dump())
+            result = sess.execute_write(
+                lambda tx: tx.run(cypher, edge.model_dump()).single()
+            )
+        logger.debug(f"[GraphClient] Edge upsert result: {result}")
+        return result
 
     def link_session_to_entity(self, session_id: str, entity_id: str, rel: str = "FOCUSES_ON"):
         logger.debug(f"[GraphClient] Linking session {session_id} to entity {entity_id} with relation {rel}")

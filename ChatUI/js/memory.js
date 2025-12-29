@@ -875,31 +875,31 @@ VeraChat.prototype.normalizeResults = function(results, source) {
      * Normalize node data to match standard graph format
      * This ensures nodes from memory search match the format used by loadGraph()
      */
-    VeraChat.prototype.normalizeGraphNode = function(node) {
-        return {
-            id: node.id,
-            label: node.label || (node.properties?.text?.substring(0, 30)) || node.id,
-            title: node.title || (node.properties?.text) || node.id,
-            properties: node.properties || {},
-            type: node.type || node.labels || [],
-            color: node.color || '#3b82f6',
-            size: node.size || 25
-        };
-    };
+    // VeraChat.prototype.normalizeGraphNode = function(node) {
+    //     return {
+    //         id: node.id,
+    //         label: node.label || (node.properties?.text?.substring(0, 30)) || node.id,
+    //         title: node.title || (node.properties?.text) || node.id,
+    //         properties: node.properties || {},
+    //         type: node.type || node.labels || [],
+    //         color: node.color || '#3b82f6',
+    //         size: node.size || 25
+    //     };
+    // };
 
-    /**
-     * Normalize edge data to match standard graph format
-     * This ensures edges from memory search match the format used by loadGraph()
-     */
-    VeraChat.prototype.normalizeGraphEdge = function(edge, index = 0) {
-        return {
-            id: edge.id || `edge_${edge.from || edge.start}_${edge.to || edge.end}_${index}`,
-            from: edge.from || edge.start,
-            to: edge.to || edge.end,
-            label: edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO',
-            title: edge.title || edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO'
-        };
-    };
+    // /**
+    //  * Normalize edge data to match standard graph format
+    //  * This ensures edges from memory search match the format used by loadGraph()
+    //  */
+    // VeraChat.prototype.normalizeGraphEdge = function(edge, index = 0) {
+    //     return {
+    //         id: edge.id || `edge_${edge.from || edge.start}_${edge.to || edge.end}_${index}`,
+    //         from: edge.from || edge.start,
+    //         to: edge.to || edge.end,
+    //         label: edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO',
+    //         title: edge.title || edge.label || edge.type || (edge.properties?.rel) || 'RELATED_TO'
+    //     };
+    // };
 VeraChat.prototype.buildSearchFilters = function() {
     return {
         limit: this.memoryState.filters.limit,
@@ -1464,13 +1464,13 @@ VeraChat.prototype.debugSearch = async function() {
         
         return html;
     };
-    // Load subgraph around a result node
-
+    /**
+     * Load subgraph around a result node - NOW USES UNIFIED LOADER
+     */
     VeraChat.prototype.loadResultSubgraph = async function(nodeId) {
         try {
             this.addSystemMessage(`Loading subgraph around ${nodeId}...`);
             
-            // Get subgraph from API
             const response = await fetch('http://llm.int:8888/api/memory/subgraph', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1483,45 +1483,24 @@ VeraChat.prototype.debugSearch = async function() {
             
             const data = await response.json();
             
-            if (data.subgraph && data.subgraph.nodes) {
-                // Use normalized format for nodes
-                const newNodes = data.subgraph.nodes.map(n => 
-                    this.normalizeGraphNode({
-                        id: n.id,
-                        label: n.properties?.text?.substring(0, 30) || n.id,
-                        title: n.properties?.text || n.id,
-                        properties: n.properties,
-                        type: n.labels,
-                        // Use different color for extracted entities
-                        color: n.properties?.type === 'extracted_entity' ? '#10b981' : '#3b82f6',
-                        size: 25
-                    })
+            if (data.subgraph && data.subgraph.nodes && window.GraphDataLoader) {
+                const result = await window.GraphDataLoader.loadData(
+                    data.subgraph.nodes,
+                    data.subgraph.rels,
+                    {
+                        replace: false,              // Add to existing graph
+                        fit: true,
+                        animate: true,              // Animate for subgraphs
+                        focusNodes: data.subgraph.nodes.map(n => n.id),
+                        applyTheme: false,
+                        updateGraphAddon: true
+                    }
                 );
                 
-                // Use normalized format for edges
-                const newEdges = data.subgraph.rels.map((r, idx) => 
-                    this.normalizeGraphEdge({
-                        from: r.start,
-                        to: r.end,
-                        label: r.type || r.properties?.rel,
-                        properties: r.properties
-                    }, idx)
-                );
-                
-                // Update network data
-                this.networkInstance.body.data.nodes.update(newNodes);
-                this.networkInstance.body.data.edges.update(newEdges);
-                
-                // Switch to graph tab and focus
                 this.switchTab('graph');
-                setTimeout(() => {
-                    this.networkInstance.fit({
-                        nodes: newNodes.map(n => n.id),
-                        animation: true
-                    });
-                }, 100);
-                
-                this.addSystemMessage(`Loaded subgraph: ${newNodes.length} nodes, ${newEdges.length} edges`);
+                this.addSystemMessage(
+                    `Loaded subgraph: ${result.nodesAdded} nodes, ${result.edgesAdded} edges`
+                );
             } else {
                 this.addSystemMessage('No subgraph data found');
             }
@@ -1529,56 +1508,39 @@ VeraChat.prototype.debugSearch = async function() {
             console.error('Error loading subgraph:', error);
             this.addSystemMessage(`Error loading subgraph: ${error.message}`);
         }
-        
-        // Close dropdown menu
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            menu.style.display = 'none';
-        });
     };
 
-
-    // Load entire session graph
- 
     VeraChat.prototype.loadSessionInGraph = async function(sessionId) {
         try {
-            this.addSystemMessage(`Loading session ${sessionId.substring(0, 8)}... graph...`);
+            this.addSystemMessage(`Loading session ${sessionId.substring(0, 8)}...`);
             
             const response = await fetch(`http://llm.int:8888/api/graph/session/${sessionId}`);
             const data = await response.json();
             
-            if (data.nodes && data.edges) {
-                // Use normalized format for nodes
-                const nodes = data.nodes.map(n => this.normalizeGraphNode(n));
+            if (data.nodes && data.edges && window.GraphDataLoader) {
+                const result = await window.GraphDataLoader.loadData(
+                    data.nodes,
+                    data.edges,
+                    {
+                        replace: false,              // Add to existing graph
+                        fit: true,
+                        animate: data.nodes.length < 200,
+                        applyTheme: false,
+                        updateGraphAddon: true
+                    }
+                );
                 
-                // Use normalized format for edges
-                const edges = data.edges.map((e, index) => this.normalizeGraphEdge(e, index));
-                
-                // Update network data
-                this.networkInstance.body.data.nodes.update(nodes);
-                this.networkInstance.body.data.edges.update(edges);
-                
-                // Switch to graph tab
                 this.switchTab('graph');
-                setTimeout(() => {
-                    this.networkInstance.fit();
-                }, 100);
-                
-                this.addSystemMessage(`Loaded session graph: ${nodes.length} nodes, ${edges.length} edges`);
-                
-                // Update graph stats
-                document.getElementById('nodeCount').textContent = nodes.length;
-                document.getElementById('edgeCount').textContent = edges.length;
+                this.addSystemMessage(
+                    `Loaded session: ${result.totalNodes} total nodes, ${result.totalEdges} total edges`
+                );
             }
         } catch (error) {
             console.error('Error loading session graph:', error);
             this.addSystemMessage(`Error loading session: ${error.message}`);
         }
-        
-        // Close dropdown menu
-        document.querySelectorAll('.result-dropdown-menu').forEach(menu => {
-            menu.style.display = 'none';
-        });
     };
+
 
 
 

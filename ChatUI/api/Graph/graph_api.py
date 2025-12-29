@@ -8,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 from Vera.ChatUI.api.session import sessions, get_or_create_vera
 from Vera.ChatUI.api.schemas import GraphResponse, GraphNode, GraphEdge 
+import time
 
 # ============================================================
 # Logging
@@ -57,35 +58,14 @@ def format_timestamp(timestamp_ms: int) -> str:
     """Format timestamp for display."""
     dt = timestamp_to_datetime(timestamp_ms)
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
 def get_cypher_time_filter_multifield(
     node_var: str = "n",
-    time_field: str = "auto",  # "auto", "id", "created_at", "updated_at", "timestamp"
+    time_field: str = "auto",
     after: Optional[datetime] = None,
     before: Optional[datetime] = None
 ) -> tuple[str, dict]:
-    """
-    Generate Cypher WHERE clause and parameters for time-based filtering with multiple field support.
-    
-    Supports extracting timestamps from:
-    1. Node ID (e.g., mem_1765280473682)
-    2. created_at property (ISO format)
-    3. updated_at property (ISO format)
-    4. timestamp property (ISO format)
-    
-    Args:
-        node_var: The node variable name (e.g., "n", "m")
-        time_field: Which field to use for time filtering:
-                   - "auto": Try id -> created_at -> updated_at -> timestamp (fallback chain)
-                   - "id": Extract from node ID only
-                   - "created_at": Use created_at property
-                   - "updated_at": Use updated_at property
-                   - "timestamp": Use timestamp property
-        after: Filter for nodes created after this datetime
-        before: Filter for nodes created before this datetime
-    
-    Returns:
-        Tuple of (where_clause, parameters_dict)
-    """
+    """Generate Cypher WHERE clause and parameters for time-based filtering with multiple field support."""
     if not after and not before:
         return "", {}
     
@@ -116,12 +96,22 @@ def get_cypher_time_filter_multifield(
         where_clause = " AND ".join(conditions)
         
     elif time_field in ["created_at", "updated_at", "timestamp"]:
-        # Use specific datetime property
+        # Handle both datetime objects and string dates
+        # Try to convert to datetime if it's a string, otherwise use as-is
+        time_expr = f"""CASE 
+            WHEN {node_var}.{time_field} IS NOT NULL 
+            THEN coalesce(
+                datetime({node_var}.{time_field}),
+                datetime(replace({node_var}.{time_field}, ' ', 'T'))
+            )
+            ELSE null
+        END"""
+        
         conditions = []
         if after:
-            conditions.append(f"{node_var}.{time_field} >= datetime($after_iso)")
+            conditions.append(f"{time_expr} >= datetime($after_iso)")
         if before:
-            conditions.append(f"{node_var}.{time_field} <= datetime($before_iso)")
+            conditions.append(f"{time_expr} <= datetime($before_iso)")
         where_clause = f"{node_var}.{time_field} IS NOT NULL AND " + " AND ".join(conditions)
         
     else:  # "auto" - fallback chain
@@ -132,9 +122,16 @@ def get_cypher_time_filter_multifield(
         id_ts_expr = f"toInteger(substring({node_var}.id, size(split({node_var}.id, '_')[0]) + 1, 13))"
         
         # Convert datetime properties to millisecond timestamps for comparison
-        created_ts_expr = f"toInteger(datetime({node_var}.created_at).epochMillis)"
-        updated_ts_expr = f"toInteger(datetime({node_var}.updated_at).epochMillis)"
-        timestamp_ts_expr = f"toInteger(datetime({node_var}.timestamp).epochMillis)"
+        # Handle both datetime objects and string dates
+        def make_ts_expr(field):
+            return f"""toInteger(coalesce(
+                datetime({node_var}.{field}),
+                datetime(replace({node_var}.{field}, ' ', 'T'))
+            ).epochMillis)"""
+        
+        created_ts_expr = make_ts_expr("created_at")
+        updated_ts_expr = make_ts_expr("updated_at")
+        timestamp_ts_expr = make_ts_expr("timestamp")
         
         # COALESCE to get first available timestamp
         time_expr = f"""COALESCE(
@@ -967,4 +964,204 @@ async def get_database_stats():
             
     except Exception as e:
         logger.error(f"Stats error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+        # ============================================================
+# Node and Edge Creation Endpoints
+# ============================================================
+
+class CreateNodeRequest(BaseModel):
+    label: str
+    type: str
+    description: Optional[str] = None
+    x: float = 0
+    y: float = 0
+    session_id: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
+
+class CreateEdgeRequest(BaseModel):
+    source_id: str
+    target_id: str
+    relationship_type: str
+    label: Optional[str] = None
+    session_id: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
+    
+@router.post("/node/create")
+async def create_node(request: CreateNodeRequest, force_create: bool = False):
+    """
+    Create a new node in the Neo4j graph.
+    If force_create=False and duplicate exists, returns error with existing node info.
+    If force_create=True, creates with unique ID even if name/type match.
+    """
+    try:
+        logger.info(f"=== CREATE NODE REQUEST ===")
+        logger.info(f"Request: {request.model_dump()}, force_create: {force_create}")
+        
+        session_id = request.session_id or list(sessions.keys())[0] if sessions else None
+        if not session_id:
+            raise HTTPException(status_code=400, detail="No active session")
+        
+        vera = get_or_create_vera(session_id)
+        logger.info(f"Got Vera instance for session {session_id}")
+        
+        # Check for duplicate unless force_create is True
+        if not force_create:
+            with vera.mem.graph._driver.session() as db_sess:
+                existing = db_sess.run("""
+                    MATCH (n:Entity)
+                    WHERE n.name = $name AND n.type = $type
+                    RETURN n.id AS id, properties(n) AS properties
+                    LIMIT 1
+                """, {
+                    "name": request.label,
+                    "type": request.type
+                }).single()
+                
+                if existing:
+                    logger.warning(f"Duplicate node found: {existing['id']}")
+                    raise HTTPException(
+                        status_code=409,  # Conflict
+                        detail={
+                            "error": "duplicate",
+                            "message": f"Node with name '{request.label}' and type '{request.type}' already exists",
+                            "existing_node": {
+                                "id": existing["id"],
+                                "properties": dict(existing["properties"])
+                            }
+                        }
+                    )
+        
+        node_id = f"node_{int(time.time() * 1000)}"
+        properties = request.properties or {}
+        properties.update({
+            "text": request.label,
+            "name": request.label,
+            "type": request.type,
+            "description": request.description or "",
+            "created_at": datetime.utcnow().isoformat(),
+        })
+        
+        logger.info(f"Creating node {node_id} with properties: {properties}")
+        
+        # Create node
+        node = vera.mem.upsert_entity(
+            entity_id=node_id,
+            etype=request.type,
+            labels=[request.type],
+            properties=properties
+        )
+        
+        logger.info(f"Node created: {node}")
+        
+        # Verify it was created
+        with vera.mem.graph._driver.session() as db_sess:
+            verify = db_sess.run("MATCH (n {id: $id}) RETURN n", {"id": node_id}).single()
+            logger.info(f"Verification query result: {verify}")
+            if not verify:
+                raise Exception("Node creation failed - not found in database")
+        
+        return {
+            "success": True,
+            "node_id": node_id,
+            "verified": verify is not None
+        }
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
+    except Exception as e:
+        logger.error(f"CREATE NODE ERROR: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+@router.post("/edge/create")
+async def create_edge(request: CreateEdgeRequest):
+    """
+    Create a new edge between two nodes in the Neo4j graph.
+    Uses the HybridMemory API for safe, validated creation.
+    """
+    try:
+        # Get or create Vera instance
+        session_id = request.session_id or list(sessions.keys())[0] if sessions else None
+        if not session_id:
+            raise HTTPException(status_code=400, detail="No active session. Please specify session_id or start a session.")
+        
+        vera = get_or_create_vera(session_id)
+        
+        # Prepare edge properties
+        properties = request.properties or {}
+        properties.update({
+            "label": request.label or request.relationship_type,
+            "created_at": datetime.utcnow().isoformat(),
+            "created_by": "user",
+            "session_id": session_id
+        })
+        
+        # Create edge using HybridMemory
+        vera.mem.link(
+            src=request.source_id,
+            dst=request.target_id,
+            rel=request.relationship_type,
+            properties=properties
+        )
+        
+        logger.info(f"Created edge {request.source_id} -[{request.relationship_type}]-> {request.target_id}")
+        
+        return {
+            "success": True,
+            "edge": {
+                "from": request.source_id,
+                "to": request.target_id,
+                "relationship": request.relationship_type,
+                "label": request.label or request.relationship_type,
+                "properties": properties
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating edge: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+        # Add this new endpoint before @router.post("/node/create")
+
+@router.post("/node/check-duplicate")
+async def check_node_duplicate(request: CreateNodeRequest):
+    """
+    Check if a node with the same name and type already exists.
+    Returns existing node info if found.
+    """
+    try:
+        session_id = request.session_id or list(sessions.keys())[0] if sessions else None
+        if not session_id:
+            raise HTTPException(status_code=400, detail="No active session")
+        
+        vera = get_or_create_vera(session_id)
+        
+        # Check for existing node
+        with vera.mem.graph._driver.session() as db_sess:
+            result = db_sess.run("""
+                MATCH (n:Entity)
+                WHERE n.name = $name AND n.type = $type
+                RETURN n.id AS id, n.name AS name, n.type AS type, 
+                       labels(n) AS labels, properties(n) AS properties
+                LIMIT 1
+            """, {
+                "name": request.label,
+                "type": request.type
+            }).single()
+            
+            if result:
+                return {
+                    "exists": True,
+                    "node": {
+                        "id": result["id"],
+                        "name": result["name"],
+                        "type": result["type"],
+                        "labels": result["labels"],
+                        "properties": dict(result["properties"])
+                    }
+                }
+            else:
+                return {"exists": False}
+                
+    except Exception as e:
+        logger.error(f"Error checking duplicate: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

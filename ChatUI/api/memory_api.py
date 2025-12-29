@@ -597,3 +597,188 @@ async def get_enhanced_context(vera, session_id: str, message: str, k: int = 5) 
             "graph_context": None,
             "entity_ids": []
         }
+
+@router.post("/vector-content")
+async def get_vector_content(request: Dict[str, Any]):
+    """
+    Fetch vector store content for specific node IDs.
+    Returns the full text stored in vector collections.
+    """
+    node_ids = request.get("node_ids", [])
+    session_id = request.get("session_id")
+    
+    logger.info(f"=== Vector Content Request ===")
+    logger.info(f"Requested node_ids: {node_ids}")
+    logger.info(f"Session ID: {session_id}")
+    
+    if not node_ids:
+        return {"content": {}, "debug": "No node IDs provided"}
+    
+    try:
+        vera = None
+        if session_id and session_id in sessions:
+            vera = get_or_create_vera(session_id)
+            logger.info(f"Using session {session_id}")
+        else:
+            # Get any vera instance
+            for sid in sessions:
+                vera = get_or_create_vera(sid)
+                logger.info(f"Using fallback session {sid}")
+                break
+        
+        if not vera:
+            logger.error("No active session available")
+            return {"content": {}, "error": "No active session", "debug": "No vera instance"}
+        
+        content = {}
+        debug_info = {
+            "collections_checked": [],
+            "collections_found": [],
+            "ids_checked": node_ids,
+            "ids_found": [],
+            "errors": []
+        }
+        
+        # Check session collections first (all sessions)
+        all_session_ids = list(sessions.keys())
+        logger.info(f"Checking {len(all_session_ids)} session collections")
+        
+        for sid in all_session_ids:
+            try:
+                collection_name = f"session_{sid}"
+                debug_info["collections_checked"].append(collection_name)
+                
+                col = vera.mem.vec.get_collection(collection_name)
+                
+                # First, check what's in the collection
+                all_items = col.get()
+                logger.info(f"Collection '{collection_name}' has {len(all_items.get('ids', []))} items")
+                logger.debug(f"Sample IDs in collection: {all_items.get('ids', [])[:5]}")
+                
+                # Try to get our specific IDs
+                result = col.get(ids=node_ids)
+                
+                logger.info(f"Query result for {collection_name}: {len(result.get('ids', []))} matches")
+                
+                if result and result.get("ids"):
+                    debug_info["collections_found"].append(collection_name)
+                    for i, nid in enumerate(result["ids"]):
+                        if nid not in content:  # Don't overwrite if found in earlier session
+                            text = result["documents"][i] if result.get("documents") else ""
+                            metadata = result["metadatas"][i] if result.get("metadatas") else {}
+                            
+                            content[nid] = {
+                                "text": text,
+                                "metadata": metadata,
+                                "source": f"session_{sid}"
+                            }
+                            debug_info["ids_found"].append(nid)
+                            
+                            logger.info(f"✓ Found content for {nid}: {len(text)} chars from {collection_name}")
+                            
+            except Exception as e:
+                error_msg = f"Session collection {sid} error: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                debug_info["errors"].append(error_msg)
+                continue
+        
+        # Check long-term collection
+        try:
+            collection_name = "long_term_docs"
+            debug_info["collections_checked"].append(collection_name)
+            
+            long_term_col = vera.mem.vec.get_collection(collection_name)
+            
+            # Check what's in the collection
+            all_items = long_term_col.get()
+            logger.info(f"Long-term collection has {len(all_items.get('ids', []))} items")
+            logger.debug(f"Sample IDs in long-term: {all_items.get('ids', [])[:5]}")
+            
+            result = long_term_col.get(ids=node_ids)
+            
+            logger.info(f"Query result for long-term: {len(result.get('ids', []))} matches")
+            
+            if result and result.get("ids"):
+                debug_info["collections_found"].append(collection_name)
+                for i, nid in enumerate(result["ids"]):
+                    if nid not in content:  # Don't overwrite session data
+                        text = result["documents"][i] if result.get("documents") else ""
+                        metadata = result["metadatas"][i] if result.get("metadatas") else {}
+                        
+                        content[nid] = {
+                            "text": text,
+                            "metadata": metadata,
+                            "source": "long_term"
+                        }
+                        debug_info["ids_found"].append(nid)
+                        
+                        logger.info(f"✓ Found content for {nid}: {len(text)} chars from long-term")
+                        
+        except Exception as e:
+            error_msg = f"Long-term collection error: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            debug_info["errors"].append(error_msg)
+        
+        logger.info(f"=== Vector Content Summary ===")
+        logger.info(f"Found content for {len(content)} out of {len(node_ids)} requested nodes")
+        logger.info(f"Collections checked: {debug_info['collections_checked']}")
+        logger.info(f"Collections with data: {debug_info['collections_found']}")
+        
+        return {
+            "content": content,
+            "found_count": len(content),
+            "requested_count": len(node_ids),
+            "debug": debug_info
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching vector content: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/vector-debug/{session_id}")
+async def debug_vector_store(session_id: str):
+    """
+    Debug endpoint to see what's actually in the vector stores.
+    """
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    try:
+        debug_info = {}
+        
+        # Check session collection
+        session_collection = f"session_{session_id}"
+        try:
+            col = vera.mem.vec.get_collection(session_collection)
+            all_items = col.get()
+            
+            debug_info[session_collection] = {
+                "count": len(all_items.get("ids", [])),
+                "sample_ids": all_items.get("ids", [])[:10],
+                "sample_texts": [t[:100] + "..." if len(t) > 100 else t 
+                               for t in all_items.get("documents", [])[:3]]
+            }
+        except Exception as e:
+            debug_info[session_collection] = {"error": str(e)}
+        
+        # Check long-term collection
+        try:
+            long_term_col = vera.mem.vec.get_collection("long_term_docs")
+            all_items = long_term_col.get()
+            
+            debug_info["long_term_docs"] = {
+                "count": len(all_items.get("ids", [])),
+                "sample_ids": all_items.get("ids", [])[:10],
+                "sample_texts": [t[:100] + "..." if len(t) > 100 else t 
+                               for t in all_items.get("documents", [])[:3]]
+            }
+        except Exception as e:
+            debug_info["long_term_docs"] = {"error": str(e)}
+        
+        return debug_info
+        
+    except Exception as e:
+        logger.error(f"Debug error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

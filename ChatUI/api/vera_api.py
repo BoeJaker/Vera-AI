@@ -55,6 +55,7 @@ import Vera.ChatUI.api.config as config_api
 import Vera.ChatUI.api.Orchestrator.ollama_api as ollama_api
 import Vera.ChatUI.api.agents_api as agents_api
 import Vera.ChatUI.api.scheduling as scheduling_api 
+import Vera.ChatUI.api.Toolchain.tool_execution_api as tool_execution_api
 # from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
 # ============================================================
@@ -120,6 +121,7 @@ app.include_router(config_api.router)
 app.include_router(ollama_api.router)
 app.include_router(agents_api.router)
 app.include_router(scheduling_api.router)
+app.include_router(tool_execution_api.router)
 # ============================================================
 # Global storage
 # ============================================================

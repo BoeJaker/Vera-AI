@@ -122,14 +122,25 @@ detect_web_technologies: Identify technologies and frameworks used by a website.
 search_cves: Search National Vulnerability Database for CVEs affecting a product. Returns CVE IDs, CVSS scores, severity ratings, and detailed descriptions. Essential for vulnerability assessment and patch management.
 analyze_ssl: Analyze SSL/TLS certificate and security configuration. Checks certificate validity, expiration, issuer, protocol versions, cipher suites, and identifies common SSL/TLS vulnerabilities. Essential for web security assessment.
 export_scan_results: Export OSINT scan results to file. Formats: 'json' (structured data) or 'markdown' (human-readable report). Use scan ID from previous scan output.
-discover_hosts: HOST DISCOVERY ONLY. Find live hosts from targets (IP/CIDR/range/hostname). ONLY creates nodes for reachable hosts. Fast parallel checking. Use when you only need to know which hosts are up.
-scan_ports: PORT SCANNING ONLY. Scan ports on target hosts. Can use previously discovered hosts or scan new targets. Creates port nodes for open ports only. Fast multi-threaded scanning. Use when you need to find open ports on known hosts.
-detect_services: SERVICE DETECTION ONLY. Identify services on discovered ports. Grabs banners, detects versions, identifies service types. Creates service nodes with version info. Use after port scanning to identify what's running.
-scan_vulnerabilities: VULNERABILITY SCANNING ONLY. Look up CVEs for discovered services. Queries NVD database, filters by severity, creates CVE nodes. Use after service detection to find known vulnerabilities. Rate-limited to avoid API throttling.
-comprehensive_network_scan: FULL COMPREHENSIVE SCAN. Runs all scan phases in sequence: 1) Host discovery, 2) Port scanning, 3) Service detection, 4) CVE lookup. ONLY creates nodes for live/reachable entities. Modes: 'quick' (common ports), 'standard' (1-1000), 'full' (all ports). Creates complete network topology map. Use for thorough network assessment.
+discover_hosts: HOST DISCOVERY with proper graph linking. Finds live hosts and links to unified topology. Reuses existing nodes, links to previous scans on same targets. Creates hierarchical structure: Session -> Scan -> Discovered IPs.
+scan_ports: PORT SCANNING with unified graph linking. Links discovered ports to existing IP nodes. Maintains topology: Session -> Scan -> IP -> Ports. Reuses nodes across tool calls for unified network map.
+detect_services: SERVICE DETECTION linking to discovered ports. Creates unified topology. Structure: Session -> Scan -> IP -> Port -> Service. Updates existing service nodes with new information.
+scan_vulnerabilities: VULNERABILITY SCANNING linking CVEs to services. Extends unified topology. Structure: Session -> Scan -> IP -> Port -> Service -> Vulnerabilities. Links to previous scans for comprehensive vulnerability tracking.
+comprehensive_network_scan: FULL COMPREHENSIVE SCAN with complete unified topology. Single scan node links all discovered entities hierarchically. Reuses existing nodes, links to previous scans, creates complete network map. Query entire topology: MATCH (scan)-[*1..5]->(node) RETURN scan, node
 mcp_call: Call a tool on an MCP server (filesystem, github, postgres, slack, etc).
 mcp_list_tools: List all available tools from an MCP server.
 scheduling_assistant: Run the executive scheduling assistant. Access to calendars, todos, scheduling apps. Input: query string.
+plugin_sshConnect: (Compatible with: ip, IP, domain, subdomain)
+plugin_TechnologyDetectionPlugin: Detects technologies running on a specific port and checks for vulnerabilities (CVE). (Compatible with: Port, ip, IP, host)
+plugin_FacebookSearch: Searches for Facebook profiles based on a given name. (Compatible with: name, username, person, contact, email)
+plugin_nslookup: (Compatible with: ip, netblock, domain, subdomain, ip6)
+plugin_traceroute: (Compatible with: ip, IP, netblock, domain, subdomain, ip6)
+plugin_spider: (Compatible with: ip, IP, domain, subdomain)
+plugin_BashParser: Parses Bash files into a networkx graph of their component functions and variables (Compatible with: command)
+plugin_openFile: (Compatible with: file, folder)
+plugin_pathWalker: (Compatible with: IP, file, folder)
+plugin_open_webpage: (Compatible with: ip, IP, domain, subdomain)
+plugin_Traceroutev2: (Compatible with: ip, IP, netblock, domain, subdomain, ip6)
 click_element: Click on an element with the given CSS selector
 navigate_browser: Navigate a browser to the specified URL
 previous_webpage: Navigate back to the previous page in the browser history

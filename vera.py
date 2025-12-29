@@ -74,6 +74,24 @@ try:
         LogLevel
     )
     from Vera.Agents.integration import integrate_agent_system
+    # Import new components
+    from Vera.ProactiveFocus.manager import (
+        ResourceMonitor, ResourceLimits, ResourcePriority,
+        PauseController, AdaptiveScheduler, ResourceGuard
+    )
+
+    from Vera.ProactiveFocus.resources import (
+        ExternalResourceManager, ResourceType, NotebookResource
+    )
+
+    from Vera.ProactiveFocus.stages import (
+        StageOrchestrator, ResearchStage, EvaluationStage,
+        OptimizationStage, SteeringStage, IntrospectionStage
+    )
+
+    from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
+
+    from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
 
 except ImportError as e:
     print(f"Import error: {e}")
@@ -318,7 +336,12 @@ class Vera:
         # --- Proactive Focus Manager ---
         if self.config.proactive_focus.enabled:
             self.logger.info("Initializing proactive focus manager...")
-            self.focus_manager = ProactiveFocusManager(agent=self)
+            self.focus_manager = ProactiveFocusManager(
+                agent=self,
+                hybrid_memory=self.mem if hasattr(self, 'mem') else None,
+                proactive_interval=3600,  # 60 minutes
+                cpu_threshold=70.0
+            )
             if self.config.proactive_focus.default_focus:
                 self.focus_manager.set_focus(
                     self.config.proactive_focus.default_focus
@@ -329,7 +352,46 @@ class Vera:
             self.logger.debug("Proactive focus manager disabled")
         
 
+        # 3. Create resource manager
+        resource_limits = ResourceLimits(
+            max_cpu_percent=70.0,
+            max_memory_percent=80.0,
+            max_ollama_concurrent=1
+        )
+        
+        resource_monitor = ResourceMonitor(limits=resource_limits)
+        resource_monitor.start()
+        
+        # 4. Create external resource manager
+        resource_manager = ExternalResourceManager(
+            hybrid_memory=self.mem if hasattr(self, 'mem') else None
+        )
+        # 5. Create stage orchestrator
+        self.stage_orchestrator = StageOrchestrator()
+        
+        # 6. Create calendar scheduler
+        self.calendar_scheduler = CalendarScheduler()
 
+        # 7. Create background service
+        self.service_config = ServiceConfig(
+            max_cpu_percent=50.0,
+            check_interval=30.0,
+            min_idle_seconds=30.0,
+            use_calendar=True,
+            enabled_stages=["Introspection", "Research", "Evaluation", "Steering"]
+        )
+    
+        self.background_service = BackgroundService(
+            focus_manager=self.focus_manager,
+            config=self.service_config
+        )
+        
+        print("✓ All components initialized")
+        print(f"  Focus: {self.focus_manager.focus}")
+        print(f"  Resource monitor: Running")
+        print(f"  Stages: {len(self.stage_orchestrator.stages)}")
+        print(f"  Calendar: Enabled")
+        
         self.triage_memory = self.config.memory.enable_memory_triage
         self.memory = CombinedMemory(
             memories=[self.buffer_memory, self.vector_memory]
@@ -450,18 +512,18 @@ class Vera:
             self.logger.debug("Playwright browser disabled")
 
         # # Initialize plugin manager - recon map backwards compatible
-        # try:
-        #     from Vera.Toolchain.plugin_manager import PluginManager
-        #     self.plugin_manager = PluginManager(
-        #         graph_manager=self.graph_manager if hasattr(self, 'graph_manager') else None,
-        #         socketio=self.socketio if hasattr(self, 'socketio') else None,
-        #         args=self.args if hasattr(self, 'args') else None
-        #     )
-        #     self.plugin_manager.start()
-        #     print(f"✓ Plugin manager initialized with {len(self.plugin_manager.plugins)} plugins")
-        # except Exception as e:
-        #     print(f"[Warning] Could not initialize plugin manager: {e}")
-        #     self.plugin_manager = None
+        try:
+            from Vera.Toolchain.plugin_manager import PluginManager
+            self.plugin_manager = PluginManager(
+                graph_manager=self.graph_manager if hasattr(self, 'graph_manager') else None,
+                socketio=self.socketio if hasattr(self, 'socketio') else None,
+                args=self.args if hasattr(self, 'args') else None
+            )
+            self.plugin_manager.start()
+            print(f"✓ Plugin manager initialized with {len(self.plugin_manager.plugins)} plugins")
+        except Exception as e:
+            print(f"[Warning] Could not initialize plugin manager: {e}")
+            self.plugin_manager = None
 
         # --- Initialize Executive and Tools ---
         self.logger.info("Loading tools...")

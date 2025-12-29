@@ -88,8 +88,8 @@ renderRGB: {
     '--accent-muted': 'rgba(45,106,255,0.65)',
     '--ink': '#0a0a0a',             // ink color for lines
     '--paper': '#0f1113',           // surface for blocks
-    '--border': '#121316',
-    '--border-subtle': '#15161a',
+    '--border': '#ff2d2d',
+    '--border-subtle': '#2dff6a',
     '--hover': '#15181b',
     '--text-inverted': '#000000',
     '--user-bg': '#2d6aff',         // default user block = blue
@@ -323,9 +323,9 @@ renderCMY: {
     '--accent-muted': 'rgba(0,207,232,0.55)',
     '--ink': '#071013',
     '--paper': '#0e0f10',
-    '--border': '#111214',
-    '--border-subtle': '#141516',
-    '--hover': '#141619',
+    '--border': '#ff46b0',
+    '--border-subtle': '#ffd100',
+    '--hover': '#ff46b0',
     '--text-inverted': '#000000',
     '--user-bg': '#ff46b0',
     '--success': '#10b981',

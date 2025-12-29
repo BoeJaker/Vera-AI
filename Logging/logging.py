@@ -4,7 +4,8 @@
 """
 Vera Unified Logging System
 Provides structured, configurable logging with rich formatting and metadata.
-Enhanced with provenance tracking and full stack trace capabilities.
+Enhanced with provenance tracking, full stack trace capabilities, token tracking,
+and comprehensive system resource monitoring.
 """
 
 import sys
@@ -19,6 +20,27 @@ from enum import Enum
 from dataclasses import dataclass, field
 from pathlib import Path
 import traceback
+import platform
+
+# Optional imports for system monitoring
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+    print("Warning: psutil not available. Install with: pip install psutil")
+
+try:
+    import GPUtil
+    HAS_GPUTIL = True
+except ImportError:
+    HAS_GPUTIL = False
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
 
 
 class LogLevel(Enum):
@@ -110,6 +132,201 @@ class StackTrace:
 
 
 @dataclass
+class SystemMetrics:
+    """System resource metrics"""
+    timestamp: float
+    
+    # CPU
+    cpu_count_physical: int
+    cpu_count_logical: int
+    cpu_percent: float
+    cpu_freq_current: Optional[float] = None  # MHz
+    cpu_freq_max: Optional[float] = None
+    
+    # Memory
+    ram_total_gb: float = 0.0
+    ram_available_gb: float = 0.0
+    ram_used_gb: float = 0.0
+    ram_percent: float = 0.0
+    
+    # Swap
+    swap_total_gb: float = 0.0
+    swap_used_gb: float = 0.0
+    swap_percent: float = 0.0
+    
+    # GPU
+    gpu_available: bool = False
+    gpu_count: int = 0
+    gpu_names: List[str] = field(default_factory=list)
+    gpu_memory_total_gb: List[float] = field(default_factory=list)
+    gpu_memory_used_gb: List[float] = field(default_factory=list)
+    gpu_memory_percent: List[float] = field(default_factory=list)
+    gpu_utilization: List[float] = field(default_factory=list)
+    gpu_temperature: List[float] = field(default_factory=list)
+    cuda_available: bool = False
+    
+    # Power
+    power_plugged: Optional[bool] = None
+    battery_percent: Optional[float] = None
+    battery_time_left: Optional[int] = None  # seconds
+    
+    # Disk
+    disk_usage_percent: Optional[float] = None
+    disk_total_gb: Optional[float] = None
+    disk_free_gb: Optional[float] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'timestamp': self.timestamp,
+            'cpu': {
+                'count_physical': self.cpu_count_physical,
+                'count_logical': self.cpu_count_logical,
+                'percent': self.cpu_percent,
+                'freq_current_mhz': self.cpu_freq_current,
+                'freq_max_mhz': self.cpu_freq_max,
+            },
+            'ram': {
+                'total_gb': round(self.ram_total_gb, 2),
+                'available_gb': round(self.ram_available_gb, 2),
+                'used_gb': round(self.ram_used_gb, 2),
+                'percent': round(self.ram_percent, 1),
+            },
+            'swap': {
+                'total_gb': round(self.swap_total_gb, 2),
+                'used_gb': round(self.swap_used_gb, 2),
+                'percent': round(self.swap_percent, 1),
+            },
+            'gpu': {
+                'available': self.gpu_available,
+                'cuda_available': self.cuda_available,
+                'count': self.gpu_count,
+                'devices': [
+                    {
+                        'name': name,
+                        'memory_total_gb': round(total, 2),
+                        'memory_used_gb': round(used, 2),
+                        'memory_percent': round(percent, 1),
+                        'utilization': round(util, 1),
+                        'temperature': round(temp, 1) if temp else None,
+                    }
+                    for name, total, used, percent, util, temp in zip(
+                        self.gpu_names,
+                        self.gpu_memory_total_gb,
+                        self.gpu_memory_used_gb,
+                        self.gpu_memory_percent,
+                        self.gpu_utilization,
+                        self.gpu_temperature,
+                    )
+                ] if self.gpu_count > 0 else []
+            },
+            'power': {
+                'plugged': self.power_plugged,
+                'battery_percent': self.battery_percent,
+                'battery_time_left_minutes': self.battery_time_left // 60 if self.battery_time_left else None,
+            },
+            'disk': {
+                'usage_percent': self.disk_usage_percent,
+                'total_gb': round(self.disk_total_gb, 2) if self.disk_total_gb else None,
+                'free_gb': round(self.disk_free_gb, 2) if self.disk_free_gb else None,
+            }
+        }
+    
+    def format_summary(self) -> str:
+        """Format as summary string"""
+        parts = []
+        
+        # CPU
+        parts.append(f"CPU: {self.cpu_count_physical}C/{self.cpu_count_logical}T @ {self.cpu_percent:.1f}%")
+        
+        # RAM
+        parts.append(f"RAM: {self.ram_used_gb:.1f}/{self.ram_total_gb:.1f}GB ({self.ram_percent:.1f}%)")
+        
+        # GPU
+        if self.gpu_available:
+            gpu_info = f"GPU: {self.gpu_count}x"
+            if self.gpu_names:
+                gpu_info += f" {self.gpu_names[0].split()[0]}"  # Short name
+            if self.gpu_utilization:
+                avg_util = sum(self.gpu_utilization) / len(self.gpu_utilization)
+                gpu_info += f" @ {avg_util:.1f}%"
+            parts.append(gpu_info)
+        
+        # Power
+        if self.battery_percent is not None:
+            power_str = f"Battery: {self.battery_percent:.0f}%"
+            if not self.power_plugged:
+                power_str += " (unplugged)"
+            parts.append(power_str)
+        
+        return " | ".join(parts)
+
+
+@dataclass
+class LLMMetrics:
+    """LLM performance metrics"""
+    start_time: float
+    end_time: float
+    duration: float
+    
+    # Token counts
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    
+    # Throughput
+    tokens_per_second: float = 0.0
+    input_tokens_per_second: float = 0.0
+    output_tokens_per_second: float = 0.0
+    
+    # Model info
+    model: Optional[str] = None
+    provider: Optional[str] = None
+    
+    # Additional metrics
+    first_token_latency: Optional[float] = None  # Time to first token (TTFT)
+    cache_hit: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            'start_time': self.start_time,
+            'end_time': self.end_time,
+            'duration': round(self.duration, 3),
+            'tokens': {
+                'input': self.input_tokens,
+                'output': self.output_tokens,
+                'total': self.total_tokens,
+            },
+            'throughput': {
+                'tokens_per_second': round(self.tokens_per_second, 2),
+                'input_tps': round(self.input_tokens_per_second, 2),
+                'output_tps': round(self.output_tokens_per_second, 2),
+            },
+            'model': self.model,
+            'provider': self.provider,
+            'first_token_latency': round(self.first_token_latency, 3) if self.first_token_latency else None,
+            'cache_hit': self.cache_hit,
+        }
+    
+    def format_summary(self) -> str:
+        """Format as summary string"""
+        parts = [
+            f"{self.total_tokens} tokens",
+            f"{self.tokens_per_second:.1f} t/s",
+            f"{self.duration:.2f}s",
+        ]
+        
+        if self.first_token_latency:
+            parts.append(f"TTFT: {self.first_token_latency:.3f}s")
+        
+        if self.model:
+            parts.append(f"model: {self.model}")
+        
+        return " | ".join(parts)
+
+
+@dataclass
 class LogContext:
     """Context information for log messages"""
     session_id: Optional[str] = None
@@ -176,6 +393,161 @@ class ColorCodes:
     BG_BLUE = '\033[44m'
 
 
+class SystemMonitor:
+    """Monitor system resources"""
+    
+    def __init__(self):
+        self.platform = platform.system()
+        self.has_psutil = HAS_PSUTIL
+        self.has_gputil = HAS_GPUTIL
+        self.has_torch = HAS_TORCH
+        
+        # Cache static info
+        self._cpu_count_physical = psutil.cpu_count(logical=False) if HAS_PSUTIL else 1
+        self._cpu_count_logical = psutil.cpu_count(logical=True) if HAS_PSUTIL else 1
+        
+        # Check CUDA availability once
+        self._cuda_available = torch.cuda.is_available() if HAS_TORCH else False
+    
+    def get_metrics(self) -> SystemMetrics:
+        """Get current system metrics"""
+        metrics = SystemMetrics(
+            timestamp=time.time(),
+            cpu_count_physical=self._cpu_count_physical,
+            cpu_count_logical=self._cpu_count_logical,
+            cpu_percent=0.0,
+        )
+        
+        if not HAS_PSUTIL:
+            return metrics
+        
+        # CPU metrics
+        try:
+            metrics.cpu_percent = psutil.cpu_percent(interval=0.1)
+            cpu_freq = psutil.cpu_freq()
+            if cpu_freq:
+                metrics.cpu_freq_current = cpu_freq.current
+                metrics.cpu_freq_max = cpu_freq.max
+        except Exception:
+            pass
+        
+        # Memory metrics
+        try:
+            mem = psutil.virtual_memory()
+            metrics.ram_total_gb = mem.total / (1024**3)
+            metrics.ram_available_gb = mem.available / (1024**3)
+            metrics.ram_used_gb = mem.used / (1024**3)
+            metrics.ram_percent = mem.percent
+            
+            swap = psutil.swap_memory()
+            metrics.swap_total_gb = swap.total / (1024**3)
+            metrics.swap_used_gb = swap.used / (1024**3)
+            metrics.swap_percent = swap.percent
+        except Exception:
+            pass
+        
+        # GPU metrics
+        self._collect_gpu_metrics(metrics)
+        
+        # Power metrics
+        try:
+            battery = psutil.sensors_battery()
+            if battery:
+                metrics.power_plugged = battery.power_plugged
+                metrics.battery_percent = battery.percent
+                metrics.battery_time_left = battery.secsleft if battery.secsleft != -1 else None
+        except Exception:
+            pass
+        
+        # Disk metrics
+        try:
+            disk = psutil.disk_usage('/')
+            metrics.disk_total_gb = disk.total / (1024**3)
+            metrics.disk_free_gb = disk.free / (1024**3)
+            metrics.disk_usage_percent = disk.percent
+        except Exception:
+            pass
+        
+        return metrics
+    
+    def _collect_gpu_metrics(self, metrics: SystemMetrics):
+        """Collect GPU metrics using available libraries"""
+        # Check CUDA via PyTorch
+        metrics.cuda_available = self._cuda_available
+        
+        # Try GPUtil first (more detailed)
+        if HAS_GPUTIL:
+            try:
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    metrics.gpu_available = True
+                    metrics.gpu_count = len(gpus)
+                    
+                    for gpu in gpus:
+                        metrics.gpu_names.append(gpu.name)
+                        metrics.gpu_memory_total_gb.append(gpu.memoryTotal / 1024)
+                        metrics.gpu_memory_used_gb.append(gpu.memoryUsed / 1024)
+                        metrics.gpu_memory_percent.append(gpu.memoryUtil * 100)
+                        metrics.gpu_utilization.append(gpu.load * 100)
+                        metrics.gpu_temperature.append(gpu.temperature)
+                    return
+            except Exception:
+                pass
+        
+        # Fallback to PyTorch CUDA info
+        if HAS_TORCH and self._cuda_available:
+            try:
+                metrics.gpu_available = True
+                metrics.gpu_count = torch.cuda.device_count()
+                
+                for i in range(metrics.gpu_count):
+                    metrics.gpu_names.append(torch.cuda.get_device_name(i))
+                    
+                    # Memory info
+                    mem_allocated = torch.cuda.memory_allocated(i) / (1024**3)
+                    mem_reserved = torch.cuda.memory_reserved(i) / (1024**3)
+                    
+                    # Get total memory (this is a rough estimate)
+                    props = torch.cuda.get_device_properties(i)
+                    mem_total = props.total_memory / (1024**3)
+                    
+                    metrics.gpu_memory_total_gb.append(mem_total)
+                    metrics.gpu_memory_used_gb.append(mem_allocated)
+                    metrics.gpu_memory_percent.append((mem_allocated / mem_total) * 100 if mem_total > 0 else 0)
+                    metrics.gpu_utilization.append(0.0)  # Not available via PyTorch
+                    metrics.gpu_temperature.append(0.0)  # Not available via PyTorch
+            except Exception:
+                pass
+    
+    def get_system_info(self) -> Dict[str, Any]:
+        """Get static system information"""
+        info = {
+            'platform': platform.platform(),
+            'system': platform.system(),
+            'release': platform.release(),
+            'machine': platform.machine(),
+            'processor': platform.processor(),
+            'python_version': platform.python_version(),
+        }
+        
+        if HAS_PSUTIL:
+            info['cpu_count_physical'] = self._cpu_count_physical
+            info['cpu_count_logical'] = self._cpu_count_logical
+            
+            mem = psutil.virtual_memory()
+            info['ram_total_gb'] = round(mem.total / (1024**3), 2)
+        
+        if HAS_TORCH:
+            info['cuda_available'] = self._cuda_available
+            if self._cuda_available:
+                info['cuda_version'] = torch.version.cuda
+                info['cudnn_version'] = torch.backends.cudnn.version()
+                info['gpu_count'] = torch.cuda.device_count()
+                info['gpu_names'] = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+        
+        return info
+
+
 @dataclass
 class LoggingConfig:
     """Configuration for Vera logging system"""
@@ -198,6 +570,17 @@ class LoggingConfig:
     stack_trace_on_error: bool = True  # Always include stack on errors
     trace_mode: bool = False  # Master switch for full trace capabilities
     trace_exclude_modules: List[str] = field(default_factory=lambda: ['logging', 'threading'])  # Modules to exclude from traces
+    
+    # System monitoring
+    enable_system_monitoring: bool = True  # Monitor system resources
+    log_system_info_on_start: bool = True  # Log system info at startup
+    system_metrics_interval: int = 60  # Seconds between system metric logs (0 to disable)
+    show_system_metrics_in_context: bool = False  # Include brief metrics in log context
+    
+    # LLM metrics tracking
+    enable_llm_metrics: bool = True  # Track LLM token usage and throughput
+    log_llm_metrics: bool = True  # Automatically log LLM metrics
+    track_first_token_latency: bool = True  # Track time to first token
     
     # Formatting
     timestamp_format: str = "%Y-%m-%d %H:%M:%S.%f"
@@ -248,12 +631,15 @@ class LoggingConfig:
             self.enable_performance_tracking = True
             self.show_orchestrator_details = True
             self.show_infrastructure_stats = True
+            self.enable_system_monitoring = True
+            self.enable_llm_metrics = True
 
 
 class VeraLogger:
     """
     Unified logger for Vera with structured output and rich formatting
-    Enhanced with automatic provenance tracking and stack trace capture
+    Enhanced with automatic provenance tracking, stack trace capture,
+    token tracking, and system resource monitoring
     """
     
     def __init__(self, config: LoggingConfig, component: str = "vera"):
@@ -262,6 +648,15 @@ class VeraLogger:
         self.context_stack: List[LogContext] = []
         self.performance_timers: Dict[str, float] = {}
         self.lock = threading.RLock()
+        
+        # System monitoring
+        self.system_monitor = SystemMonitor() if config.enable_system_monitoring else None
+        self._last_system_metrics: Optional[SystemMetrics] = None
+        self._system_metrics_timer: Optional[threading.Timer] = None
+        
+        # LLM metrics tracking
+        self._llm_operation_start: Optional[float] = None
+        self._llm_first_token_time: Optional[float] = None
         
         # Setup Python logging
         self.logger = logging.getLogger(f"vera.{component}")
@@ -274,7 +669,72 @@ class VeraLogger:
             'thoughts_captured': 0,
             'tools_executed': 0,
             'stack_traces_captured': 0,
+            'llm_calls': 0,
+            'total_tokens': 0,
+            'total_llm_time': 0.0,
         }
+        
+        # Log system info on startup
+        if config.log_system_info_on_start and self.system_monitor:
+            self._log_system_info()
+        
+        # Start periodic system metrics logging if configured
+        if config.system_metrics_interval > 0 and self.system_monitor:
+            self._start_system_metrics_logging()
+    
+    def _log_system_info(self):
+        """Log system information at startup"""
+        if not self.system_monitor:
+            return
+        
+        info = self.system_monitor.get_system_info()
+        metrics = self.system_monitor.get_metrics()
+        
+        self.info(f"System: {info.get('platform', 'unknown')}")
+        self.info(f"Python: {info.get('python_version', 'unknown')}")
+        self.info(f"CPU: {metrics.cpu_count_physical} cores / {metrics.cpu_count_logical} threads")
+        self.info(f"RAM: {metrics.ram_total_gb:.1f} GB total")
+        
+        if metrics.gpu_available:
+            self.info(f"GPU: {metrics.gpu_count}x available")
+            for i, name in enumerate(metrics.gpu_names):
+                self.info(f"  GPU {i}: {name} ({metrics.gpu_memory_total_gb[i]:.1f} GB)")
+            if metrics.cuda_available:
+                self.info(f"CUDA: Available (version {info.get('cuda_version', 'unknown')})")
+        else:
+            self.debug("GPU: Not available")
+    
+    def _start_system_metrics_logging(self):
+        """Start periodic system metrics logging"""
+        def log_metrics():
+            if self.system_monitor:
+                metrics = self.system_monitor.get_metrics()
+                self._last_system_metrics = metrics
+                self.info(f"System metrics: {metrics.format_summary()}")
+                
+                # Schedule next log
+                if self.config.system_metrics_interval > 0:
+                    self._system_metrics_timer = threading.Timer(
+                        self.config.system_metrics_interval,
+                        log_metrics
+                    )
+                    self._system_metrics_timer.daemon = True
+                    self._system_metrics_timer.start()
+        
+        # Start the timer
+        log_metrics()
+    
+    def stop_system_metrics_logging(self):
+        """Stop periodic system metrics logging"""
+        if self._system_metrics_timer:
+            self._system_metrics_timer.cancel()
+            self._system_metrics_timer = None
+    
+    def get_current_system_metrics(self) -> Optional[SystemMetrics]:
+        """Get current system metrics"""
+        if self.system_monitor:
+            return self.system_monitor.get_metrics()
+        return None
     
     def _setup_logging(self):
         """Setup Python logging handlers"""
@@ -469,6 +929,15 @@ class VeraLogger:
         if ctx.task_id:
             parts.append(f"task={ctx.task_id[:8]}")
         
+        # Add brief system metrics if enabled
+        if self.config.show_system_metrics_in_context and self._last_system_metrics:
+            metrics = self._last_system_metrics
+            parts.append(f"cpu={metrics.cpu_percent:.0f}%")
+            parts.append(f"ram={metrics.ram_percent:.0f}%")
+            if metrics.gpu_available and metrics.gpu_utilization:
+                avg_gpu = sum(metrics.gpu_utilization) / len(metrics.gpu_utilization)
+                parts.append(f"gpu={avg_gpu:.0f}%")
+        
         # Add provenance if available
         if self.config.enable_provenance and ctx.provenance:
             parts.append(ctx.provenance.format_short())
@@ -495,6 +964,118 @@ class VeraLogger:
         with self.lock:
             if self.context_stack:
                 self.context_stack.pop()
+    
+    # ===== LLM Metrics Tracking =====
+    
+    def start_llm_operation(self, model: Optional[str] = None, provider: Optional[str] = None):
+        """Start tracking an LLM operation"""
+        if self.config.enable_llm_metrics:
+            self._llm_operation_start = time.time()
+            self._llm_first_token_time = None
+    
+    def mark_first_token(self):
+        """Mark when first token is received"""
+        if self.config.enable_llm_metrics and self.config.track_first_token_latency:
+            if self._llm_operation_start and not self._llm_first_token_time:
+                self._llm_first_token_time = time.time()
+    
+    def end_llm_operation(self, input_tokens: int, output_tokens: int,
+                         model: Optional[str] = None, provider: Optional[str] = None,
+                         cache_hit: bool = False) -> Optional[LLMMetrics]:
+        """End LLM operation tracking and return metrics"""
+        if not self.config.enable_llm_metrics or not self._llm_operation_start:
+            return None
+        
+        end_time = time.time()
+        duration = end_time - self._llm_operation_start
+        total_tokens = input_tokens + output_tokens
+        
+        # Calculate throughput
+        tokens_per_second = total_tokens / duration if duration > 0 else 0
+        input_tps = input_tokens / duration if duration > 0 else 0
+        output_tps = output_tokens / duration if duration > 0 else 0
+        
+        # Calculate first token latency
+        first_token_latency = None
+        if self._llm_first_token_time:
+            first_token_latency = self._llm_first_token_time - self._llm_operation_start
+        
+        metrics = LLMMetrics(
+            start_time=self._llm_operation_start,
+            end_time=end_time,
+            duration=duration,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            tokens_per_second=tokens_per_second,
+            input_tokens_per_second=input_tps,
+            output_tokens_per_second=output_tps,
+            model=model,
+            provider=provider,
+            first_token_latency=first_token_latency,
+            cache_hit=cache_hit,
+        )
+        
+        # Update stats
+        self.stats['llm_calls'] += 1
+        self.stats['total_tokens'] += total_tokens
+        self.stats['total_llm_time'] += duration
+        
+        # Auto-log if enabled
+        if self.config.log_llm_metrics:
+            self.llm_metrics(metrics)
+        
+        # Reset tracking
+        self._llm_operation_start = None
+        self._llm_first_token_time = None
+        
+        return metrics
+    
+    def llm_metrics(self, metrics: LLMMetrics, context: Optional[LogContext] = None):
+        """Log LLM metrics"""
+        if not self._should_log(LogLevel.INFO):
+            return
+        
+        context = self._enrich_context(context, capture_stack=False)
+        ctx_str = self._format_context(context)
+        
+        # Format message
+        msg_parts = [
+            self._colorize("🤖 LLM:", ColorCodes.BRIGHT_CYAN),
+            ctx_str,
+            f"{metrics.total_tokens} tokens ({metrics.input_tokens} in / {metrics.output_tokens} out)",
+            f"@ {metrics.tokens_per_second:.1f} t/s",
+            f"in {metrics.duration:.2f}s"
+        ]
+        
+        if metrics.first_token_latency:
+            msg_parts.append(f"(TTFT: {metrics.first_token_latency:.3f}s)")
+        
+        if metrics.model:
+            msg_parts.append(f"[{metrics.model}]")
+        
+        if metrics.cache_hit:
+            msg_parts.append(self._colorize("(cached)", ColorCodes.GREEN))
+        
+        print(" ".join(msg_parts))
+    
+    def system_metrics(self, metrics: Optional[SystemMetrics] = None, context: Optional[LogContext] = None):
+        """Log system metrics"""
+        if not self._should_log(LogLevel.INFO):
+            return
+        
+        if metrics is None:
+            if not self.system_monitor:
+                return
+            metrics = self.system_monitor.get_metrics()
+        
+        context = self._enrich_context(context, capture_stack=False)
+        ctx_str = self._format_context(context)
+        
+        msg = f"{self._colorize('💻 System:', ColorCodes.BRIGHT_BLUE)} {ctx_str}{metrics.format_summary()}"
+        print(msg)
+    
+    # ===== Standard Logging Methods =====
     
     def trace(self, message: str, context: Optional[LogContext] = None, **kwargs):
         """Log trace message (most verbose)"""
@@ -796,16 +1377,59 @@ class VeraLogger:
     
     def get_stats(self) -> Dict[str, Any]:
         """Get logging statistics"""
-        return self.stats.copy()
+        stats = self.stats.copy()
+        
+        # Add computed metrics
+        if stats['llm_calls'] > 0:
+            stats['avg_tokens_per_call'] = stats['total_tokens'] / stats['llm_calls']
+            stats['avg_time_per_call'] = stats['total_llm_time'] / stats['llm_calls']
+            stats['avg_tokens_per_second'] = stats['total_tokens'] / stats['total_llm_time'] if stats['total_llm_time'] > 0 else 0
+        
+        # Add current system metrics if available
+        if self.system_monitor:
+            metrics = self.system_monitor.get_metrics()
+            stats['current_system_metrics'] = metrics.to_dict()
+        
+        return stats
     
     def print_stats(self):
         """Print logging statistics"""
         print("\n" + "=" * 60)
         print("Logging Statistics")
         print("=" * 60)
-        for key, value in self.stats.items():
-            print(f"  {key}: {value}")
+        
+        stats = self.get_stats()
+        
+        # Basic stats
+        print(f"  Messages logged: {stats['messages_logged']}")
+        print(f"  Errors logged: {stats['errors_logged']}")
+        print(f"  Thoughts captured: {stats['thoughts_captured']}")
+        print(f"  Tools executed: {stats['tools_executed']}")
+        print(f"  Stack traces captured: {stats['stack_traces_captured']}")
+        
+        # LLM stats
+        if stats['llm_calls'] > 0:
+            print(f"\n  LLM Calls: {stats['llm_calls']}")
+            print(f"  Total Tokens: {stats['total_tokens']}")
+            print(f"  Total LLM Time: {stats['total_llm_time']:.2f}s")
+            print(f"  Avg Tokens/Call: {stats.get('avg_tokens_per_call', 0):.1f}")
+            print(f"  Avg Time/Call: {stats.get('avg_time_per_call', 0):.3f}s")
+            print(f"  Avg Throughput: {stats.get('avg_tokens_per_second', 0):.1f} t/s")
+        
+        # System metrics
+        if 'current_system_metrics' in stats:
+            print(f"\n  Current System State:")
+            sys_metrics = stats['current_system_metrics']
+            print(f"    CPU: {sys_metrics['cpu']['percent']:.1f}%")
+            print(f"    RAM: {sys_metrics['ram']['used_gb']:.1f}/{sys_metrics['ram']['total_gb']:.1f} GB ({sys_metrics['ram']['percent']:.1f}%)")
+            if sys_metrics['gpu']['available']:
+                print(f"    GPU: {sys_metrics['gpu']['count']}x available")
+        
         print("=" * 60 + "\n")
+    
+    def __del__(self):
+        """Cleanup on deletion"""
+        self.stop_system_metrics_logging()
 
 
 class JSONFormatter(logging.Formatter):
@@ -861,127 +1485,120 @@ def configure_logging(config: LoggingConfig):
 # Example usage and tests
 if __name__ == "__main__":
     print("=" * 80)
-    print("VERA LOGGING SYSTEM - ENHANCED WITH PROVENANCE AND STACK TRACING")
+    print("VERA LOGGING SYSTEM - ENHANCED WITH SYSTEM MONITORING & TOKEN TRACKING")
     print("=" * 80)
     print()
     
-    # Test 1: Normal mode
-    print("Test 1: Normal mode with provenance")
+    # Test 1: System monitoring
+    print("Test 1: System Monitoring")
     print("-" * 80)
+    
     config = LoggingConfig(
-        global_level=LogLevel.DEBUG,
+        global_level=LogLevel.INFO,
         enable_colors=True,
-        enable_timestamps=True,
-        enable_provenance=True,
-        enable_stack_traces=False,
-        trace_mode=False,
+        enable_system_monitoring=True,
+        log_system_info_on_start=True,
+        system_metrics_interval=0,  # Disable periodic logging for test
     )
     
     logger = get_logger("test", config)
     
-    def test_function():
-        """Test function to show provenance"""
-        logger.info("This log shows where it came from")
-        logger.debug("Debug message with provenance")
-        logger.success("Success with provenance")
-    
-    test_function()
-    
-    print("\n")
-    
-    # Test 2: Trace mode (everything enabled)
-    print("Test 2: TRACE MODE - Full provenance and stack traces")
-    print("-" * 80)
-    
-    trace_config = LoggingConfig(
-        trace_mode=True,  # This enables everything
-        enable_colors=True,
-    )
-    
-    trace_logger = get_logger("trace_test", trace_config)
-    
-    def nested_function():
-        """Nested function to show stack trace"""
-        trace_logger.debug("Debug with full stack trace")
-    
-    def calling_function():
-        """Calling function"""
-        nested_function()
-    
-    calling_function()
+    # Get and display system metrics
+    if logger.system_monitor:
+        metrics = logger.get_current_system_metrics()
+        logger.system_metrics(metrics)
+        
+        print("\nDetailed System Metrics:")
+        print(json.dumps(metrics.to_dict(), indent=2))
     
     print("\n")
     
-    # Test 3: Error with automatic stack trace
-    print("Test 3: Error logging with automatic stack trace")
+    # Test 2: LLM Token Tracking
+    print("Test 2: LLM Token Tracking")
     print("-" * 80)
     
-    error_config = LoggingConfig(
+    llm_config = LoggingConfig(
         global_level=LogLevel.INFO,
-        enable_provenance=True,
-        stack_trace_on_error=True,
-        enable_colors=True,
+        enable_llm_metrics=True,
+        log_llm_metrics=True,
+        track_first_token_latency=True,
     )
     
-    error_logger = get_logger("error_test", error_config)
+    llm_logger = get_logger("llm_test", llm_config)
     
-    def buggy_function():
-        """Function that logs an error"""
-        error_logger.error("Something went wrong!")
-        error_logger.warning("This is also concerning")
+    # Simulate LLM call
+    llm_logger.start_llm_operation(model="gemma2:27b", provider="ollama")
+    time.sleep(0.1)  # Simulate time to first token
+    llm_logger.mark_first_token()
+    time.sleep(0.3)  # Simulate generation time
     
-    buggy_function()
+    metrics = llm_logger.end_llm_operation(
+        input_tokens=150,
+        output_tokens=450,
+        model="gemma2:27b",
+        provider="ollama"
+    )
+    
+    if metrics:
+        print("\nDetailed LLM Metrics:")
+        print(json.dumps(metrics.to_dict(), indent=2))
     
     print("\n")
     
-    # Test 4: Complex scenario with context
-    print("Test 4: Complex scenario with rich context")
+    # Test 3: Combined monitoring
+    print("Test 3: Combined System + LLM Monitoring")
     print("-" * 80)
     
-    complex_config = LoggingConfig(
-        global_level=LogLevel.DEBUG,
+    combined_config = LoggingConfig(
+        global_level=LogLevel.INFO,
+        enable_system_monitoring=True,
+        enable_llm_metrics=True,
+        show_system_metrics_in_context=True,  # Show metrics in log context
         enable_provenance=True,
-        enable_stack_traces=False,
-        enable_session_info=True,
-        enable_model_info=True,
-        trace_mode=False,
     )
     
-    complex_logger = get_logger("complex_test", complex_config)
+    combined_logger = get_logger("combined_test", combined_config)
     
+    # Simulate a complete workflow
     context = LogContext(
-        session_id="abc123def456",
+        session_id="test-session-123",
         agent="fast",
-        model="gemma2",
-        task_id="task-001"
+        model="gemma2:27b"
     )
     
-    complex_logger.info("Processing query", context=context)
+    combined_logger.info("Starting processing", context=context)
     
-    # Test tool execution with provenance
-    complex_logger.tool_execution(
-        "web_search",
-        {"query": "quantum computing", "max_results": 5},
-        result={"found": 5, "sources": ["arxiv.org"]},
-        duration=1.234,
-        context=context
+    # Tool execution
+    combined_logger.start_timer("web_search")
+    time.sleep(0.2)
+    combined_logger.stop_timer("web_search", context=context)
+    
+    # LLM call with metrics
+    combined_logger.start_llm_operation(model="gemma2:27b")
+    time.sleep(0.05)
+    combined_logger.mark_first_token()
+    time.sleep(0.15)
+    combined_logger.end_llm_operation(
+        input_tokens=200,
+        output_tokens=600,
+        model="gemma2:27b"
     )
+    
+    # System metrics
+    if combined_logger.system_monitor:
+        sys_metrics = combined_logger.get_current_system_metrics()
+        combined_logger.system_metrics(sys_metrics, context=context)
+    
+    combined_logger.success("Processing complete", context=context)
     
     print("\n")
     
-    # Test 5: Performance tracking
-    print("Test 5: Performance tracking with provenance")
-    print("-" * 80)
-    
-    complex_logger.start_timer("operation")
-    time.sleep(0.1)
-    complex_logger.stop_timer("operation", context=context)
-    
-    print("\n")
-    
-    # Print statistics
-    complex_logger.print_stats()
+    # Print comprehensive statistics
+    combined_logger.print_stats()
     
     print("=" * 80)
     print("Tests completed!")
+    print("=" * 80)
+    print("\nNote: Install optional dependencies for full functionality:")
+    print("  pip install psutil GPUtil torch")
     print("=" * 80)

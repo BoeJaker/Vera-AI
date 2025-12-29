@@ -84,6 +84,13 @@
             console.log('INIT: Initializing GraphStyleControl...');
             window.GraphStyleControl.init(window.GraphAddon);
         }
+        // Initialize AdvancedFilters
+        if (window.GraphAdvancedFilters) {
+            window.GraphAdvancedFilters.init(
+                window.GraphAddon,
+                window.GraphStyleControl
+            );
+        }
         console.log('=== INIT: ✓ Graph modules initialized successfully ===');
         
         // Dispatch event to signal completion
