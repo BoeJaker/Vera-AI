@@ -47,6 +47,11 @@ try:
 except:
     from Memory.nlp import NLPExtractor
     
+import threading
+from contextlib import contextmanager
+from typing import Optional, List, Set
+
+
 import hashlib
 import time
 from typing import Dict, Any, List
@@ -54,6 +59,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
 # -----------------------------
 # Data models
 # -----------------------------
@@ -155,7 +161,11 @@ class GraphClient:
             except Exception as e:
                 logger.error(f"[GraphClient] Upsert failed for {node.id}: {e}")
                 raise
-                
+
+        # # NEW: Track this creation if in execution context
+        # self._track_node_creation(entity_id)
+        
+
     def upsert_session(self, session: Session):
         logger.debug(f"[GraphClient] Upserting session: {session.id}")
         cypher = """
@@ -421,6 +431,11 @@ class HybridMemory:
             self.llm_enrichment = LLMEnrichment(ollama_endpoint)
         else:
             self.llm_enrichment = None
+        
+        self._execution_context = threading.local()
+        self._execution_context.current_execution_id = None
+        self._execution_context.tracked_nodes = set()
+        logger.debug("[HybridMemory] Execution context tracking initialized")
 
     # -------- Sessions (Tier 2) --------
     def start_session(self, session_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Session:
@@ -439,14 +454,38 @@ class HybridMemory:
             labels = [node_type.capitalize()]
         mem_id = f"mem_{int(time.time()*1000)}"
         
-        item = MemoryItem(id=mem_id, text=text, metadata=metadata or {}, tier="session")
+        # Store type and labels in metadata so they can be retrieved during promotion
+        item_metadata = metadata or {}
+        item_metadata["type"] = node_type
+        item_metadata["labels"] = labels  # Keep as list for Neo4j
+        
+        item = MemoryItem(id=mem_id, text=text, metadata=item_metadata, tier="session")
         logger.debug(f"[HybridMemory] Adding session memory {item.id} to session {session_id}")
         collection = f"session_{session_id}"
-        self.vec.add_texts(collection, [item.id], [item.text], [item.metadata])
         
-        node = Node(id=item.id, type=node_type, labels=labels, properties={"text": item.text, "created_at": datetime.now().isoformat(), "session_id": session_id, **item.metadata})
+        # CRITICAL FIX: ChromaDB doesn't accept lists in metadata
+        # Convert labels to comma-separated string for ChromaDB
+        chroma_metadata = dict(item.metadata)
+        if "labels" in chroma_metadata and isinstance(chroma_metadata["labels"], list):
+            chroma_metadata["labels"] = ",".join(chroma_metadata["labels"])
+        
+        self.vec.add_texts(collection, [item.id], [item.text], [chroma_metadata])
+        
+        # Neo4j can handle lists, so use original metadata with list
+        node = Node(
+            id=item.id, 
+            type=node_type, 
+            labels=labels, 
+            properties={
+                "text": item.text, 
+                "created_at": datetime.now().isoformat(), 
+                "session_id": session_id, 
+                **item.metadata
+            }
+        )
         self.graph.upsert_entity(node)
-       
+        # NEW: Track this creation if in execution context
+        self._track_node_creation(item.id)
         if self.previous_memory and self.previous_session_id == session_id:
             self.link(item.id, self.previous_memory.id, "FOLLOWS", {"source": self.previous_memory.id})
         
@@ -582,6 +621,7 @@ class HybridMemory:
                         "text": canonical,
                         "original_text": entity.text,
                         "confidence": confidence,
+                        "session_id": session_id,  # ← Use consistent name
                         "extracted_from_session": session_id,
                         "variants": list(set([e.text for e in cluster if e.text])),
                         "cluster_id": cluster_id,
@@ -836,6 +876,9 @@ class HybridMemory:
 
         node = Node(id=entity_id, type=etype, labels=labels or [], properties=properties or {})
         self.graph.upsert_entity(node)
+        # CRITICAL: Track node creation if in execution context
+        self._track_node_creation(entity_id)
+    
         self.archive.write({"type": "entity_upsert", "node": node.model_dump()})
         return node
     
@@ -891,6 +934,9 @@ class HybridMemory:
         self.graph.upsert_entity(doc_node)
         self.link(entity_id, doc_id, "HAS_DOCUMENT")
         self.archive.write({"type": "document_attach", "entity_id": entity_id, "doc_id": doc_id, "meta": meta})
+        # NEW: Track this creation if in execution context
+        self._track_node_creation(doc_id)
+        
         return doc_node
     
     def semantic_retrieve(self, query: str, k: int = 8, where: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
@@ -909,18 +955,46 @@ class HybridMemory:
 
     def promote_session_memory_to_long_term(self, item: MemoryItem, entity_anchor: Optional[str] = None):
         """Promote a session memory item into long-term."""
+        
+        # CRITICAL FIX: Convert lists to strings for ChromaDB
+        chroma_metadata = {"promoted": True, **item.metadata}
+        if "labels" in chroma_metadata and isinstance(chroma_metadata["labels"], list):
+            chroma_metadata["labels"] = ",".join(chroma_metadata["labels"])
+        
         self.vec.add_texts(
             collection="long_term_docs",
             ids=[item.id],
             texts=[item.text],
-            metadatas=[{"promoted": True, **item.metadata}],
+            metadatas=[chroma_metadata],
         )
-        node = Node(id=item.id, type="thought", labels=["Thought", "Promoted"], properties={"promoted": True, **item.metadata, "text": item.text})
+        
+        # Preserve original type and labels for Neo4j (can handle lists)
+        original_type = item.metadata.get("type", "thought")
+        original_labels = item.metadata.get("labels", [original_type.capitalize()])
+        
+        # Ensure labels is a list
+        if isinstance(original_labels, str):
+            original_labels = [l.strip() for l in original_labels.split(",")]
+        
+        # Ensure original labels are included, add "Promoted"
+        labels = list(set(original_labels + ["Promoted"]))
+        
+        node = Node(
+            id=item.id, 
+            type=original_type,
+            labels=labels,
+            properties={
+                "promoted": True, 
+                **item.metadata, 
+                "text": item.text
+            }
+        )
         self.graph.upsert_entity(node)
+        
         if entity_anchor:
             self.link(entity_anchor, item.id, "HAS_THOUGHT")
         self.archive.write({"type": "promotion", "memory": item.model_dump(), "anchor": entity_anchor})
-
+        
     def link_session_focus(self, session_id: str, entity_ids: List[str]):
         for eid in entity_ids:
             self.graph.link_session_to_entity(session_id, eid)
@@ -989,7 +1063,475 @@ class HybridMemory:
     def close(self):
         self.graph.close()
 
-
+    
+    def get_or_create_session_node(self, session_id: str) -> Node:
+        """
+        Get or create a session node in the graph.
+        Returns a Node object representing the session.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Node object for the session
+        """
+        logger.debug(f"[HybridMemory] Getting/creating session node: {session_id}")
+        
+        # Check if session exists
+        with self.graph._driver.session() as sess:
+            result = sess.run(
+                "MATCH (s:Session {id: $id}) RETURN s",
+                {"id": session_id}
+            )
+            record = result.single()
+            
+            if record:
+                # Session exists, return it
+                s = record["s"]
+                return Node(
+                    id=s.get("id"),
+                    type="session",
+                    labels=["Session"],
+                    properties=dict(s)
+                )
+        
+        # Session doesn't exist, create it
+        session = self.start_session(session_id=session_id)
+        return Node(
+            id=session.id,
+            type="session",
+            labels=["Session"],
+            properties={
+                "started_at": session.started_at,
+                "metadata": session.metadata
+            }
+        )
+    
+    def get_session_node_id(self, session_id: str) -> str:
+        """
+        Get the session node ID (just returns the session_id since sessions use their ID as the node ID).
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Session node ID (same as session_id)
+        """
+        # Ensure session exists
+        self.get_or_create_session_node(session_id)
+        return session_id
+    
+    def link_session_to_execution(self, session_id: str, execution_id: str, rel: str = "PERFORMED_TOOL_EXECUTION"):
+        """
+        Link a session to a tool execution.
+        
+        Args:
+            session_id: Session identifier
+            execution_id: Tool execution node ID
+            rel: Relationship type
+        """
+        logger.debug(f"[HybridMemory] Linking session {session_id} to execution {execution_id}")
+        
+        cypher = """
+        MATCH (s:Session {id: $sid})
+        MATCH (e:ToolExecution {id: $eid})
+        MERGE (s)-[r:REL {rel: $rel}]->(e)
+        SET r.timestamp = $timestamp
+        RETURN r
+        """
+        
+        with self.graph._driver.session() as sess:
+            sess.run(cypher, {
+                "sid": session_id,
+                "eid": execution_id,
+                "rel": rel,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+    
+    def get_node_by_id(self, node_id: str) -> Optional[Node]:
+        """
+        Get a node from the graph by its ID.
+        
+        Args:
+            node_id: Node identifier
+            
+        Returns:
+            Node object if found, None otherwise
+        """
+        with self.graph._driver.session() as sess:
+            result = sess.run(
+                "MATCH (n {id: $id}) RETURN n, labels(n) as labels",
+                {"id": node_id}
+            )
+            record = result.single()
+            
+            if not record:
+                return None
+            
+            n = record["n"]
+            labels = record["labels"]
+            
+            # Determine node type from labels or properties
+            node_type = n.get("type", labels[0] if labels else "unknown")
+            
+            return Node(
+                id=n.get("id"),
+                type=node_type,
+                labels=labels,
+                properties=dict(n)
+            )
+    
+    def node_exists(self, node_id: str) -> bool:
+        """
+        Check if a node exists in the graph.
+        
+        Args:
+            node_id: Node identifier
+            
+        Returns:
+            True if node exists, False otherwise
+        """
+        with self.graph._driver.session() as sess:
+            result = sess.run(
+                "MATCH (n {id: $id}) RETURN count(n) as count",
+                {"id": node_id}
+            )
+            record = result.single()
+            return record["count"] > 0 if record else False
+    
+    def get_tool_executions_for_node(self, node_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        Get all tool executions performed on a specific node.
+        
+        Args:
+            node_id: Target node ID
+            limit: Maximum number of executions to return
+            
+        Returns:
+            List of execution records with metadata
+        """
+        logger.debug(f"[HybridMemory] Getting tool executions for node: {node_id}")
+        
+        cypher = """
+        MATCH (node {id: $node_id})-[r:TOOL_EXECUTED]->(exec:ToolExecution)
+        OPTIONAL MATCH (exec)-[:PRODUCED]->(result:ToolResult)
+        RETURN exec, result, r
+        ORDER BY exec.executed_at DESC
+        LIMIT $limit
+        """
+        
+        executions = []
+        with self.graph._driver.session() as sess:
+            result = sess.run(cypher, {"node_id": node_id, "limit": limit})
+            
+            for record in result:
+                exec_node = record["exec"]
+                result_node = record.get("result")
+                relationship = record["r"]
+                
+                execution_data = {
+                    "execution_id": exec_node.get("id"),
+                    "tool_name": exec_node.get("tool_name"),
+                    "executed_at": exec_node.get("executed_at"),
+                    "duration_ms": exec_node.get("duration_ms"),
+                    "success": exec_node.get("success", True),
+                    "input_summary": exec_node.get("input_summary"),
+                }
+                
+                if result_node:
+                    execution_data["result"] = {
+                        "result_id": result_node.get("id"),
+                        "output_preview": result_node.get("output_preview"),
+                        "output_length": result_node.get("output_length"),
+                    }
+                
+                executions.append(execution_data)
+        
+        return executions
+    
+    def get_execution_result(self, execution_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get the full result of a tool execution.
+        
+        Args:
+            execution_id: Tool execution node ID
+            
+        Returns:
+            Dictionary with execution details and full output
+        """
+        logger.debug(f"[HybridMemory] Getting execution result: {execution_id}")
+        
+        cypher = """
+        MATCH (exec:ToolExecution {id: $exec_id})-[:PRODUCED]->(result:ToolResult)
+        OPTIONAL MATCH (result)-[:FULL_OUTPUT]->(doc)
+        RETURN exec, result, doc
+        """
+        
+        with self.graph._driver.session() as sess:
+            result = sess.run(cypher, {"exec_id": execution_id})
+            record = result.single()
+            
+            if not record:
+                return None
+            
+            exec_node = record["exec"]
+            result_node = record["result"]
+            doc_node = record.get("doc")
+            
+            # Get full output from document if available
+            full_output = result_node.get("output_preview", "")
+            if doc_node:
+                full_output = doc_node.get("content", full_output)
+            
+            return {
+                "execution_id": execution_id,
+                "tool_name": exec_node.get("tool_name"),
+                "target_node": exec_node.get("target_node"),
+                "executed_at": exec_node.get("executed_at"),
+                "duration_ms": exec_node.get("duration_ms"),
+                "success": exec_node.get("success", True),
+                "input": exec_node.get("input_summary"),
+                "output": full_output,
+                "output_length": result_node.get("output_length"),
+            }
+    
+    def create_tool_execution_node(
+        self,
+        node_id: str,
+        tool_name: str,
+        metadata: Dict[str, Any]
+    ) -> str:
+        """
+        Create a tool execution node and link it to the target node.
+        
+        Args:
+            node_id: Target node ID that tool was executed against
+            tool_name: Name of executed tool
+            metadata: Execution metadata (input, output, duration, etc.)
+            
+        Returns:
+            Execution node ID
+        """
+        execution_id = f"tool_exec_{node_id}_{tool_name}_{int(datetime.now().timestamp())}"
+        
+        # Create execution node
+        exec_node = Node(
+            id=execution_id,
+            type="tool_execution",
+            labels=["ToolExecution", tool_name],
+            properties={
+                "tool_name": tool_name,
+                "target_node": node_id,
+                "executed_at": metadata.get("executed_at"),
+                "duration_ms": metadata.get("duration_ms"),
+                "success": metadata.get("success", True),
+                "input_summary": str(metadata.get("input", ""))[:500],
+            }
+        )
+        self.upsert_entity(exec_node.id, exec_node.type, exec_node.labels, exec_node.properties)
+        
+        # Link target node to execution
+        self.link(
+            node_id,
+            execution_id,
+            "TOOL_EXECUTED",
+            {
+                "tool": tool_name,
+                "timestamp": metadata.get("executed_at"),
+            }
+        )
+        
+        return execution_id
+    
+    def create_tool_result_node(
+        self,
+        execution_id: str,
+        output: str,
+        metadata: Dict[str, Any]
+    ) -> str:
+        """
+        Create a tool result node and link it to the execution.
+        
+        Args:
+            execution_id: Tool execution node ID
+            output: Tool execution output
+            metadata: Result metadata
+            
+        Returns:
+            Result node ID
+        """
+        result_id = f"{execution_id}_result"
+        
+        # Truncate for properties, store full in document
+        output_preview = output[:1000] if len(output) > 1000 else output
+        
+        result_node = Node(
+            id=result_id,
+            type="tool_result",
+            labels=["ToolResult", "Output"],
+            properties={
+                "tool_name": metadata.get("tool_name"),
+                "output_preview": output_preview,
+                "output_length": len(output),
+                "created_at": datetime.now().isoformat(),
+            }
+        )
+        self.upsert_entity(result_node.id, result_node.type, result_node.labels, result_node.properties)
+        
+        # Link execution to result
+        self.link(
+            execution_id,
+            result_id,
+            "PRODUCED",
+            {
+                "output_length": len(output),
+                "truncated": len(output) > 1000,
+            }
+        )
+        
+        # Store full output as document if it's long
+        if len(output) > 500:
+            doc_id = f"{result_id}_full_output"
+            doc_node = self.attach_document(
+                result_id,
+                doc_id,
+                output,
+                {
+                    "tool": metadata.get("tool_name"),
+                    "execution_id": execution_id,
+                    "type": "tool_output"
+                }
+            )
+            
+            # Link result to full output document
+            self.link(
+                result_id,
+                doc_node.id,
+                "FULL_OUTPUT",
+                {"source": "tool_execution"}
+            )
+        
+        return result_id
+    
+    # ========================================================================
+    # EXECUTION CONTEXT TRACKING - NEW SECTION
+    # ========================================================================
+    
+    @contextmanager
+    def track_execution(self, execution_id: str):
+        """
+        Context manager to automatically track all nodes created during tool execution.
+        
+        Any nodes created within this context (via upsert_entity, add_session_memory,
+        attach_document) will automatically be linked to the execution node via
+        CREATED_NODE relationships.
+        
+        This creates a complete audit trail showing which tool execution created
+        which nodes, enabling queries like:
+        - "Show me all nodes created by this tool execution"
+        - "Which tool execution discovered this IP address?"
+        - "What did the port scanner create?"
+        
+        Usage:
+            with vera.mem.track_execution("tool_exec_123"):
+                # Any nodes created here are automatically tracked and linked
+                vera.mem.upsert_entity("ip_192_168_1_1", "network_host", ...)
+                vera.mem.add_session_memory(sess_id, "scan complete", ...)
+        
+        Args:
+            execution_id: Tool execution node ID to link created nodes to
+            
+        Yields:
+            Set of tracked node IDs (for inspection if needed)
+        """
+        # Save previous context (allows nesting)
+        previous_execution_id = getattr(self._execution_context, 'current_execution_id', None)
+        previous_tracked = getattr(self._execution_context, 'tracked_nodes', set())
+        
+        # Set new context
+        self._execution_context.current_execution_id = execution_id
+        self._execution_context.tracked_nodes = set()
+        
+        logger.debug(f"[ExecutionTracking] Started tracking for execution: {execution_id}")
+        
+        try:
+            yield self._execution_context.tracked_nodes
+        finally:
+            # Get tracked nodes before cleanup
+            tracked = self._execution_context.tracked_nodes.copy()
+            
+            # Link all tracked nodes to execution
+            if execution_id and tracked:
+                logger.info(f"[ExecutionTracking] Linking {len(tracked)} nodes to {execution_id}")
+                for node_id in tracked:
+                    try:
+                        self.link(
+                            execution_id,
+                            node_id,
+                            "CREATED_NODE",
+                            {
+                                "created_during_execution": True,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to link {node_id} to execution: {e}")
+            
+            # Restore previous context
+            self._execution_context.current_execution_id = previous_execution_id
+            self._execution_context.tracked_nodes = previous_tracked
+            
+            logger.debug(f"[ExecutionTracking] Finished tracking for execution: {execution_id} ({len(tracked)} nodes)")
+    
+    def _track_node_creation(self, node_id: str):
+        """
+        Internal method to track a node creation if we're in an execution context.
+        Called automatically by upsert_entity, add_session_memory, and attach_document.
+        
+        Args:
+            node_id: Node ID that was created/upserted
+        """
+        execution_id = getattr(self._execution_context, 'current_execution_id', None)
+        if execution_id:
+            tracked_nodes = getattr(self._execution_context, 'tracked_nodes', None)
+            if tracked_nodes is not None:
+                tracked_nodes.add(node_id)
+                logger.debug(f"[ExecutionTracking] Tracked node creation: {node_id} (execution: {execution_id})")
+    
+    def get_execution_created_nodes(self, execution_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all nodes that were created by a specific tool execution.
+        
+        Args:
+            execution_id: Tool execution node ID
+            
+        Returns:
+            List of node info dictionaries
+        """
+        logger.debug(f"[HybridMemory] Getting nodes created by execution: {execution_id}")
+        
+        cypher = """
+        MATCH (exec:ToolExecution {id: $exec_id})-[:CREATED_NODE]->(node)
+        RETURN node, labels(node) as labels
+        ORDER BY node.created_at
+        """
+        
+        nodes = []
+        with self.graph._driver.session() as sess:
+            result = sess.run(cypher, {"exec_id": execution_id})
+            
+            for record in result:
+                node = record["node"]
+                labels = record["labels"]
+                
+                nodes.append({
+                    "id": node.get("id"),
+                    "type": node.get("type"),
+                    "labels": labels,
+                    "properties": dict(node)
+                })
+        
+        return nodes
 # -----------------------------
 # Example usage
 # -----------------------------

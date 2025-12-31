@@ -745,7 +745,6 @@ class Vera:
         import threading
         from queue import Empty
         
-        # Create queues
         chunk_queue = queue.Queue()
         streaming_done = threading.Event()
         
@@ -753,7 +752,11 @@ class Vera:
             """Run LLM stream in background thread"""
             try:
                 for chunk in llm.stream(prompt):
-                    chunk_queue.put(('chunk', chunk))
+                    # CRITICAL: Filter out any <thought> tags from LLM output
+                    text = extract_chunk_text(chunk)
+                    # Remove any thought tags the model might generate
+                    text = text.replace('<thought>', '').replace('</thought>', '')
+                    chunk_queue.put(('chunk', text))
             except Exception as e:
                 self.logger.error(f"Stream error: {e}", exc_info=True)
                 chunk_queue.put(('error', str(e)))
@@ -766,15 +769,23 @@ class Vera:
         
         # Poll both queues with thought priority
         last_check = time.time()
+        in_thought = False
         
         while not streaming_done.is_set() or not chunk_queue.empty() or not self.thought_queue.empty():
             # Check thoughts FIRST (every 50ms)
             if time.time() - last_check > 0.05:
                 try:
                     while True:  # Drain all available thoughts
-                        thought = self.thought_queue.get_nowait()
-                        # Format thought distinctively
-                        yield f"\n\n💭 **THOUGHT**: {thought}\n\n"
+                        thought_chunk = self.thought_queue.get_nowait()
+                        
+                        # Start thought block if not already started
+                        if not in_thought:
+                            yield "\n<thought>"
+                            in_thought = True
+                        
+                        # Yield raw chunk
+                        yield thought_chunk
+                        
                 except Empty:
                     pass
                 last_check = time.time()
@@ -782,8 +793,15 @@ class Vera:
             # Then check chunks
             try:
                 item_type, item_data = chunk_queue.get(timeout=0.05)
+                
                 if item_type == 'chunk':
-                    yield extract_chunk_text(item_data)
+                    # Close thought if we were in one
+                    if in_thought:
+                        yield "</thought>\n"
+                        in_thought = False
+                    
+                    # Yield main content chunk (already filtered)
+                    yield item_data
                 elif item_type == 'error':
                     self.logger.error(f"Stream error: {item_data}")
                     break
@@ -793,13 +811,22 @@ class Vera:
         # Final drain of thoughts
         try:
             while True:
-                thought = self.thought_queue.get_nowait()
-                yield f"\n\n💭 **THOUGHT**: {thought}\n\n"
+                thought_chunk = self.thought_queue.get_nowait()
+                
+                if not in_thought:
+                    yield "\n<thought>"
+                    in_thought = True
+                
+                yield thought_chunk
         except Empty:
             pass
         
+        # Close any open thought
+        if in_thought:
+            yield "</thought>\n"
+        
         thread.join(timeout=1.0)
-
+        
     def stream_llm(self, llm, prompt):
         """Stream LLM output with immediate thought injection"""
         output = []
@@ -814,8 +841,11 @@ class Vera:
         
         # Use the polling wrapper
         for item in self._stream_with_thought_polling(llm, prompt):
-            # Stream to console
-            self.logger.response(item, context=context, stream=True)
+            # Only log regular content, not thoughts (they're wrapped in tags)
+            if not item.startswith('<thought>') and not item.endswith('</thought>'):
+                # Stream to console (but don't box individual chunks)
+                self.logger.response(item, context=context, stream=True)
+            
             output.append(item)
             yield item
         
@@ -1085,6 +1115,7 @@ class Vera:
                     agent=agent_name,
                     model=agent_name
                 )
+
             else:
                 reasoning_llm = self.reasoning_llm
                 agent_context = LogContext(
@@ -1102,7 +1133,7 @@ class Vera:
                         prompt=query
                     )
                     
-                    for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
+                    for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
                         total_response += chunk
                         yield extract_chunk_text(chunk)
                 
@@ -1147,7 +1178,7 @@ class Vera:
                         prompt=query
                     )
                     
-                    for chunk in self.orchestrator.stream_result(task_id, timeout=60.0):
+                    for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
                         total_response += chunk
                         yield extract_chunk_text(chunk)
                 
@@ -1366,7 +1397,59 @@ class Vera:
         
         return config
 
-
+    def _stream_orchestrator_with_thoughts(self, task_id: str, timeout: float = 60.0):
+        """Stream orchestrator results while also polling thought queue"""
+        from queue import Empty
+        import time
+        
+        last_check = time.time()
+        in_thought = False  # Track if we're in a thought stream
+        
+        for chunk in self.orchestrator.stream_result(task_id, timeout=timeout):
+            # Check thoughts every 50ms
+            if time.time() - last_check > 0.05:
+                try:
+                    while True:
+                        thought_chunk = self.thought_queue.get_nowait()
+                        
+                        # Start thought block if not already started
+                        if not in_thought:
+                            yield "\n<thought>"
+                            in_thought = True
+                        
+                        # Yield the raw chunk (no formatting)
+                        yield thought_chunk
+                        
+                except Empty:
+                    pass
+                last_check = time.time()
+            
+            # Regular chunk - close thought if needed
+            if in_thought:
+                yield "</thought>\n"
+                in_thought = False
+            
+            # Yield orchestrator chunk
+            yield chunk
+        
+        # Final thought drain
+        try:
+            while True:
+                thought_chunk = self.thought_queue.get_nowait()
+                
+                if not in_thought:
+                    yield "\n<thought>"
+                    in_thought = True
+                
+                yield thought_chunk
+                
+        except Empty:
+            pass
+        
+        # Close any open thought
+        if in_thought:
+            yield "</thought>\n"
+            
 # --- Example usage ---
 if __name__ == "__main__":
     import sys

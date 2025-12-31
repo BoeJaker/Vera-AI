@@ -84,6 +84,29 @@ def get_cypher_time_filter_multifield(
         params["before_ts"] = before_ts
         params["before_iso"] = before_iso
     
+    # Helper to create safe datetime parsing expression that handles all datetime storage formats
+    def make_datetime_expr(field_expr):
+        """
+        Create expression that safely handles:
+        - DateTime objects (native Neo4j temporal types)
+        - ISO string dates (2025-12-18T22:45:10)
+        - Space-separated string dates (2025-12-18 22:45:10)
+        - Numeric timestamps (milliseconds since epoch as integer or float)
+        """
+        return f"""CASE
+            WHEN {field_expr} IS NULL THEN null
+            WHEN toString({field_expr}) =~ '[-+]?[0-9.eE]+' AND size(toString({field_expr})) >= 10
+                 THEN datetime({{epochMillis: toInteger({field_expr})}})
+            WHEN toString({field_expr}) CONTAINS 'T' THEN datetime(toString({field_expr}))
+            ELSE datetime(replace(toString({field_expr}), ' ', 'T'))
+        END"""
+    
+    # Helper to convert datetime field to millisecond timestamp
+    def make_ts_expr(field):
+        """Create expression that converts a datetime property to millisecond timestamp."""
+        dt_expr = make_datetime_expr(f"{node_var}.{field}")
+        return f"""toInteger({dt_expr}.epochMillis)"""
+    
     # Build the time extraction expression based on field selection
     if time_field == "id":
         # Extract from ID only
@@ -96,16 +119,8 @@ def get_cypher_time_filter_multifield(
         where_clause = " AND ".join(conditions)
         
     elif time_field in ["created_at", "updated_at", "timestamp"]:
-        # Handle both datetime objects and string dates
-        # Try to convert to datetime if it's a string, otherwise use as-is
-        time_expr = f"""CASE 
-            WHEN {node_var}.{time_field} IS NOT NULL 
-            THEN coalesce(
-                datetime({node_var}.{time_field}),
-                datetime(replace({node_var}.{time_field}, ' ', 'T'))
-            )
-            ELSE null
-        END"""
+        # Handle both datetime objects and string dates with robust parsing
+        time_expr = make_datetime_expr(f"{node_var}.{time_field}")
         
         conditions = []
         if after:
@@ -122,23 +137,33 @@ def get_cypher_time_filter_multifield(
         id_ts_expr = f"toInteger(substring({node_var}.id, size(split({node_var}.id, '_')[0]) + 1, 13))"
         
         # Convert datetime properties to millisecond timestamps for comparison
-        # Handle both datetime objects and string dates
-        def make_ts_expr(field):
-            return f"""toInteger(coalesce(
-                datetime({node_var}.{field}),
-                datetime(replace({node_var}.{field}, ' ', 'T'))
-            ).epochMillis)"""
-        
         created_ts_expr = make_ts_expr("created_at")
         updated_ts_expr = make_ts_expr("updated_at")
         timestamp_ts_expr = make_ts_expr("timestamp")
         
         # COALESCE to get first available timestamp
+        # Wrap each in CASE to handle null/missing fields gracefully
         time_expr = f"""COALESCE(
-            CASE WHEN {node_var}.id =~ '.*_\\d{{13}}.*' THEN {id_ts_expr} ELSE null END,
-            CASE WHEN {node_var}.created_at IS NOT NULL THEN {created_ts_expr} ELSE null END,
-            CASE WHEN {node_var}.updated_at IS NOT NULL THEN {updated_ts_expr} ELSE null END,
-            CASE WHEN {node_var}.timestamp IS NOT NULL THEN {timestamp_ts_expr} ELSE null END
+            CASE 
+                WHEN {node_var}.id IS NOT NULL AND {node_var}.id =~ '.*_\\d{{13}}.*' 
+                THEN {id_ts_expr} 
+                ELSE null 
+            END,
+            CASE 
+                WHEN {node_var}.created_at IS NOT NULL 
+                THEN {created_ts_expr}
+                ELSE null 
+            END,
+            CASE 
+                WHEN {node_var}.updated_at IS NOT NULL 
+                THEN {updated_ts_expr}
+                ELSE null 
+            END,
+            CASE 
+                WHEN {node_var}.timestamp IS NOT NULL 
+                THEN {timestamp_ts_expr}
+                ELSE null 
+            END
         )"""
         
         conditions = []
@@ -634,13 +659,29 @@ async def get_nodes_by_timerange(
         if time_field == "id":
             order_expr = "toInteger(substring(n.id, size(split(n.id, '_')[0]) + 1, 13))"
         elif time_field in ["created_at", "updated_at", "timestamp"]:
-            order_expr = f"n.{time_field}"
+            # Handle numeric timestamps or datetime strings
+            order_expr = f"""CASE
+                WHEN toString(n.{time_field}) =~ '[-+]?[0-9.eE]+' AND size(toString(n.{time_field})) >= 10
+                     THEN datetime({{epochMillis: toInteger(n.{time_field})}})
+                WHEN toString(n.{time_field}) CONTAINS 'T' THEN datetime(toString(n.{time_field}))
+                ELSE datetime(replace(toString(n.{time_field}), ' ', 'T'))
+            END"""
         else:  # auto
             # Use COALESCE for ordering too
             id_ts_expr = "toInteger(substring(n.id, size(split(n.id, '_')[0]) + 1, 13))"
-            created_ts_expr = "toInteger(datetime(n.created_at).epochMillis)"
-            updated_ts_expr = "toInteger(datetime(n.updated_at).epochMillis)"
-            timestamp_ts_expr = "toInteger(datetime(n.timestamp).epochMillis)"
+            
+            # Helper to create timestamp expression with numeric handling
+            def make_order_ts_expr(field):
+                return f"""toInteger(CASE
+                    WHEN toString(n.{field}) =~ '[-+]?[0-9.eE]+' AND size(toString(n.{field})) >= 10
+                         THEN datetime({{epochMillis: toInteger(n.{field})}})
+                    WHEN toString(n.{field}) CONTAINS 'T' THEN datetime(toString(n.{field}))
+                    ELSE datetime(replace(toString(n.{field}), ' ', 'T'))
+                END.epochMillis)"""
+            
+            created_ts_expr = make_order_ts_expr("created_at")
+            updated_ts_expr = make_order_ts_expr("updated_at")
+            timestamp_ts_expr = make_order_ts_expr("timestamp")
             
             order_expr = f"""COALESCE(
                 CASE WHEN n.id =~ '.*_\\d{{13}}.*' THEN {id_ts_expr} ELSE null END,
