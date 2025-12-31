@@ -1246,6 +1246,11 @@
                 controls.style.pointerEvents = enabled ? 'auto' : 'none';
             }
             
+            if (!enabled) {
+                // Clean up when disabling
+                this.cleanupCollapsedNodes();
+            }
+            
             this.saveFilters();
         },
         
@@ -1375,6 +1380,9 @@
                 }
             }
             
+            // Clean up since grouping has changed
+            this.cleanupCollapsedNodes();
+            
             this.saveFilters();
             this.syncUI();
             
@@ -1393,6 +1401,9 @@
                 this.filters.collapse.edges.groupBy = 
                     this.filters.collapse.edges.groupBy.filter(p => p !== propertyName);
             }
+            
+            // Clean up since grouping has changed
+            this.cleanupCollapsedNodes();
             
             this.saveFilters();
             this.syncUI();
@@ -1708,11 +1719,76 @@
         },
         
         /**
+         * Clean up all collapsed nodes and edges - restore to original state
+         */
+        cleanupCollapsedNodes: function() {
+            console.log('Cleaning up all collapsed nodes...');
+            
+            // Find and remove all representative nodes
+            const representativeNodesToRemove = [];
+            const collapsedEdgesToRemove = [];
+            const constituentNodesToRestore = new Set();
+            
+            try {
+                // Find all collapsed nodes and edges
+                network.body.data.nodes.forEach(node => {
+                    if (node._isCollapsed) {
+                        representativeNodesToRemove.push(node.id);
+                        // Collect constituent IDs to restore
+                        if (node._constituentIds) {
+                            node._constituentIds.forEach(id => constituentNodesToRestore.add(id));
+                        }
+                    }
+                });
+                
+                network.body.data.edges.forEach(edge => {
+                    if (edge._isCollapsedEdge) {
+                        collapsedEdgesToRemove.push(edge.id);
+                    }
+                });
+                
+                // Remove representative nodes
+                if (representativeNodesToRemove.length > 0) {
+                    network.body.data.nodes.remove(representativeNodesToRemove);
+                    console.log(`Removed ${representativeNodesToRemove.length} representative nodes`);
+                }
+                
+                // Remove collapsed edges
+                if (collapsedEdgesToRemove.length > 0) {
+                    network.body.data.edges.remove(collapsedEdgesToRemove);
+                    console.log(`Removed ${collapsedEdgesToRemove.length} collapsed edges`);
+                }
+                
+                // Restore constituent nodes (unhide them)
+                if (constituentNodesToRestore.size > 0) {
+                    const nodesToRestore = Array.from(constituentNodesToRestore).map(id => ({
+                        id: id,
+                        hidden: false
+                    }));
+                    network.body.data.nodes.update(nodesToRestore);
+                    console.log(`Restored ${nodesToRestore.length} constituent nodes`);
+                }
+                
+            } catch (e) {
+                console.warn('Error during cleanup:', e);
+            }
+            
+            // Clear the collapsed state
+            this.filters.collapse.nodes.collapsed.clear();
+            this.filters.collapse.edges.collapsed.clear();
+            
+            console.log('Cleanup complete');
+        },
+        
+        /**
          * Apply collapse operations
          */
         applyCollapseOperations: function({ nodes, edges }) {
             let resultNodes = new Set(nodes);
             let resultEdges = new Set(edges);
+            
+            // ALWAYS cleanup existing collapsed nodes first
+            this.cleanupCollapsedNodes();
             
             // Collapse nodes
             if (this.filters.collapse.nodes.enabled && this.filters.collapse.nodes.groupBy.length > 0) {
@@ -1729,8 +1805,6 @@
                 this.filters.collapse.nodes.collapsed = groups;
             } else {
                 this.filters.collapse.nodes.collapsed.clear();
-                // Remove any existing collapsed nodes
-                this.removeAllCollapsedNodes();
             }
             
             // Collapse edges

@@ -5,7 +5,7 @@
 
 (() => {
 
-          
+        // Make sure handleWebSocketMessage uses the correct function
         VeraChat.prototype.handleWebSocketMessage = function(data) {
             this.veraRobot.setState('thinking');
             
@@ -14,7 +14,6 @@
                     this.currentStreamingMessageId = `msg-${Date.now()}`;
                     this.addMessage('assistant', '', this.currentStreamingMessageId);
                     
-                    // Reset TTS tracking for new message
                     if (this.ttsEnabled) {
                         this.ttsSpokenLength = 0;
                     }
@@ -25,14 +24,15 @@
                     message.content += data.content;
                     this.updateStreamingMessageContent(this.currentStreamingMessageId, message.content);
                     
-                    // *** STREAMING TTS ***
-                    if (typeof this.speakStreamingText === 'function') {
-                        this.speakStreamingText(message.content);
+                    // TTS: speak ONLY main content (no thoughts)
+                    if (typeof this.speakStreamingText === 'function' && this.ttsEnabled) {
+                        const { mainContent } = this.extractThoughtsByBalance(message.content);
+                        this.speakStreamingText(mainContent);
                     }
                 }
             } else if (data.type === 'complete') {
                 this.veraRobot.setState('idle');
-                // VerChat.loadGraph()
+                
                 if (this.currentStreamingMessageId) {
                     const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
                     if (message) {
@@ -44,13 +44,14 @@
                             if (indicator) indicator.remove();
                         }
                         
-                        // IMPORTANT: Do final render with modern features
+                        // Final render with thoughts properly separated
+                        const { mainContent } = this.extractThoughtsByBalance(message.content);
                         const renderedView = messageEl.querySelector('.message-rendered');
                         if (renderedView && typeof this.renderMessageContent === 'function') {
-                            renderedView.innerHTML = this.renderMessageContent(message.content);
+                            renderedView.innerHTML = this.renderMessageContent(mainContent);
                         }
                         
-                        // Apply rendering (syntax highlighting + mermaid)
+                        // Apply syntax highlighting
                         if (typeof this.applyRendering === 'function') {
                             setTimeout(() => {
                                 this.applyRendering(this.currentStreamingMessageId);
@@ -64,10 +65,11 @@
                             }, 200);
                         }
                         
-                        // *** FINALIZE TTS ***
-                        if (typeof this.finalizeTTS === 'function') {
+                        // Finalize TTS
+                        if (typeof this.finalizeTTS === 'function' && this.ttsEnabled) {
                             setTimeout(() => {
-                                this.finalizeTTS(message.content);
+                                const { mainContent } = this.extractThoughtsByBalance(message.content);
+                                this.finalizeTTS(mainContent);
                             }, 300);
                         }
                     }
@@ -76,10 +78,9 @@
                 this.currentStreamingMessageId = null;
                 this.processing = false;
                 
-                // Re-enable input and restore focus
                 const sendBtn = document.getElementById('sendBtn');
                 const messageInput = document.getElementById('messageInput');
-                app.loadGraph()
+                app.loadGraph();
                 if (sendBtn) sendBtn.disabled = false;
                 if (messageInput) {
                     messageInput.disabled = false;
@@ -89,8 +90,6 @@
                         }
                     }, 100);
                 }
-                
-                // VeraChat.loadGraph();
             } else if (data.type === 'error') {
                 this.veraRobot.setState('error');
                 this.addSystemMessage(`Error: ${data.error}`);
@@ -190,16 +189,42 @@
             const contentContainer = messageEl.querySelector('.message-content');
             if (!contentContainer) return;
             
-            let renderedView = contentContainer.querySelector('.message-rendered');
+            // Extract thoughts and clean content
+            const { thoughtContent, mainContent, isThinking } = this.extractThoughtsByBalance(content);
             
-            if (renderedView) {
-                // STREAMING: Just update raw text (fast!)
-                renderedView.textContent = content;
-            } else {
-                contentContainer.textContent = content;
+            // Handle thought container
+            if (thoughtContent || isThinking) {
+                let thoughtContainer = contentContainer.querySelector('.thought-container');
+                
+                if (!thoughtContainer) {
+                    thoughtContainer = document.createElement('div');
+                    thoughtContainer.className = 'thought-container';
+                    contentContainer.insertBefore(thoughtContainer, contentContainer.firstChild);
+                }
+                
+                // Update thought container
+                const isComplete = !isThinking;
+                thoughtContainer.className = isComplete ? 'thought-container complete' : 'thought-container';
+                thoughtContainer.innerHTML = `
+                    <div class="thought-header">
+                        <span class="thought-icon">${isComplete ? '✓' : '💭'}</span>
+                        <span class="thought-label">${isComplete ? 'Thought process' : 'Thinking...'}</span>
+                    </div>
+                    <div class="thought-content">${this.escapeHtml(thoughtContent || '')}</div>
+                `;
             }
             
-            // Add/update streaming indicator
+            // Update main content
+            let renderedView = contentContainer.querySelector('.message-rendered');
+            if (!renderedView) {
+                renderedView = document.createElement('div');
+                renderedView.className = 'message-rendered';
+                contentContainer.appendChild(renderedView);
+            }
+            
+            renderedView.textContent = mainContent;
+            
+            // Streaming indicator
             let indicator = contentContainer.querySelector('.streaming-indicator');
             if (!indicator) {
                 indicator = document.createElement('div');
@@ -217,7 +242,120 @@
                     container.scrollTop = container.scrollHeight;
                 }
             }
-        };        
+        };
+
+        
+        VeraChat.prototype.extractThoughtsByBalance = function(content) {
+            let thoughtContent = '';
+            let mainContent = '';
+            let inThought = false;
+            let openCount = 0;
+            let closeCount = 0;
+            let currentThought = '';
+            let currentMain = '';
+            let i = 0;
+            
+            while (i < content.length) {
+                // Check for opening tag
+                if (content.substring(i, i + 9) === '<thought>') {
+                    openCount++;
+                    
+                    // If this is the FIRST opening tag, switch to thought mode
+                    if (openCount === 1) {
+                        inThought = true;
+                        // Save any content before first thought tag to main
+                        mainContent += currentMain;
+                        currentMain = '';
+                    }
+                    
+                    // Skip past the tag
+                    i += 9;
+                    continue;
+                }
+                
+                // Check for closing tag
+                if (content.substring(i, i + 10) === '</thought>') {
+                    closeCount++;
+                    
+                    // If counts now match, we're done with ALL thoughts
+                    if (openCount === closeCount && openCount > 0) {
+                        thoughtContent = currentThought;
+                        currentThought = '';
+                        inThought = false;
+                        // Reset for potential new thought blocks
+                        openCount = 0;
+                        closeCount = 0;
+                    }
+                    
+                    // Skip past the tag
+                    i += 10;
+                    continue;
+                }
+                
+                // Regular character - add to appropriate bucket
+                if (inThought) {
+                    currentThought += content[i];
+                } else {
+                    currentMain += content[i];
+                }
+                
+                i++;
+            }
+            
+            // CRITICAL: If still in thought mode, capture current thought
+            // but DON'T add it to mainContent
+            if (inThought && currentThought) {
+                thoughtContent = currentThought;
+            }
+            
+            // CRITICAL: Only add currentMain if we're NOT in thought mode
+            if (!inThought) {
+                mainContent += currentMain;
+            }
+            
+            const isThinking = openCount > closeCount;
+            
+            return {
+                thoughtContent: thoughtContent.trim(),
+                mainContent: mainContent.trim(),
+                isThinking: isThinking
+            };
+        };
+
+        // NEW: Parse streaming content to separate thoughts from main content
+        VeraChat.prototype.parseStreamingContent = function(content) {
+            const hasOpenTag = content.includes('<thought>');
+            const hasCloseTag = content.includes('</thought>');
+            
+            if (!hasOpenTag) {
+                return {
+                    hasThought: false,
+                    thoughtText: '',
+                    thoughtComplete: false,
+                    mainContent: content
+                };
+            }
+            
+            const thoughtStart = content.indexOf('<thought>') + 9;
+            let thoughtEnd = content.indexOf('</thought>');
+            
+            if (thoughtEnd === -1) {
+                thoughtEnd = content.length;
+            }
+            
+            const thoughtText = content.substring(thoughtStart, thoughtEnd);
+            const beforeThought = content.substring(0, content.indexOf('<thought>'));
+            const afterThought = hasCloseTag ? content.substring(content.indexOf('</thought>') + 10) : '';
+            const mainContent = (beforeThought + ' ' + afterThought).trim();
+            
+            return {
+                hasThought: true,
+                thoughtText: thoughtText,
+                thoughtComplete: hasCloseTag,
+                mainContent: mainContent
+            };
+        };
+
         VeraChat.prototype.sendMessageViaWebSocket = async function(message) {
             this.veraRobot.setState('thinking');
             if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
@@ -432,49 +570,126 @@
             });
         }
         
+
         VeraChat.prototype.renderMessage = function(message) {
             const container = document.getElementById('chatMessages');
             const messageEl = document.createElement('div');
             messageEl.id = message.id;
-            messageEl.className = `message ${message.role}`;
+            messageEl.className = `message ${message.role} modern-message`;
+            messageEl.dataset.messageId = message.id;
+            messageEl.dataset.messageContent = message.content;
+            messageEl.dataset.graphNodeId = message.graph_node_id || `msg_${message.id}`;
+            messageEl.dataset.showingSource = 'false';
             
+            // Detect wide content
+            const hasWideContent = this.hasWideContent(message.content);
+            if (hasWideContent) {
+                messageEl.classList.add('message-wide');
+            }
+            
+            // Make clickable for non-system messages
+            if (message.role !== 'system') {
+                messageEl.onclick = (e) => {
+                    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
+                        return;
+                    }
+                    this.toggleMessageMenu(message.id);
+                };
+            }
+            
+            // Avatar
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = message.role === 'user' ? 'You' : message.role === 'system' ? 'ℹ️' : 'V';
+            avatar.innerHTML = message.role === 'user' 
+                ? '<div class="avatar-circle user-avatar">👤</div>'
+                : message.role === 'assistant'
+                ? '<div class="avatar-circle assistant-avatar pulse">V</div>'
+                : '<div class="avatar-circle system-avatar">ℹ️</div>';
             
+            // Content container
+            const contentContainer = document.createElement('div');
+            contentContainer.className = 'message-content-container';
+            
+            // Header
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            const roleName = message.role === 'user' ? 'You' : message.role === 'assistant' ? 'Vera' : 'System';
+            const timestamp = this.formatTimestamp(message.timestamp);
+            
+            const hasRenderableContent = this.hasRenderableContent(message.content);
+            const sourceToggle = hasRenderableContent ? 
+                `<button class="source-toggle-btn" onclick="app.toggleSource('${message.id}'); event.stopPropagation();" title="Toggle source view">
+                    <span class="source-icon">📝</span>
+                </button>` : '';
+            
+            header.innerHTML = `
+                <span class="message-role">${roleName}</span>
+                <span class="message-timestamp">${timestamp}</span>
+                ${sourceToggle}
+                ${message.role !== 'system' ? '<span class="click-hint">Click for options</span>' : ''}
+            `;
+            
+            // Content
             const content = document.createElement('div');
             content.className = 'message-content';
-            content.innerHTML = this.parseMessageContent(message.content);
             
-            if (message.role !== 'system') {
-                const saveBtn = document.createElement('button');
-                saveBtn.className = 'message-copy-btn';
-                saveBtn.textContent = '📓';
-                saveBtn.title = 'Save to notebook';
-                saveBtn.style.right = '40px'; // Position next to copy button
-                saveBtn.onclick = (e) => {
-                    e.stopPropagation();
-                    this.captureMessageAsNote(message.id);
-                };
-                content.appendChild(saveBtn);
+            // Extract thoughts
+            const { thoughtContent, mainContent } = this.extractThoughtsByBalance(message.content);
+            
+            // Add thought container if thoughts exist
+            if (thoughtContent) {
+                const thoughtContainer = document.createElement('div');
+                thoughtContainer.className = 'thought-container complete';
+                thoughtContainer.innerHTML = `
+                    <div class="thought-header">
+                        <span class="thought-icon">✓</span>
+                        <span class="thought-label">Thought process</span>
+                    </div>
+                    <div class="thought-content">${this.escapeHtml(thoughtContent)}</div>
+                `;
+                content.appendChild(thoughtContainer);
             }
+            
+            // Rendered view (main content without thoughts)
+            const renderedView = document.createElement('div');
+            renderedView.className = 'message-rendered';
+            renderedView.innerHTML = this.renderMessageContent(mainContent);
+            
+            // Source view (show original with tags)
+            const sourceView = document.createElement('pre');
+            sourceView.className = 'message-source';
+            sourceView.style.display = 'none';
+            sourceView.textContent = message.content;
+            
+            content.appendChild(renderedView);
+            content.appendChild(sourceView);
+            
+            // Assemble
+            contentContainer.appendChild(header);
+            contentContainer.appendChild(content);
             
             if (message.role !== 'system') {
                 messageEl.appendChild(avatar);
             }
-            messageEl.appendChild(content);
+            messageEl.appendChild(contentContainer);
             
             container.appendChild(messageEl);
             
-            // Detect and attach canvas buttons for code blocks
-            const codeBlocks = this.detectCodeBlocksInMessage(message.content);
-            if (codeBlocks.length > 0) {
-                const block = codeBlocks[0]; // Use first code block
-                this.attachCanvasButtonsToMessage(messageEl, block.lang, block.code, message.id);
+            // Apply rendering
+            setTimeout(() => {
+                this.applyRendering(message.id);
+            }, 100);
+            
+            // Auto-focus canvas
+            if (this.canvasAutoFocus && message.role === 'assistant') {
+                setTimeout(() => {
+                    this.checkAndAutoRenderCanvas(message);
+                }, 300);
             }
             
             container.scrollTop = container.scrollHeight;
-        }
+        };
+
         
         VeraChat.prototype.addSystemMessage = function(content) {
             this.addMessage('system', content);
@@ -516,7 +731,9 @@
         this.sttActive = false;
         this.streamingBuffer = '';
         this.lastCanvasCheck = 0;
-        
+        // NEW: Thought tracking
+        this.currentThought = null;
+        this.inThoughtTag = false;
         // Initialize speech recognition
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1448,75 +1665,75 @@
                (content.startsWith('[') && content.includes('"'));
     };
     
-    VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
-        const messageEl = document.getElementById(messageId);
-        if (!messageEl) return;
-
-        // Find the rendered view (modern UI structure)
-        const renderedView = messageEl.querySelector('.message-rendered');
-
-        if (renderedView) {
-            // Use modern rendering with all features
-            renderedView.innerHTML = this.renderMessageContent(content);
+    
+        VeraChat.prototype.updateStreamingMessageContent = function(messageId, content) {
+            const messageEl = document.getElementById(messageId);
+            if (!messageEl) return;
             
-            // Apply syntax highlighting to any new code blocks
-            if (window.hljs) {
-                renderedView.querySelectorAll('pre code:not(.hljs)').forEach((block) => {
-                    window.hljs.highlightElement(block);
-                });
-            }
-        } else {
-            // Fallback: update content container directly
             const contentContainer = messageEl.querySelector('.message-content');
-            if (contentContainer) {
-                contentContainer.innerHTML = this.renderMessageContent(content);
+            if (!contentContainer) return;
+            
+            // Extract thoughts and clean content
+            const { thoughtContent, mainContent, isThinking } = this.extractThoughtsByBalance(content);
+            
+            // Update or create thought container
+            if (thoughtContent || isThinking) {
+                let thoughtContainer = contentContainer.querySelector('.thought-container');
+                
+                if (!thoughtContainer) {
+                    thoughtContainer = document.createElement('div');
+                    thoughtContainer.className = 'thought-container';
+                    contentContainer.insertBefore(thoughtContainer, contentContainer.firstChild);
+                }
+                
+                const isComplete = !isThinking;
+                thoughtContainer.className = isComplete ? 'thought-container complete' : 'thought-container';
+                thoughtContainer.innerHTML = `
+                    <div class="thought-header">
+                        <span class="thought-icon">${isComplete ? '✓' : '💭'}</span>
+                        <span class="thought-label">${isComplete ? 'Thought process' : 'Thinking...'}</span>
+                    </div>
+                    <div class="thought-content">${this.escapeHtml(thoughtContent || 'Processing...')}</div>
+                `;
             }
-        }
-
-        // Add/update streaming indicator
-        const contentContainer = messageEl.querySelector('.message-content');
-        if (contentContainer) {
+            
+            // Update main content container
+            let renderedView = contentContainer.querySelector('.message-rendered');
+            if (!renderedView) {
+                renderedView = document.createElement('div');
+                renderedView.className = 'message-rendered';
+                contentContainer.appendChild(renderedView);
+            }
+            
+            // CRITICAL: Only show mainContent (thoughts completely stripped)
+            // If we're currently thinking and have no main content yet, show nothing
+            if (mainContent || !isThinking) {
+                renderedView.textContent = mainContent;
+            } else {
+                renderedView.textContent = '';  // Empty while thinking
+            }
+            
+            // Streaming indicator
             let indicator = contentContainer.querySelector('.streaming-indicator');
             if (!indicator) {
                 indicator = document.createElement('div');
                 indicator.className = 'streaming-indicator';
-                indicator.style.cssText = `
-                    color: var(--accent);
-                    font-size: 12px;
-                    margin-top: 8px;
-                    padding: 4px 8px;
-                    background: rgba(var(--accent-rgb), 0.1);
-                    border-radius: 4px;
-                    display: inline-block;
-                    animation: pulse 1.5s ease-in-out infinite;
-                `;
+                indicator.style.cssText = 'color: #60a5fa; font-size: 12px; margin-top: 8px; padding: 4px 8px; background: rgba(59, 130, 246, 0.0); border-radius: 4px; display: inline-block;';
                 indicator.innerHTML = '<span style="display: inline-block; width: 8px; height: 8px; background: var(--accent); border-radius: 50%; margin-right: 6px;"></span>Streaming...';
                 contentContainer.appendChild(indicator);
             }
-        }
-
-        // Auto-scroll if near bottom
-        const container = document.getElementById('chatMessages');
-        if (container) {
-            const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
-            if (isScrolledToBottom) {
-                container.scrollTop = container.scrollHeight;
+            
+            // Auto-scroll
+            const container = document.getElementById('chatMessages');
+            if (container) {
+                const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+                if (isScrolledToBottom) {
+                    container.scrollTop = container.scrollHeight;
+                }
             }
-        }
         };
 
-        // Add pulse animation for streaming indicator
-        if (!document.getElementById('streaming-indicator-styles')) {
-        const style = document.createElement('style');
-        style.id = 'streaming-indicator-styles';
-        style.textContent = `
-            @keyframes pulse {
-                0%, 100% { opacity: 1; }
-                50% { opacity: 0.5; }
-            }
-        `;
-        document.head.appendChild(style);
-        }
+
     VeraChat.prototype.hasRenderableContent = function(content) {
         return content.includes('```') || 
                content.includes('# ') || 
@@ -3745,6 +3962,48 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
         return div.innerHTML;
     };
     
+    VeraChat.prototype.extractThoughts = function(content) {
+        const thoughts = [];
+        let cleanContent = content;
+        let isThinking = false;
+        
+        // Count tags
+        const openCount = (content.match(/<thought>/g) || []).length;
+        const closeCount = (content.match(/<\/thought>/g) || []).length;
+        
+        // If we have more open than close, we're still thinking
+        isThinking = openCount > closeCount;
+        
+        // Extract all complete thought blocks
+        const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/g;
+        let match;
+        
+        while ((match = thoughtRegex.exec(content)) !== null) {
+            thoughts.push(match[1].trim());
+        }
+        
+        // If thinking, also get the incomplete thought
+        if (isThinking) {
+            const lastOpenIndex = content.lastIndexOf('<thought>');
+            if (lastOpenIndex !== -1) {
+                const afterLastOpen = content.substring(lastOpenIndex + 9); // 9 = length of '<thought>'
+                // Check if this content hasn't been captured in a complete block
+                const incompleteThought = afterLastOpen.split('</thought>')[0].trim();
+                if (incompleteThought && !thoughts.some(t => t.includes(incompleteThought))) {
+                    thoughts.push(incompleteThought);
+                }
+            }
+        }
+        
+        // Remove ALL thought tags from content (including malformed ones)
+        cleanContent = content
+            .replace(/<thought>/g, '')
+            .replace(/<\/thought>/g, '')
+            .trim();
+        
+        return { thoughts, cleanContent, isThinking };
+    };
+
     // =====================================================================
     // Load External Libraries
     // =====================================================================
@@ -3787,6 +4046,8 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
             };
             document.head.appendChild(mermaidScript);
         }
+        
+
     };
     
     loadExternalLibraries();
@@ -3821,5 +4082,99 @@ console.log('✅ Updated with sliding sidebar, fixed search, and real settings/h
     }
     
     console.log('🚀 Modern Interactive Chat UI (COMPLETE FIX) loaded successfully');
+
+// ADD: CSS Styles for thought container
+const thoughtStyles = `
+/* Thought Container */
+.thought-container {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    animation: thoughtFadeIn 0.3s ease-out;
+}
+
+.thought-container.complete {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
+    border-color: rgba(139, 92, 246, 0.2);
+}
+
+.thought-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+}
+
+.thought-icon {
+    font-size: 16px;
+    animation: thoughtPulse 2s ease-in-out infinite;
+}
+
+.thought-container.complete .thought-icon {
+    animation: none;
+    color: #8b5cf6;
+}
+
+.thought-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #a78bfa;
+}
+
+.thought-content {
+    color: var(--text-muted, #94a3b8);
+    line-height: 1.6;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+@keyframes thoughtFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes thoughtPulse {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.1);
+    }
+}
+
+/* Ensure thought container appears above other content */
+.message-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.thought-container + .message-rendered {
+    margin-top: 8px;
+}
+`;
+
+// Inject thought styles
+if (!document.getElementById('thought-container-styles')) {
+    const style = document.createElement('style');
+    style.id = 'thought-container-styles';
+    style.textContent = thoughtStyles;
+    document.head.appendChild(style);
+}
 
 })();

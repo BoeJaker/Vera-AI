@@ -1174,6 +1174,8 @@
         /**
          * Execute query
          */
+ 
+ 
         executeQuery: async function() {
             const query = this.buildQuery();
             if (!query.trim()) {
@@ -1202,7 +1204,7 @@
                     if (this.builder.dateFrom) params.append('after', this.builder.dateFrom);
                     if (this.builder.dateTo) params.append('before', this.builder.dateTo);
                     if (this.builder.nodeLabel) params.append('node_types', this.builder.nodeLabel);
-                    params.append('time_field', this.builder.timeField);  // NEW
+                    params.append('time_field', this.builder.timeField);
                     params.append('max_nodes', this.builder.limit);
                     
                     apiUrl = `http://llm.int:8888/api/graph/timerange?${params.toString()}`;
@@ -1210,12 +1212,27 @@
                     const response = await fetch(apiUrl);
                     const data = await response.json();
                     
+                    // FIX: Check response status first
+                    if (!response.ok) {
+                        throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // FIX: Validate data structure before accessing
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Invalid response format from server');
+                    }
+                    
                     this.currentResults = data;
                     this.showResults(data);
                     
-                    if (data.nodes.length > 0 || data.edges.length > 0) {
+                    // FIX: Safe access to nested properties
+                    const nodeCount = data.nodes?.length || 0;
+                    const edgeCount = data.edges?.length || 0;
+                    
+                    if (nodeCount > 0 || edgeCount > 0) {
                         this.updateGraph(data, replace, fit, applyLayout);
-                        this.notify(`${data.nodes.length} nodes, ${data.edges.length} edges (using ${this.builder.timeField})`, 'success');
+                        const timeFieldLabel = this.builder.timeField === 'auto' ? 'auto (fallback chain)' : this.builder.timeField;
+                        this.notify(`${nodeCount} nodes, ${edgeCount} edges (using ${timeFieldLabel})`, 'success');
                     } else {
                         this.notify('No results', 'info');
                     }
@@ -1229,6 +1246,16 @@
                     
                     const data = await response.json();
                     
+                    // FIX: Check response status
+                    if (!response.ok) {
+                        throw new Error(data.detail || data.error || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // FIX: Validate data structure
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Invalid response format from server');
+                    }
+                    
                     if (!data.success) {
                         this.showError(data.error || 'Query failed');
                         return;
@@ -1238,9 +1265,13 @@
                     this.addToHistory(query, data);
                     this.showResults(data);
                     
-                    if (data.nodes.length > 0 || data.edges.length > 0) {
+                    // FIX: Safe access to nested properties
+                    const nodeCount = data.nodes?.length || 0;
+                    const edgeCount = data.edges?.length || 0;
+                    
+                    if (nodeCount > 0 || edgeCount > 0) {
                         this.updateGraph(data, replace, fit, applyLayout);
-                        this.notify(`${data.nodes.length} nodes, ${data.edges.length} edges`, 'success');
+                        this.notify(`${nodeCount} nodes, ${edgeCount} edges`, 'success');
                     } else {
                         this.notify('No results', 'info');
                     }
@@ -1248,10 +1279,36 @@
                 
             } catch (e) {
                 console.error('Query error:', e);
-                this.showError(e.message);
+                this.showError(e.message || 'Query execution failed');
             } finally {
                 this.showLoading(false);
             }
+        },
+
+
+        /**
+         * ALSO UPDATE showResults to handle missing data gracefully
+         */
+        showResults: function(data) {
+            const box = document.getElementById('cypher-results-box');
+            const content = document.getElementById('cypher-results-content');
+            if (!box || !content) return;
+            
+            box.style.display = 'block';
+            
+            // FIX: Safe access with defaults
+            const stats = data.stats || {};
+            const nodeCount = stats.node_count || data.nodes?.length || 0;
+            const edgeCount = stats.edge_count || data.edges?.length || 0;
+            const resultCount = stats.result_count || 0;
+            
+            content.innerHTML = `
+                <div class="results-stats">
+                    <span><b>${nodeCount}</b> nodes</span>
+                    <span><b>${edgeCount}</b> edges</span>
+                    <span><b>${resultCount}</b> records</span>
+                </div>
+            `;
         },
         /**
          * Update graph with results - NOW USES UNIFIED LOADER
@@ -1827,20 +1884,20 @@ applyCircularLayout: function(nodes) {
         // UI HELPERS
         // ==========================================
         
-        showResults: function(data) {
-            const box = document.getElementById('cypher-results-box');
-            const content = document.getElementById('cypher-results-content');
-            if (!box || !content) return;
+        // showResults: function(data) {
+        //     const box = document.getElementById('cypher-results-box');
+        //     const content = document.getElementById('cypher-results-content');
+        //     if (!box || !content) return;
             
-            box.style.display = 'block';
-            content.innerHTML = `
-                <div class="results-stats">
-                    <span><b>${data.stats.node_count || 0}</b> nodes</span>
-                    <span><b>${data.stats.edge_count || 0}</b> edges</span>
-                    <span><b>${data.stats.result_count || 0}</b> records</span>
-                </div>
-            `;
-        },
+        //     box.style.display = 'block';
+        //     content.innerHTML = `
+        //         <div class="results-stats">
+        //             <span><b>${data.stats.node_count || 0}</b> nodes</span>
+        //             <span><b>${data.stats.edge_count || 0}</b> edges</span>
+        //             <span><b>${data.stats.result_count || 0}</b> records</span>
+        //         </div>
+        //     `;
+        // },
         
         showStats: async function() {
             this.showLoading(true, 'Loading stats...');

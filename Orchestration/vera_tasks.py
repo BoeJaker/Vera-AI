@@ -1,12 +1,13 @@
 """
-Vera Task Registrations (Enhanced Logging Version)
-===================================================
+Vera Task Registrations (Enhanced Logging Version with Streaming Thoughts)
+===========================================================================
 Register all Vera tasks with comprehensive logging including:
 - Full prompt visibility
 - Clear fallback paths with reasons
 - Agent routing decisions
 - Performance metrics
 - Tool execution details
+- REAL-TIME THOUGHT STREAMING (including proactive tasks)
 
 Enhanced Logging Features:
 - Prompts logged at DEBUG level (truncated) and TRACE level (full)
@@ -14,6 +15,8 @@ Enhanced Logging Features:
 - Agent selection logic visible
 - Tool chains tracked step-by-step
 - Performance context for all operations
+- Thoughts stream as they're generated, not buffered
+- Proactive tasks now stream thoughts to UI
 """
 
 from Vera.Orchestration.orchestration import task, proactive_task, TaskType, Priority
@@ -159,14 +162,14 @@ def _get_router(vera_instance):
 
 
 # ============================================================================
-# STREAMING LLM TASKS
+# STREAMING LLM TASKS (WITH REAL-TIME THOUGHT STREAMING)
 # ============================================================================
 
 @task("llm.triage", task_type=TaskType.LLM, priority=Priority.CRITICAL, estimated_duration=2.0)
 def llm_triage(vera_instance, query: str):
     """
     Triage query to determine routing.
-    Streams response as it's generated.
+    Streams response as it's generated WITH real-time thoughts.
     """
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'llm.triage', 'query_length': len(query)})
@@ -198,21 +201,18 @@ def llm_triage(vera_instance, query: str):
             
             chunk_count = 0
             response_preview = ""
-            for chunk in llm.stream(triage_prompt):
-                chunk_text = extract_chunk_text(chunk)
+            for chunk in vera_instance._stream_with_thought_polling(llm, triage_prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
                 chunk_count += 1
                 
-                # Capture first 50 chars for logging (safely)
                 try:
                     if len(response_preview) < 50 and chunk_text:
                         response_preview += str(chunk_text)
                 except Exception:
-                    pass  # Ignore preview capture errors
+                    pass
                 
                 yield chunk_text
-            else:
-                yield '\n'
-            
+            yield "\n"  # Ensure newline at end
             if logger:
                 duration = logger.stop_timer("llm_triage", context=LogContext(agent=agent_name, extra=context.extra))
                 logger.success(
@@ -249,8 +249,8 @@ def llm_triage(vera_instance, query: str):
     
     chunk_count = 0
     response_preview = ""
-    for chunk in vera_instance.fast_llm.stream(triage_prompt):
-        chunk_text = extract_chunk_text(chunk)
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.fast_llm, triage_prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
         chunk_count += 1
         
         try:
@@ -273,7 +273,7 @@ def llm_triage(vera_instance, query: str):
 def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
     """
     Generate text using specified LLM.
-    Streams response as it's generated.
+    Streams response as it's generated WITH real-time thoughts.
     """
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     with_memory = kwargs.get('with_memory', False)
@@ -342,8 +342,8 @@ def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
             
             chunk_count = 0
             response_preview = ""
-            for chunk in llm.stream(full_prompt):
-                chunk_text = extract_chunk_text(chunk)
+            for chunk in vera_instance._stream_with_thought_polling(llm, full_prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
                 chunk_count += 1
                 
                 try:
@@ -403,8 +403,8 @@ def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
     
     chunk_count = 0
     response_preview = ""
-    for chunk in llm.stream(full_prompt):
-        chunk_text = extract_chunk_text(chunk)
+    for chunk in vera_instance._stream_with_thought_polling(llm, full_prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
         chunk_count += 1
         
         try:
@@ -425,7 +425,7 @@ def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
 
 @task("llm.fast", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=5.0)
 def llm_fast(vera_instance, prompt: str):
-    """Fast LLM (streaming)"""
+    """Fast LLM (streaming WITH real-time thoughts)"""
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'llm.fast', 'prompt_length': len(prompt)})
     
@@ -446,8 +446,8 @@ def llm_fast(vera_instance, prompt: str):
             
             chunk_count = 0
             response_preview = ""
-            for chunk in llm.stream(prompt):
-                chunk_text = extract_chunk_text(chunk)
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
                 chunk_count += 1
                 
                 try:
@@ -475,9 +475,10 @@ def llm_fast(vera_instance, prompt: str):
     log_prompt(logger, prompt, context, "Fallback fast LLM prompt")
     
     chunk_count = 0
-    for chunk in vera_instance.fast_llm.stream(prompt):
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.fast_llm, prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
         chunk_count += 1
-        yield extract_chunk_text(chunk)
+        yield chunk_text
     
     if logger:
         duration = logger.stop_timer("llm_fast", context=context)
@@ -489,7 +490,7 @@ def llm_fast(vera_instance, prompt: str):
 
 @task("llm.deep", task_type=TaskType.LLM, priority=Priority.NORMAL, estimated_duration=15.0)
 def llm_deep(vera_instance, prompt: str):
-    """Deep LLM (streaming)"""
+    """Deep LLM (streaming WITH real-time thoughts)"""
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'llm.deep', 'prompt_length': len(prompt)})
     
@@ -510,8 +511,8 @@ def llm_deep(vera_instance, prompt: str):
             
             chunk_count = 0
             response_preview = ""
-            for chunk in llm.stream(prompt):
-                chunk_text = extract_chunk_text(chunk)
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
                 chunk_count += 1
                 
                 try:
@@ -539,9 +540,10 @@ def llm_deep(vera_instance, prompt: str):
     log_prompt(logger, prompt, context, "Fallback deep LLM prompt")
     
     chunk_count = 0
-    for chunk in vera_instance.deep_llm.stream(prompt):
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.deep_llm, prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
         chunk_count += 1
-        yield extract_chunk_text(chunk)
+        yield chunk_text
     
     if logger:
         duration = logger.stop_timer("llm_deep", context=context)
@@ -553,7 +555,7 @@ def llm_deep(vera_instance, prompt: str):
 
 @task("llm.reasoning", task_type=TaskType.LLM, priority=Priority.NORMAL, estimated_duration=20.0)
 def llm_reasoning(vera_instance, prompt: str):
-    """Reasoning LLM (streaming)"""
+    """Reasoning LLM (streaming WITH real-time thoughts)"""
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'llm.reasoning', 'prompt_length': len(prompt)})
     
@@ -574,8 +576,8 @@ def llm_reasoning(vera_instance, prompt: str):
             
             chunk_count = 0
             response_preview = ""
-            for chunk in llm.stream(prompt):
-                chunk_text = extract_chunk_text(chunk)
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
                 chunk_count += 1
                 
                 try:
@@ -603,9 +605,10 @@ def llm_reasoning(vera_instance, prompt: str):
     log_prompt(logger, prompt, context, "Fallback reasoning LLM prompt")
     
     chunk_count = 0
-    for chunk in vera_instance.reasoning_llm.stream(prompt):
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.reasoning_llm, prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
         chunk_count += 1
-        yield extract_chunk_text(chunk)
+        yield chunk_text
     
     if logger:
         duration = logger.stop_timer("llm_reasoning", context=context)
@@ -674,7 +677,6 @@ def toolchain_execute(vera_instance, query: str):
                     chunk_text = extract_chunk_text(chunk)
                     chunk_count += 1
                     
-                    # Track tool calls (simplified - you might want to enhance this)
                     if 'tool:' in chunk_text.lower():
                         tool_calls.append(chunk_text[:50])
                     
@@ -740,7 +742,6 @@ def tool_single(vera_instance, tool_name: str, **kwargs):
         logger.info(f"🔨 Single tool execution: {tool_name}", context=context)
         logger.start_timer("tool_single")
         
-        # Log tool arguments
         arg_summary = {k: f"{type(v).__name__}({len(str(v))} chars)" if isinstance(v, str) and len(str(v)) > 50 else v 
                       for k, v in kwargs.items()}
         logger.debug(
@@ -1055,14 +1056,14 @@ def memory_consolidate(vera_instance):
 
 
 # ============================================================================
-# PROACTIVE FOCUS TASKS (Background, non-streaming)
+# PROACTIVE FOCUS TASKS (Background with thought streaming!)
 # ============================================================================
 
 @proactive_task("proactive.generate_thought", estimated_duration=15.0, memory_mb=2048)
 def proactive_generate_thought(vera_instance):
     """
-    Generate proactive thought in background.
-    Returns complete thought (doesn't stream since it's background).
+    Generate proactive thought in background WITH real-time thought streaming.
+    Thoughts stream to UI just like interactive tasks.
     """
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'proactive.generate_thought'})
@@ -1109,18 +1110,23 @@ What's the most valuable next step?"""
             
             thought = ""
             chunk_count = 0
-            for chunk in llm.stream(prompt):
-                thought += extract_chunk_text(chunk)
-                chunk_count += 1
             
-            if thought:
-                vera_instance.focus_manager.add_to_focus_board("actions", thought)
-                
-                if logger:
-                    logger.debug(
-                        f"Added thought to focus board: {truncate_text(thought, 100)}",
-                        context=LogContext(agent=agent_name, extra={**context.extra, 'thought_length': len(thought)})
-                    )
+            # USE SAME THOUGHT POLLING AS INTERACTIVE TASKS - thoughts stream to UI!
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk)
+                chunk_count += 1
+                thought += chunk_text
+            
+            if thought.strip():
+                # STUB: Add to focus board (can be customized)
+                if hasattr(vera_instance.focus_manager, 'add_to_focus_board'):
+                    vera_instance.focus_manager.add_to_focus_board("actions", thought)
+                    
+                    if logger:
+                        logger.debug(
+                            f"Added thought to focus board: {truncate_text(thought, 100)}",
+                            context=LogContext(agent=agent_name, extra={**context.extra, 'thought_length': len(thought)})
+                        )
             
             if logger:
                 duration = logger.stop_timer("proactive_thought", context=LogContext(agent=agent_name, extra=context.extra))
@@ -1148,8 +1154,6 @@ What's the most valuable next step?"""
     if logger:
         logger.info("Using fallback proactive thought (deep_llm)", context=context)
     
-    thought = ""
-    
     recent_context = vera_instance.focus_manager.latest_conversation if hasattr(vera_instance.focus_manager, 'latest_conversation') else 'None'
     board_state = str(vera_instance.focus_manager.focus_board)[:500]
     
@@ -1168,19 +1172,25 @@ What's the most valuable next step?"""
     
     log_prompt(logger, prompt, context, "Fallback proactive thought prompt")
     
+    thought = ""
     chunk_count = 0
-    for chunk in vera_instance.deep_llm.stream(prompt):
-        thought += extract_chunk_text(chunk)
-        chunk_count += 1
     
-    if thought:
-        vera_instance.focus_manager.add_to_focus_board("actions", thought)
-        
-        if logger:
-            logger.debug(
-                f"Added thought to focus board: {truncate_text(thought, 100)}",
-                context=LogContext(extra={**context.extra, 'thought_length': len(thought)})
-            )
+    # USE SAME THOUGHT POLLING - thoughts stream to UI!
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.deep_llm, prompt):
+        chunk_text = extract_chunk_text(chunk)
+        chunk_count += 1
+        thought += chunk_text
+    
+    if thought.strip():
+        # STUB: Add to focus board
+        if hasattr(vera_instance.focus_manager, 'add_to_focus_board'):
+            vera_instance.focus_manager.add_to_focus_board("actions", thought)
+            
+            if logger:
+                logger.debug(
+                    f"Added thought to focus board: {truncate_text(thought, 100)}",
+                    context=LogContext(extra={**context.extra, 'thought_length': len(thought)})
+                )
     
     if logger:
         duration = logger.stop_timer("proactive_thought", context=context)
@@ -1405,7 +1415,6 @@ def health_check(vera_instance):
     if logger:
         duration = logger.stop_timer("health_check", context=context)
         
-        # Count healthy systems
         healthy_llms = sum(health["llms"].values())
         healthy_memory = sum(health["memory"].values())
         
@@ -1565,163 +1574,3 @@ if AGENTS_AVAILABLE:
             
             return {"error": f"Agent not found: {agent_name}"}
 
-
-# ============================================================================
-# REGISTER ON IMPORT
-# ============================================================================
-
-print("[TaskRegistrations] ✓ Registered Vera tasks with enhanced logging:")
-print("  📝 LLM (streaming, agent-aware, prompt logging):")
-print("    - llm.triage (CRITICAL, 2s)")
-print("    - llm.generate (HIGH, 10s)")
-print("    - llm.fast (HIGH, 5s)")
-print("    - llm.deep (NORMAL, 15s)")
-print("    - llm.reasoning (NORMAL, 20s)")
-print("  🔧 Tools (streaming, agent-aware, detailed execution logging):")
-print("    - toolchain.execute (HIGH, 30s)")
-print("    - tool.single (HIGH, 5s)")
-print("  🎤 Whisper:")
-print("    - whisper.transcribe (NORMAL, 10s, GPU)")
-print("  💾 Memory:")
-print("    - memory.search (HIGH, 1s)")
-print("    - memory.save (NORMAL, 0.5s)")
-print("    - memory.consolidate (BACKGROUND/LOW, 5s)")
-print("  💡 Proactive (background, agent-aware):")
-print("    - proactive.generate_thought (BACKGROUND/LOW, 15s)")
-print("    - proactive.generate_ideas (BACKGROUND/LOW, 15s)")
-print("    - proactive.generate_next_steps (BACKGROUND/LOW, 15s)")
-print("    - proactive.actions (BACKGROUND/NORMAL, 20s)")
-print("  🎯 Focus:")
-print("    - focus.set (HIGH, 0.5s)")
-print("    - focus.get (LOW, 0.1s)")
-print("  🏥 System:")
-print("    - health_check (LOW, 0.5s)")
-
-if AGENTS_AVAILABLE:
-    print("  🤖 Agent Management:")
-    print("    - agent.list (LOW, 0.1s)")
-    print("    - agent.reload (NORMAL, 5s)")
-    print("    - agent.validate (LOW, 1s)")
-    print("    - agent.get_config (LOW, 0.1s)")
-
-print("\n[TaskRegistrations] 📊 Enhanced logging features:")
-print("  • Full prompts visible at TRACE level")
-print("  • Prompt previews at DEBUG level (truncated)")
-print("  • Clear fallback indicators with reasons")
-print("  • Agent selection decisions logged")
-print("  • Tool execution details with arguments")
-print("  • Performance metrics for all operations")
-print("  • Response previews in completion logs")
-print("  • Error context with stack traces")
-print("  • Comprehensive timing information")
-
-
-# ============================================================================
-# USAGE NOTES
-# ============================================================================
-
-"""
-ENHANCED LOGGING CAPABILITIES:
-==============================
-
-1. PROMPT VISIBILITY:
-   - DEBUG level: Shows truncated prompts (first 150 chars)
-   - TRACE level: Shows full prompts with separators
-   - Helps debug what's actually being sent to LLMs
-
-2. FALLBACK CLARITY:
-   - Explicit "🔄 FALLBACK TRIGGERED" warnings
-   - Reason for fallback clearly stated
-   - Error details included at DEBUG level
-   - Easy to spot in logs
-
-3. AGENT ROUTING:
-   - "🎯 Agent selected" logs show which agent is used
-   - Task type mapping visible
-   - Extra info like tool counts, memory settings
-   - Clear distinction between agent and fallback paths
-
-4. TOOL EXECUTION:
-   - Tool arguments logged (with size info for large args)
-   - Result previews in completion logs
-   - Clear error messages with context
-   - Execution path clearly visible
-
-5. PERFORMANCE TRACKING:
-   - Every task has timing
-   - Chunk counts for streaming tasks
-   - Result sizes logged
-   - Duration included in completion messages
-
-6. CONFIGURABLE VERBOSITY:
-   - Set global_level in LoggingConfig
-   - Use component_levels for fine-grained control
-   - trace_mode for maximum verbosity
-   - Component-specific levels: {'task': LogLevel.DEBUG}
-
-EXAMPLE CONFIGURATION:
-=====================
-
-# Normal operation
-config = LoggingConfig(
-    global_level=LogLevel.INFO,
-    enable_provenance=True,
-)
-
-# Debugging mode
-config = LoggingConfig(
-    global_level=LogLevel.DEBUG,
-    enable_provenance=True,
-    trace_mode=False,  # Set to True for FULL details
-)
-
-# Trace mode (maximum verbosity)
-config = LoggingConfig(
-    trace_mode=True,  # Enables everything
-)
-
-WHAT YOU'LL SEE:
-===============
-
-Example output:
-  [2025-01-15 10:23:45] [vera.task] INFO 🔍 Triage task starting
-  [2025-01-15 10:23:45] [vera.task] INFO 🎯 Agent selected: fast for triage
-  [2025-01-15 10:23:45] [vera.task] DEBUG Prompt: Current focus: Vera AI\n\nQuery: How do I...
-  [2025-01-15 10:23:46] [vera.task] ✓ SUCCESS Triage complete via agent: fast | 3 chunks | Preview: simple
-  
-On fallback:
-  [2025-01-15 10:23:45] [vera.task] ⚠ WARNING 🔄 FALLBACK TRIGGERED - Reason: Agent triage execution failed
-  [2025-01-15 10:23:45] [vera.task] DEBUG Agent error details: KeyError: 'triage'
-  [2025-01-15 10:23:45] [vera.task] INFO Using fallback triage (fast_llm)
-
-STREAMING TASKS:
-----------------
-These tasks yield chunks as they're generated:
-- llm.triage, llm.generate, llm.fast, llm.deep, llm.reasoning
-- toolchain.execute
-
-Usage:
-    task_id = orchestrator.submit_task("llm.generate", vera_instance=vera, llm_type="fast", prompt="Hello")
-    for chunk in orchestrator.stream_result(task_id):
-        print(chunk, end='', flush=True)
-
-NON-STREAMING TASKS:
---------------------
-These tasks return complete results:
-- All memory tasks, proactive tasks, focus tasks, system tasks, agent tasks
-
-Usage:
-    task_id = orchestrator.submit_task("memory.search", vera_instance=vera, query="...", top_k=5)
-    result = orchestrator.wait_for_result(task_id, timeout=5.0)
-    print(result.result)
-
-BACKGROUND TASKS:
------------------
-These run async:
-- memory.consolidate, proactive.generate_thought, proactive.ideas, 
-  proactive.next_steps, proactive.actions
-
-Usage:
-    task_id = orchestrator.submit_task("proactive.generate_thought", vera_instance=vera)
-    # Don't wait, it runs in background
-"""

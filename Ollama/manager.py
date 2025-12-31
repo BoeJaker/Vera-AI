@@ -76,7 +76,7 @@ class ThoughtCapture:
             self.logger.debug(f"ThoughtCapture initialized (enabled={enabled})")
     
     def process_chunk(self, chunk_data: Dict[str, Any]) -> Optional[str]:
-        """Process chunk with detailed logging"""
+        """Process chunk with immediate streaming - no buffering for thoughts"""
         if self.logger and hasattr(self.logger, 'config') and self.logger.config.show_ollama_raw_chunks:
             self.logger.raw_stream_chunk(chunk_data, self.chunk_count)
         
@@ -99,7 +99,8 @@ class ThoughtCapture:
                 if self.logger:
                     self.logger.debug(f"Direct thought field '{field}': {len(thought)} chars")
                 
-                self._handle_thought(thought)
+                # STREAM IMMEDIATELY - don't wait for complete thought
+                self._stream_thought_chunk(thought)
                 return chunk_data.get('response', '')
         
         # Check response content for markers
@@ -114,13 +115,14 @@ class ThoughtCapture:
                 thought_end = response.find('</think>')
                 
                 if thought_end > thought_start:
-                    # Complete thought
+                    # Complete thought in one chunk
                     thought = response[thought_start:thought_end]
                     
                     if self.logger:
                         self.logger.debug(f"Complete thought: {len(thought)} chars")
                     
-                    self._handle_thought(thought)
+                    # STREAM IMMEDIATELY
+                    self._stream_thought_chunk(thought)
                     self.in_thought_mode = False
                     clean_response = response[:response.find('<think>')] + response[thought_end + 8:]
                     return clean_response if clean_response else None
@@ -129,9 +131,11 @@ class ThoughtCapture:
                     thought = response[thought_start:]
                     
                     if self.logger:
-                        self.logger.debug(f"Partial thought start: {len(thought)} chars buffered")
+                        self.logger.debug(f"Partial thought start: {len(thought)} chars - streaming immediately")
                     
-                    self.thought_buffer.append(thought)
+                    # STREAM THIS CHUNK IMMEDIATELY - don't buffer!
+                    self._stream_thought_chunk(thought)
+                    
                     prefix = response[:response.find('<think>')]
                     return prefix if prefix else None
             
@@ -144,20 +148,25 @@ class ThoughtCapture:
                 thought = response[:thought_end]
                 
                 if self.logger:
-                    self.logger.debug(f"Partial thought end: {len(thought)} chars")
+                    self.logger.debug(f"Partial thought end: {len(thought)} chars - streaming immediately")
                 
-                self.thought_buffer.append(thought)
-                self._flush_thought_buffer()
+                # STREAM THIS FINAL CHUNK IMMEDIATELY
+                self._stream_thought_chunk(thought)
+                
                 self.in_thought_mode = False
+                self.thoughts_captured += 1  # Mark thought as complete
+                
                 suffix = response[thought_end + 8:]
                 return suffix if suffix else None
             
             elif self.in_thought_mode:
-                # Middle of thought
+                # Middle of thought - STREAM IMMEDIATELY, don't buffer!
                 if self.logger:
-                    self.logger.trace(f"Thought continuation: {len(response)} chars buffered")
+                    self.logger.trace(f"Thought continuation: {len(response)} chars - streaming immediately")
                 
-                self.thought_buffer.append(response)
+                # STREAM THIS CHUNK IMMEDIATELY
+                self._stream_thought_chunk(response)
+                
                 return None
             
             else:
@@ -167,44 +176,53 @@ class ThoughtCapture:
                 return response
         
         return None
+
+    def _stream_thought_chunk(self, chunk: str):
+        """Stream a thought chunk immediately to the callback"""
+        if not chunk:
+            return
+        
+        # Call the callback IMMEDIATELY with this chunk
+        if self.callback:
+            try:
+                self.callback(chunk)
+                
+                if self.logger:
+                    self.logger.trace(f"Streamed thought chunk: {len(chunk)} chars")
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(f"Thought callback error: {e}", exc_info=True)
+        
+        # Also log to console if logger present
+        if self.logger:
+            # Don't log the full chunk at debug level - too verbose
+            self.logger.trace(f"Thought chunk: {chunk[:50]}..." if len(chunk) > 50 else f"Thought chunk: {chunk}")
     
     def _handle_thought(self, thought: str):
-        """Handle thought with logging"""
+        """Handle complete thought (legacy - now we stream chunks directly)"""
         if not thought:
             return
         
         self.thoughts_captured += 1
         
         if self.logger:
-            self.logger.thought(thought)
-            self.logger.info(f"Thought captured #{self.thoughts_captured}: {len(thought)} chars")
-        else:
-            sys.stdout.write("\n" + "="*60 + "\n")
-            sys.stdout.write(f"💭 THOUGHT #{self.thoughts_captured}:\n")
-            sys.stdout.write("="*60 + "\n")
-            sys.stdout.write(thought)
-            sys.stdout.write("\n" + "="*60 + "\n\n")
-            sys.stdout.flush()
+            self.logger.info(f"Complete thought #{self.thoughts_captured}: {len(thought)} chars")
         
-        if self.callback:
-            try:
-                self.callback(thought)
-                if self.logger:
-                    self.logger.trace("Thought callback executed successfully")
-            except Exception as e:
-                if self.logger:
-                    self.logger.error(f"Thought callback error: {e}", exc_info=True)
-    
+        # Note: Callback already called during streaming in _stream_thought_chunk
+        # This is just for logging the complete thought
+
     def _flush_thought_buffer(self):
-        """Flush buffer with logging"""
+        """Flush buffer (legacy - now we stream immediately)"""
+        # With immediate streaming, buffer should be empty
+        # Keep for compatibility but it shouldn't be called
         if self.thought_buffer:
             buffer_size = sum(len(s) for s in self.thought_buffer)
-            full_thought = "".join(self.thought_buffer)
             
             if self.logger:
-                self.logger.debug(f"Flushing thought buffer: {len(self.thought_buffer)} segments, {buffer_size} chars")
+                self.logger.warning(f"Flushing non-empty thought buffer: {len(self.thought_buffer)} segments (shouldn't happen with streaming)")
             
-            self._handle_thought(full_thought)
+            full_thought = "".join(self.thought_buffer)
+            self._stream_thought_chunk(full_thought)
             self.thought_buffer.clear()
     
     def reset(self):

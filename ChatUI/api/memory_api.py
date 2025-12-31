@@ -609,7 +609,7 @@ async def get_vector_content(request: Dict[str, Any]):
     
     logger.info(f"=== Vector Content Request ===")
     logger.info(f"Requested node_ids: {node_ids}")
-    logger.info(f"Session ID: {session_id}")
+    logger.info(f"Session ID from request: {session_id}")
     
     if not node_ids:
         return {"content": {}, "debug": "No node IDs provided"}
@@ -632,6 +632,8 @@ async def get_vector_content(request: Dict[str, Any]):
         
         content = {}
         debug_info = {
+            "node_sessions": {},
+            "neo4j_queries": {},
             "collections_checked": [],
             "collections_found": [],
             "ids_checked": node_ids,
@@ -639,69 +641,168 @@ async def get_vector_content(request: Dict[str, Any]):
             "errors": []
         }
         
-        # Check session collections first (all sessions)
-        all_session_ids = list(sessions.keys())
-        logger.info(f"Checking {len(all_session_ids)} session collections")
+        # STEP 1: Find which session each node belongs to
+        node_to_session = {}
         
-        for sid in all_session_ids:
+        with vera.mem.graph._driver.session() as db_sess:
+            for node_id in node_ids:
+                logger.info(f"\n--- Processing node: {node_id} ---")
+                try:
+                    # Query Neo4j to find the node's session
+                    cypher = """
+                        MATCH (n {id: $node_id})
+                        RETURN n.session_id AS session_id, 
+                               n.extracted_from_session AS extracted_session,
+                               n.id AS id,
+                               properties(n) AS all_props
+                    """
+                    logger.info(f"Running Cypher: {cypher}")
+                    logger.info(f"With params: node_id={node_id}")
+                    
+                    result = db_sess.run(cypher, {"node_id": node_id}).single()
+                    
+                    if result:
+                        logger.info(f"Neo4j result: {dict(result)}")
+                        
+                        # Store for debugging
+                        debug_info["neo4j_queries"][node_id] = {
+                            "found": True,
+                            "session_id": result.get("session_id"),
+                            "extracted_session": result.get("extracted_session"),
+                            "all_properties": dict(result.get("all_props", {}))
+                        }
+                        
+                        # Try session_id first, then extracted_from_session
+                        node_session = result.get("session_id") or result.get("extracted_session")
+                        
+                        if node_session:
+                            node_to_session[node_id] = node_session
+                            debug_info["node_sessions"][node_id] = f"{node_session} (from property)"
+                            logger.info(f"✓ Found session property: {node_session}")
+                        else:
+                            logger.warning(f"Node found but no session_id or extracted_from_session property")
+                            logger.info(f"All properties: {dict(result.get('all_props', {}))}")
+                            
+                            # FALLBACK: Extract timestamp from ID
+                            if "_" in node_id:
+                                parts = node_id.split("_", 1)
+                                if len(parts) == 2:
+                                    timestamp = parts[1]
+                                    potential_session = f"sess_{timestamp}"
+                                    
+                                    # Verify this session exists
+                                    session_check = db_sess.run("""
+                                        MATCH (s:Session {id: $sid})
+                                        RETURN s.id AS id
+                                    """, {"sid": potential_session}).single()
+                                    
+                                    if session_check:
+                                        node_to_session[node_id] = potential_session
+                                        debug_info["node_sessions"][node_id] = f"{potential_session} (inferred from ID, verified)"
+                                        logger.info(f"✓ Inferred and verified session: {potential_session}")
+                                    else:
+                                        logger.warning(f"✗ Inferred session {potential_session} does not exist in Neo4j")
+                                        # Still try it anyway
+                                        node_to_session[node_id] = potential_session
+                                        debug_info["node_sessions"][node_id] = f"{potential_session} (inferred, NOT verified)"
+                                        logger.info(f"  Will try collection anyway")
+                    else:
+                        logger.warning(f"✗ Node {node_id} NOT FOUND in Neo4j")
+                        debug_info["neo4j_queries"][node_id] = {"found": False}
+                        
+                        # Still try to infer from ID
+                        if "_" in node_id:
+                            parts = node_id.split("_", 1)
+                            if len(parts) == 2:
+                                timestamp = parts[1]
+                                potential_session = f"sess_{timestamp}"
+                                node_to_session[node_id] = potential_session
+                                debug_info["node_sessions"][node_id] = f"{potential_session} (not in graph, inferred)"
+                                logger.info(f"  Will try inferred session {potential_session}")
+                        
+                except Exception as e:
+                    error_msg = f"Error finding session for {node_id}: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    debug_info["errors"].append(error_msg)
+        
+        logger.info(f"\n=== Session Lookup Summary ===")
+        logger.info(f"Mapped sessions: {node_to_session}")
+        
+        # STEP 2: Query the specific session collections
+        for node_id, node_session in node_to_session.items():
+            logger.info(f"\n--- Querying vector store for {node_id} ---")
             try:
-                collection_name = f"session_{sid}"
-                debug_info["collections_checked"].append(collection_name)
+                collection_name = f"session_{node_session}"
+                
+                if collection_name not in debug_info["collections_checked"]:
+                    debug_info["collections_checked"].append(collection_name)
+                
+                logger.info(f"Collection: {collection_name}")
+                logger.info(f"Looking for ID: {node_id}")
                 
                 col = vera.mem.vec.get_collection(collection_name)
                 
-                # First, check what's in the collection
+                # Check if collection has data
                 all_items = col.get()
-                logger.info(f"Collection '{collection_name}' has {len(all_items.get('ids', []))} items")
-                logger.debug(f"Sample IDs in collection: {all_items.get('ids', [])[:5]}")
+                total_items = len(all_items.get('ids', []))
+                logger.info(f"Collection has {total_items} total items")
                 
-                # Try to get our specific IDs
-                result = col.get(ids=node_ids)
+                if total_items > 0 and total_items <= 10:
+                    logger.info(f"All IDs in collection: {all_items.get('ids', [])}")
+                elif total_items > 0:
+                    logger.info(f"Sample IDs: {all_items.get('ids', [])[:10]}")
                 
-                logger.info(f"Query result for {collection_name}: {len(result.get('ids', []))} matches")
+                # Check if our specific ID is in the collection
+                if node_id in all_items.get('ids', []):
+                    logger.info(f"✓✓✓ ID {node_id} IS IN THE COLLECTION")
+                else:
+                    logger.warning(f"✗✗✗ ID {node_id} NOT IN COLLECTION")
+                    logger.warning(f"  Collection has these IDs: {all_items.get('ids', [])}")
                 
-                if result and result.get("ids"):
+                # Try to get this specific node
+                result = col.get(ids=[node_id])
+                
+                logger.info(f"Vector query result: {len(result.get('ids', []))} items returned")
+                
+                if result and result.get("ids") and len(result["ids"]) > 0:
                     debug_info["collections_found"].append(collection_name)
-                    for i, nid in enumerate(result["ids"]):
-                        if nid not in content:  # Don't overwrite if found in earlier session
-                            text = result["documents"][i] if result.get("documents") else ""
-                            metadata = result["metadatas"][i] if result.get("metadatas") else {}
-                            
-                            content[nid] = {
-                                "text": text,
-                                "metadata": metadata,
-                                "source": f"session_{sid}"
-                            }
-                            debug_info["ids_found"].append(nid)
-                            
-                            logger.info(f"✓ Found content for {nid}: {len(text)} chars from {collection_name}")
-                            
+                    
+                    text = result["documents"][0] if result.get("documents") else ""
+                    metadata = result["metadatas"][0] if result.get("metadatas") else {}
+                    
+                    content[node_id] = {
+                        "text": text,
+                        "metadata": metadata,
+                        "source": collection_name
+                    }
+                    debug_info["ids_found"].append(node_id)
+                    
+                    logger.info(f"✓✓✓ SUCCESS: Found {len(text)} chars for {node_id}")
+                else:
+                    logger.warning(f"✗ Query returned no results")
+                    
             except Exception as e:
-                error_msg = f"Session collection {sid} error: {str(e)}"
+                error_msg = f"Error querying {collection_name} for {node_id}: {str(e)}"
                 logger.error(error_msg, exc_info=True)
                 debug_info["errors"].append(error_msg)
-                continue
         
-        # Check long-term collection
+        # STEP 3: Also check long-term collection
         try:
             collection_name = "long_term_docs"
-            debug_info["collections_checked"].append(collection_name)
+            
+            if collection_name not in debug_info["collections_checked"]:
+                debug_info["collections_checked"].append(collection_name)
             
             long_term_col = vera.mem.vec.get_collection(collection_name)
-            
-            # Check what's in the collection
             all_items = long_term_col.get()
             logger.info(f"Long-term collection has {len(all_items.get('ids', []))} items")
-            logger.debug(f"Sample IDs in long-term: {all_items.get('ids', [])[:5]}")
             
             result = long_term_col.get(ids=node_ids)
-            
-            logger.info(f"Query result for long-term: {len(result.get('ids', []))} matches")
             
             if result and result.get("ids"):
                 debug_info["collections_found"].append(collection_name)
                 for i, nid in enumerate(result["ids"]):
-                    if nid not in content:  # Don't overwrite session data
+                    if nid not in content:
                         text = result["documents"][i] if result.get("documents") else ""
                         metadata = result["metadatas"][i] if result.get("metadatas") else {}
                         
@@ -712,17 +813,16 @@ async def get_vector_content(request: Dict[str, Any]):
                         }
                         debug_info["ids_found"].append(nid)
                         
-                        logger.info(f"✓ Found content for {nid}: {len(text)} chars from long-term")
+                        logger.info(f"✓ Found in long-term: {nid} ({len(text)} chars)")
                         
         except Exception as e:
             error_msg = f"Long-term collection error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             debug_info["errors"].append(error_msg)
         
-        logger.info(f"=== Vector Content Summary ===")
-        logger.info(f"Found content for {len(content)} out of {len(node_ids)} requested nodes")
-        logger.info(f"Collections checked: {debug_info['collections_checked']}")
-        logger.info(f"Collections with data: {debug_info['collections_found']}")
+        logger.info(f"\n=== FINAL SUMMARY ===")
+        logger.info(f"Found: {len(content)}/{len(node_ids)} nodes")
+        logger.info(f"Content keys: {list(content.keys())}")
         
         return {
             "content": content,

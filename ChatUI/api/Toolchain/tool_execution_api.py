@@ -169,111 +169,49 @@ def link_tool_execution_to_node(
 ) -> Dict[str, Any]:
     """
     Link tool execution results to a target node in the graph.
-    
-    Creates structure:
-        TargetNode -[TOOL_EXECUTED]-> ToolExecution -[PRODUCED]-> ToolResult
-        
-    Also links to session and current step if in toolchain context.
-    
-    Args:
-        vera: Vera agent instance
-        node_id: Target node ID that tool was executed against
-        tool_name: Name of executed tool
-        tool_input: Tool input parameters
-        tool_output: Tool execution output
-        execution_metadata: Metadata about execution (duration, timestamp, etc)
-    
-    Returns:
-        Dict with graph linking info (execution_node_id, result_node_id, links)
+    FIXED: Now handles missing session nodes gracefully.
     """
     try:
-        # Create unique execution node ID
-        execution_id = f"tool_exec_{node_id}_{tool_name}_{int(datetime.now().timestamp())}"
-        
-        # Create tool execution node
-        execution_node = vera.mem.upsert_entity(
-            execution_id,
-            "tool_execution",
-            labels=["ToolExecution", tool_name],
-            properties={
-                "tool_name": tool_name,
-                "target_node": node_id,
-                "executed_at": execution_metadata.get("executed_at"),
-                "duration_ms": execution_metadata.get("duration_ms"),
-                "success": execution_metadata.get("success", True),
-                "input_summary": str(tool_input)[:500],  # Truncate long inputs
-            }
-        )
-        
-        # Link target node to execution
-        vera.mem.link(
-            node_id,
-            execution_id,
-            "TOOL_EXECUTED",
-            {
-                "tool": tool_name,
-                "timestamp": execution_metadata.get("executed_at"),
-            }
-        )
-        
-        # Create result node with tool output
-        result_id = f"{execution_id}_result"
-        
-        # Truncate very long outputs for properties, store full in document
-        output_preview = tool_output[:1000] if len(tool_output) > 1000 else tool_output
-        
-        result_node = vera.mem.upsert_entity(
-            result_id,
-            "tool_result",
-            labels=["ToolResult", "Output"],
-            properties={
-                "tool_name": tool_name,
-                "output_preview": output_preview,
-                "output_length": len(tool_output),
-                "created_at": datetime.now().isoformat(),
-            }
-        )
-        
-        # Link execution to result
-        vera.mem.link(
-            execution_id,
-            result_id,
-            "PRODUCED",
-            {
-                "output_length": len(tool_output),
-                "truncated": len(tool_output) > 1000,
-            }
-        )
-        
-        # Store full output as document if it's long
-        if len(tool_output) > 500:
-            doc_node = vera.mem.attach_document(
-                vera.sess.id,
-                f"{tool_name}_output",
-                tool_output,
-                {
-                    "tool": tool_name,
-                    "target_node": node_id,
-                    "execution_id": execution_id,
+        # Verify target node exists
+        if not vera.mem.node_exists(node_id):
+            logger.warning(f"Target node {node_id} does not exist in graph, creating placeholder")
+            # Create a placeholder node so the link doesn't fail
+            vera.mem.upsert_entity(
+                node_id,
+                "unknown",
+                labels=["Placeholder"],
+                properties={
+                    "created_for": "tool_execution",
+                    "created_at": datetime.now().isoformat()
                 }
             )
-            
-            # Link result to document
-            vera.mem.link(
-                result_id,
-                doc_node.id,
-                "FULL_OUTPUT",
-                {"source": "tool_execution"}
-            )
         
-        # Link to session (for context)
-        session_node = vera.mem.get_or_create_session_node(vera.sess.id)
-        vera.mem.link(
-            session_node.id,
-            execution_id,
-            "PERFORMED_TOOL_EXECUTION",
-            {"tool": tool_name, "target": node_id}
+        # Create execution node
+        execution_id = vera.mem.create_tool_execution_node(
+            node_id,
+            tool_name,
+            execution_metadata
         )
+        
+        # Create result node with output
+        result_id = vera.mem.create_tool_result_node(
+            execution_id,
+            tool_output,
+            {
+                "tool_name": tool_name,
+                **execution_metadata
+            }
+        )
+        
+        # Link to session using the new method
+        try:
+            vera.mem.link_session_to_execution(
+                vera.sess.id,
+                execution_id,
+                "PERFORMED_TOOL_EXECUTION"
+            )
+        except Exception as e:
+            logger.warning(f"Could not link to session {vera.sess.id}: {e}")
         
         # Link to current toolchain step if in toolchain context
         if hasattr(vera, 'toolchain') and hasattr(vera.toolchain, 'current_step_num'):
@@ -282,13 +220,14 @@ def link_tool_execution_to_node(
                 step_num = vera.toolchain.current_step_num
                 step_node_id = f"step_{plan_id}_{step_num}"
                 
-                # Link step to execution
-                vera.mem.link(
-                    step_node_id,
-                    execution_id,
-                    "EXECUTED_TOOL_ON_NODE",
-                    {"target": node_id, "tool": tool_name}
-                )
+                # Verify step node exists before linking
+                if vera.mem.node_exists(step_node_id):
+                    vera.mem.link(
+                        step_node_id,
+                        execution_id,
+                        "EXECUTED_TOOL_ON_NODE",
+                        {"target": node_id, "tool": tool_name}
+                    )
             except Exception as e:
                 logger.debug(f"Could not link to toolchain step: {e}")
         
@@ -300,6 +239,7 @@ def link_tool_execution_to_node(
             "links_created": [
                 f"{node_id} -[TOOL_EXECUTED]-> {execution_id}",
                 f"{execution_id} -[PRODUCED]-> {result_id}",
+                f"session_{vera.sess.id} -[PERFORMED_TOOL_EXECUTION]-> {execution_id}",
             ]
         }
         
@@ -309,12 +249,10 @@ def link_tool_execution_to_node(
             "enabled": False,
             "error": str(e)
         }
-
-
+    
 # ============================================================
 # Tool Execution Core - ENHANCED
 # ============================================================
-
 async def execute_tool_safely(
     vera, 
     tool_name: str, 
@@ -322,33 +260,15 @@ async def execute_tool_safely(
     node_id: Optional[str] = None,
     link_results: bool = True
 ) -> Dict[str, Any]:
-    """
-    Execute a tool safely with proper error handling, streaming support,
-    and optional graph node linking.
-    
-    Args:
-        vera: Vera agent instance
-        tool_name: Name of tool to execute
-        tool_input: Tool input (string or dict)
-        node_id: Optional target node ID for context linking
-        link_results: Whether to create graph links
-    
-    Returns:
-        Dict with execution results including output, duration, and graph context
-    """
+    """Execute a tool safely with execution tracking."""
     start_time = datetime.utcnow()
     
     try:
-        # Find the tool
         tool = next((t for t in vera.tools if t.name == tool_name), None)
-        
         if not tool:
-            raise HTTPException(
-                status_code=404, 
-                detail=f"Tool not found: {tool_name}"
-            )
+            raise HTTPException(status_code=404, detail=f"Tool not found: {tool_name}")
         
-        # Parse tool_input
+        # Parse input
         try:
             if isinstance(tool_input, str):
                 try:
@@ -361,43 +281,67 @@ async def execute_tool_safely(
             logger.warning(f"Input parsing warning: {e}")
             parsed_input = tool_input
         
-        # Execute using LangChain's tool.run() method
+        # Create execution node BEFORE running tool
+        execution_id = None
+        if node_id and link_results:
+            execution_id = vera.mem.create_tool_execution_node(
+                node_id,
+                tool_name,
+                {"executed_at": start_time.isoformat()}
+            )
+            logger.info(f"[EXECUTION TRACKING] Created execution node: {execution_id}")
+        
+        # CRITICAL: Wrap tool execution in tracking context
         output = ""
         is_streaming = False
         
-        try:
-            if isinstance(parsed_input, dict):
-                result = tool.run(parsed_input)
-            else:
-                result = tool.run(parsed_input)
+        # Use nullcontext if no execution_id
+        import contextlib
+        tracking_context = (
+            vera.mem.track_execution(execution_id) 
+            if execution_id 
+            else contextlib.nullcontext()
+        )
+        
+        with tracking_context:
+            logger.info(f"[EXECUTION TRACKING] Entering track_execution context for {execution_id}")
             
-            # Handle generator vs direct return
-            if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
-                is_streaming = True
-                for chunk in result:
-                    output += str(chunk)
-            else:
-                output = str(result)
-                
-        except Exception as e:
-            logger.warning(f"tool.run() failed, trying direct function call: {e}")
-            
-            if hasattr(tool, "func") and callable(tool.func):
-                func = tool.func
-                
+            # Execute tool
+            try:
                 if isinstance(parsed_input, dict):
-                    result = func(**parsed_input)
+                    result = tool.run(parsed_input)
                 else:
-                    result = func(parsed_input)
+                    result = tool.run(parsed_input)
                 
+                # Handle streaming
                 if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
                     is_streaming = True
                     for chunk in result:
                         output += str(chunk)
                 else:
                     output = str(result)
-            else:
-                raise
+                    
+            except Exception as e:
+                logger.warning(f"tool.run() failed, trying direct function call: {e}")
+                
+                if hasattr(tool, "func") and callable(tool.func):
+                    func = tool.func
+                    if isinstance(parsed_input, dict):
+                        result = func(**parsed_input)
+                    else:
+                        result = func(parsed_input)
+                    
+                    if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
+                        is_streaming = True
+                        for chunk in result:
+                            output += str(chunk)
+                    else:
+                        output = str(result)
+                else:
+                    raise
+        
+        # Context exited - all created nodes should now be linked
+        logger.info(f"[EXECUTION TRACKING] Exited track_execution context for {execution_id}")
         
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds() * 1000
@@ -410,6 +354,108 @@ async def execute_tool_safely(
             "output_length": len(output),
         }
         
+        # Create graph context
+        graph_context = None
+        if node_id and link_results:
+            # Create result node
+            result_id = vera.mem.create_tool_result_node(
+                execution_id,
+                output,
+                {"tool_name": tool_name, **execution_metadata}
+            )
+            
+            # Link to session
+            try:
+                vera.mem.link_session_to_execution(
+                    vera.sess.id,
+                    execution_id,
+                    "PERFORMED_TOOL_EXECUTION"
+                )
+            except Exception as e:
+                logger.warning(f"Could not link to session: {e}")
+            
+            # Get created nodes
+            created_nodes = vera.mem.get_execution_created_nodes(execution_id)
+            logger.info(f"[EXECUTION TRACKING] Found {len(created_nodes)} created nodes for {execution_id}")
+            
+            graph_context = {
+                "enabled": True,
+                "execution_node_id": execution_id,
+                "result_node_id": result_id,
+                "target_node_id": node_id,
+                "created_nodes_count": len(created_nodes),
+                "links_created": [
+                    f"{node_id} -[TOOL_EXECUTED]-> {execution_id}",
+                    f"{execution_id} -[PRODUCED]-> {result_id}",
+                    f"session_{vera.sess.id} -[PERFORMED_TOOL_EXECUTION]-> {execution_id}",
+                ]
+            }
+            
+            # Add created nodes to display
+            for node in created_nodes[:5]:
+                node_id_display = node.get('id', 'unknown')[:40]
+                graph_context["links_created"].append(
+                    f"{execution_id} -[CREATED_NODE]-> {node_id_display}"
+                )
+            if len(created_nodes) > 5:
+                graph_context["links_created"].append(
+                    f"... and {len(created_nodes) - 5} more nodes"
+                )
+        
+        return {
+            "success": True,
+            "tool_name": tool_name,
+            "input": tool_input,
+            "output": output,
+            "duration_ms": duration,
+            "executed_at": start_time.isoformat(),
+            "error": None,
+            "metadata": {
+                "is_streaming": is_streaming,
+                "output_length": len(output),
+                "node_context": node_id is not None,
+            },
+            "graph_context": graph_context
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        end_time = datetime.utcnow()
+        duration = (end_time - start_time).total_seconds() * 1000
+        logger.error(f"Tool execution error: {str(e)}", exc_info=True)
+        
+        return {
+            "success": False,
+            "tool_name": tool_name,
+            "input": tool_input,
+            "output": "",
+            "duration_ms": duration,
+            "executed_at": start_time.isoformat(),
+            "error": str(e),
+            "metadata": None,
+            "graph_context": None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        end_time = datetime.utcnow()
+        duration = (end_time - start_time).total_seconds() * 1000
+        
+        logger.error(f"Tool execution error: {str(e)}", exc_info=True)
+        
+        return {
+            "success": False,
+            "tool_name": tool_name,
+            "input": tool_input,
+            "output": "",
+            "duration_ms": duration,
+            "executed_at": start_time.isoformat(),
+            "error": str(e),
+            "metadata": None,
+            "graph_context": None
+        }
         # Link to graph node if requested
         graph_context = None
         if node_id and link_results:
@@ -494,26 +540,35 @@ async def execute_tool(
     vera = get_or_create_vera(session_id)
     
     try:
-        # Execute in thread pool to prevent blocking
+        # FIXED: Don't use asyncio.run() in executor, just call the function directly
+        # This ensures thread-local storage works correctly
+        def sync_execute():
+            # Run synchronously in the thread
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            return loop.run_until_complete(execute_tool_safely(
+                vera, 
+                request.tool_name, 
+                request.tool_input,
+                node_id=request.node_id,
+                link_results=request.link_results
+            ))
+        
+        # Execute in thread pool (for blocking I/O operations)
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor() as executor:
-            result = await loop.run_in_executor(
-                executor,
-                lambda: asyncio.run(execute_tool_safely(
-                    vera, 
-                    request.tool_name, 
-                    request.tool_input,
-                    node_id=request.node_id,
-                    link_results=request.link_results
-                ))
-            )
+            result = await loop.run_in_executor(executor, sync_execute)
         
         return ToolExecutionResponse(**result)
         
     except Exception as e:
         logger.error(f"Tool execution failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.get("/{session_id}/node/{node_id}/executions")
 async def get_node_tool_executions(
