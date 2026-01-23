@@ -7,6 +7,8 @@
  * - Collapse nodes/edges with identical properties
  * - Session filtering with multiple view modes
  * - Integration with existing GraphStyleControl
+ * 
+ * OPTIMIZED: Uses clear/add approach instead of hiding for better performance
  */
 
 (function() {
@@ -1410,7 +1412,8 @@
         },
         
         /**
-         * Apply all filters and collapse operations
+         * Apply all filters and collapse operations - OPTIMIZED VERSION
+         * Uses clear/add instead of hiding for better performance
          */
         applyAllFilters: function() {
             if (!network || !network.body || !network.body.data) return;
@@ -1438,19 +1441,42 @@
             // Apply collapse operations
             const { nodes: finalNodes, edges: finalEdges } = this.applyCollapseOperations(propertyFiltered);
             
-            // Update network
-            const nodeUpdates = Array.from(this.originalData.nodes.values()).map(node => ({
-                id: node.id,
-                hidden: !finalNodes.has(node.id)
-            }));
+            // Get actual node and edge objects to display
+            const nodesToShow = [];
+            finalNodes.forEach(nodeId => {
+                let node = this.originalData.nodes.get(nodeId);
+                if (!node) {
+                    // Not in original data - must be a representative/collapsed node
+                    node = network.body.data.nodes.get(nodeId);
+                }
+                if (node) {
+                    nodesToShow.push(node);
+                }
+            });
             
-            const edgeUpdates = Array.from(this.originalData.edges.values()).map(edge => ({
-                id: edge.id,
-                hidden: !finalEdges.has(edge.id)
-            }));
+            const edgesToShow = [];
+            finalEdges.forEach(edgeId => {
+                let edge = this.originalData.edges.get(edgeId);
+                if (!edge) {
+                    // Not in original data - must be a collapsed edge
+                    edge = network.body.data.edges.get(edgeId);
+                }
+                if (edge) {
+                    edgesToShow.push(edge);
+                }
+            });
             
-            network.body.data.nodes.update(nodeUpdates);
-            network.body.data.edges.update(edgeUpdates);
+            // Clear and re-add filtered data (more efficient than hiding)
+            console.log('Clearing network and adding filtered nodes/edges...');
+            network.body.data.nodes.clear();
+            network.body.data.edges.clear();
+            
+            if (nodesToShow.length > 0) {
+                network.body.data.nodes.add(nodesToShow);
+            }
+            if (edgesToShow.length > 0) {
+                network.body.data.edges.add(edgesToShow);
+            }
             
             // Update stats
             this.updateFilterStats(finalNodes.size, finalEdges.size);
@@ -1759,14 +1785,20 @@
                     console.log(`Removed ${collapsedEdgesToRemove.length} collapsed edges`);
                 }
                 
-                // Restore constituent nodes (unhide them)
+                // Restore constituent nodes from originalData
                 if (constituentNodesToRestore.size > 0) {
-                    const nodesToRestore = Array.from(constituentNodesToRestore).map(id => ({
-                        id: id,
-                        hidden: false
-                    }));
-                    network.body.data.nodes.update(nodesToRestore);
-                    console.log(`Restored ${nodesToRestore.length} constituent nodes`);
+                    const nodesToAdd = [];
+                    constituentNodesToRestore.forEach(id => {
+                        const originalNode = this.originalData.nodes.get(id);
+                        if (originalNode) {
+                            nodesToAdd.push(originalNode);
+                        }
+                    });
+                    
+                    if (nodesToAdd.length > 0) {
+                        network.body.data.nodes.add(nodesToAdd);
+                        console.log(`Restored ${nodesToAdd.length} constituent nodes`);
+                    }
                 }
                 
             } catch (e) {
@@ -2099,17 +2131,22 @@
                 }
             }
             
-            // Show all constituent nodes (they should already exist, just update to not hidden)
-            const nodeUpdates = constituentIds.map(nodeId => ({
-                id: nodeId,
-                hidden: false
-            }));
+            // Add constituent nodes back from originalData
+            const nodesToAdd = [];
+            constituentIds.forEach(nodeId => {
+                const originalNode = this.originalData.nodes.get(nodeId);
+                if (originalNode) {
+                    nodesToAdd.push(originalNode);
+                }
+            });
             
             try {
-                network.body.data.nodes.update(nodeUpdates);
-                console.log(`Restored ${nodeUpdates.length} constituent nodes`);
+                if (nodesToAdd.length > 0) {
+                    network.body.data.nodes.add(nodesToAdd);
+                    console.log(`Restored ${nodesToAdd.length} constituent nodes`);
+                }
             } catch (e) {
-                console.warn('Error updating constituent nodes:', e);
+                console.warn('Error adding constituent nodes:', e);
             }
             
             // Remove representative node
@@ -2855,7 +2892,353 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }
+        },
+        // /**
+        //  * Create filter UI - Returns HTML instead of inserting
+        //  */
+        // createFilterUI: function() {
+        //     // Store reference but don't insert into settings-panel
+        //     console.log('GraphAdvancedFilters: Panel creation deferred to inline display');
+        // },
+
+        /**
+         * Get the advanced filters HTML
+         */
+        getFiltersHTML: function() {
+            return `
+                <style>
+                /* Advanced Filter Styles */
+                .adv-filter-section {
+                    border-bottom: 2px solid var(--border);
+                    padding-bottom: 16px;
+                    margin-bottom: 16px;
+                }
+                
+                .adv-filter-title {
+                    font-size: 16px;
+                    color: var(--accent);
+                    margin-bottom: 12px;
+                    font-weight: 600;
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .adv-filter-box {
+                    background: var(--bg);
+                    padding: 12px;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-subtle);
+                    margin-bottom: 12px;
+                }
+                
+                .adv-filter-item {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    margin-bottom: 8px;
+                    padding: 8px;
+                    background: var(--bg-surface);
+                    border-radius: 6px;
+                    border: 1px solid var(--border-subtle);
+                }
+                
+                .adv-filter-item-compact {
+                    display: grid;
+                    grid-template-columns: 1fr auto;
+                    gap: 6px;
+                    align-items: center;
+                }
+                
+                .adv-filter-badge {
+                    display: inline-block;
+                    padding: 4px 8px;
+                    background: var(--accent);
+                    color: var(--text-inverted);
+                    border-radius: 12px;
+                    font-size: 10px;
+                    font-weight: 600;
+                }
+                
+                .adv-filter-remove-btn {
+                    background: var(--error, #ef4444);
+                    color: var(--text-inverted);
+                    border: none;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                    cursor: pointer;
+                    font-size: 11px;
+                }
+                
+                .adv-filter-add-btn {
+                    background: var(--accent);
+                    color: var(--text-inverted);
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 12px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 12px;
+                    width: 100%;
+                }
+                
+                .adv-collapse-group {
+                    background: var(--hover);
+                    padding: 8px;
+                    border-radius: 6px;
+                    margin-bottom: 6px;
+                    border-left: 3px solid var(--accent);
+                }
+                
+                .adv-collapse-count {
+                    background: var(--accent);
+                    color: var(--text-inverted);
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    font-size: 10px;
+                    font-weight: 600;
+                }
+                </style>
+                
+                <div class="adv-filter-section">
+                    <!--  <div class="adv-filter-title">
+                        🔬 Advanced Filters
+                    </div> -->
+                    
+                    <!-- Session Filter -->
+                    <div class="adv-filter-box">
+                        <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                            Session Filter
+                        </div>
+                        
+                        <select id="adv-session-mode" class="graph-setting-select" 
+                                onchange="window.GraphAdvancedFilters.setSessionMode(this.value)"
+                                style="margin-bottom: 8px;">
+                            <option value="all">All Nodes</option>
+                            <option value="session-only">Session Only</option>
+                            <option value="session-recent">Session + Recent</option>
+                            <option value="inferred">Inferred Relationships (INF_REL)</option>
+                            <option value="hybrid">Session + Inferred</option>
+                            <option value="direct-only">Direct Connections Only</option>
+                            <option value="time-range">Time Range</option>
+                        </select>
+                        
+                        <div id="session-selector-container" style="display: none;">
+                            <label class="graph-setting-label" style="font-size: 11px; margin-bottom: 4px;">
+                                Select Session
+                            </label>
+                            <select id="adv-session-id" class="graph-setting-select"
+                                    onchange="window.GraphAdvancedFilters.setSessionId(this.value)">
+                                <option value="">-- Select Session --</option>
+                                ${this.filters.session.availableSessions.map(sid => 
+                                    `<option value="${sid}">${sid}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        
+                        <div id="time-range-container" style="display: none; margin-top: 12px;">
+                            <div style="margin-bottom: 8px;">
+                                <label class="graph-setting-label" style="font-size: 11px;">Time Property</label>
+                                <select id="adv-time-property" class="graph-setting-select"
+                                        onchange="window.GraphAdvancedFilters.setTimeProperty(this.value)">
+                                    <option value="created_at">created_at</option>
+                                    <option value="updated_at">updated_at</option>
+                                    <option value="timestamp">timestamp</option>
+                                </select>
+                            </div>
+                            
+                            <div style="background: var(--bg); padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                                <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 8px;">
+                                    Time Range
+                                </div>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">
+                                        Start: <span id="time-start-display">--</span>
+                                    </div>
+                                    <input type="range" id="time-start-slider" min="0" max="100" value="0" 
+                                        style="width: 100%;"
+                                        oninput="window.GraphAdvancedFilters.handleSliderInput(this, 'start', event)"
+                                        onchange="window.GraphAdvancedFilters.applyAllFilters()">
+                                </div>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 4px;">
+                                        End: <span id="time-end-display">--</span>
+                                    </div>
+                                    <input type="range" id="time-end-slider" min="0" max="100" value="100"
+                                        style="width: 100%;"
+                                        oninput="window.GraphAdvancedFilters.handleSliderInput(this, 'end', event)"
+                                        onchange="window.GraphAdvancedFilters.applyAllFilters()">
+                                </div>
+                                
+                                <div style="font-size: 10px; color: var(--text-secondary); text-align: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-subtle);">
+                                    💡 Hold Ctrl to move entire range
+                                </div>
+                            </div>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                                <button onclick="window.GraphAdvancedFilters.resetTimeRange()" 
+                                        class="graph-btn graph-btn-secondary" style="font-size: 11px; padding: 6px;">
+                                    Reset
+                                </button>
+                                <button onclick="window.GraphAdvancedFilters.setTimeRangeToLast24h()" 
+                                        class="graph-btn graph-btn-secondary" style="font-size: 11px; padding: 6px;">
+                                    Last 24h
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div id="session-stats" style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+                        </div>
+                    </div>
+                    
+                    <!-- Node Property Filters -->
+                    <div class="adv-filter-box">
+                        <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                            Node Property Filters
+                        </div>
+                        
+                        <div id="node-property-filters-list"></div>
+                        
+                        <button class="adv-filter-add-btn" 
+                                onclick="window.GraphAdvancedFilters.showAddPropertyFilter('node')">
+                            + Add Node Filter
+                        </button>
+                    </div>
+                    
+                    <!-- Edge Property Filters -->
+                    <div class="adv-filter-box">
+                        <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 8px;">
+                            Edge Property Filters
+                        </div>
+                        
+                        <div id="edge-property-filters-list"></div>
+                        
+                        <button class="adv-filter-add-btn"
+                                onclick="window.GraphAdvancedFilters.showAddPropertyFilter('edge')">
+                            + Add Edge Filter
+                        </button>
+                    </div>
+                    
+                    <!-- Node Collapse -->
+                    <div class="adv-filter-box">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600;">
+                                Collapse Nodes
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="adv-collapse-nodes-enabled"
+                                    onchange="window.GraphAdvancedFilters.toggleNodeCollapse(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div id="node-collapse-controls" style="opacity: 0.5; pointer-events: none;">
+                            <label class="graph-setting-label" style="font-size: 11px;">
+                                Group By Properties
+                            </label>
+                            <div id="node-collapse-properties" style="margin-bottom: 8px;"></div>
+                            
+                            <button class="adv-filter-add-btn"
+                                    onclick="window.GraphAdvancedFilters.addCollapseProperty('node')">
+                                + Add Property
+                            </button>
+                            
+                            <div id="node-collapse-stats" style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Edge Collapse -->
+                    <div class="adv-filter-box">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                            <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600;">
+                                Collapse Edges
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="adv-collapse-edges-enabled"
+                                    onchange="window.GraphAdvancedFilters.toggleEdgeCollapse(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div id="edge-collapse-controls" style="opacity: 0.5; pointer-events: none;">
+                            <label class="graph-setting-label" style="font-size: 11px;">
+                                Group By Properties
+                            </label>
+                            <div id="edge-collapse-properties" style="margin-bottom: 8px;"></div>
+                            
+                            <button class="adv-filter-add-btn"
+                                    onclick="window.GraphAdvancedFilters.addCollapseProperty('edge')">
+                                + Add Property
+                            </button>
+                            
+                            <div id="edge-collapse-stats" style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                        <button onclick="window.GraphAdvancedFilters.applyAllFilters()" class="graph-btn">
+                            Apply Filters
+                        </button>
+                        <button onclick="window.GraphAdvancedFilters.clearAllFilters()" class="graph-btn graph-btn-secondary">
+                            Clear All
+                        </button>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                        <button onclick="window.GraphAdvancedFilters.expandAllCollapsed()" class="graph-btn graph-btn-secondary">
+                            Expand All
+                        </button>
+                        <button onclick="window.GraphAdvancedFilters.exportFilteredView()" class="graph-btn graph-btn-secondary">
+                            Export View
+                        </button>
+                    </div>
+                    
+                    <div style="margin-top: 8px;">
+                        <button onclick="window.GraphAdvancedFilters.refreshDiscovery()" class="graph-btn graph-btn-secondary" style="width: 100%;">
+                            🔄 Refresh Properties
+                        </button>
+                        <div id="adv-filter-discovery-status" style="font-size: 10px; color: var(--text-secondary); margin-top: 6px; padding: 6px; background: var(--bg); border-radius: 4px; text-align: left;">
+                            <div>📊 Discovered:</div>
+                            <div style="margin-left: 8px;">
+                                • <span id="node-props-count">0</span> node properties
+                            </div>
+                            <div style="margin-left: 8px;">
+                                • <span id="edge-props-count">0</span> edge properties
+                            </div>
+                            <div style="margin-left: 8px;">
+                                • <span id="sessions-count">0</span> sessions
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        },
+
+        /**
+         * Show filters in GraphInfoCard
+         */
+        showInCard: function(nodeId) {
+            if (!window.GraphInfoCard) return;
+            
+            const html = this.getFiltersHTML();
+            
+            window.GraphInfoCard.showInlineContent(
+                '🔬 Advanced Filters',
+                html,
+                nodeId ? `window.GraphInfoCard.expandNodeInfo('${nodeId}')` : null
+            );
+            
+            // Sync UI after rendering
+            setTimeout(() => {
+                this.syncUI();
+                this.updateDiscoveryStatus();
+            }, 100);
+        },
     };
     
 })();

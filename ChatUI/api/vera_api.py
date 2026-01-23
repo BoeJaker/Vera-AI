@@ -56,6 +56,7 @@ import Vera.ChatUI.api.Orchestrator.ollama_api as ollama_api
 import Vera.ChatUI.api.agents_api as agents_api
 import Vera.ChatUI.api.scheduling as scheduling_api 
 import Vera.ChatUI.api.Toolchain.tool_execution_api as tool_execution_api
+import Vera.ChatUI.api.ml_api as ml_api
 # from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
 
 # ============================================================
@@ -88,7 +89,7 @@ app.add_middleware(
 # ============================================================
 # Router setup
 # ============================================================
-from Vera.Agents.executive_0_9 import executive as executive
+from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive as executive
 
 # BEFORE including the router, initialize the service:
 print("[Startup] Initializing executive agent...")
@@ -122,6 +123,7 @@ app.include_router(ollama_api.router)
 app.include_router(agents_api.router)
 app.include_router(scheduling_api.router)
 app.include_router(tool_execution_api.router)
+app.include_router(ml_api.router)
 # ============================================================
 # Global storage
 # ============================================================
@@ -136,7 +138,7 @@ toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_i
 active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
 websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
 
-from Vera.ChatUI.api.Toolchain.toolchain_api import set_main_loop
+from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import set_main_loop
 
 @app.on_event("startup")
 async def startup_event():
@@ -192,6 +194,28 @@ async def get_info():
         }
     }
 
+@app.get("/api/ml/crypto/ohlcv")
+async def get_crypto_ohlcv(symbol: str = "BTC/USDT", timeframe: str = "1m"):
+    """Fetch OHLCV data for crypto prediction"""
+    try:
+        import ccxt
+        exchange = ccxt.binance()
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=300)
+        
+        return [
+            {
+                "timestamp": candle[0],
+                "open": candle[1],
+                "high": candle[2],
+                "low": candle[3],
+                "close": candle[4],
+                "volume": candle[5]
+            }
+            for candle in ohlcv
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @app.get("/api/debug/neo4j/{session_id}")
 async def debug_neo4j(session_id: str):
     """Debug endpoint to see what's in Neo4j for a session."""

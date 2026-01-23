@@ -1,17 +1,16 @@
-
- 
 import asyncio
 import threading
 import time
 import json
 import os
-from datetime import datetime
-from typing import Optional, Callable, Dict, List, Any
-import psutil
 import re
+from datetime import datetime
+from typing import Optional, Callable, Dict, List, Any, Set
+import psutil
+from urllib.parse import urlparse
 
 class ProactiveFocusManager:
-    """Enhanced with streaming support, WebSocket broadcasting, and hybrid memory integration"""
+    """Enhanced with full Neo4j graph integration and resource extraction"""
     
     def __init__(
         self,
@@ -19,13 +18,21 @@ class ProactiveFocusManager:
         hybrid_memory=None,
         proactive_interval: int = 60*10,
         cpu_threshold: float = 70.0,
-        focus_boards_dir: str = "./Ouput/projects/focus_boards",
+        focus_boards_dir: str = "./Output/projects/focus_boards",
         auto_restore: bool = True
     ):
         self.agent = agent
         self.hybrid_memory = hybrid_memory
         self.focus: Optional[str] = None
-        self.project_id: Optional[str] = None  # Link to project entity
+        self.project_id: Optional[str] = None
+        
+        # Iteration and stage tracking
+        self.current_iteration_id: Optional[str] = None
+        self.previous_iteration_id: Optional[str] = None
+        self.current_stage_id: Optional[str] = None
+        self.previous_stage_id: Optional[str] = None
+        self.iteration_count: int = 0
+        
         self.focus_board = {
             "progress": [],
             "next_steps": [],
@@ -34,6 +41,7 @@ class ProactiveFocusManager:
             "actions": [],
             "completed": []
         }
+        
         self.proactive_interval = proactive_interval
         self.cpu_threshold = cpu_threshold
         self.running = False
@@ -47,9 +55,355 @@ class ProactiveFocusManager:
         self.focus_boards_dir = focus_boards_dir
         os.makedirs(focus_boards_dir, exist_ok=True)
         
-        # Auto-restore last focus from graph
+        # Stage tracking for WebSocket UI
+        self.current_stage = None
+        self.current_activity = None
+        self.stage_progress = 0
+        self.stage_total = 0
+        self.workflow_active = False
+        
         if auto_restore and hybrid_memory:
             self._restore_last_focus()
+    
+    # ============================================================
+    # RESOURCE EXTRACTION
+    # ============================================================
+    
+    def _extract_resources(self, text: str) -> Dict[str, List[str]]:
+        """
+        Extract resources from text using regex patterns.
+        Returns dict with 'urls' and 'filepaths' lists.
+        """
+        resources = {
+            'urls': [],
+            'filepaths': []
+        }
+        
+        # URL pattern - matches http/https URLs
+        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+        urls = re.findall(url_pattern, text)
+        resources['urls'] = list(set(urls))  # Deduplicate
+        
+        # Filepath patterns
+        # Unix-style absolute paths
+        unix_path_pattern = r'(?:^|[\s\'"(])(\/[\w\-\.\/]+)(?:[\s\'"\)]|$)'
+        # Windows-style paths
+        windows_path_pattern = r'(?:^|[\s\'"(])([A-Za-z]:\\[\w\-\.\\]+)(?:[\s\'"\)]|$)'
+        # Relative paths with common extensions
+        relative_path_pattern = r'(?:^|[\s\'"(])(\.{1,2}\/[\w\-\.\/]+\.(?:py|js|json|txt|md|yaml|yml|conf|sh|bat))(?:[\s\'"\)]|$)'
+        
+        unix_paths = [m.group(1) for m in re.finditer(unix_path_pattern, text)]
+        windows_paths = [m.group(1) for m in re.finditer(windows_path_pattern, text)]
+        relative_paths = [m.group(1) for m in re.finditer(relative_path_pattern, text)]
+        
+        all_paths = unix_paths + windows_paths + relative_paths
+        resources['filepaths'] = list(set(all_paths))  # Deduplicate
+        
+        return resources
+    
+    def _create_resource_node(self, resource_uri: str, resource_type: str, source_node_id: str) -> str:
+        """
+        Create a resource node in the graph and link it to source.
+        
+        Args:
+            resource_uri: The URL or filepath
+            resource_type: 'url' or 'filepath'
+            source_node_id: ID of the stage/node that referenced this resource
+            
+        Returns:
+            Resource node ID
+        """
+        if not self.hybrid_memory:
+            return None
+        
+        # Create stable ID for resource
+        resource_hash = hashlib.md5(resource_uri.encode()).hexdigest()[:12]
+        resource_id = f"resource_{resource_type}_{resource_hash}"
+        
+        # Extract additional metadata
+        metadata = {
+            "uri": resource_uri,
+            "type": resource_type,
+            "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+            "project_id": self.project_id,
+            "discovered_at": datetime.utcnow().isoformat()
+        }
+        
+        if resource_type == 'url':
+            parsed = urlparse(resource_uri)
+            metadata["domain"] = parsed.netloc
+            metadata["scheme"] = parsed.scheme
+            metadata["path"] = parsed.path
+        elif resource_type == 'filepath':
+            metadata["filename"] = os.path.basename(resource_uri)
+            metadata["extension"] = os.path.splitext(resource_uri)[1]
+            metadata["is_absolute"] = os.path.isabs(resource_uri)
+        
+        # Create resource node
+        self.hybrid_memory.upsert_entity(
+            entity_id=resource_id,
+            etype="resource",
+            labels=["Resource", resource_type.upper()],
+            properties=metadata
+        )
+        
+        # Link source to resource
+        self.hybrid_memory.link(
+            source_node_id,
+            resource_id,
+            "REFERENCES",
+            {"discovered_at": datetime.utcnow().isoformat()}
+        )
+        
+        print(f"[FocusManager] Created resource node: {resource_id} ({resource_uri})")
+        return resource_id
+    
+    def _extract_and_link_resources(self, text: str, source_node_id: str) -> Dict[str, List[str]]:
+        """
+        Extract resources from text and create linked nodes.
+        
+        Returns:
+            Dict with lists of created resource node IDs
+        """
+        if not self.hybrid_memory or not text:
+            return {'urls': [], 'filepaths': []}
+        
+        resources = self._extract_resources(text)
+        created = {'urls': [], 'filepaths': []}
+        
+        # Create nodes for URLs
+        for url in resources['urls']:
+            try:
+                resource_id = self._create_resource_node(url, 'url', source_node_id)
+                if resource_id:
+                    created['urls'].append(resource_id)
+            except Exception as e:
+                print(f"[FocusManager] Error creating URL node: {e}")
+        
+        # Create nodes for filepaths
+        for filepath in resources['filepaths']:
+            try:
+                resource_id = self._create_resource_node(filepath, 'filepath', source_node_id)
+                if resource_id:
+                    created['filepaths'].append(resource_id)
+            except Exception as e:
+                print(f"[FocusManager] Error creating filepath node: {e}")
+        
+        if created['urls'] or created['filepaths']:
+            print(f"[FocusManager] Extracted {len(created['urls'])} URLs and {len(created['filepaths'])} filepaths")
+        
+        return created
+    
+    # ============================================================
+    # ITERATION AND STAGE MANAGEMENT
+    # ============================================================
+    
+    def _create_iteration_node(self) -> str:
+        """
+        Create a workflow iteration node and link to previous iteration.
+        
+        Returns:
+            Iteration node ID
+        """
+        if not self.hybrid_memory:
+            return None
+        
+        self.iteration_count += 1
+        iteration_id = f"iteration_{self.project_id}_{self.iteration_count}_{int(time.time())}"
+        
+        # Create iteration node
+        self.hybrid_memory.upsert_entity(
+            entity_id=iteration_id,
+            etype="workflow_iteration",
+            labels=["WorkflowIteration", "FocusIteration"],
+            properties={
+                "iteration_number": self.iteration_count,
+                "project_id": self.project_id,
+                "focus": self.focus,
+                "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                "started_at": datetime.utcnow().isoformat(),
+                "status": "in_progress"
+            }
+        )
+        
+        # Link to project
+        if self.project_id:
+            self.hybrid_memory.link(
+                self.project_id,
+                iteration_id,
+                "HAS_ITERATION",
+                {"iteration_number": self.iteration_count}
+            )
+        
+        # Link to previous iteration
+        if self.previous_iteration_id:
+            self.hybrid_memory.link(
+                self.previous_iteration_id,
+                iteration_id,
+                "NEXT_ITERATION",
+                {"sequence": self.iteration_count - 1}
+            )
+            self.hybrid_memory.link(
+                iteration_id,
+                self.previous_iteration_id,
+                "PREVIOUS_ITERATION",
+                {"sequence": self.iteration_count - 1}
+            )
+        
+        # Link to session
+        if hasattr(self.agent, 'sess') and self.agent.sess:
+            self.hybrid_memory.link(
+                self.agent.sess.id,
+                iteration_id,
+                "PERFORMED_ITERATION",
+                {"timestamp": datetime.utcnow().isoformat()}
+            )
+        
+        self.current_iteration_id = iteration_id
+        print(f"[FocusManager] Created iteration node: {iteration_id} (#{self.iteration_count})")
+        
+        return iteration_id
+    
+    def _complete_iteration_node(self, summary: Optional[str] = None):
+        """Mark current iteration as complete and update properties."""
+        if not self.hybrid_memory or not self.current_iteration_id:
+            return
+        
+        # Update iteration properties
+        with self.hybrid_memory.graph._driver.session() as sess:
+            sess.run("""
+                MATCH (i:WorkflowIteration {id: $id})
+                SET i.completed_at = $completed_at,
+                    i.status = 'completed',
+                    i.summary = $summary
+                RETURN i
+            """, {
+                "id": self.current_iteration_id,
+                "completed_at": datetime.utcnow().isoformat(),
+                "summary": summary or ""
+            })
+        
+        self.previous_iteration_id = self.current_iteration_id
+        self.current_iteration_id = None
+        
+        print(f"[FocusManager] Completed iteration: {self.previous_iteration_id}")
+    
+    def _create_stage_node(self, stage_name: str, stage_type: str, activity: str = "") -> str:
+        """
+        Create a workflow stage node and link to previous stage and current iteration.
+        
+        Args:
+            stage_name: Display name of stage (e.g., "Ideas Generation")
+            stage_type: Type identifier (e.g., "ideas", "next_steps", "actions", "execution")
+            activity: Description of what the stage is doing
+            
+        Returns:
+            Stage node ID
+        """
+        if not self.hybrid_memory:
+            return None
+        
+        stage_id = f"stage_{stage_type}_{self.current_iteration_id}_{int(time.time())}"
+        
+        # Create stage node
+        self.hybrid_memory.upsert_entity(
+            entity_id=stage_id,
+            etype="workflow_stage",
+            labels=["WorkflowStage", stage_type.capitalize()],
+            properties={
+                "stage_name": stage_name,
+                "stage_type": stage_type,
+                "activity": activity,
+                "iteration_id": self.current_iteration_id,
+                "project_id": self.project_id,
+                "focus": self.focus,
+                "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                "started_at": datetime.utcnow().isoformat(),
+                "status": "in_progress"
+            }
+        )
+        
+        # Link to current iteration
+        if self.current_iteration_id:
+            self.hybrid_memory.link(
+                self.current_iteration_id,
+                stage_id,
+                "HAS_STAGE",
+                {"stage_type": stage_type}
+            )
+        
+        # Link to previous stage
+        if self.previous_stage_id:
+            self.hybrid_memory.link(
+                self.previous_stage_id,
+                stage_id,
+                "NEXT_STAGE",
+                {"stage_type": stage_type}
+            )
+            self.hybrid_memory.link(
+                stage_id,
+                self.previous_stage_id,
+                "PREVIOUS_STAGE",
+                {}
+            )
+        
+        self.current_stage_id = stage_id
+        print(f"[FocusManager] Created stage node: {stage_id} ({stage_name})")
+        
+        return stage_id
+    
+    def _complete_stage_node(self, output: Optional[str] = None, output_count: int = 0):
+        """
+        Mark current stage as complete, extract resources, and update properties.
+        
+        Args:
+            output: Text output from the stage
+            output_count: Number of items generated (ideas, steps, actions, etc.)
+        """
+        if not self.hybrid_memory or not self.current_stage_id:
+            return
+        
+        # Extract and link resources from output
+        resource_ids = {'urls': [], 'filepaths': []}
+        if output:
+            resource_ids = self._extract_and_link_resources(output, self.current_stage_id)
+        
+        # Update stage properties
+        with self.hybrid_memory.graph._driver.session() as sess:
+            sess.run("""
+                MATCH (s:WorkflowStage {id: $id})
+                SET s.completed_at = $completed_at,
+                    s.status = 'completed',
+                    s.output_count = $output_count,
+                    s.resources_found = $resources_found
+                RETURN s
+            """, {
+                "id": self.current_stage_id,
+                "completed_at": datetime.utcnow().isoformat(),
+                "output_count": output_count,
+                "resources_found": len(resource_ids['urls']) + len(resource_ids['filepaths'])
+            })
+        
+        # Store output in vector store for semantic search
+        if output and len(output) > 50:
+            self.hybrid_memory.vec.add_texts(
+                collection="long_term_docs",
+                ids=[f"{self.current_stage_id}_output"],
+                texts=[output[:5000]],  # Limit to 5000 chars
+                metadatas=[{
+                    "entity_id": self.current_stage_id,
+                    "type": "stage_output",
+                    "iteration_id": self.current_iteration_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                    "project_id": self.project_id
+                }]
+            )
+        
+        self.previous_stage_id = self.current_stage_id
+        self.current_stage_id = None
+        
+        print(f"[FocusManager] Completed stage: {self.previous_stage_id}")
+    
     
     async def broadcast_to_websockets(self, event_type: str, data: dict):
         """Broadcast updates to all connected WebSockets."""
@@ -93,6 +447,7 @@ class ProactiveFocusManager:
         except Exception as e:
             # Silently fail - broadcasting is not critical
             print(f"[FocusManager] Broadcast failed (non-critical): {e}")
+
     @staticmethod
     def _sanitize_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -567,9 +922,20 @@ class ProactiveFocusManager:
                 return lines if lines else [response]
 
     def generate_ideas(self, context: Optional[str] = None) -> List[str]:
-        """Use LLM to generate ideas for the current focus."""
+        """Generate ideas with full graph integration"""
         if not self.focus:
             return []
+        
+        # Create stage node
+        stage_id = self._create_stage_node(
+            "Ideas Generation",
+            "ideas",
+            "Analyzing current state and generating creative ideas"
+        )
+        
+        self._set_stage("Ideas Generation", "Analyzing current state and generating creative ideas", 3)
+        self._stream_output(f"🎯 Focus: {self.focus}", "info")
+        self._stream_output("💡 Generating ideas...", "info")
         
         prompt = f"""
         Project Focus: {self.focus}
@@ -587,45 +953,93 @@ class ProactiveFocusManager:
         Respond with a JSON array of idea strings.
         """
         
-        self.thought_streaming = True
-        self.current_thought = ""
+        self._update_progress()
+        self._stream_output("📝 Composing prompt...", "info")
         
-        self._broadcast_sync("idea_generation_started", {"focus": self.focus})
-        self._broadcast_sync("thought_generation_started",  {"focus": self.focus})
         try:
             response = ""
-            for chunk in self.agent.deep_llm.stream(prompt):
-                self.current_thought += chunk
-                response += chunk
-                
-                self._broadcast_sync("thought_chunk", {
-                    "chunk": chunk,
-                    "current_thought": self.current_thought
-                })
             
-            self.thought_streaming = False
-            self._broadcast_sync("idea_generation_completed", {"response": response})
+            # Use universal streaming wrapper
+            for chunk in self._stream_llm_with_thought_broadcast(self.agent.deep_llm, prompt):
+                response += chunk
+            
+            self._update_progress()
+            self._stream_output("✅ Ideas generated successfully", "success")
             
         except Exception as e:
-            self.thought_streaming = False
-            response = f"Error streaming ideas response: {str(e)}"
-            self._broadcast_sync("idea_generation_error", {"error": str(e)})
+            self._stream_output(f"❌ Error: {str(e)}", "error")
+            response = f"Error: {str(e)}"
         
-        # Parse response using helper
         ideas = self._parse_json_response(response)
         
-        # Add to focus board
-        for idea in ideas:
-            self.add_to_focus_board("ideas", idea)
-            self.agent.mem.add_session_memory(self.agent.sess.id, idea, "Idea", {"focus": self.focus, "Source":"Proactive Focus Manager"})
+        self._update_progress()
+        self._stream_output(f"📊 Generated {len(ideas)} ideas", "success")
+        
+        # Create idea nodes and link to stage
+        for idx, idea in enumerate(ideas, 1):
+            idea_id = f"idea_{stage_id}_{idx}"
             
+            # Create idea node
+            self.hybrid_memory.upsert_entity(
+                entity_id=idea_id,
+                etype="idea",
+                labels=["Idea", "FocusBoardItem"],
+                properties={
+                    "text": idea,
+                    "category": "ideas",
+                    "index": idx,
+                    "stage_id": stage_id,
+                    "iteration_id": self.current_iteration_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+            
+            # Link to stage
+            self.hybrid_memory.link(stage_id, idea_id, "GENERATED", {"index": idx})
+            
+            # Add to vector store
+            self.hybrid_memory.vec.add_texts(
+                collection="long_term_docs",
+                ids=[idea_id],
+                texts=[idea],
+                metadatas=[{
+                    "type": "idea",
+                    "stage_id": stage_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None
+                }]
+            )
+            
+            # Extract resources from idea
+            self._extract_and_link_resources(idea, idea_id)
+            
+            # Add to focus board
+            self.add_to_focus_board("ideas", idea)
+            self._stream_output(f"  {idx}. {idea[:100]}{'...' if len(idea) > 100 else ''}", "info")
+        
+        # Complete stage
+        self._complete_stage_node(output=response, output_count=len(ideas))
+        self._clear_stage()
         
         return ideas
     
     def generate_next_steps(self, context: Optional[str] = None) -> List[str]:
-        """Use LLM to generate next steps based on current state."""
+        """Generate next steps with full graph integration"""
         if not self.focus:
             return []
+        
+        # Create stage node
+        stage_id = self._create_stage_node(
+            "Next Steps",
+            "next_steps",
+            "Analyzing progress and determining next actions"
+        )
+        
+        self._set_stage("Next Steps", "Analyzing progress and determining next actions", 3)
+        self._stream_output(f"🎯 Focus: {self.focus}", "info")
+        self._stream_output("→ Generating next steps...", "info")
         
         prompt = f"""
         Project Focus: {self.focus}
@@ -641,43 +1055,90 @@ class ProactiveFocusManager:
         Consider current progress and outstanding issues.
         Respond with a JSON array of step strings.
         """
-        self._broadcast_sync("idea_generation_started", {"focus": self.focus})
-        self._broadcast_sync("thought_generation_started",  {"focus": self.focus})
+        
+        self._update_progress()
+        
         try:
             response = ""
-            for chunk in self.agent.deep_llm.stream(prompt):
-                self.current_thought += chunk
+            for chunk in self._stream_llm_with_thought_broadcast(self.agent.deep_llm, prompt):
                 response += chunk
-                
-                self._broadcast_sync("thought_chunk", {
-                    "chunk": chunk,
-                    "current_thought": self.current_thought
-                })
             
-            self.thought_streaming = False
-            self._broadcast_sync("idea_generation_completed", {"response": response})
+            self._update_progress()
+            self._stream_output("✅ Next steps generated", "success")
             
         except Exception as e:
-            self.thought_streaming = False
-            response = f"Error streaming ideas response: {str(e)}"
-            self._broadcast_sync("idea_generation_error", {"error": str(e)})
+            self._stream_output(f"❌ Error: {str(e)}", "error")
+            response = f"Error: {str(e)}"
         
-        # Parse response using helper
         steps = self._parse_json_response(response)
         
-        for step in steps:
-            self.add_to_focus_board("next_steps", step)
-            self.agent.mem.add_session_memory(self.agent.sess.id, step, "Next_Step", {"focus": self.focus, "Source":"Proactive Focus Manager"})
+        self._update_progress()
+        self._stream_output(f"📊 Generated {len(steps)} next steps", "success")
+        
+        # Create step nodes and link to stage
+        for idx, step in enumerate(steps, 1):
+            step_id = f"next_step_{stage_id}_{idx}"
             
+            self.hybrid_memory.upsert_entity(
+                entity_id=step_id,
+                etype="next_step",
+                labels=["NextStep", "FocusBoardItem"],
+                properties={
+                    "text": step,
+                    "category": "next_steps",
+                    "index": idx,
+                    "stage_id": stage_id,
+                    "iteration_id": self.current_iteration_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+            
+            self.hybrid_memory.link(stage_id, step_id, "GENERATED", {"index": idx})
+            
+            # Add to vector store
+            self.hybrid_memory.vec.add_texts(
+                collection="long_term_docs",
+                ids=[step_id],
+                texts=[step],
+                metadatas=[{
+                    "type": "next_step",
+                    "stage_id": stage_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None
+                }]
+            )
+            
+            # Extract resources
+            self._extract_and_link_resources(step, step_id)
+            
+            self.add_to_focus_board("next_steps", step)
+            self._stream_output(f"  {idx}. {step[:100]}{'...' if len(step) > 100 else ''}", "info")
+        
+        self._complete_stage_node(output=response, output_count=len(steps))
+        self._clear_stage()
         
         return steps
     
     def generate_actions(self, context: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Use LLM to generate executable actions with tool suggestions."""
+        """Generate actions with full graph integration"""
         if not self.focus:
             return []
         
+        # Create stage node
+        stage_id = self._create_stage_node(
+            "Action Planning",
+            "actions",
+            "Creating executable actions with tool integration"
+        )
+        
+        self._set_stage("Action Planning", "Creating executable actions with tool integration", 4)
+        self._stream_output(f"🎯 Focus: {self.focus}", "info")
+        
         available_tools = [tool.name for tool in self.agent.tools]
+        self._stream_output(f"🔧 Available tools: {', '.join(available_tools[:5])}{'...' if len(available_tools) > 5 else ''}", "info")
+        self._update_progress()
         
         prompt = f"""
         Project Focus: {self.focus}
@@ -697,26 +1158,20 @@ class ProactiveFocusManager:
         
         Respond with a JSON array of action objects.
         """
-        self._broadcast_sync("idea_generation_started", {"focus": self.focus})
-        self._broadcast_sync("thought_generation_started",  {"focus": self.focus})
+        
+        self._stream_output("⚡ Generating executable actions...", "info")
+        self._update_progress()
+        
         try:
             response = ""
-            for chunk in self.agent.deep_llm.stream(prompt):
-                self.current_thought += chunk
+            for chunk in self._stream_llm_with_thought_broadcast(self.agent.deep_llm, prompt):
                 response += chunk
-                
-                self._broadcast_sync("thought_chunk", {
-                    "chunk": chunk,
-                    "current_thought": self.current_thought
-                })
             
-            self.thought_streaming = False
-            self._broadcast_sync("idea_generation_completed", {"response": response})
+            self._update_progress()
             
         except Exception as e:
-            self.thought_streaming = False
-            response = f"Error streaming ideas response: {str(e)}"
-            self._broadcast_sync("idea_generation_error", {"error": str(e)})
+            self._stream_output(f"❌ Error: {str(e)}", "error")
+            response = f"Error: {str(e)}"
         
         try:
             actions = json.loads(response)
@@ -725,23 +1180,91 @@ class ProactiveFocusManager:
         except:
             actions = [{"description": response, "tools": [], "priority": "medium"}]
         
-        # Add each action individually to the focus board
-        for action in actions:
-            # Use the description as the note, store full action in metadata
-            description = action.get("description", str(action))
-            self.add_to_focus_board("actions", description, metadata=action)
-            self.agent.mem.add_session_memory(self.agent.sess.id, description, "Action", {"focus": self.focus, "Source":"Proactive Focus Manager"})
-            # self.mem.add_session_memory(self.sess.id, ai_output, "Response", {"topic": "response"})
+        self._update_progress()
+        self._stream_output(f"📊 Generated {len(actions)} actions", "success")
         
+        # Create action nodes and link to stage
+        for idx, action in enumerate(actions, 1):
+            description = action.get("description", str(action))
+            priority = action.get("priority", "medium")
+            tools = action.get("tools", [])
+            
+            action_id = f"action_{stage_id}_{idx}"
+            
+            self.hybrid_memory.upsert_entity(
+                entity_id=action_id,
+                etype="action",
+                labels=["Action", "FocusBoardItem", priority.capitalize()],
+                properties={
+                    "text": description,
+                    "category": "actions",
+                    "index": idx,
+                    "priority": priority,
+                    "suggested_tools": json.dumps(tools),
+                    "stage_id": stage_id,
+                    "iteration_id": self.current_iteration_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            )
+            
+            self.hybrid_memory.link(stage_id, action_id, "GENERATED", {"index": idx, "priority": priority})
+            
+            # Add to vector store
+            self.hybrid_memory.vec.add_texts(
+                collection="long_term_docs",
+                ids=[action_id],
+                texts=[description],
+                metadatas=[{
+                    "type": "action",
+                    "priority": priority,
+                    "stage_id": stage_id,
+                    "project_id": self.project_id,
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None
+                }]
+            )
+            
+            # Extract resources
+            self._extract_and_link_resources(description, action_id)
+            
+            self.add_to_focus_board("actions", description, metadata=action)
+            
+            priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
+            self._stream_output(f"  {priority_emoji} {idx}. {description[:100]}{'...' if len(description) > 100 else ''}", "info")
+            
+            if tools:
+                self._stream_output(f"     Tools: {', '.join(tools)}", "info")
+        
+        self._complete_stage_node(output=response, output_count=len(actions))
+        self._clear_stage()
         
         return actions
-
+    
     def handoff_to_toolchain(self, action: Dict[str, Any]):
-        """Hand off an action to the ToolChainPlanner for decomposition and execution."""
+        """Hand off action to toolchain with full execution tracking"""
         description = action.get('description', str(action))
-        print(f"[FocusManager] Handing off to toolchain: {description}")
         
-        # Build query for toolchain
+        # Create execution stage node
+        stage_id = self._create_stage_node(
+            "Action Execution",
+            "execution",
+            f"Executing: {description[:50]}..."
+        )
+        
+        self._set_stage("Action Execution", f"Executing: {description[:50]}...", 1)
+        self._stream_output(f"▶️ Starting action execution", "info")
+        self._stream_output(f"📋 Action: {description}", "info")
+        
+        priority = action.get('priority', 'medium')
+        tools = action.get('tools', [])
+        
+        priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
+        self._stream_output(f"   Priority: {priority_emoji} {priority}", "info")
+        
+        if tools:
+            self._stream_output(f"   Suggested tools: {', '.join(tools)}", "info")
+        
         query = f"""
 Project: {self.focus}
 Action: {description}
@@ -753,61 +1276,119 @@ Context:
 - Related Issues: {json.dumps(self.focus_board.get('issues', [])[-3:], indent=2)}
 """
         
-        print(f"[FocusManager] Toolchain query:\n{query}")
+        # Use memory's execution tracking context
+        execution_id = None
+        if self.hybrid_memory:
+            execution_id = f"tool_exec_{stage_id}_{int(time.time())}"
+            
+            # Create execution node using memory's method
+            execution_id = self.hybrid_memory.create_tool_execution_node(
+                node_id=stage_id,
+                tool_name="toolchain",
+                metadata={
+                    "executed_at": datetime.utcnow().isoformat(),
+                    "input": description[:500],
+                    "session_id": self.agent.sess.id if hasattr(self.agent, 'sess') else None,
+                    "iteration_id": self.current_iteration_id,
+                    "project_id": self.project_id
+                }
+            )
         
-        self._broadcast_sync("toolchain_handoff", {
-            "action": action,
-            "query": query
-        })
+        result = ""
+        chunk_count = 0
+        line_buffer = ""
+        start_time = time.time()
         
-        # Execute via toolchain
+        def flush_line_buffer():
+            nonlocal line_buffer
+            if line_buffer:
+                self._stream_output(f"  {line_buffer}", "info")
+                line_buffer = ""
+        
         try:
-            print(f"[FocusManager] Calling agent.toolchain.execute_tool_chain...")
+            # Use execution tracking context if available
+            if self.hybrid_memory and execution_id:
+                with self.hybrid_memory.track_execution(execution_id):
+                    # Execute toolchain
+                    self._stream_output("🔄 Executing toolchain...", "info")
+                    self._stream_output("─" * 60, "info")
+                    
+                    for chunk in self.agent.toolchain.execute_tool_chain(query):
+                        chunk_str = str(chunk)
+                        result += chunk_str
+                        chunk_count += 1
+                        
+                        for char in chunk_str:
+                            if char == '\n':
+                                flush_line_buffer()
+                            else:
+                                line_buffer += char
+                        
+                        if chunk_count % 100 == 0:
+                            if line_buffer:
+                                self._stream_output(f"  {line_buffer}...", "info")
+                            self._stream_output(f"  📊 [{chunk_count} chunks, {len(result)} chars]", "info")
+            else:
+                # Fallback without tracking
+                for chunk in self.agent.toolchain.execute_tool_chain(query):
+                    chunk_str = str(chunk)
+                    result += chunk_str
+                    chunk_count += 1
+                    
+                    for char in chunk_str:
+                        if char == '\n':
+                            flush_line_buffer()
+                        else:
+                            line_buffer += char
             
-            # Check if toolchain exists
-            if not hasattr(self.agent, 'toolchain'):
-                error_msg = "Agent does not have a toolchain"
-                print(f"[FocusManager] ERROR: {error_msg}")
-                self.add_to_focus_board("issues", error_msg)
-                return None
+            flush_line_buffer()
+            self._stream_output("─" * 60, "info")
             
-            result = ""
-            chunk_count = 0
-            for chunk in self.agent.toolchain.execute_tool_chain(query):
-                result += str(chunk)
-                chunk_count += 1
-                if chunk_count % 10 == 0:  # Log every 10 chunks
-                    print(f"[FocusManager] Received {chunk_count} chunks from toolchain...")
+            duration_ms = int((time.time() - start_time) * 1000)
             
-            print(f"[FocusManager] Toolchain execution complete. Total chunks: {chunk_count}")
-            print(f"[FocusManager] Result preview: {result[:200]}...")
+            self._stream_output(f"✅ Execution complete ({chunk_count} chunks, {duration_ms}ms)", "success")
             
-            # Update focus board with results
-            self.add_to_focus_board("progress", 
-                                   f"Completed: {description}")
+            # Create result node and extract resources
+            if self.hybrid_memory and execution_id:
+                result_id = self.hybrid_memory.create_tool_result_node(
+                    execution_id=execution_id,
+                    output=result,
+                    metadata={
+                        "tool_name": "toolchain",
+                        "chunks_received": chunk_count,
+                        "duration_ms": duration_ms
+                    }
+                )
+                
+                # Extract resources from result
+                resources = self._extract_and_link_resources(result, result_id)
+                
+                self._stream_output(f"📊 Extracted {len(resources['urls'])} URLs and {len(resources['filepaths'])} filepaths", "info")
             
-            if result:
-                self.add_to_focus_board("progress", 
-                                       f"Result: {result[:500]}")
+            # Update focus board
+            self.add_to_focus_board("progress", f"Completed: {description}")
+            
+            if result and result.strip():
+                result_summary = result[:500] + "..." if len(result) > 500 else result
+                self.add_to_focus_board("progress", f"Result: {result_summary}")
+            
+            # Complete stage
+            self._complete_stage_node(output=result, output_count=1)
+            self._clear_stage()
             
             return result
             
-        except AttributeError as e:
-            error_msg = f"Toolchain attribute error: {e}"
-            print(f"[FocusManager] {error_msg}")
-            import traceback
-            traceback.print_exc()
-            self.add_to_focus_board("issues", error_msg)
-            return None
-            
         except Exception as e:
+            flush_line_buffer()
             error_msg = f"Toolchain execution failed: {e}"
-            print(f"[FocusManager] {error_msg}")
-            import traceback
-            traceback.print_exc()
+            self._stream_output(f"❌ {error_msg}", "error")
+            
             self.add_to_focus_board("issues", error_msg)
+            self._complete_stage_node(output=error_msg, output_count=0)
+            self._clear_stage()
+            
             return None
-        
+    
     def update_latest_conversation(self, conversation: str):
         self.latest_conversation = conversation
     
@@ -948,6 +1529,7 @@ Context:
         thread = threading.Thread(target=run, daemon=True)
         thread.start()
         print("[FocusManager] Started proactive thought generation in background")
+    
     def _generate_proactive_thought_streaming(self) -> Optional[str]:
         """Generate proactive thought with streaming support."""
         print("[FocusManager] Generating proactive thought (streaming)...")
@@ -974,9 +1556,11 @@ Context:
         """
         
         try:
-            for chunk in self.agent.deep_llm.stream(prompt):
+            # Use universal streaming wrapper
+            for chunk in self._stream_llm_with_thought_broadcast(self.agent.deep_llm, prompt):
                 self.current_thought += chunk
                 
+                # Also broadcast as thought chunk for compatibility
                 self._broadcast_sync("thought_chunk", {
                     "chunk": chunk,
                     "current_thought": self.current_thought
@@ -991,10 +1575,12 @@ Context:
             
         except Exception as e:
             print(f"[FocusManager] Error generating proactive thought: {e}")
+            import traceback
+            traceback.print_exc()
+            
             self._broadcast_sync("thought_error", {"error": str(e)})
             self.thought_streaming = False
             return None
-    
     def execute_goal_with_vera(self, goal: str):
         """Instruct Vera to achieve the goal using tools if needed and log results."""
         try:
@@ -1037,81 +1623,99 @@ Context:
                 "goal": goal,
                 "error": str(e)
             })
+  
+    def iterative_workflow(self, max_iterations: Optional[int] = None, 
+                          iteration_interval: int = 300,
+                          auto_execute: bool = True):
+        """Enhanced iterative workflow with full graph integration"""
+        self.workflow_active = True
+        iteration = 0
+        
+        self._stream_output("="*60, "info")
+        self._stream_output("🚀 PROACTIVE FOCUS WORKFLOW STARTED", "success")
+        self._stream_output("="*60, "info")
+        self._stream_output(f"📋 Configuration:", "info")
+        self._stream_output(f"   • Max iterations: {max_iterations or 'Infinite'}", "info")
+        self._stream_output(f"   • Interval: {iteration_interval}s", "info")
+        self._stream_output(f"   • Auto-execute: {auto_execute}", "info")
+        self._stream_output(f"   • Focus: {self.focus}", "info")
+        self._stream_output("="*60 + "\n", "info")
+        
+        while (max_iterations is None or iteration < max_iterations) and self.workflow_active:
+            iteration += 1
             
-    def iterative_workflow(
-            self,
-            max_iterations: Optional[int] = None,
-            iteration_interval: int = 300,
-            auto_execute: bool = True
-        ):
-            """
-            Orchestrator-based iterative workflow.
-            """
-            iteration = 0
+            # Create iteration node
+            iteration_id = self._create_iteration_node()
             
-            while max_iterations is None or iteration < max_iterations:
-                iteration += 1
-                print(f"\n[Iteration {iteration}]\n")
+            self._stream_output("\n" + "="*60, "info")
+            self._stream_output(f"🔄 ITERATION {iteration}", "info")
+            self._stream_output("="*60 + "\n", "info")
+            
+            try:
+                # Step 1: State review
+                state_summary = self._review_current_state()
+                self._stream_output(f"📊 State: {state_summary}", "info")
                 
-                try:
-                    # Step 1: Review state
-                    state = self._review_current_state()
-                    
-                    # Step 2: Generate ideas (async, low priority)
-                    if iteration % 3 == 0:
-                        task_id = self.agent.proactive_orchestrator.submit_proactive_task(
-                            "proactive.generate_ideas",
-                            vera_instance=self.agent,
-                            context=state
-                        )
-                        # Don't wait - let it run in background
-                    
-                    # Step 3: Generate next steps
-                    task_id = self.agent.proactive_orchestrator.submit_proactive_task(
-                        "proactive.generate_next_steps",
-                        vera_instance=self.agent,
-                        context=state
-                    )
-                    
-                    # Step 4: Generate actions
-                    actions_task = self.agent.proactive_orchestrator.submit_proactive_task(
-                        "proactive.generate_actions",
-                        vera_instance=self.agent,
-                        context=state
-                    )
-                    
-                    # Wait for actions
-                    actions_result = self.agent.orchestrator.wait_for_result(
-                        actions_task,
-                        timeout=30.0
-                    )
-                    
-                    # Step 5: Execute high-priority actions
-                    if auto_execute and actions_result:
-                        actions = actions_result.result or []
-                        
-                        for action in actions:
-                            if isinstance(action, dict) and action.get('priority') == 'high':
-                                # Submit execution task (async)
-                                exec_task = self.agent.proactive_orchestrator.submit_proactive_task(
-                                    "proactive.execute_action",
-                                    vera_instance=self.agent,
-                                    action=action
-                                )
-                                # Limit concurrent executions
-                                break
-                    
-                    # Step 6: Save checkpoint
-                    self.save_focus_board()
-                    
-                    # Wait for next iteration
+                # Step 2: Ideas (every 3 iterations)
+                if iteration % 3 == 0:
+                    self._stream_output("\n💡 Generating ideas...", "info")
+                    ideas = self.generate_ideas(context=state_summary)
+                    time.sleep(2)
+                
+                # Step 3: Next steps
+                self._stream_output("\n→ Generating next steps...", "info")
+                steps = self.generate_next_steps(context=state_summary)
+                time.sleep(2)
+                
+                # Step 4: Actions
+                self._stream_output("\n⚡ Generating actions...", "info")
+                actions = self.generate_actions(context=state_summary)
+                time.sleep(2)
+                
+                # Step 5: Execute
+                if auto_execute and actions:
+                    self._stream_output("\n▶️ Executing high-priority actions...", "info")
+                    executed = self.execute_actions_stage(max_executions=2, priority_filter="high")
+                    self._stream_output(f"✅ Executed {executed} actions", "success")
+                
+                # Step 6: Save
+                checkpoint = self.save_focus_board()
+                self._stream_output(f"💾 Checkpoint saved: {checkpoint}", "success")
+                
+                # Complete iteration
+                self._complete_iteration_node(summary=state_summary)
+                
+                # Wait for next iteration
+                if max_iterations is None or iteration < max_iterations:
+                    self._stream_output(f"\n⏳ Waiting {iteration_interval}s until next iteration...", "info")
                     time.sleep(iteration_interval)
-                    
-                except Exception as e:
-                    print(f"[Error] {e}")
-                    import traceback
-                    traceback.print_exc()
-                    
+                
+            except Exception as e:
+                self._stream_output(f"\n❌ Error in iteration {iteration}: {str(e)}", "error")
+                import traceback
+                traceback.print_exc()
+                
+                # Mark iteration as failed
+                if self.current_iteration_id and self.hybrid_memory:
+                    with self.hybrid_memory.graph._driver.session() as sess:
+                        sess.run("""
+                            MATCH (i:WorkflowIteration {id: $id})
+                            SET i.status = 'failed',
+                                i.error = $error,
+                                i.completed_at = $completed_at
+                        """, {
+                            "id": self.current_iteration_id,
+                            "error": str(e),
+                            "completed_at": datetime.utcnow().isoformat()
+                        })
+                
+                time.sleep(30)
+        
+        self.workflow_active = False
+        self._stream_output("\n" + "="*60, "info")
+        self._stream_output(f"✅ WORKFLOW COMPLETED - {iteration} iterations", "success")
+        self._stream_output("="*60, "info")
+    
     def iterative_workflow_old(self, max_iterations: Optional[int] = None, 
                           iteration_interval: int = 300,
                           auto_execute: bool = True):
@@ -1289,79 +1893,61 @@ Context:
             print(f"[FocusManager] Actions stage error: {e}")
             self._broadcast_sync("stage_error", {"stage": "actions", "error": str(e)})
             return []
-    
+        
     def execute_actions_stage(self, max_executions: int = 2, priority_filter: str = "high"):
-        """Execute actions from the focus board."""
-        print(f"[FocusManager] Running action execution stage (max={max_executions}, priority={priority_filter})...")
-        self._broadcast_sync("stage_started", {"stage": "execute_actions"})
+        """Execute actions with detailed streaming"""
+        self._set_stage("Action Execution", f"Executing up to {max_executions} {priority_filter} priority actions", max_executions + 1)
+        self._stream_output("▶️ Starting action execution...", "info")
         
         actions = self.focus_board.get("actions", [])
-        print(f"[FocusManager] Found {len(actions)} actions in focus board")
         
         if not actions:
-            print("[FocusManager] No actions to execute")
-            self._broadcast_sync("stage_completed", {
-                "stage": "execute_actions",
-                "count": 0
-            })
+            self._stream_output("⚠️ No actions to execute", "warning")
+            self._clear_stage()
             return 0
+        
+        self._stream_output(f"📋 Found {len(actions)} total actions in focus board", "info")
+        self._update_progress()
         
         executed_count = 0
         
         for idx, action in enumerate(actions):
             if executed_count >= max_executions:
-                print(f"[FocusManager] Reached max executions ({max_executions})")
+                self._stream_output(f"✓ Reached max executions ({max_executions})", "success")
                 break
             
-            print(f"[FocusManager] Processing action {idx}: {type(action)} - {str(action)[:100]}")
-            
-            # Parse action
             try:
                 action_dict = self.parseActionItem(action)
-                print(f"[FocusManager] Parsed action: description='{action_dict.get('description', '')[:50]}...', priority={action_dict.get('priority')}")
-            except Exception as e:
-                print(f"[FocusManager] Failed to parse action {idx}: {e}")
-                continue
-            
-            priority = action_dict.get('priority', 'medium')
-            
-            # Filter by priority (None means execute all)
-            if priority_filter and priority_filter.lower() != 'all' and priority != priority_filter:
-                print(f"[FocusManager] Skipping action {idx}: priority {priority} doesn't match filter {priority_filter}")
-                continue
-            
-            description = action_dict.get('description', '')
-            print(f"[FocusManager] Executing action {idx}: {description[:100]}...")
-            
-            try:
+                priority = action_dict.get('priority', 'medium')
+                description = action_dict.get('description', '')
+                
+                if priority_filter and priority_filter.lower() != 'all' and priority != priority_filter:
+                    continue
+                
+                self._stream_output(f"\n▶️ Executing action {executed_count + 1}/{max_executions}:", "info")
+                self._stream_output(f"   {description[:150]}{'...' if len(description) > 150 else ''}", "info")
+                
                 result = self.handoff_to_toolchain(action_dict)
-                print(f"[FocusManager] Action {idx} completed with result: {str(result)[:100] if result else 'None'}")
-                executed_count += 1
                 
-                # Note: We don't move to completed here because handoff_to_toolchain 
-                # already updates the focus board
+                if result:
+                    self._stream_output(f"✅ Action completed", "success")
+                    result_preview = str(result)[:200]
+                    self._stream_output(f"   Result: {result_preview}{'...' if len(str(result)) > 200 else ''}", "info")
+                else:
+                    self._stream_output(f"⚠️ Action completed with no result", "warning")
+                
+                executed_count += 1
+                self._update_progress()
                 
             except Exception as e:
-                error_msg = f"Action execution failed: {e}"
-                print(f"[FocusManager] {error_msg}")
+                self._stream_output(f"❌ Execution failed: {str(e)}", "error")
                 import traceback
                 traceback.print_exc()
-                self.add_to_focus_board("issues", error_msg)
-            
-            # Check CPU
-            cpu_usage = self._count_ollama_processes()
-            if cpu_usage >= self.cpu_threshold:
-                print(f"[FocusManager] CPU threshold reached ({cpu_usage:.1f}%), stopping execution")
-                break
         
-        print(f"[FocusManager] Executed {executed_count} actions")
-        self._broadcast_sync("stage_completed", {
-            "stage": "execute_actions",
-            "count": executed_count
-        })
+        self._stream_output(f"\n📊 Execution Summary: {executed_count}/{max_executions} actions completed", "success")
+        self._clear_stage()
         
         return executed_count
-    
     
     def parseActionItem(self, item):
         """Parse an action item into a standard dict format."""
@@ -1577,6 +2163,179 @@ Context:
         self.workflow_thread.start()
         print("[FocusManager] Workflow thread started")
 
+ 
+    def _set_stage(self, stage: str, activity: str = "", total_steps: int = 0):
+        """Set current stage and broadcast update"""
+        self.current_stage = stage
+        self.current_activity = activity
+        self.stage_progress = 0
+        self.stage_total = total_steps
+        
+        print(f"[FocusManager] Stage: {stage} - {activity}")
+        
+        self._broadcast_sync("stage_update", {
+            "stage": stage,
+            "activity": activity,
+            "progress": 0,
+            "total": total_steps,
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    
+    def _update_progress(self, increment: int = 1):
+        """Update stage progress and broadcast"""
+        self.stage_progress += increment
+        
+        self._broadcast_sync("stage_progress", {
+            "stage": self.current_stage,
+            "progress": self.stage_progress,
+            "total": self.stage_total,
+            "percentage": (self.stage_progress / self.stage_total * 100) if self.stage_total > 0 else 0
+        })
+    
+    def _stream_output(self, text: str, category: str = "info"):
+        """Stream output text to UI"""
+        self._broadcast_sync("stream_output", {
+            "text": text,
+            "category": category,  # info, success, warning, error
+            "timestamp": datetime.utcnow().isoformat()
+        })
+    
+    def _clear_stage(self):
+        """Clear current stage"""
+        self.current_stage = None
+        self.current_activity = None
+        self.stage_progress = 0
+        self.stage_total = 0
+        
+        self._broadcast_sync("stage_cleared", {})
+
+    def _stream_llm_with_thought_broadcast(self, llm, prompt: str):
+        """
+        Universal wrapper for LLM streaming that captures and broadcasts both:
+        - LLM-level thoughts (<think> tags from reasoning models)
+        - Response content
+        
+        This should be used by ALL generate functions.
+        Thoughts are stripped from response and saved separately to memory.
+        """
+        response_buffer = ""
+        thought_buffer = ""
+        in_thought = False
+        
+        # Use Vera's thought polling wrapper if available
+        if hasattr(self.agent, '_stream_with_thought_polling'):
+            for chunk in self.agent._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                
+                # Process chunk character by character to handle thought tags
+                i = 0
+                while i < len(chunk_text):
+                    # Check for thought start
+                    if chunk_text[i:i+9] == '<thought>':
+                        in_thought = True
+                        i += 9
+                        
+                        # Broadcast start of LLM thought
+                        self._broadcast_sync("llm_thought_start", {
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        continue
+                    
+                    # Check for thought end
+                    if chunk_text[i:i+10] == '</thought>':
+                        in_thought = False
+                        i += 10
+                        
+                        # Broadcast end and save to memory
+                        self._broadcast_sync("llm_thought_end", {
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                        
+                        # Save thought to agent memory (NOT focus board)
+                        if thought_buffer.strip() and hasattr(self.agent, 'mem'):
+                            self.agent.mem.add_session_memory(
+                                self.agent.sess.id,
+                                thought_buffer.strip(),
+                                "Thought",
+                                {"source": "proactive_focus", "focus": self.focus}
+                            )
+                            print(f"[FocusManager] Saved thought to memory ({len(thought_buffer)} chars)")
+                        
+                        thought_buffer = ""  # Clear thought buffer
+                        continue
+                    
+                    # Add character to appropriate buffer
+                    if in_thought:
+                        thought_buffer += chunk_text[i]
+                        
+                        # Broadcast thought chunk
+                        self._broadcast_sync("llm_thought_chunk", {
+                            "chunk": chunk_text[i],
+                            "type": "llm_reasoning"
+                        })
+                    else:
+                        response_buffer += chunk_text[i]
+                        
+                        # Broadcast response chunk
+                        self._broadcast_sync("response_chunk", {
+                            "chunk": chunk_text[i],
+                            "accumulated": response_buffer
+                        })
+                        
+                        yield chunk_text[i]
+                    
+                    i += 1
+        
+        else:
+            # Fallback: Direct streaming without thought polling
+            # Still try to strip thought tags if present
+            for chunk in llm.stream(prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                
+                i = 0
+                while i < len(chunk_text):
+                    if chunk_text[i:i+9] == '<thought>':
+                        in_thought = True
+                        i += 9
+                        continue
+                    
+                    if chunk_text[i:i+10] == '</thought>':
+                        in_thought = False
+                        i += 10
+                        
+                        # Save thought
+                        if thought_buffer.strip() and hasattr(self.agent, 'mem'):
+                            self.agent.mem.add_session_memory(
+                                self.agent.sess.id,
+                                thought_buffer.strip(),
+                                "Thought",
+                                {"source": "proactive_focus", "focus": self.focus}
+                            )
+                        thought_buffer = ""
+                        continue
+                    
+                    if in_thought:
+                        thought_buffer += chunk_text[i]
+                    else:
+                        response_buffer += chunk_text[i]
+                        yield chunk_text[i]
+                    
+                    i += 1
+        
+        return response_buffer
+    
+    def extract_chunk_text(chunk) -> str:
+        """Extract text content from various chunk formats."""
+        if isinstance(chunk, str):
+            return chunk
+        elif hasattr(chunk, 'content'):
+            return chunk.content
+        elif hasattr(chunk, 'text'):
+            return chunk.text
+        elif isinstance(chunk, dict):
+            return chunk.get('content', chunk.get('text', str(chunk)))
+        else:
+            return str(chunk)
 
 def get_active_ollama_threads():
     """Return active Ollama threads with non-zero CPU usage."""

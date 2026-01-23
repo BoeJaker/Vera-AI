@@ -1,6 +1,6 @@
 """
-API Extensions for Advanced Toolchain Query Builder - FIXED VERSION
-Better error handling, fallbacks, and debugging
+API Extensions for Advanced Toolchain Query Builder - ORCHESTRATOR INTEGRATED
+Uses orchestrator task submission (like async_run) for agent routing
 """
 
 import json
@@ -225,7 +225,14 @@ async def preview_query_plan(request: QueryPreviewRequest):
 
 @router.post("/execute")
 async def execute_query(request: QueryExecutionRequest):
-    """Execute a toolchain using the specified strategy and template."""
+    """
+    Execute a toolchain using the specified strategy and template.
+    
+    Uses orchestrator integration (like async_run) for:
+    - Agent routing (tool-agent selection)
+    - Parallel execution support
+    - Proper resource management
+    """
     logger.info(f"[Execute] Starting - Session: {request.session_id}, Template: {request.template}, Strategy: {request.strategy}")
     
     if request.session_id not in sessions:
@@ -233,10 +240,20 @@ async def execute_query(request: QueryExecutionRequest):
         raise HTTPException(status_code=404, detail="Session not found")
     
     vera = get_or_create_vera(request.session_id)
+    
     logger.info(f"[Execute] Vera instance retrieved: {type(vera).__name__}")
-    logger.info(f"[Execute] Toolchain type: {type(vera.toolchain).__name__}")
     
     async def generate():
+        # Check orchestrator availability inside the generator
+        use_orchestrator = (
+            hasattr(vera, 'orchestrator') and 
+            vera.orchestrator and 
+            hasattr(vera.orchestrator, 'running') and
+            vera.orchestrator.running
+        )
+        
+        logger.info(f"[Execute] Orchestrator available: {use_orchestrator}")
+        
         try:
             logger.info(f"[Execute] Generator started")
             
@@ -267,7 +284,6 @@ async def execute_query(request: QueryExecutionRequest):
                 query = request.params.get("query", "")
                 yield f"Processing direct prompt: {query[:50]}...\n"
                 logger.info(f"[Execute] Direct prompt mode: {query[:100]}")
-                # Don't generate plan, let execute_tool_chain do it
                 plan = None
                 
             else:
@@ -282,48 +298,86 @@ async def execute_query(request: QueryExecutionRequest):
                     yield error_msg
                     return
             
-            yield f"\n{'='*60}\n"
-            yield f"Strategy: {request.strategy}\n"
-            yield f"Template: {request.template}\n"
-            yield f"{'='*60}\n\n"
-            
             # Format query
             query = _format_query_from_params(request.template, request.params)
             logger.info(f"[Execute] Query: {query}")
             
-            # Execute toolchain
-            logger.info(f"[Execute] Calling toolchain.execute_tool_chain...")
-            logger.info(f"[Execute] Args: query={query[:100]}, plan={'None' if plan is None else f'{len(plan)} steps'}, strategy={request.strategy}")
+            yield f"\n{'='*60}\n"
+            yield f"Strategy: {request.strategy}\n"
+            yield f"Template: {request.template}\n"
+            yield f"Execution: {'Orchestrator (with agent routing)' if use_orchestrator else 'Direct (fallback)'}\n"
+            yield f"{'='*60}\n\n"
             
-            chunk_count = 0
-            try:
-                # Try with strategy parameter
-                logger.info(f"[Execute] Attempting execution with strategy parameter")
-                for chunk in vera.toolchain.execute_tool_chain(
-                    query, 
-                    plan=plan, 
-                    strategy=request.strategy
-                ):
-                    chunk_count += 1
-                    chunk_str = str(chunk)
-                    if chunk_count <= 5:  # Log first 5 chunks
-                        logger.info(f"[Execute] Chunk {chunk_count}: {chunk_str[:100]}")
-                    yield chunk_str
+            # ORCHESTRATOR INTEGRATION (like async_run)
+            if use_orchestrator:
+                logger.info(f"[Execute] Using orchestrator integration")
+                
+                try:
+                    # Submit task to orchestrator (this will use agent routing via vera_tasks.py)
+                    task_id = vera.orchestrator.submit_task(
+                        "toolchain.execute",
+                        vera_instance=vera,
+                        query=query,
+                        plan=plan,
+                        strategy=request.strategy
+                    )
                     
-            except TypeError as e:
-                # Fallback if strategy not supported
-                logger.warning(f"[Execute] Toolchain doesn't support strategy parameter: {e}")
-                yield f"\nNote: Using fallback execution (strategy not supported)\n\n"
+                    logger.info(f"[Execute] Task submitted to orchestrator: {task_id}")
+                    yield f"Task submitted to orchestrator: {task_id}\n\n"
+                    
+                    # Stream results from orchestrator
+                    chunk_count = 0
+                    for chunk in vera.orchestrator.stream_result(task_id, timeout=300.0):
+                        chunk_count += 1
+                        chunk_str = str(chunk)
+                        
+                        if chunk_count <= 5:
+                            logger.info(f"[Execute] Orchestrator chunk {chunk_count}: {chunk_str[:100]}")
+                        
+                        yield chunk_str
+                    
+                    logger.info(f"[Execute] Orchestrator execution complete - total chunks: {chunk_count}")
+                
+                except Exception as e:
+                    logger.error(f"[Execute] Orchestrator execution failed: {e}", exc_info=True)
+                    yield f"\nOrchestrator execution failed: {str(e)}\n"
+                    yield f"Falling back to direct execution...\n\n"
+                    use_orchestrator = False  # Fall through to direct execution
+            
+            # FALLBACK: Direct execution (if orchestrator unavailable or failed)
+            if not use_orchestrator:
+                logger.info(f"[Execute] Using direct execution (fallback)")
                 
                 chunk_count = 0
-                for chunk in vera.toolchain.execute_tool_chain(query, plan=plan):
-                    chunk_count += 1
-                    chunk_str = str(chunk)
-                    if chunk_count <= 5:
-                        logger.info(f"[Execute] Fallback chunk {chunk_count}: {chunk_str[:100]}")
-                    yield chunk_str
+                try:
+                    # Try with strategy parameter
+                    logger.info(f"[Execute] Attempting execution with strategy parameter")
+                    for chunk in vera.toolchain.execute_tool_chain(
+                        query, 
+                        plan=plan, 
+                        strategy=request.strategy
+                    ):
+                        chunk_count += 1
+                        chunk_str = str(chunk)
+                        if chunk_count <= 5:
+                            logger.info(f"[Execute] Direct chunk {chunk_count}: {chunk_str[:100]}")
+                        yield chunk_str
+                        
+                except TypeError as e:
+                    # Fallback if strategy not supported
+                    logger.warning(f"[Execute] Toolchain doesn't support strategy parameter: {e}")
+                    yield f"\nNote: Using fallback execution (strategy not supported)\n\n"
+                    
+                    chunk_count = 0
+                    for chunk in vera.toolchain.execute_tool_chain(query, plan=plan):
+                        chunk_count += 1
+                        chunk_str = str(chunk)
+                        if chunk_count <= 5:
+                            logger.info(f"[Execute] Fallback chunk {chunk_count}: {chunk_str[:100]}")
+                        yield chunk_str
+                
+                logger.info(f"[Execute] Direct execution complete - total chunks: {chunk_count}")
             
-            logger.info(f"[Execute] Execution complete - total chunks: {chunk_count}")
             yield f"\n\n{'='*60}\n"
             yield f"Execution completed successfully\n"
             yield f"{'='*60}\n"
@@ -461,3 +515,4 @@ def integrate_query_router(app):
     app.include_router(router)
     logger.info("[Query API] Advanced toolchain query endpoints registered")
     logger.info("[Query API] Available at /api/toolchain/query/*")
+    logger.info("[Query API] Using orchestrator integration (like async_run)")

@@ -1,3 +1,8 @@
+"""
+NOTE: If you add new tools please run:
+python3 -m Vera.Agents.agent_manager build --agent tool-agent
+"""
+
 from langchain.agents import Tool
 from langchain_core.tools import tool, StructuredTool
 from langchain.tools import BaseTool
@@ -41,16 +46,20 @@ from Vera.Toolchain.mcp_manager import *
 from Vera.Toolchain.Tools.code_executor import *
 from Vera.Toolchain.Tools.Microcontrollers.microcontollers2 import *
 from Vera.Toolchain.Tools.version_manager import *
-from Vera.Toolchain.n8n_tools import *
+from Vera.Toolchain.n8n.n8n_tools import *
 from Vera.Toolchain.Tools.Memory.memory_advanced_pt2 import *
 from Vera.Toolchain.Tools.Memory.memory_advanced import *
 from Vera.Toolchain.Tools.Memory.memory import *
 from Vera.Toolchain.Tools.orchestration import *
-from Vera.Toolchain.Tools.OSINT.loader import add_all_osint_tools
-from Vera.Toolchain.Tools.OSINT.network_loader import add_all_network_osint_tools
-from Vera.Toolchain.Tools.OSINT.network_ingestor_integration import add_network_infrastructure_tools
+# from Vera.Toolchain.Tools.OSINT.loader import add_all_osint_tools
+# from Vera.Toolchain.Tools.OSINT.network_loader import add_all_network_osint_tools
+# from Vera.Toolchain.Tools.OSINT.network_ingestor_integration import add_network_infrastructure_tools
 from Vera.Toolchain.Tools.OSINT.network_scanning import  add_network_scanning_tools
-
+from Vera.Toolchain.Tools.OSINT.osint import  add_osint_tools
+from Vera.Toolchain.Tools.OSINT.dorking import  add_dorking_tools
+from Vera.Toolchain.Tools.OSINT.webrecon import  add_web_recon_tools
+from Vera.Toolchain.Tools.OSINT.vulnerabilities import  add_vulnerability_intelligence_tools
+from Vera.Toolchain.Tools.Coding.codebase_mapper import  add_codebase_analysis_tools
 # ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
@@ -236,33 +245,33 @@ class LLMTools:
         except Exception as e:
             return f"[Error] Failed to read file: {str(e)}"
 
-    def write_file(self, path: str, content: str) -> str:
+    def write_file(self, filepath: str, content: str) -> str:
         """
         Write content to a file. Creates parent directories if needed.
         Overwrites existing files.
         """
         try:
-            path = sanitize_path(path)
+            filepath = sanitize_path(filepath)
             
             # Create parent directories if they don't exist
-            os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+            os.makedirs(os.path.dirname(filepath) or '.', exist_ok=True)
             
-            with open(path, 'w', encoding='utf-8') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
             
             # Add to memory
             m1 = self.agent.mem.add_session_memory(
-                self.agent.sess.id, path, "file",
+                self.agent.sess.id, filepath, "file",
                 metadata={"status": "active", "priority": "high"},
                 labels=["File"], promote=True
             )
             m2 = self.agent.mem.attach_document(
-                self.agent.sess.id, path, content,
+                self.agent.sess.id, filepath, content,
                 {"topic": "write_file", "agent": "system"}
             )
             self.agent.mem.link(m1.id, m2.id, "Written")
             
-            return f"Successfully wrote {len(content)} characters to {path}"
+            return f"Successfully wrote {len(content)} characters to {filepath}"
             
         except Exception as e:
             return f"[Error] Failed to write file: {str(e)}"
@@ -2348,12 +2357,12 @@ def ToolLoader(agent):
         
         
         # Data Processing Tools
-        StructuredTool.from_function(
-            func=tools.parse_json,
-            name="parse_json",
-            description="Parse and validate JSON, returning formatted output.",
-            args_schema=LLMQueryInput
-        ),
+        # StructuredTool.from_function(
+        #     func=tools.parse_json,
+        #     name="parse_json",
+        #     description="Parse and validate JSON, returning formatted output.",
+        #     args_schema=LLMQueryInput
+        # ),
         StructuredTool.from_function(
             func=tools.convert_csv_to_json,
             name="csv_to_json",
@@ -2411,16 +2420,27 @@ def ToolLoader(agent):
 
     add_mcp_docker_tools(tool_list, agent)
     
-    add_adhoc_code_tools(tool_list, agent)
+    # add_adhoc_code_tools(tool_list, agent)
 
-    add_microcontroller_control_tools(tool_list, agent)
+    # add_microcontroller_control_tools(tool_list, agent)
 
-    add_versioned_file_tools(tool_list, agent)
+    # add_versioned_file_tools(tool_list, agent)
 
-    add_n8n_tools(tool_list, agent)
+    # add_n8n_tools(tool_list, agent)
 
 
+    add_osint_tools(tool_list, agent)
 
+    add_web_recon_tools(tool_list, agent)
+
+    add_vulnerability_intelligence_tools(tool_list, agent)
+
+    add_network_scanning_tools(tool_list, agent)
+
+    add_codebase_analysis_tools(tool_list, agent)
+
+    add_dorking_tools(tool_list, agent)
+# ============================================================================
 
     # Add Web Crawler tools
     # add_web_crawler_tools(tool_list, agent)
@@ -2466,18 +2486,20 @@ def ToolLoader(agent):
     ##############################################
 
     # # Add Babelfish tools
-    add_babelfish_tools(tool_list, agent)
+    # add_babelfish_tools(tool_list, agent)
 
-    add_orchestrator_tools(tool_list, agent)
-    tool_list.extend(add_memory_tools(agent))
-    add_advanced_memory_search_tools(tool_list, agent)
-    add_extended_memory_search_tools(tool_list, agent)
-    add_all_osint_tools(tool_list, agent)
-    add_all_network_osint_tools(tool_list, agent)
-    add_network_infrastructure_tools(tool_list, agent)
-    add_network_scanning_tools(tool_list, agent)
+    # add_orchestrator_tools(tool_list, agent)
+    # tool_list.extend(add_memory_tools(agent))
+    # add_advanced_memory_search_tools(tool_list, agent)
+    # add_extended_memory_search_tools(tool_list, agent)
 
 
+    # Deprecated - use add_osint_tools instead
+    # add_all_osint_tools(tool_list, agent)
+    # Deprecated - use add_network_scanning_tools instead
+    # add_all_network_osint_tools(tool_list, agent)
+    # Deprecated
+    # add_network_infrastructure_tools(tool_list, agent)
 
     # Add MCP tools if available
     if MCP_AVAILABLE:
@@ -2509,14 +2531,14 @@ def ToolLoader(agent):
     # PLUGIN INTEGRATION - Recon Map Backwards Compatibility
     # ============================================================================
     # Add plugins as tools if plugin manager is available
-    if hasattr(agent, 'plugin_manager') and agent.plugin_manager:
-        try:
-            from Vera.Toolchain.plugin_tool_bridge import add_plugin_tools
-            tool_list = add_plugin_tools(tool_list, agent)
-        except ImportError as e:
-            print(f"[Warning] Could not load plugin bridge: {e}")
-        except Exception as e:
-            print(f"[Warning] Error loading plugin tools: {e}")
+    # if hasattr(agent, 'plugin_manager') and agent.plugin_manager:
+    #     try:
+    #         from Vera.Toolchain.plugin_tool_bridge import add_plugin_tools
+    #         tool_list = add_plugin_tools(tool_list, agent)
+    #     except ImportError as e:
+    #         print(f"[Warning] Could not load plugin bridge: {e}")
+    #     except Exception as e:
+    #         print(f"[Warning] Error loading plugin tools: {e}")
 
     return tool_list
 

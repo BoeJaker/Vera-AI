@@ -1,503 +1,802 @@
-// -------------------------------------------------------------
-//  Interactive Calendar - Widget → Compact → Full
-//  Full JS file — NO external CSS required
-// -------------------------------------------------------------
+/**
+ * Calendar Module for Vera AI - Responsive Unified Sidebar Version
+ * - Single collapsible sidebar
+ * - Mobile-responsive with stacking layout
+ * - Collapsible sections for agent chat and jobs
+ * - Minimal emoji usage
+ * - Fixed duplicate event bug
+ */
 
-class InteractiveCalendar {
-  constructor(selector, options = {}) {
-    this.options = Object.assign({
-      accent: "#4c8bf5",
-      background: "#fff",
-      foreground: "#111",
-      radius: "16px",
-      speed: "260ms",
-      events: []
-    }, options);
-
-    this.mount = document.querySelector(selector);
-    if (!this.mount) throw new Error("Calendar mount point not found.");
-
-    this.mode = "widget"; 
-    this.date = new Date();
-    this.dragStartY = null;
-    this.dragging = false;
-
-    this.injectStyles();
-    this.render();
-    this.enableDrag();
-  }
-
-  // -------------------------------------------------------------
-  //  STYLES (injected once)
-  // -------------------------------------------------------------
-  injectStyles() {
-    if (document.querySelector("#interactive-calendar-style")) return;
-
-    const style = document.createElement("style");
-    style.id = "interactive-calendar-style";
-    style.textContent = `
-
-    /* BASE */
-    .ic-container {
-      width: 320px;
-      font-family: system-ui, sans-serif;
-      background: var(--bg, #fff);
-      color: var(--fg, #111);
-      border-radius: var(--radius, 16px);
-      box-shadow: 0 6px 18px rgba(0,0,0,0.08);
-      overflow: hidden;
-      transition: transform var(--speed, 260ms) cubic-bezier(.17,.89,.32,1.28);
-      touch-action: pan-y;
-      user-select: none;
+class CalendarManager {
+    constructor() {
+        this.calendar = null;
+        this.ws = null;
+        this.sources = [];
+        this.currentView = 'dayGridMonth';
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.initialized = false;
+        
+        // Sidebar state
+        this.sidebarCollapsed = false;
+        this.agentChatCollapsed = false;
+        this.jobsCollapsed = false;
+        
+        // API Configuration
+        this.apiBase = this.getApiBase();
+        console.log('[Calendar] CalendarManager created');
     }
-    .ic-container.dragging {
-      transform: scale(0.97);
+    
+    getApiBase() {
+        if (window.location.protocol !== 'file:') {
+            const protocol = window.location.protocol;
+            const host = window.location.hostname;
+            const port = window.location.port || '8888';
+            return `${protocol}//${host}:${port}`;
+        } else {
+            return 'http://llm.int:8888';
+        }
     }
-
-    /* WIDGET MODE */
-    .ic-widget {
-      padding: 14px 18px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    
+    async init() {
+        if (this.initialized) {
+            console.log('[Calendar] Already initialized');
+            return;
+        }
+        
+        console.log('[Calendar] Initializing...');
+        
+        const container = document.getElementById('calendar-container');
+        if (!container) {
+            console.error('[Calendar] calendar-container not found');
+            this.showNotification('Calendar container not found', 'error');
+            return;
+        }
+        
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) {
+            console.error('[Calendar] calendar element not found');
+            this.showNotification('Calendar element not found', 'error');
+            return;
+        }
+        
+        try {
+            await this.loadFullCalendar();
+            await this.loadSources();
+            this.initCalendar();
+            this.setupWebSocket();
+            await this.loadEvents();
+            this.setupEventHandlers();
+            await this.loadCronJobs();
+            this.setupSidebarControls();
+            
+            this.initialized = true;
+            console.log('[Calendar] Initialization complete');
+            this.showNotification('Calendar loaded', 'success');
+            
+        } catch (error) {
+            console.error('[Calendar] Initialization failed:', error);
+            this.showNotification('Initialization failed', 'error');
+        }
     }
-    .ic-widget-date {
-      font-size: 1.5rem;
-      font-weight: 700;
+    
+    destroy() {
+        if (this.calendar) {
+            this.calendar.destroy();
+            this.calendar = null;
+        }
+        
+        if (this.ws) {
+            this.stopHeartbeat();
+            this.ws.close();
+            this.ws = null;
+        }
+        
+        this.initialized = false;
     }
-    .ic-widget-info {
-      opacity: 0.7;
+    
+    async loadFullCalendar() {
+        if (typeof FullCalendar !== 'undefined') {
+            return;
+        }
+        
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js';
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
     }
-
-    /* COMPACT MODE */
-    .ic-compact {
-      padding: 18px;
-      animation: ic-slideDown .35s cubic-bezier(.17,.89,.32,1.28);
+    
+    async loadSources() {
+        try {
+            const url = `${this.apiBase}/api/calendar/sources`;
+            const response = await fetch(url);
+            const data = await response.json();
+            this.sources = data.sources;
+            this.renderSourceFilters();
+        } catch (error) {
+            this.sources = [
+                {"id": "google", "name": "Google Calendar", "color": "#4285f4", "enabled": true},
+                {"id": "local", "name": "Local Calendar", "color": "#34a853", "enabled": true},
+                {"id": "apscheduler", "name": "Scheduled Jobs", "color": "#fbbc04", "enabled": true}
+            ];
+            this.renderSourceFilters();
+        }
     }
-
-    /* FULL MODE */
-    .ic-full {
-      padding: 18px;
-      overflow-y: auto;
-      height: 90vh;
-      max-height: 90vh;
-      animation: ic-fullExpand .45s cubic-bezier(.17,.89,.32,1.28);
+    
+    initCalendar() {
+        const calendarEl = document.getElementById('calendar');
+        if (!calendarEl) return;
+        
+        this.calendar = new FullCalendar.Calendar(calendarEl, {
+            initialView: this.currentView,
+            headerToolbar: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+            },
+            editable: true,
+            selectable: true,
+            selectMirror: true,
+            dayMaxEvents: true,
+            weekends: true,
+            height: 'auto',
+            
+            select: (info) => this.handleDateSelect(info),
+            eventClick: (info) => this.handleEventClick(info),
+            eventDrop: (info) => this.handleEventDrop(info),
+            eventResize: (info) => this.handleEventResize(info),
+            eventContent: (arg) => this.renderEventContent(arg),
+            
+            datesSet: (info) => {
+                this.currentView = info.view.type;
+            },
+            
+            businessHours: {
+                daysOfWeek: [1, 2, 3, 4, 5],
+                startTime: '09:00',
+                endTime: '17:00'
+            }
+        });
+        
+        this.calendar.render();
     }
-
-    @keyframes ic-slideDown {
-      from { opacity: 0; transform: translateY(-10px) scale(0.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
+    
+    async loadEvents() {
+        try {
+            const url = `${this.apiBase}/api/calendar/events?days_ahead=30`;
+            console.log('[Calendar] Fetching events from:', url);
+            
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const events = await response.json();
+            console.log('[Calendar] Received', events.length, 'events from API');
+            
+            if (this.calendar) {
+                const oldEventCount = this.calendar.getEvents().length;
+                console.log('[Calendar] Removing', oldEventCount, 'existing events');
+                this.calendar.removeAllEvents();
+                
+                events.forEach((event, index) => {
+                    const calendarEvent = {
+                        id: `${event.source}_${event.id}`,
+                        title: event.title,
+                        start: event.start,
+                        end: event.end || event.start,
+                        backgroundColor: event.color || this.getSourceColor(event.source),
+                        borderColor: event.color || this.getSourceColor(event.source),
+                        extendedProps: {
+                            source: event.source,
+                            originalId: event.id,
+                            description: event.description,
+                            recurrence: event.recurrence
+                        },
+                        allDay: event.all_day || false
+                    };
+                    
+                    console.log(`[Calendar] Adding event ${index + 1}:`, {
+                        id: calendarEvent.id,
+                        title: calendarEvent.title,
+                        start: calendarEvent.start,
+                        end: calendarEvent.end,
+                        startParsed: new Date(calendarEvent.start),
+                        endParsed: new Date(calendarEvent.end)
+                    });
+                    
+                    this.calendar.addEvent(calendarEvent);
+                });
+                
+                // Verify events were added
+                const newEventCount = this.calendar.getEvents().length;
+                console.log('[Calendar] Now have', newEventCount, 'events in calendar');
+                
+                // Get current view date range
+                const view = this.calendar.view;
+                console.log('[Calendar] Current view:', {
+                    type: view.type,
+                    start: view.currentStart,
+                    end: view.currentEnd,
+                    title: view.title
+                });
+                
+                // Check if events are in view
+                events.forEach(event => {
+                    const eventStart = new Date(event.start);
+                    const inView = eventStart >= view.currentStart && eventStart <= view.currentEnd;
+                    if (!inView) {
+                        console.warn('[Calendar] Event NOT in current view:', {
+                            title: event.title,
+                            start: event.start,
+                            startDate: eventStart,
+                            viewStart: view.currentStart,
+                            viewEnd: view.currentEnd
+                        });
+                    }
+                });
+            }
+            
+            this.updateStats(events);
+        } catch (error) {
+            console.error('[Calendar] Error loading events:', error);
+        }
     }
-
-    @keyframes ic-fullExpand {
-      from { opacity: 0; transform: translateY(-12px) scale(.97); }
-      to   { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
-    /* HEADER */
-    .ic-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 1.1rem;
-      margin-bottom: 12px;
-      font-weight: 600;
-    }
-    .ic-header button {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1.3rem;
-      opacity: 0.6;
-      transition: opacity .2s ease;
-    }
-    .ic-header button:hover { opacity: 1; }
-
-    /* GRID */
-    .ic-grid {
-      display: grid;
-      grid-template-columns: repeat(7, 1fr);
-      gap: 6px;
-    }
-    .ic-day {
-      text-align: center;
-      padding: 7px 0 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      position: relative;
-      transition: background .2s ease, transform .2s ease;
-    }
-    .ic-day:hover {
-      background: rgba(0, 0, 0, 0.07);
-      transform: scale(1.04);
-    }
-    .ic-day.today {
-      background: var(--accent, #4c8bf5);
-      color: white;
-    }
-
-    /* EVENT DOT */
-    .ic-dot {
-      width: 6px;
-      height: 6px;
-      background: var(--accent, #4c8bf5);
-      border-radius: 50%;
-      margin: 4px auto 0;
-    }
-
-    /* POPOVER */
-    .ic-popover {
-      position: absolute;
-      left: 50%;
-      top: -8px;
-      transform: translateX(-50%) translateY(-100%);
-      padding: 6px 10px;
-      background: var(--bg, white);
-      border-radius: 10px;
-      box-shadow: 0 4px 12px rgba(0,0,0,.18);
-      font-size: 0.82rem;
-      white-space: nowrap;
-      opacity: 0;
-      animation: ic-popIn .22s cubic-bezier(.17,.89,.32,1.28) forwards;
-    }
-    @keyframes ic-popIn {
-      from { opacity: 0; transform: translateX(-50%) translateY(-115%) scale(.85); }
-      to   { opacity: 1; transform: translateX(-50%) translateY(-100%) scale(1); }
-    }
-
-    /* FULL VIEW LAYOUT */
-    .ic-full-layout {
-      display: grid;
-      grid-template-columns: 2fr 1fr;
-      gap: 24px;
-      margin-top: 14px;
-    }
-
-    /* AGENDA */
-    .ic-agenda {
-      padding-left: 16px;
-      border-left: 1px solid rgba(0,0,0,0.1);
-      font-size: 0.9rem;
-    }
-    .ic-agenda-item {
-      margin-bottom: 14px;
-    }
-    .ic-agenda-date {
-      font-weight: 600;
-      margin-bottom: 4px;
-    }
-    .ic-agenda-text {
-      opacity: 0.75;
-    }
-
-    `;
-    document.head.appendChild(style);
-  }
-
-  // -------------------------------------------------------------
-  //  RENDER
-  // -------------------------------------------------------------
-  render() {
-    this.mount.innerHTML = "";
-    this.mount.className = "ic-container";
-
-    // Set CSS variables
-    this.mount.style.setProperty("--accent", this.options.accent);
-    this.mount.style.setProperty("--bg", this.options.background);
-    this.mount.style.setProperty("--fg", this.options.foreground);
-    this.mount.style.setProperty("--radius", this.options.radius);
-    this.mount.style.setProperty("--speed", this.options.speed);
-
-    // WIDGET
-    this.widget = this.buildWidget();
-    this.mount.appendChild(this.widget);
-
-    // COMPACT VIEW
-    this.compact = this.buildCompact();
-    this.compact.classList.add("hidden");
-    this.mount.appendChild(this.compact);
-
-    // FULL VIEW (with agenda)
-    this.full = this.buildFull();
-    this.full.classList.add("hidden");
-    this.mount.appendChild(this.full);
-
-    this.mount.onclick = (e) => {
-      if (this.dragging) return;
-      this.advanceMode();
-    };
-  }
-
-  // -------------------------------------------------------------
-  //  WIDGET
-  // -------------------------------------------------------------
-  buildWidget() {
-    const wrap = document.createElement("div");
-    wrap.className = "ic-widget";
-
-    wrap.innerHTML = `
-      <div class="ic-widget-date">${this.date.getDate()}</div>
-      <div class="ic-widget-info">${this.todayEventText()}</div>
-    `;
-
-    return wrap;
-  }
-
-  // -------------------------------------------------------------
-  //  COMPACT MONTH VIEW
-  // -------------------------------------------------------------
-  buildCompact() {
-    const wrap = document.createElement("div");
-    wrap.className = "ic-compact";
-
-    wrap.appendChild(this.buildHeader());
-    wrap.appendChild(this.buildGrid());
-
-    return wrap;
-  }
-
-  // -------------------------------------------------------------
-  //  FULL MONTH VIEW WITH AGENDA
-  // -------------------------------------------------------------
-  buildFull() {
-    const wrap = document.createElement("div");
-    wrap.className = "ic-full";
-
-    const layout = document.createElement("div");
-    layout.className = "ic-full-layout";
-
-    layout.appendChild(this.buildGrid());
-    layout.appendChild(this.buildAgenda());
-
-    wrap.appendChild(this.buildHeader());
-    wrap.appendChild(layout);
-
-    return wrap;
-  }
-
-  // -------------------------------------------------------------
-  //  HEADER
-  // -------------------------------------------------------------
-  buildHeader() {
-    const wrap = document.createElement("div");
-    wrap.className = "ic-header";
-
-    wrap.innerHTML = `
-      <button data-nav="-1">‹</button>
-      <div>${this.date.toLocaleString("default",{month:"long"})} ${this.date.getFullYear()}</div>
-      <button data-nav="1">›</button>
-    `;
-
-    wrap.querySelectorAll("button").forEach(btn => {
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        this.date.setMonth(this.date.getMonth() + Number(btn.dataset.nav));
-        this.refresh();
-      };
-    });
-
-    return wrap;
-  }
-
-  // -------------------------------------------------------------
-  //  GRID WITH EVENT DOTS
-  // -------------------------------------------------------------
-  buildGrid() {
-    const grid = document.createElement("div");
-    grid.className = "ic-grid";
-
-    const y = this.date.getFullYear();
-    const m = this.date.getMonth();
-    const first = new Date(y, m, 1).getDay();
-    const days = new Date(y, m+1, 0).getDate();
-    const today = new Date();
-
-    for (let i = 0; i < first; i++) grid.appendChild(document.createElement("div"));
-
-    for (let d = 1; d <= days; d++) {
-      const day = document.createElement("div");
-      day.className = "ic-day";
-      day.textContent = d;
-
-      if (d === today.getDate() && m === today.getMonth() && y === today.getFullYear())
-        day.classList.add("today");
-
-      const events = this.eventsFor(y,m,d);
-      if (events.length) {
-        const dot = document.createElement("div");
-        dot.className = "ic-dot";
-        day.appendChild(dot);
-
-        day.onclick = (e) => {
-          e.stopPropagation();
-          this.showPopover(day, events);
+    
+    setupWebSocket() {
+        const protocol = this.apiBase.startsWith('https') ? 'wss:' : 'ws:';
+        const host = this.apiBase.replace(/^https?:\/\//, '');
+        const wsUrl = `${protocol}//${host}/api/calendar/ws`;
+        
+        this.ws = new WebSocket(wsUrl);
+        
+        this.ws.onopen = () => {
+            this.reconnectAttempts = 0;
+            this.updateConnectionStatus('connected');
+            this.ws.send(JSON.stringify({ type: 'subscribe' }));
+            this.startHeartbeat();
         };
-      }
-
-      grid.appendChild(day);
+        
+        this.ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                this.handleWebSocketMessage(message);
+            } catch (error) {
+                console.error('[Calendar WS] Parse error:', error);
+            }
+        };
+        
+        this.ws.onerror = () => {
+            this.updateConnectionStatus('error');
+        };
+        
+        this.ws.onclose = () => {
+            this.updateConnectionStatus('disconnected');
+            this.stopHeartbeat();
+            if (this.initialized) {
+                this.attemptReconnect();
+            }
+        };
     }
-
-    return grid;
-  }
-
-  // -------------------------------------------------------------
-  //  AGENDA LIST
-  // -------------------------------------------------------------
-  buildAgenda() {
-    const box = document.createElement("div");
-    box.className = "ic-agenda";
-
-    const events = [...this.options.events].sort(
-      (a,b) => new Date(a.date) - new Date(b.date)
-    );
-
-    if (!events.length) {
-      box.textContent = "No upcoming events";
-      return box;
+    
+    handleWebSocketMessage(message) {
+        switch (message.type) {
+            case 'subscribed':
+                break;
+                
+            case 'events_update':
+                this.loadEvents();
+                break;
+                
+            case 'event_created':
+                // Don't reload here - createEvent() already does it
+                // This prevents double notifications
+                console.log('[Calendar WS] Event created (ignoring - already handled)');
+                break;
+                
+            case 'event_deleted':
+                const deletedId = `${message.data.source}_${message.data.id}`;
+                if (this.calendar) {
+                    const event = this.calendar.getEventById(deletedId);
+                    if (event) event.remove();
+                }
+                this.showNotification('Event deleted', 'info');
+                break;
+        }
     }
-
-    events.forEach(ev => {
-      const dt = new Date(ev.date);
-
-      const item = document.createElement("div");
-      item.className = "ic-agenda-item";
-      item.innerHTML = `
-        <div class="ic-agenda-date">${dt.toDateString()}</div>
-        <div class="ic-agenda-text">${ev.text}</div>
-      `;
-      box.appendChild(item);
-    });
-
-    return box;
-  }
-
-  // -------------------------------------------------------------
-  //  POPUP
-  // -------------------------------------------------------------
-  showPopover(el, events) {
-    this.mount.querySelectorAll(".ic-popover").forEach(p => p.remove());
-
-    const pop = document.createElement("div");
-    pop.className = "ic-popover";
-    pop.textContent = events.map(e => e.text).join(" • ");
-
-    el.appendChild(pop);
-
-    setTimeout(() => pop.remove(), 3500);
-  }
-
-  // -------------------------------------------------------------
-  //  EVENTS HELPERS
-  // -------------------------------------------------------------
-  todayEventText() {
-    const today = new Date().toDateString();
-    const ev = this.options.events.find(e => new Date(e.date).toDateString() === today);
-    return ev ? ev.text : "";
-  }
-
-  eventsFor(y,m,d) {
-    return this.options.events.filter(e => {
-      const dt = new Date(e.date);
-      return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d;
-    });
-  }
-
-  // -------------------------------------------------------------
-  //  REFRESH ALL VIEWS
-  // -------------------------------------------------------------
-  refresh() {
-    this.compact.innerHTML = "";
-    this.compact.appendChild(this.buildHeader());
-    this.compact.appendChild(this.buildGrid());
-
-    this.full.innerHTML = "";
-    const layout = document.createElement("div");
-    layout.className = "ic-full-layout";
-    layout.appendChild(this.buildGrid());
-    layout.appendChild(this.buildAgenda());
-
-    this.full.appendChild(this.buildHeader());
-    this.full.appendChild(layout);
-  }
-
-  // -------------------------------------------------------------
-  //  MODE SWITCHING (Widget → Compact → Full)
-  // -------------------------------------------------------------
-  advanceMode() {
-    if (this.mode === "widget") this.openCompact();
-    else if (this.mode === "compact") this.openFull();
-    else this.closeToWidget();
-  }
-
-  openCompact() {
-    this.widget.classList.add("hidden");
-    this.compact.classList.remove("hidden");
-    this.full.classList.add("hidden");
-    this.mode = "compact";
-  }
-
-  openFull() {
-    this.compact.classList.add("hidden");
-    this.full.classList.remove("hidden");
-    this.mode = "full";
-  }
-
-  closeToWidget() {
-    this.full.classList.add("hidden");
-    this.compact.classList.add("hidden");
-    this.widget.classList.remove("hidden");
-    this.mode = "widget";
-  }
-
-  // -------------------------------------------------------------
-  //  DRAG DOWN TO EXPAND (Option C)
-  // -------------------------------------------------------------
-  enableDrag() {
-    const start = (y) => { this.dragStartY = y; this.dragging = false; };
-    const move = (y) => {
-      if (!this.dragStartY) return;
-
-      const delta = y - this.dragStartY;
-      if (delta > 8) this.dragging = true;
-
-      if (this.dragging && this.mode === "widget") {
-        this.mount.classList.add("dragging");
-        this.mount.style.transform = `translateY(${Math.min(delta, 100)}px) scale(.97)`;
-      }
-    };
-    const end = (y) => {
-      if (!this.dragStartY) return;
-
-      const delta = y - this.dragStartY;
-      this.mount.classList.remove("dragging");
-      this.mount.style.transform = "";
-
-      if (this.mode === "widget" && delta > 40) this.openCompact();
-      else if (this.mode === "compact" && delta > 120) this.openFull();
-
-      this.dragStartY = null;
-      this.dragging = false;
-    };
-
-    // Mouse
-    this.mount.addEventListener("mousedown", e => start(e.clientY));
-    window.addEventListener("mousemove", e => move(e.clientY));
-    window.addEventListener("mouseup", e => end(e.clientY));
-
-    // Touch  
-    this.mount.addEventListener("touchstart", e => start(e.touches[0].clientY));
-    this.mount.addEventListener("touchmove", e => move(e.touches[0].clientY));
-    this.mount.addEventListener("touchend", e => end(e.changedTouches[0].clientY));
-  }
+    
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    }
+    
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+        }
+    }
+    
+    attemptReconnect() {
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+            return;
+        }
+        
+        this.reconnectAttempts++;
+        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
+        
+        setTimeout(() => {
+            this.setupWebSocket();
+        }, delay);
+    }
+    
+    handleDateSelect(info) {
+        this.showCreateEventModal(info.start, info.end, info.allDay);
+        if (this.calendar) {
+            this.calendar.unselect();
+        }
+    }
+    
+    handleEventClick(info) {
+        this.showEventDetailsModal(info.event);
+    }
+    
+    handleEventDrop(info) {
+        this.showNotification(`Moved: ${info.event.title}`, 'info');
+    }
+    
+    handleEventResize(info) {
+        this.showNotification(`Resized: ${info.event.title}`, 'info');
+    }
+    
+    renderEventContent(arg) {
+        return {
+            html: `
+                <div class="fc-event-main-frame">
+                    <div class="fc-event-time">${arg.timeText}</div>
+                    <div class="fc-event-title">${arg.event.title}</div>
+                </div>
+            `
+        };
+    }
+    
+    showCreateEventModal(start, end, allDay = false) {
+        const modal = document.getElementById('eventModal');
+        if (!modal) return;
+        
+        const form = document.getElementById('eventForm');
+        const titleInput = document.getElementById('eventTitle');
+        const startInput = document.getElementById('eventStart');
+        const endInput = document.getElementById('eventEnd');
+        const sourceSelect = document.getElementById('eventSource');
+        const descriptionInput = document.getElementById('eventDescription');
+        
+        form.reset();
+        
+        // Format dates for datetime-local input (local time, no timezone conversion)
+        startInput.value = this.formatDatetimeLocal(start);
+        endInput.value = this.formatDatetimeLocal(end);
+        
+        console.log('[Calendar] Modal opened with dates:', {
+            start: start,
+            end: end,
+            startInput: startInput.value,
+            endInput: endInput.value
+        });
+        
+        sourceSelect.innerHTML = this.sources
+            .filter(s => s.enabled && s.id !== 'apscheduler')
+            .map(s => `<option value="${s.id}">${s.name}</option>`)
+            .join('');
+        
+        modal.style.display = 'flex';
+        titleInput.focus();
+        
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            
+            // Get values from inputs (these are in local time)
+            const startLocal = startInput.value;
+            const endLocal = endInput.value;
+            
+            // Create Date objects (these will be in local timezone)
+            const startDate = new Date(startLocal);
+            const endDate = new Date(endLocal);
+            
+            console.log('[Calendar] Form submitted with:', {
+                startLocal,
+                endLocal,
+                startDate: startDate.toString(),
+                endDate: endDate.toString(),
+                startISO: startDate.toISOString(),
+                endISO: endDate.toISOString()
+            });
+            
+            const eventData = {
+                title: titleInput.value,
+                start: startDate.toISOString(),  // Send UTC to backend
+                end: endDate.toISOString(),
+                source: sourceSelect.value,
+                description: descriptionInput.value || null
+            };
+            
+            await this.createEvent(eventData);
+            modal.style.display = 'none';
+        };
+    }
+    
+    showEventDetailsModal(event) {
+        const modal = document.getElementById('eventDetailsModal');
+        if (!modal) return;
+        
+        const content = document.getElementById('eventDetailsContent');
+        const props = event.extendedProps;
+        const source = this.sources.find(s => s.id === props.source);
+        
+        content.innerHTML = `
+            <div class="event-details">
+                <h3>${event.title}</h3>
+                <div class="event-info">
+                    <div class="info-row">
+                        <strong>Source:</strong>
+                        <span class="source-badge" style="background-color: ${source?.color || '#999'}">
+                            ${source?.name || props.source}
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <strong>Start:</strong>
+                        <span>${this.formatDatetime(event.start)}</span>
+                    </div>
+                    <div class="info-row">
+                        <strong>End:</strong>
+                        <span>${event.end ? this.formatDatetime(event.end) : 'N/A'}</span>
+                    </div>
+                    ${props.description ? `
+                        <div class="info-row">
+                            <strong>Description:</strong>
+                            <p>${props.description}</p>
+                        </div>
+                    ` : ''}
+                </div>
+                <div class="event-actions">
+                    <button class="btn btn-danger" onclick="window.calendarManager.deleteEvent('${props.source}', '${props.originalId}')">
+                        Delete
+                    </button>
+                    <button class="btn btn-secondary" onclick="document.getElementById('eventDetailsModal').style.display='none'">
+                        Close
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modal.style.display = 'flex';
+    }
+    
+    async createEvent(eventData) {
+        try {
+            const url = `${this.apiBase}/api/calendar/events`;
+            console.log('[Calendar] Creating event:', eventData);
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(eventData)
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to create event');
+            }
+            
+            const newEvent = await response.json();
+            console.log('[Calendar] Event created:', newEvent);
+            
+            // Reload events immediately to show the new event
+            await this.loadEvents();
+            
+            // Check if event is in current view
+            if (this.calendar) {
+                const view = this.calendar.view;
+                const eventStart = new Date(newEvent.start);
+                const inView = eventStart >= view.currentStart && eventStart <= view.currentEnd;
+                
+                if (inView) {
+                    this.showNotification('Event created', 'success');
+                } else {
+                    // Event is outside current view
+                    const eventDate = eventStart.toLocaleDateString();
+                    this.showNotification(`Event created on ${eventDate} (navigate to see it)`, 'success');
+                    
+                    // Optional: Navigate to the event
+                    setTimeout(() => {
+                        if (confirm(`Event created on ${eventDate}. Navigate to it?`)) {
+                            this.calendar.gotoDate(eventStart);
+                        }
+                    }, 500);
+                }
+            } else {
+                this.showNotification('Event created', 'success');
+            }
+            
+        } catch (error) {
+            console.error('[Calendar] Error creating event:', error);
+            this.showNotification(`Failed: ${error.message}`, 'error');
+        }
+    }
+    
+    async deleteEvent(source, eventId) {
+        if (!confirm('Delete this event?')) return;
+        
+        try {
+            const url = `${this.apiBase}/api/calendar/events/${source}/${eventId}`;
+            const response = await fetch(url, { method: 'DELETE' });
+            
+            if (!response.ok) {
+                throw new Error('Delete failed');
+            }
+            
+            const calendarEventId = `${source}_${eventId}`;
+            if (this.calendar) {
+                const event = this.calendar.getEventById(calendarEventId);
+                if (event) event.remove();
+            }
+            
+            document.getElementById('eventDetailsModal').style.display = 'none';
+            this.showNotification('Event deleted', 'success');
+            
+        } catch (error) {
+            this.showNotification('Failed to delete', 'error');
+        }
+    }
+    
+    async loadCronJobs() {
+        try {
+            const url = `${this.apiBase}/api/calendar/cron`;
+            const response = await fetch(url);
+            const jobs = await response.json();
+            this.renderCronJobs(jobs);
+        } catch (error) {
+            this.renderCronJobs([]);
+        }
+    }
+    
+    renderCronJobs(jobs) {
+        const container = document.getElementById('cronJobsList');
+        if (!container) return;
+        
+        if (jobs.length === 0) {
+            container.innerHTML = '<p style="text-align: center; opacity: 0.6; padding: 10px; font-size: 0.85rem;">No scheduled jobs</p>';
+            return;
+        }
+        
+        container.innerHTML = jobs.map(job => `
+            <div class="cron-job-item">
+                <div class="cron-job-header">
+                    <span class="cron-job-name">${job.name}</span>
+                    <span class="badge badge-${job.enabled ? 'success' : 'secondary'}">
+                        ${job.enabled ? 'Active' : 'Inactive'}
+                    </span>
+                </div>
+                <div class="cron-job-details">
+                    <small>${job.schedule}</small>
+                    ${job.next_run ? `<small>Next: ${this.formatDatetime(new Date(job.next_run))}</small>` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    renderSourceFilters() {
+        const container = document.getElementById('sourceFilters');
+        if (!container) return;
+        
+        container.innerHTML = this.sources.map(source => `
+            <label class="source-filter ${!source.enabled ? 'disabled' : ''}">
+                <input type="checkbox" 
+                       value="${source.id}" 
+                       ${source.enabled ? 'checked' : ''}
+                       ${!source.enabled ? 'disabled' : ''}
+                       onchange="window.calendarManager.toggleSource('${source.id}', this.checked)">
+                <span class="source-color" style="background-color: ${source.color}"></span>
+                <span class="source-name">${source.name}</span>
+            </label>
+        `).join('');
+    }
+    
+    toggleSource(sourceId, enabled) {
+        if (this.calendar) {
+            this.calendar.getEvents().forEach(event => {
+                if (event.extendedProps.source === sourceId) {
+                    event.setProp('display', enabled ? 'auto' : 'none');
+                }
+            });
+        }
+    }
+    
+    setupSidebarControls() {
+        // This function is called from the HTML's inline JavaScript
+        // See the <script> tag at the end of calendar-responsive.html
+        
+        // Manual binding for buttons that might need it
+        const refreshBtn = document.getElementById('refreshCalendar');
+        if (refreshBtn) {
+            refreshBtn.onclick = () => {
+                this.loadEvents();
+                this.loadCronJobs();
+            };
+        }
+        
+        const newEventBtn = document.getElementById('newEventBtn');
+        if (newEventBtn) {
+            newEventBtn.onclick = () => {
+                const now = new Date();
+                const later = new Date(now.getTime() + 3600000);
+                this.showCreateEventModal(now, later);
+            };
+        }
+    }
+    
+    setupEventHandlers() {
+        // Modal handlers
+        document.querySelectorAll('.modal').forEach(modal => {
+            const closeBtn = modal.querySelector('.close');
+            if (closeBtn) {
+                closeBtn.onclick = () => modal.style.display = 'none';
+            }
+        });
+        
+        window.onclick = (event) => {
+            document.querySelectorAll('.modal').forEach(modal => {
+                if (event.target === modal) modal.style.display = 'none';
+            });
+        };
+        
+        // Agent chat
+        this.setupAgentChat();
+    }
+    
+    setupAgentChat() {
+        const chatForm = document.getElementById('agentChatForm');
+        const chatInput = document.getElementById('agentChatInput');
+        
+        if (chatForm) {
+            chatForm.onsubmit = async (e) => {
+                e.preventDefault();
+                if (chatInput && chatInput.value.trim()) {
+                    await this.sendAgentMessage(chatInput.value);
+                    chatInput.value = '';
+                }
+            };
+        }
+    }
+    
+    async sendAgentMessage(message) {
+        try {
+            this.addChatMessage('user', message);
+            const thinkingId = this.addChatMessage('assistant', 'Thinking...');
+            
+            const url = `${this.apiBase}/api/calendar/agent/chat`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+            
+            const data = await response.json();
+            
+            const thinkingEl = document.getElementById(thinkingId);
+            if (thinkingEl) thinkingEl.remove();
+            
+            this.addChatMessage('assistant', data.response);
+            
+            if (data.events_changed) {
+                this.loadEvents();
+            }
+            
+        } catch (error) {
+            console.error('[Calendar] Agent error:', error);
+            this.addChatMessage('assistant', 'Error: Could not reach agent');
+        }
+    }
+    
+    addChatMessage(role, content) {
+        const chatMessages = document.getElementById('agentChatMessages');
+        if (!chatMessages) return;
+        
+        const messageId = 'msg-' + Date.now();
+        const messageEl = document.createElement('div');
+        messageEl.id = messageId;
+        messageEl.className = `chat-message chat-message-${role}`;
+        messageEl.innerHTML = `<div class="chat-message-content">${content}</div>`;
+        
+        chatMessages.appendChild(messageEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        return messageId;
+    }
+    
+    updateConnectionStatus(status) {
+        const indicator = document.getElementById('connectionStatus');
+        if (!indicator) return;
+        
+        const config = {
+            connected: { text: 'Connected', class: 'status-connected' },
+            disconnected: { text: 'Disconnected', class: 'status-disconnected' },
+            error: { text: 'Error', class: 'status-error' }
+        };
+        
+        const c = config[status] || config.disconnected;
+        indicator.className = `connection-status ${c.class}`;
+        indicator.textContent = c.text;
+    }
+    
+    updateStats(events) {
+        const statsEl = document.getElementById('calendarStats');
+        if (!statsEl) return;
+        
+        const bySource = {};
+        this.sources.forEach(s => bySource[s.id] = 0);
+        events.forEach(e => {
+            if (bySource[e.source] !== undefined) bySource[e.source]++;
+        });
+        
+        const statsHTML = this.sources
+            .filter(s => s.enabled)
+            .map(s => `<span class="stat-item"><span class="stat-color" style="background-color: ${s.color}"></span>${bySource[s.id] || 0}</span>`)
+            .join('');
+        
+        statsEl.innerHTML = `Total: ${events.length} | ${statsHTML}`;
+    }
+    
+    getSourceColor(source) {
+        const sourceObj = this.sources.find(s => s.id === source);
+        return sourceObj?.color || '#999';
+    }
+    
+    formatDatetime(date) {
+        if (!date) return 'N/A';
+        const d = new Date(date);
+        return d.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+    
+    formatDatetimeLocal(date) {
+        const d = new Date(date);
+        const offset = d.getTimezoneOffset();
+        const localDate = new Date(d.getTime() - (offset * 60 * 1000));
+        return localDate.toISOString().slice(0, 16);
+    }
+    
+    showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `calendar-notification notification-${type}`;
+        notification.textContent = message;
+        
+        let container = document.getElementById('notificationContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notificationContainer';
+            container.className = 'notification-container';
+            document.body.appendChild(container);
+        }
+        container.appendChild(notification);
+        
+        setTimeout(() => notification.classList.add('show'), 10);
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
 }
-new InteractiveCalendar("#calendar-widget", {
-  accent: "#6a5acd",
-  events: [
-    { date: "2025-12-03", text: "Design Review @ 3pm" },
-    { date: "2025-12-04", text: "Product Release" },
-    { date: new Date(), text: "Daily standup" }
-  ]
-});
 
-// <div id="calendar-widget"></div>
-// <script src="calendar.js"></script>
+window.calendarManager = new CalendarManager();
+console.log('[Calendar] Ready. Call window.calendarManager.init() when tab is active.');

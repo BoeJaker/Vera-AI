@@ -1,0 +1,2070 @@
+================================================================================
+VERA TOOLCHAIN - AVAILABLE TOOLS
+================================================================================
+
+
+[1] fast_llm
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Query fast LLM for quick tasks: creative writing, text review, summarization. Fast but less accurate.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[2] deep_llm
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Query deep LLM for complex reasoning and detailed analysis. Slower but more accurate.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[3] read_file
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Read contents of a text file. Provide full file path.
+
+INPUT PARAMETERS:
+  • path [REQUIRED]
+    Type: string
+    Description: Full path to the file
+
+
+================================================================================
+
+[4] write_file
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Write content to a file. Creates directories if needed. Overwrites existing files.
+
+INPUT PARAMETERS:
+  • filepath [REQUIRED]
+    Type: string
+    Description: Full path where file should be written
+
+  • content [REQUIRED]
+    Type: string
+    Description: Content to write to the file
+
+
+================================================================================
+
+[5] list_directory
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List directory contents with file sizes and types.
+
+INPUT PARAMETERS:
+  • path [REQUIRED]
+    Type: string
+    Description: Full path to the file
+
+
+================================================================================
+
+[6] search_files
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for files matching a pattern recursively. Supports glob and regex patterns.
+
+INPUT PARAMETERS:
+  • path [OPTIONAL]
+    Type: string
+    Description: Directory path to search in
+    Default: .
+
+  • pattern [REQUIRED]
+    Type: string
+    Description: Pattern to match (glob or regex)
+
+
+================================================================================
+
+[7] python
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute Python code. Use print() for output. Supports both expressions and statements.
+
+INPUT PARAMETERS:
+  • code [REQUIRED]
+    Type: string
+    Description: Python code to execute
+
+
+================================================================================
+
+[8] bash
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute bash command. Returns command output. Use with caution.
+
+INPUT PARAMETERS:
+  • command [REQUIRED]
+    Type: string
+    Description: Shell command to execute
+
+
+================================================================================
+
+[9] web_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Advanced web search using Playwright for robustness.Supports multiple search engines with automatic fallback.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Search query
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of results to return
+    Default: 10
+
+  • search_engine [OPTIONAL]
+    Type: string
+    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
+    Default: duckduckgo
+
+
+================================================================================
+
+[10] news_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search recent news using DuckDuckGo News. Best for current events.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Search query
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of results to return
+    Default: 10
+
+  • search_engine [OPTIONAL]
+    Type: string
+    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
+    Default: duckduckgo
+
+
+================================================================================
+
+[11] web_search_deep
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Comprehensive web search with full page scraping. Use for in-depth information.
+
+INPUT PARAMETERS:
+  • input_data [REQUIRED]
+    Type: string
+    Description: Search query or existing search results text
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of pages to scrape
+    Default: 5
+
+
+================================================================================
+
+[12] http_request
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Make HTTP requests to APIs. Supports GET, POST, PUT, DELETE methods.
+
+INPUT PARAMETERS:
+  • url [REQUIRED]
+    Type: string
+    Description: URL to request
+
+  • method [OPTIONAL]
+    Type: string
+    Description: HTTP method (GET, POST, PUT, DELETE)
+    Default: GET
+
+  • headers [OPTIONAL]
+    Type: string
+    Description: Request headers
+    Default: None
+
+  • body [OPTIONAL]
+    Type: string
+    Description: Request body for POST/PUT
+    Default: None
+
+
+================================================================================
+
+[13] sqlite_query
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute SQLite queries. Supports SELECT, INSERT, UPDATE, DELETE.
+
+INPUT PARAMETERS:
+  • db_path [REQUIRED]
+    Type: string
+    Description: Path to SQLite database
+
+  • query [REQUIRED]
+    Type: string
+    Description: SQL query to execute
+
+
+================================================================================
+
+[14] git
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute git commands: status, log, diff, branch, add, commit, push, pull.
+
+INPUT PARAMETERS:
+  • repo_path [OPTIONAL]
+    Type: string
+    Description: Path to git repository
+    Default: .
+
+  • command [REQUIRED]
+    Type: string
+    Description: Git command (status, log, diff, etc.)
+
+  • args [OPTIONAL]
+    Type: string
+    Description: Additional arguments for the command
+    Default: 
+
+
+================================================================================
+
+[15] get_time
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get current date and time in specified timezone.
+
+INPUT PARAMETERS:
+  • timezone [OPTIONAL]
+    Type: string
+    Description: Timezone name (e.g., UTC, America/New_York, Europe/London)
+    Default: UTC
+
+
+================================================================================
+
+[16] time_delta
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Calculate time difference between two dates or from date to now.
+
+INPUT PARAMETERS:
+  • start_time [REQUIRED]
+    Type: string
+    Description: Start time in format YYYY-MM-DD HH:MM:SS or YYYY-MM-DD
+
+  • end_time [OPTIONAL]
+    Type: string
+    Description: End time (defaults to current time if not provided)
+    Default: None
+
+
+================================================================================
+
+[17] count_tokens
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Estimate token count for text. Useful for managing context windows.
+
+INPUT PARAMETERS:
+  • text [REQUIRED]
+    Type: string
+    Description: Text to count tokens for
+
+  • model [OPTIONAL]
+    Type: string
+    Description: Model to use for token counting
+    Default: gpt-3.5-turbo
+
+
+================================================================================
+
+[18] regex_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search text using regular expressions with optional flags.
+
+INPUT PARAMETERS:
+  • pattern [REQUIRED]
+    Type: string
+    Description: Regular expression pattern
+
+  • text [REQUIRED]
+    Type: string
+    Description: Text to search in
+
+  • flags [OPTIONAL]
+    Type: string
+    Description: Regex flags: i (ignore case), m (multiline), s (dotall)
+    Default: 
+
+
+================================================================================
+
+[19] text_stats
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Generate comprehensive statistics about text (word count, sentences, etc).
+
+INPUT PARAMETERS:
+  • text [REQUIRED]
+    Type: string
+    Description: Text to process
+
+
+================================================================================
+
+[20] csv_to_json
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Convert CSV file to JSON format.
+
+INPUT PARAMETERS:
+  • path [REQUIRED]
+    Type: string
+    Description: Full path to the file
+
+
+================================================================================
+
+[21] hash_text
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Generate cryptographic hash (md5, sha1, sha256, sha512) of text.
+
+INPUT PARAMETERS:
+  • text [REQUIRED]
+    Type: string
+    Description: Text to hash
+
+  • algorithm [OPTIONAL]
+    Type: string
+    Description: Hash algorithm: md5, sha1, sha256, sha512
+    Default: sha256
+
+
+================================================================================
+
+[22] system_info
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get system information including OS, Python version, etc.
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[23] get_env
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get environment variable value.
+
+INPUT PARAMETERS:
+  • var_name [REQUIRED]
+    Type: string
+    Description: Name of the environment variable
+
+
+================================================================================
+
+[24] list_env
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all environment variables (sanitized).
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[25] search_memory
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search agent's long-term memory for relevant past information.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Natural language query to search memory
+
+  • k [OPTIONAL]
+    Type: integer
+    Description: Number of results to return (1-50)
+    Default: 10
+
+  • filters [OPTIONAL]
+    Type: string
+    Description: Metadata filters as JSON object
+    Default: None
+
+  • search_type [OPTIONAL]
+    Type: string
+    Description: Type: semantic, graph, hybrid
+    Default: semantic
+
+
+================================================================================
+
+[26] list_modules
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all currently loaded Python modules in the runtime.
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[27] discover_tools
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Discover and list available custom tools in the tools directory. Shows functions and their parameters. Tools with 🔧 are auto-loaded via @tool decorator.
+
+INPUT PARAMETERS:
+  • pattern [OPTIONAL]
+    Type: string
+    Description: Pattern to filter tools (e.g., 'data_*' or '*')
+    Default: *
+
+
+================================================================================
+
+[28] call_custom_tool
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Call a function from a custom tool file. Provide tool name, function name, and arguments. Use for tools not auto-loaded or for dynamic execution.
+
+INPUT PARAMETERS:
+  • tool_name [REQUIRED]
+    Type: string
+    Description: Name of the tool file (without .py)
+
+  • function_name [REQUIRED]
+    Type: string
+    Description: Function name to call
+
+  • arguments [OPTIONAL]
+    Type: object
+    Description: Arguments as key-value pairs
+
+
+================================================================================
+
+[29] list_tool_functions
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all functions in a specific custom tool file with their parameters. Shows docstrings and whether functions are auto-loadable.
+
+INPUT PARAMETERS:
+  • tool_name [REQUIRED]
+    Type: string
+    Description: Name of the tool file (without .py)
+
+
+================================================================================
+
+[30] reload_tools
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Reload all custom tool modules. Use after editing tool files to pick up changes without restarting.
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[31] ssh_connect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Connect to SSH server. Returns connection ID for other SSH operations.
+
+INPUT PARAMETERS:
+  • host [REQUIRED]
+    Type: string
+    Description: SSH host address
+
+  • username [REQUIRED]
+    Type: string
+    Description: SSH username
+
+  • password [OPTIONAL]
+    Type: string
+    Description: SSH password (if not using key)
+    Default: None
+
+  • key_path [OPTIONAL]
+    Type: string
+    Description: Path to SSH private key file
+    Default: None
+
+  • port [OPTIONAL]
+    Type: integer
+    Description: SSH port (default: 22)
+    Default: 22
+
+
+================================================================================
+
+[32] ssh_execute
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute command on remote SSH server. Returns command output.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: SSH connection ID from connect_ssh
+
+  • command [REQUIRED]
+    Type: string
+    Description: Command to execute on remote server
+
+
+================================================================================
+
+[33] ssh_ls
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List contents of remote directory via SFTP.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: SSH connection ID
+
+  • remote_path [REQUIRED]
+    Type: string
+    Description: Remote file/directory path
+
+  • local_path [OPTIONAL]
+    Type: string
+    Description: Local file path (for upload/download)
+    Default: None
+
+
+================================================================================
+
+[34] ssh_read
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Read contents of remote file via SFTP.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: SSH connection ID
+
+  • remote_path [REQUIRED]
+    Type: string
+    Description: Remote file/directory path
+
+  • local_path [OPTIONAL]
+    Type: string
+    Description: Local file path (for upload/download)
+    Default: None
+
+
+================================================================================
+
+[35] ssh_download
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Download file from remote server via SFTP.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: SSH connection ID
+
+  • remote_path [REQUIRED]
+    Type: string
+    Description: Remote file/directory path
+
+  • local_path [OPTIONAL]
+    Type: string
+    Description: Local file path (for upload/download)
+    Default: None
+
+
+================================================================================
+
+[36] ssh_upload
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Upload file to remote server via SFTP.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: SSH connection ID
+
+  • remote_path [REQUIRED]
+    Type: string
+    Description: Remote file/directory path
+
+  • local_path [OPTIONAL]
+    Type: string
+    Description: Local file path (for upload/download)
+    Default: None
+
+
+================================================================================
+
+[37] ssh_disconnect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Close SSH connection and clean up resources.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[38] postgres_connect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Connect to PostgreSQL database. Returns connection ID for queries.
+
+INPUT PARAMETERS:
+  • host [REQUIRED]
+    Type: string
+    Description: PostgreSQL host address
+
+  • database [REQUIRED]
+    Type: string
+    Description: Database name
+
+  • username [REQUIRED]
+    Type: string
+    Description: Database username
+
+  • password [REQUIRED]
+    Type: string
+    Description: Database password
+
+  • port [OPTIONAL]
+    Type: integer
+    Description: PostgreSQL port (default: 5432)
+    Default: 5432
+
+
+================================================================================
+
+[39] postgres_query
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute SQL query on PostgreSQL. Supports SELECT, INSERT, UPDATE, DELETE with parameterized queries.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Postgres connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: SQL query to execute
+
+  • params [OPTIONAL]
+    Type: string
+    Description: Query parameters for prepared statements
+    Default: None
+
+
+================================================================================
+
+[40] postgres_tables
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all tables in a PostgreSQL schema with sizes.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Postgres connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: SQL query to execute
+
+  • params [OPTIONAL]
+    Type: string
+    Description: Query parameters for prepared statements
+    Default: None
+
+
+================================================================================
+
+[41] postgres_describe
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get detailed table structure including columns, types, constraints.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Postgres connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: SQL query to execute
+
+  • params [OPTIONAL]
+    Type: string
+    Description: Query parameters for prepared statements
+    Default: None
+
+
+================================================================================
+
+[42] postgres_schemas
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all schemas in PostgreSQL database.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[43] postgres_disconnect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Close PostgreSQL connection.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[44] neo4j_connect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Connect to Neo4j graph database. Returns connection ID for queries.
+
+INPUT PARAMETERS:
+  • uri [REQUIRED]
+    Type: string
+    Description: Neo4j URI (e.g., bolt://localhost:7687)
+
+  • username [REQUIRED]
+    Type: string
+    Description: Neo4j username
+
+  • password [REQUIRED]
+    Type: string
+    Description: Neo4j password
+
+  • database [OPTIONAL]
+    Type: string
+    Description: Database name (default: neo4j)
+    Default: neo4j
+
+
+================================================================================
+
+[45] neo4j_query
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute Cypher query on Neo4j. Supports all Cypher operations with parameterized queries.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Neo4j connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: Cypher query to execute
+
+  • parameters [OPTIONAL]
+    Type: string
+    Description: Query parameters
+    Default: None
+
+
+================================================================================
+
+[46] neo4j_create_node
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Create a node in Neo4j with label and properties.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Neo4j connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: Cypher query to execute
+
+  • parameters [OPTIONAL]
+    Type: string
+    Description: Query parameters
+    Default: None
+
+
+================================================================================
+
+[47] neo4j_create_rel
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Create relationship between two nodes in Neo4j.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Neo4j connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: Cypher query to execute
+
+  • parameters [OPTIONAL]
+    Type: string
+    Description: Query parameters
+    Default: None
+
+
+================================================================================
+
+[48] neo4j_find
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for nodes in Neo4j by label and optional property.
+
+INPUT PARAMETERS:
+  • connection_id [REQUIRED]
+    Type: string
+    Description: Neo4j connection ID
+
+  • query [REQUIRED]
+    Type: string
+    Description: Cypher query to execute
+
+  • parameters [OPTIONAL]
+    Type: string
+    Description: Query parameters
+    Default: None
+
+
+================================================================================
+
+[49] neo4j_schema
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get Neo4j database schema including labels, relationships, and properties.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[50] neo4j_stats
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Get Neo4j database statistics including counts and distributions.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[51] neo4j_disconnect
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Close Neo4j connection.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[52] check_docker_status
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Check if Docker is installed and running. Provides diagnostics and troubleshooting steps if Docker is unavailable.
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[53] investigate_username
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate username across social media platforms. FULLY STANDALONE. Discovers profiles, metadata, and connections. Uses only free, public sources. Automatically extracts username from any input format.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • platforms [OPTIONAL]
+    Type: string
+    Description: Specific platforms or None for all
+    Default: None
+
+  • deep_scan [OPTIONAL]
+    Type: boolean
+    Description: Deep profile analysis
+    Default: False
+
+
+================================================================================
+
+[54] investigate_email
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate email address. FULLY STANDALONE. Validates format, checks MX records, domain info, variations. Uses only free, public sources. Tool chaining compatible.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • check_breaches [OPTIONAL]
+    Type: boolean
+    Description: Check data breaches
+    Default: True
+
+  • verify_mx [OPTIONAL]
+    Type: boolean
+    Description: Verify MX records
+    Default: True
+
+
+================================================================================
+
+[55] investigate_domain
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate domain. FULLY STANDALONE. WHOIS, DNS records, subdomains via certificate transparency. Uses only free, public sources. Tool chaining compatible.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • include_subdomains [OPTIONAL]
+    Type: boolean
+    Description: Enumerate subdomains
+    Default: False
+
+  • check_history [OPTIONAL]
+    Type: boolean
+    Description: Check domain history
+    Default: False
+
+
+================================================================================
+
+[56] investigate_phone
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate phone number. FULLY STANDALONE. Format validation, country code, area code location lookup. Uses only free, public sources.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • country_code [OPTIONAL]
+    Type: string
+    Description: Country code (e.g., 'US', 'UK')
+    Default: None
+
+  • carrier_lookup [OPTIONAL]
+    Type: boolean
+    Description: Lookup carrier info
+    Default: True
+
+
+================================================================================
+
+[57] investigate_license_plate
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate license plate. FULLY STANDALONE. Format validation, state/region identification (US/UK). Uses only publicly available pattern matching - NO private DMV data.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • state [OPTIONAL]
+    Type: string
+    Description: State/Province code
+    Default: None
+
+  • country [OPTIONAL]
+    Type: string
+    Description: Country code
+    Default: US
+
+
+================================================================================
+
+[58] investigate_company
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Investigate company/business. FULLY STANDALONE. Public registry searches (OpenCorporates, SEC EDGAR, Companies House). Uses only free, public sources.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • country [OPTIONAL]
+    Type: string
+    Description: Country for business registry
+    Default: US
+
+  • include_filings [OPTIONAL]
+    Type: boolean
+    Description: Include SEC filings
+    Default: False
+
+
+================================================================================
+
+[59] check_data_breaches
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Check for data breaches. FULLY STANDALONE. Searches known breach databases for email/username/domain. Uses HaveIBeenPwned and other free breach databases.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target: username, email, domain, phone, or formatted output
+
+  • check_type [OPTIONAL]
+    Type: string
+    Description: Type: email, username, domain
+    Default: email
+
+
+================================================================================
+
+[60] detect_web_technologies
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Advanced technology detection with configurable patterns. Identifies web servers, frameworks, CMS, libraries, analytics, CDN. Uses Wappalyzer-style pattern matching. Results stored in graph memory. FULLY STANDALONE - handles any URL format.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target URL, domain, or formatted output
+
+  • methods [OPTIONAL]
+    Type: string
+    Description: Detection methods: headers, html, scripts, meta, css
+    Default: None
+
+  • patterns_file [OPTIONAL]
+    Type: string
+    Description: Custom patterns JSON file
+    Default: None
+
+
+================================================================================
+
+[61] crawl_website
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Comprehensive website crawling and mapping. Discovers pages, assets (scripts, images, CSS), forms, UI elements, links. Creates complete website structure in graph memory with relationships. FULLY STANDALONE - tool chaining compatible.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target URL, domain, or formatted output
+
+  • max_depth [OPTIONAL]
+    Type: integer
+    Description: Maximum crawl depth
+    Default: 3
+
+  • max_pages [OPTIONAL]
+    Type: integer
+    Description: Maximum pages to crawl
+    Default: 100
+
+  • follow_external [OPTIONAL]
+    Type: boolean
+    Description: Follow external links
+    Default: False
+
+
+================================================================================
+
+[62] enumerate_subdomains
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Subdomain enumeration via passive (CT logs) or active (DNS bruteforce) methods. Discovers subdomains and stores in graph with domain relationships. FULLY STANDALONE - automatically extracts domain from any input.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target URL, domain, or formatted output
+
+  • method [OPTIONAL]
+    Type: string
+    Description: Method: passive (CT logs), bruteforce, hybrid
+    Default: passive
+
+  • wordlist [OPTIONAL]
+    Type: string
+    Description: Wordlist to use
+    Default: common
+
+  • max_subdomains [OPTIONAL]
+    Type: integer
+    Description: Maximum subdomains
+    Default: 100
+
+
+================================================================================
+
+[63] analyze_ssl_certificate
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  SSL/TLS certificate analysis. Extracts certificate details, checks expiry, identifies weak ciphers/protocols. Results stored in graph memory. FULLY STANDALONE.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target URL, domain, or formatted output
+
+  • port [OPTIONAL]
+    Type: integer
+    Description: SSL port
+    Default: 443
+
+  • check_weak_ciphers [OPTIONAL]
+    Type: boolean
+    Description: Check for weak ciphers
+    Default: True
+
+
+================================================================================
+
+[64] comprehensive_web_scan
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Full comprehensive web reconnaissance. Combines technology detection, crawling, subdomain enumeration, SSL analysis. Modes: quick, standard, deep. Creates complete website map in graph memory. FULLY STANDALONE - handles any URL format.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target URL, domain, or formatted output
+
+  • scan_type [OPTIONAL]
+    Type: string
+    Description: Scan type: quick, standard, deep
+    Default: standard
+
+  • include_subdomains [OPTIONAL]
+    Type: boolean
+    Description: Enumerate subdomains
+    Default: False
+
+  • include_ssl [OPTIONAL]
+    Type: boolean
+    Description: Analyze SSL
+    Default: True
+
+  • include_fuzzing [OPTIONAL]
+    Type: boolean
+    Description: Perform fuzzing
+    Default: False
+
+
+================================================================================
+
+[65] search_vulnerabilities
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Comprehensive multi-source vulnerability search. Queries NVD, Vulners databases for CVE data. Accepts product names, services, or technologies. Example: 'Apache 2.4.51', 'nginx/1.20.1', 'WordPress 6.0'. Returns detailed CVE data with CVSS scores, exploitability, patches.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Product, service, technology, or CPE
+
+  • version [OPTIONAL]
+    Type: string
+    Description: Product version
+    Default: None
+
+  • vendor [OPTIONAL]
+    Type: string
+    Description: Vendor name
+    Default: None
+
+
+================================================================================
+
+[66] scan_network_services_vulnerabilities
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Scan network services for vulnerabilities. NETWORK-AWARE. Automatically loads services from graph memory and maps to CVEs. Use after network service detection. Tool chaining compatible. Accepts IPs, CIDRs, or formatted scan output.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: IP, CIDR, hostname, or formatted scan output
+
+  • severity_filter [OPTIONAL]
+    Type: string
+    Description: CRITICAL, HIGH, MEDIUM, LOW
+    Default: None
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Max CVEs per service
+    Default: 5
+
+  • service_filter [OPTIONAL]
+    Type: string
+    Description: Only scan specific service
+    Default: None
+
+
+================================================================================
+
+[67] lookup_cve
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Lookup specific CVE by ID. Returns comprehensive details from NVD: CVSS v3/v2 scores, attack vectors, impact metrics, weaknesses (CWE), affected configurations, references, and timeline.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Product, service, technology, or CPE
+
+  • cve_id [REQUIRED]
+    Type: string
+    Description: CVE ID (e.g., CVE-2024-1234)
+
+
+================================================================================
+
+[68] search_exploits
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for public exploits in ExploitDB database. Can search by product name or specific CVE ID. Returns exploit details, platforms, and download links.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Product, service, technology, or CPE
+
+  • cve_id [OPTIONAL]
+    Type: string
+    Description: Specific CVE to find exploits for
+    Default: None
+
+  • exploit_type [OPTIONAL]
+    Type: string
+    Description: Type: remote, local, dos, webapps
+    Default: None
+
+
+================================================================================
+
+[69] quick_vulnerability_check
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Quick vulnerability check (NVD only, top 5 results). Fast lookup for discovered services or technologies. Use for rapid assessment during network/web scans.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Product, service, technology, or CPE
+
+
+================================================================================
+
+[70] comprehensive_vulnerability_scan
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Full comprehensive vulnerability intelligence gathering. Multi-source aggregation with filtering options. Modes: quick, standard, comprehensive, exploit_focused. Supports severity filtering, CVSS thresholds, exploit-only results.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Product, service, technology, or CPE
+
+  • search_type [OPTIONAL]
+    Type: string
+    Description: Search type: quick, standard, comprehensive, exploit_focused
+    Default: standard
+
+  • sources [OPTIONAL]
+    Type: string
+    Description: Specific sources to query
+    Default: None
+
+  • severity_filter [OPTIONAL]
+    Type: string
+    Description: CRITICAL, HIGH, MEDIUM, LOW
+    Default: None
+
+  • min_cvss [OPTIONAL]
+    Type: string
+    Description: Minimum CVSS score
+    Default: None
+
+  • only_exploited [OPTIONAL]
+    Type: boolean
+    Description: Only return exploited CVEs
+    Default: False
+
+
+================================================================================
+
+[71] discover_hosts
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Discover live hosts on network. Supports nmap for large scans. Accepts IPs, CIDRs, hostnames, or formatted output from other tools.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target(s): IP, CIDR, hostname, domain, or comma-separated
+
+  • timeout [OPTIONAL]
+    Type: integer
+    Description: Ping timeout in seconds
+    Default: 2
+
+  • max_threads [OPTIONAL]
+    Type: integer
+    Description: Max concurrent checks
+    Default: 50
+
+  • use_nmap [OPTIONAL]
+    Type: boolean
+    Description: Use nmap for discovery if available
+    Default: False
+
+
+================================================================================
+
+[72] scan_ports
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Scan ports on targets. Supports nmap for enhanced scanning. Accepts IPs, CIDRs, or formatted output. Tool chaining compatible.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target(s): IP, CIDR, hostname, domain, or comma-separated
+
+  • ports [OPTIONAL]
+    Type: string
+    Description: Port spec: '1-1000', '22,80,443'
+    Default: 1-1000
+
+  • timeout [OPTIONAL]
+    Type: number
+    Description: Port timeout
+    Default: 1.0
+
+  • only_live_hosts [OPTIONAL]
+    Type: boolean
+    Description: Only scan verified hosts
+    Default: True
+
+  • use_nmap [OPTIONAL]
+    Type: boolean
+    Description: Use nmap for scanning if available
+    Default: False
+
+
+================================================================================
+
+[73] detect_services
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Detect services with banner grabbing. FULLY STANDALONE. Automatically scans ports if none exist. Tool chaining compatible.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target(s): IP, CIDR, hostname, domain, or comma-separated
+
+  • ports [OPTIONAL]
+    Type: string
+    Description: Specific ports or use discovered
+    Default: None
+
+  • grab_banners [OPTIONAL]
+    Type: boolean
+    Description: Attempt banner grabbing
+    Default: True
+
+  • timeout [OPTIONAL]
+    Type: number
+    Description: Service detection timeout
+    Default: 3.0
+
+
+================================================================================
+
+[74] enumerate_dns
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  DNS reconnaissance: records, subdomains, zone transfers. Requires dnspython. Comprehensive domain intelligence gathering.
+
+INPUT PARAMETERS:
+  • domain [REQUIRED]
+    Type: string
+    Description: Domain to enumerate (e.g., example.com)
+
+  • enumerate_subdomains [OPTIONAL]
+    Type: boolean
+    Description: Enumerate subdomains
+    Default: True
+
+  • attempt_zone_transfer [OPTIONAL]
+    Type: boolean
+    Description: Attempt DNS zone transfer
+    Default: False
+
+  • wordlist [OPTIONAL]
+    Type: string
+    Description: Custom subdomain wordlist
+    Default: None
+
+
+================================================================================
+
+[75] analyze_ssl
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  SSL/TLS certificate analysis and security assessment. Checks certificate validity, protocols, ciphers, and security issues.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Hostname to analyze SSL/TLS
+
+  • port [OPTIONAL]
+    Type: integer
+    Description: SSL port
+    Default: 443
+
+  • check_issues [OPTIONAL]
+    Type: boolean
+    Description: Check for security issues
+    Default: True
+
+
+================================================================================
+
+[76] detect_web_technologies
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Web technology fingerprinting with signature matching. Detects CMS, frameworks, servers, libraries with confidence scores.
+
+INPUT PARAMETERS:
+  • url [REQUIRED]
+    Type: string
+    Description: URL to analyze (e.g., https://example.com)
+
+  • signatures_file [OPTIONAL]
+    Type: string
+    Description: Path to signatures JSON
+    Default: None
+
+
+================================================================================
+
+[77] shodan_lookup
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Shodan passive reconnaissance - lookup IPs or search queries. Reveals services, vulnerabilities, organization data. Requires API key.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: IP address or search query
+
+  • api_key [REQUIRED]
+    Type: string
+    Description: Shodan API key
+
+  • lookup_type [OPTIONAL]
+    Type: string
+    Description: 'host' or 'search'
+    Default: host
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Max search results
+    Default: 10
+
+
+================================================================================
+
+[78] comprehensive_network_scan
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Full network scan: discovery, ports, services, DNS, SSL, web tech, Shodan. Modes: quick, standard, full, osint. Comprehensive reconnaissance suite.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target(s): IP, CIDR, hostname, domain, or comma-separated
+
+  • scan_type [OPTIONAL]
+    Type: string
+    Description: 'quick', 'standard', 'full', 'osint'
+    Default: standard
+
+  • custom_ports [OPTIONAL]
+    Type: string
+    Description: Custom port list
+    Default: None
+
+  • include_dns [OPTIONAL]
+    Type: boolean
+    Description: Include DNS enumeration
+    Default: False
+
+  • include_ssl [OPTIONAL]
+    Type: boolean
+    Description: Include SSL analysis
+    Default: False
+
+  • include_web_tech [OPTIONAL]
+    Type: boolean
+    Description: Include web tech detection
+    Default: False
+
+  • shodan_api_key [OPTIONAL]
+    Type: string
+    Description: Shodan API key for lookup
+    Default: None
+
+
+================================================================================
+
+[79] analyze_local_codebase
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Analyze local directory or file. ONLY parses code and documentation files, skips binary files, databases, vector stores, media files. Creates hierarchical graph structure: Project → Directories → Files → Classes → Functions. Supports change detection and deprecation marking. Modes: structure (files only), standard (+ parsing), deep (+ metrics), full (+ call graphs)
+
+INPUT PARAMETERS:
+  • path [REQUIRED]
+    Type: string
+    Description: Local directory or file path
+
+  • mode [OPTIONAL]
+    Type: string
+    Description: Analysis mode: structure/shallow/standard/deep/full
+    Default: standard
+
+  • project_name [OPTIONAL]
+    Type: string
+    Description: Project name (auto-detected if None)
+    Default: None
+
+
+================================================================================
+
+[80] analyze_git_repository
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Clone and analyze Git repository. ONLY parses code/docs, skips binaries and databases. Supports GitHub, GitLab, Bitbucket. Creates full codebase graph with version tracking. Auto-detects project name from repo URL. Temporary clone by default.
+
+INPUT PARAMETERS:
+  • repo_url [REQUIRED]
+    Type: string
+    Description: Git repository URL (https or ssh)
+
+  • branch [OPTIONAL]
+    Type: string
+    Description: Branch to checkout
+    Default: None
+
+  • mode [OPTIONAL]
+    Type: string
+    Description: Analysis mode
+    Default: standard
+
+  • project_name [OPTIONAL]
+    Type: string
+    Description: Project name
+    Default: None
+
+  • clone_path [OPTIONAL]
+    Type: string
+    Description: Where to clone (temp if None)
+    Default: None
+
+
+================================================================================
+
+[81] analyze_code_snippet
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Analyze code text directly. Auto-detects language. Extracts classes, functions, imports. Calculates metrics. Useful for analyzing pasted code or generated snippets.
+
+INPUT PARAMETERS:
+  • code [REQUIRED]
+    Type: string
+    Description: Code text to analyze
+
+  • language [OPTIONAL]
+    Type: string
+    Description: Language (auto-detect if None)
+    Default: None
+
+  • filename [OPTIONAL]
+    Type: string
+    Description: Virtual filename
+    Default: snippet.txt
+
+  • project_name [OPTIONAL]
+    Type: string
+    Description: Project name
+    Default: code_snippet
+
+
+================================================================================
+
+[82] dork_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  🔍 INTELLIGENT DORKING TOOL - Supports both simple keywords and advanced dorks
+
+SIMPLE KEYWORD EXAMPLES:
+  • search='webcam' - Find webcams/cameras
+  • search='admin login' - Find admin panels
+  • search='database' - Find exposed databases
+  • search='config', file_type='env' - Find .env files
+  • search='camera', target='example.com' - Find cameras on specific domain
+
+CUSTOM DORK EXAMPLES:
+  • search='intitle:"webcam" inurl:view.shtml'
+  • search='filetype:sql "password"'
+  • search='site:s3.amazonaws.com filetype:pdf'
+
+FEATURES:
+  • Auto-detects keywords vs custom dorks
+  • Generates multiple search variations
+  • Extracts emails, phones, IPs
+  • Deduplicates results
+  • Multi-engine support
+  • Anti-detection measures
+
+PARAMETERS:
+  • target: Focus on domain/keyword
+  • file_type: Filter by file extension
+  • site: Restrict to specific domain
+  • mode: 'smart' (auto), 'keyword', 'custom'
+
+INPUT PARAMETERS:
+  • search [REQUIRED]
+    Type: string
+    Description: Search query - can be:
+1. Simple keyword: 'webcam', 'admin panel', 'database'
+2. Custom dork: 'intitle:"login" inurl:admin'
+3. Multiple keywords: 'exposed camera streaming'
+Auto-detects and generates appropriate dork queries
+
+  • target [OPTIONAL]
+    Type: string
+    Description: Optional target domain or keyword to focus on (e.g., 'example.com' or 'company name')
+    Default: None
+
+  • file_type [OPTIONAL]
+    Type: string
+    Description: File type filter: sql, pdf, xls, doc, log, env, config, etc.
+    Default: None
+
+  • site [OPTIONAL]
+    Type: string
+    Description: Limit to specific site/domain (e.g., 'example.com')
+    Default: None
+
+  • exclude_sites [OPTIONAL]
+    Type: string
+    Description: Domains to exclude from results
+    Default: None
+
+  • date_range [OPTIONAL]
+    Type: string
+    Description: Time filter: 'day', 'week', 'month', 'year'
+    Default: None
+
+  • max_results [OPTIONAL]
+    Type: string
+    Description: Maximum results to return per engine
+    Default: 50
+
+  • engines [OPTIONAL]
+    Type: string
+    Description: Search engines to use: ['google', 'bing', 'duckduckgo']
+    Default: None
+
+  • mode [OPTIONAL]
+    Type: string
+    Description: Search mode: 'smart' (auto), 'keyword' (force keyword search), 'custom' (force as custom dork)
+    Default: smart
+
+
+================================================================================
+
+[83] dork_quick
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  ⚡ QUICK KEYWORD SEARCH - Fast keyword-based dorking
+
+Perfect for quick searches with simple keywords:
+  • 'webcam'
+  • 'admin panel'
+  • 'exposed database'
+  • 'printer'
+
+Returns top 30 results, minimal configuration.
+
+INPUT PARAMETERS:
+  • keywords [REQUIRED]
+    Type: string
+    Description: Keywords to search for (e.g., 'webcam', 'admin login')
+
+  • target [OPTIONAL]
+    Type: string
+    Description: Optional target domain
+    Default: None
+
+
+================================================================================
+
+[84] dork_search_files
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for exposed files using Google dorks. Finds SQL dumps, config files, logs, backups, credentials. File types: sql, log, env, config, bak, xml, json. Anti-detection with delays and rotation.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • file_types [OPTIONAL]
+    Type: string
+    Description: File types: sql, log, env, config, bak, xml, json, csv
+    Default: None
+
+  • keywords [OPTIONAL]
+    Type: string
+    Description: Additional keywords to include
+    Default: None
+
+
+================================================================================
+
+[85] dork_search_logins
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for login portals and admin panels. Finds admin panels, webmail, phpMyAdmin, CMS logins, control panels. Login types: admin, webmail, cpanel, phpmyadmin, wordpress.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • login_types [OPTIONAL]
+    Type: string
+    Description: Login types: admin, webmail, cpanel, phpmyadmin, wordpress
+    Default: None
+
+
+================================================================================
+
+[86] dork_search_devices
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for exposed network devices. Finds webcams, printers, routers, NAS, IoT devices, SCADA systems. Device types: camera, webcam, printer, router, nas, scada.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • device_types [OPTIONAL]
+    Type: string
+    Description: Device types: camera, webcam, printer, router, nas, scada
+    Default: None
+
+
+================================================================================
+
+[87] dork_search_misconfigs
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for server misconfigurations. Finds directory listings, error pages, exposed .git/.svn, debug pages. Types: directory_listing, error_page, debug, git, svn.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • misconfig_types [OPTIONAL]
+    Type: string
+    Description: Types: directory_listing, error_page, debug, trace
+    Default: None
+
+
+================================================================================
+
+[88] dork_search_people
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search for people information and OSINT. Finds emails, phone numbers, social profiles, resumes. Extracts and correlates personal information. Info types: email, phone, social, resume, linkedin.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • info_types [OPTIONAL]
+    Type: string
+    Description: Info types: email, phone, social, resume, linkedin
+    Default: None
+
+
+================================================================================
+
+[89] dork_custom
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Execute custom Google dork query. For advanced users who know exact dork syntax. Supports all search engines: google, bing, duckduckgo.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • dork_query [REQUIRED]
+    Type: string
+    Description: Custom Google dork query
+
+  • engine [OPTIONAL]
+    Type: string
+    Description: Search engine to use
+    Default: google
+
+
+================================================================================
+
+[90] dork_comprehensive
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Comprehensive multi-category dorking scan. Searches files, logins, devices, misconfigs in one operation. Depth: quick (fast), standard (balanced), deep (thorough). Automatically correlates findings across categories.
+
+INPUT PARAMETERS:
+  • target [REQUIRED]
+    Type: string
+    Description: Target domain, keyword, or dork query
+
+  • categories [OPTIONAL]
+    Type: string
+    Description: Categories to search: files, logins, cameras, devices, misconfigs
+    Default: None
+
+  • depth [OPTIONAL]
+    Type: string
+    Description: Search depth: quick, standard, deep
+    Default: standard
+
+
+================================================================================
+
+[91] mcp_call
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Call a tool on an MCP server (filesystem, github, postgres, slack, etc).
+
+INPUT PARAMETERS:
+  • server_name [REQUIRED]
+    Type: string
+    Description: Name of the MCP server to use
+
+  • tool_name [REQUIRED]
+    Type: string
+    Description: Name of the tool to invoke
+
+  • arguments [OPTIONAL]
+    Type: object
+    Description: Arguments for the tool
+
+
+================================================================================
+
+[92] mcp_list_tools
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  List all available tools from an MCP server.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[93] scheduling_assistant
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Run the executive scheduling assistant. Access to calendars, todos, scheduling apps. Input: query string.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: No description
+
+  • agent [OPTIONAL]
+    Type: string
+    Description: No description
+    Default: None
+
+
+================================================================================
+
+[94] click_element
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Click on an element with the given CSS selector
+
+INPUT PARAMETERS:
+  • selector [REQUIRED]
+    Type: string
+    Description: CSS selector for the element to click
+
+
+================================================================================
+
+[95] navigate_browser
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Navigate a browser to the specified URL
+
+INPUT PARAMETERS:
+  • url [REQUIRED]
+    Type: string
+    Description: url to navigate to
+
+
+================================================================================
+
+[96] previous_webpage
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Navigate back to the previous page in the browser history
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[97] extract_text
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Extract all the text on the current webpage
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================
+
+[98] extract_hyperlinks
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Extract all hyperlinks on the current webpage
+
+INPUT PARAMETERS:
+  • absolute_urls [OPTIONAL]
+    Type: boolean
+    Description: Return absolute URLs instead of relative URLs
+    Default: False
+
+
+================================================================================
+
+[99] get_elements
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Retrieve elements in the current web page matching the given CSS selector
+
+INPUT PARAMETERS:
+  • selector [REQUIRED]
+    Type: string
+    Description: CSS selector, such as '*', 'div', 'p', 'a', #id, .classname
+
+  • attributes [OPTIONAL]
+    Type: array
+    Description: Set of attributes to retrieve for each element
+
+
+================================================================================
+
+[100] current_webpage
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Returns the URL of the current page
+
+INPUT PARAMETERS:
+  (No parameters required)
+
+
+================================================================================

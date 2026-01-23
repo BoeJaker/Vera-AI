@@ -504,16 +504,21 @@
     <script src="js/graph/graph.js"></script>
     <script src="js/config-manager.js"></script>
     <script src="js/graph/cypher.js"></script> 
+    <script src="js/graph/card-view.js"></script> 
+    <script src="js/graph/card-view-enhanced.js"></script> 
     <script src="js/toolchain/toolchain.js"></script>
     <script src="js/toolchain/toolchain-workflows.js"></script>
     <script src="js/toolchain/toolchain-query.js"></script>
-    <script src="js/proactive-focus-manager.js?v=3"></script>
+    <script src="js/proactive_focus/proactive-focus-manager.js?v=3"></script>
+    <script src="js/proactive_focus/proactive-focus-manager-enhanced.js?v=3"></script>
+    <script src="js/proactive_focus/status_monitor.js"></script>
     <script src="js/memory.js?v=3"></script>
     <script src="js/notebook.js"></script>
     <script src="js/agents.js"></script>
     <script src="js/session/theme.js"></script>
     <script src="js/canvas/canvas.js"></script>
-
+    <script src="js/ml-manager.js"></script>
+    
     <script src="js/orchestrator.js"></script>
     <link rel="stylesheet" href="css/enhanced-chat.css">
     <script src="js/chat/enhanced_chat.js"></script>
@@ -561,6 +566,67 @@
                 else dot.classList.add('connecting');
             }
         }
+    </script>
+    <script>
+        // Example initialization code
+        
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', function() {});
+        
+        // Optional: Add keyboard shortcuts for quick toggle
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+Shift+C to toggle card view
+            if (e.ctrlKey && e.shiftKey && e.key === 'C') {
+                if (window.GraphCardView) {
+                    window.GraphCardView.toggle();
+                }
+            }
+        });
+        
+        // Example: Programmatic control
+        function demoCardView() {
+            // Toggle to card view
+            if (window.GraphCardView) {
+                window.GraphCardView.toggle();
+                
+                // After 1 second, expand all
+                setTimeout(() => {
+                    window.GraphCardView.expandAll();
+                }, 1000);
+                
+                // After 3 seconds, focus on a specific node
+                setTimeout(() => {
+                    const firstNodeId = Array.from(window.GraphCardView.nodes.keys())[0];
+                    if (firstNodeId) {
+                        window.GraphCardView.focusNode(firstNodeId);
+                    }
+                }, 3000);
+            }
+        }
+        
+        // Example: Custom search integration
+        function searchGraph(query) {
+            if (window.GraphCardView && window.GraphCardView.enhanced) {
+                // Switch to card view
+                if (!window.GraphCardView.active) {
+                    window.GraphCardView.toggle();
+                }
+                
+                // Set search term
+                const searchInput = document.getElementById('card-view-search-input');
+                if (searchInput) {
+                    searchInput.value = query;
+                    window.GraphCardView.enhanced.search();
+                }
+            }
+        }
+        
+        // Example: Export card view as image (future feature)
+        function exportCardView() {
+            // TODO: Implement export functionality
+            console.log('Export feature coming soon!');
+        }
+        
     </script>
 </body>
 </html>

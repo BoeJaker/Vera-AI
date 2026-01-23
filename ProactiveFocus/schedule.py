@@ -18,6 +18,7 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 import logging
 from ics import Calendar, Event
+from ics.grammar.parse import ContentLine
 from dateutil.rrule import rrule, DAILY, WEEKLY, MONTHLY
 import uuid
 
@@ -64,15 +65,15 @@ Metadata:
 {self.metadata}
 """
         
-        # Add custom metadata as X- fields
-        event.extra.append(f"X-PROACTIVE-FOCUS:{self.focus}")
-        event.extra.append(f"X-PROACTIVE-PRIORITY:{self.priority}")
+        # Add custom metadata as ContentLine objects
+        event.extra.append(ContentLine(name="X-PROACTIVE-FOCUS", value=self.focus))
+        event.extra.append(ContentLine(name="X-PROACTIVE-PRIORITY", value=self.priority))
         
         if self.stages:
-            event.extra.append(f"X-PROACTIVE-STAGES:{','.join(self.stages)}")
+            event.extra.append(ContentLine(name="X-PROACTIVE-STAGES", value=','.join(self.stages)))
         
         if self.recurrence_rule:
-            event.extra.append(self.recurrence_rule)
+            event.extra.append(ContentLine(name="RRULE", value=self.recurrence_rule))
         
         return event
     
@@ -135,69 +136,89 @@ class CalendarScheduler:
         if os.path.exists(self.calendar_file):
             with open(self.calendar_file, 'r') as f:
                 content = f.read()
-                try:
-                    self.calendar = Calendar(content)
-                except NotImplementedError:
-                    calendars = list(Calendar.parse_multiple(content))
-                    self.calendar = calendars[0] if calendars else Calendar()
-                    if len(calendars) > 1:
-                        print(f"[Calendar] Using first of {len(calendars)} calendars")
+                
+                if not content.strip():
+                    logger.info("[Calendar] File is empty, creating new calendar")
+                    self.calendar = Calendar()
+                else:
+                    try:
+                        # Try normal parsing first
+                        self.calendar = Calendar(content)
+                    except NotImplementedError:
+                        # Handle multiple calendars in one file
+                        calendars = list(Calendar.parse_multiple(content))
+                        self.calendar = calendars[0] if calendars else Calendar()
+                        if len(calendars) > 1:
+                            logger.info(f"[Calendar] Using first of {len(calendars)} calendars")
     
     def save_calendar(self):
         """Save calendar to file"""
-        self.calendar_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(self.calendar_file, 'w') as f:
-            f.writelines(self.calendar.serialize_iter())
-        
-        logger.info(f"Calendar saved to {self.calendar_file}")
+        try:
+            with open(self.calendar_file, 'w') as f:
+                f.writelines(self.calendar.serialize_iter())
+            logger.debug("[Calendar] Calendar saved successfully")
+        except Exception as e:
+            logger.error(f"Failed to save calendar: {e}")
+            raise
     
     def schedule_thought_session(
         self,
-        focus: str,
         start_time: datetime,
         duration_minutes: int = 30,
-        stages: Optional[List[str]] = None,
-        priority: str = "normal",
-        recurrence: Optional[str] = None
-    ) -> ProactiveThoughtEvent:
-        """
-        Schedule a proactive thought session.
+        recurrence: str = None,
+        focus: str = None,
+        stages: list = None,
+        priority: str = "normal"
+    ):
+        """Schedule a proactive thinking session"""
         
-        Args:
-            focus: The focus for this session
-            start_time: When to start
-            duration_minutes: How long the session should be
-            stages: Which stages to run (None = all)
-            priority: Priority level
-            recurrence: Recurrence rule (e.g., "RRULE:FREQ=DAILY;COUNT=10")
+        event = Event()
+        event.name = f"Proactive Focus: {focus or 'Current Focus'}"
+        event.begin = start_time
+        event.duration = timedelta(minutes=duration_minutes)
+        event.description = f"Automated proactive thinking session"
         
-        Returns:
-            ProactiveThoughtEvent
-        """
-        end_time = start_time + timedelta(minutes=duration_minutes)
+        # Add custom properties using ContentLine objects
+        if focus:
+            event.extra.append(ContentLine(name="X-VERA-FOCUS", value=focus))
         
+        if stages:
+            event.extra.append(ContentLine(name="X-VERA-STAGES", value=",".join(stages)))
+        
+        # Add session type marker
+        event.extra.append(ContentLine(name="X-VERA-TYPE", value="PROACTIVE-SESSION"))
+        
+        # Add priority
+        event.extra.append(ContentLine(name="X-VERA-PRIORITY", value=priority))
+        
+        # Handle recurrence
+        if recurrence == "daily":
+            # Daily for 7 days
+            event.extra.append(ContentLine(name="RRULE", value="FREQ=DAILY;COUNT=7"))
+        elif recurrence == "weekly":
+            # Weekly for 4 weeks
+            event.extra.append(ContentLine(name="RRULE", value="FREQ=WEEKLY;COUNT=4"))
+        
+        self.calendar.events.add(event)
+        self.save_calendar()
+        
+        # Create ProactiveThoughtEvent for return
         thought_event = ProactiveThoughtEvent(
-            name=f"Thought Session: {focus[:30]}",
-            begin=start_time,
-            end=end_time,
-            focus=focus,
+            name=event.name,
+            begin=event.begin,
+            end=event.begin + timedelta(minutes=duration_minutes),
+            focus=focus or 'Current Focus',
             stages=stages,
             priority=priority,
             recurrence_rule=recurrence
         )
+        thought_event.uid = event.uid
         
-        # Add to calendar
-        ics_event = thought_event.to_ics_event()
-        self.calendar.events.add(ics_event)
-        
-        # Save
-        self.save_calendar()
-        
-        logger.info(f"Scheduled thought session: {focus} at {start_time}")
+        logger.info(f"[Calendar] Scheduled thought session: {focus} at {start_time}")
         
         return thought_event
-    
+
+
     def schedule_daily_thoughts(
         self,
         focus: str,
@@ -224,6 +245,7 @@ class CalendarScheduler:
             
             events.append(event)
         
+        logger.info(f"[Calendar] Scheduled {len(events)} daily thought sessions")
         return events
     
     def schedule_weekly_thoughts(
@@ -261,6 +283,7 @@ class CalendarScheduler:
             
             events.append(event)
         
+        logger.info(f"[Calendar] Scheduled {len(events)} weekly thought sessions")
         return events
     
     def get_upcoming_thought_sessions(
@@ -282,12 +305,17 @@ class CalendarScheduler:
                 
                 if event_time.tzinfo is None:
                     event_time = event_time.replace(tzinfo=timezone.utc)
-                if now <= event_time <= future_limit:
+                
+                now_aware = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+                future_aware = future_limit if future_limit.tzinfo else future_limit.replace(tzinfo=timezone.utc)
+                
+                if now_aware <= event_time <= future_aware:
                     upcoming.append(thought_event)
         
         # Sort by start time
         upcoming.sort(key=lambda e: e.begin)
         
+        logger.debug(f"[Calendar] Found {len(upcoming)} upcoming thought sessions")
         return upcoming
     
     def get_next_thought_session(self) -> Optional[ProactiveThoughtEvent]:
@@ -308,6 +336,7 @@ class CalendarScheduler:
                 logger.info(f"Cancelled thought session: {event_uid}")
                 return True
         
+        logger.warning(f"Thought session not found: {event_uid}")
         return False
     
     def reschedule_thought_session(
@@ -347,6 +376,7 @@ class CalendarScheduler:
                 
                 return True
         
+        logger.warning(f"Thought session not found for rescheduling: {event_uid}")
         return False
     
     def suggest_optimal_time(
@@ -413,6 +443,7 @@ class CalendarScheduler:
                     logger.info(f"Suggested optimal time: {candidate_time}")
                     return candidate_time
         
+        logger.warning("No optimal time found in the specified range")
         return None
 
 
@@ -470,4 +501,3 @@ if __name__ == "__main__":
     
     if optimal:
         print(f"\nSuggested optimal time for next session: {optimal}")
-        

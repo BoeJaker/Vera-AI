@@ -1,6 +1,9 @@
-performance issues, graph-info-card / rcm context menus
+chatui triage, focus mode changes but input is not processed by agent
+focus changed to is blank
 
-ability to restrict graph view to current session only / switch to current view + context
+<!-- performance issues, graph-info-card / rcm context menus -->
+
+<!-- ability to restrict graph view to current session only / switch to current view + context -->
 Color legend doesnt always show
 
 unified graph loading system - 
@@ -15,11 +18,49 @@ query should slide ito the graph element not the window
 
 settings should be moved to the query window
 
-add a button - layout - that opens the query slider on layout
+add a button - "layout" - that opens the query slider on layout
 
 FOLDER:
 GRAPH_
 
+
+# Node Properties
+Title:          Human readable identifier
+
+ID;             Unique ID
+Session_ID:     Unique session ID = contains all nodes from the same session
+Cluster:        Unique cluster ID - contains all nodes from the same execution
+
+Node Type:      Node category Entity, Extracted_Entity, Inference, Generated, 
+Type:           Fixed data category, IP, 
+Label:          User amendable labels
+Caller:         Function that created tthe node
+
+Created at:     Datetime
+Updated at:     Datetime
+
+Agent:          Agent used to generate
+Model:          Model used to generate
+Task:           Generated via task type
+
+Text:           Truncated text (500)
+Vector_id:      ID to vector-space        
+Vector:         Vector representation
+
+Live:           Boolean - Can the node be live monitored
+Color
+
+# Additional Tool Properties
+Tool:           Human readable identifier
+Toolchain:      Unique Toolchain run ID
+
+# Additional Focus properties
+Focus:
+Current_Step:
+
+
+**tools need**
+parsers / extracters bash/code/text to turn output into entities
 
 Memory.py add edges for inferred relationships, same node links i.e. ip addresses, and allow you to flatten/collapse them into one point with "history" 
 REL = Direct session relationship
@@ -32,15 +73,27 @@ Flatten function - simplifies relationships for processing
 FILE:
 MEMORY
 
-proactive focus - suggest similar focus or ask if you would like to create a new one
+proactive focus manager fix header menu
+
+proactive focus manager - no ideas generating
+
+proactive focus manager - recursion, take an existing entry and improve/expand upon it
+
+proactive focus manager - does not execute actions automatically
+
+proactive focus manager - tool execution ui does not exist, not sure if actions are being executed
+
+proactive focus manager - see upcoming actions/tasks and re-order / edit them 
 
 💭 Generating proactive thought... bubbles need to format the json output into "thoughts"
 
-Add controls for complexity of thought, number of iterations, 
+Add controls for complexity of thought, number of iterations, depth of planning
 
 Finish proactive background thought - improve scaling - docker
 
 "Error streaming ideas response: 'run_manager'" in Actions & Next Steps
+
+After next steps and actions are generated the system falls apart, ideas are not returned to the board and string of errors are logged to the graph
 
 Actions stage must deconstruct next steps into toolplans using the toolchain planner and action prompt
 Should optionally be able to prompt the user before each action
@@ -51,13 +104,6 @@ FILES:
 
 PROACTIVE_FOCUS_MANAGER
 
-
-Fix thought streaming to UI - it works when proactive focus is triggered by vera, but in no other case.
-
-Dual output of thought to terminal. streamed chars output are appended with newline :(
-
-FILES:
-VERA, OLLAMA_MANAGER
 
 
 Human in the loop system - allow vera to ask for permission to complete an action
@@ -153,3 +199,73 @@ Worker/ Agent / Task / Tool / Plugin Framework
     Define the architecture of the framework its componnts & how it all fits together
 
 Status bar with current task, progress, load, notifications
+
+
+
+
+Add Memories, sessions, notebooks and files to the focus board
+https://claude.ai/chat/73835203-021c-4292-8353-b949fc389013
+
+session history
+https://claude.ai/chat/dafcc308-907f-4fff-98cc-ce2ec1d35681
+
+Add loading graphic to other places
+review current placement in graph
+https://claude.ai/chat/cd2797e2-ee05-494c-9bc6-32e5be9b4ff6
+
+Notebook (obsidian) integration
+
+Canvas Execution backend integration
+https://claude.ai/chat/858411bf-05aa-4493-80be-117a00dc658d
+
+N8N execution not working (toolchain workflows)
+
+Notebooks not loading
+
+integrate cyber qury with memory tab
+integrate graph settings with memory + quick control from graph
+
+Fix chat History session loading
+
+No tool streaming when using th toolchian query
+
+Orchestration api and ui need better integration.
+
+toolchain needs integrating with orchestrator
+
+unify n8n authentication between ui and tool
+
+unified python/js module system
+a way to package modules that adds ui and backend
+
+workflows button disappears
+
+Canvas to be able to load all code in the graph - same with notes and visualisations
+
+visualiser tab - can visualise data
+
+stats and health into a analytics tab
+
+daily info packet  for vera.
+
+Robot breaks when header is collapsed
+
+New Chat button & Canvas button, like send to canvas - send to graph - turns the text/code/json into a graph - dont work smoothly
+file:///X:/Programming/Machine%20Learning/knowledge-graph.html
+file:///X:/Programming/Machine%20Learning/code-graph.html
+
+
+
+
+
+
+
+
+
+Graph
+ - color code edges
+ - color code nodes
+ - set tags to any property
+ - fix node labels, only one showing
+ - enlarge node on hover
+ 

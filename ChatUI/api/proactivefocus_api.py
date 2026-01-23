@@ -2663,3 +2663,62 @@ def safe_getattr(obj, attr, default=None):
         return value if value is not None else default
     except Exception:
         return default
+
+
+# Add these endpoints to your focus.py router
+
+@router.post("/{session_id}/workflow/stop")
+async def stop_workflow(session_id: str):
+    """Stop the iterative workflow"""
+    from Vera.ChatUI.api.session import sessions, get_or_create_vera
+    
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    # Set workflow_active flag to False
+    if hasattr(vera.focus_manager, 'workflow_active'):
+        vera.focus_manager.workflow_active = False
+        
+        vera.focus_manager._broadcast_sync("workflow_stopped", {
+            "timestamp": datetime.utcnow().isoformat()
+        })
+        
+        return {
+            "status": "stop_requested",
+            "message": "Workflow will stop after current iteration completes"
+        }
+    else:
+        return {
+            "status": "not_running",
+            "message": "No workflow is currently running"
+        }
+
+@router.get("/{session_id}/workflow/status")
+async def get_workflow_status(session_id: str):
+    """Get current workflow status"""
+    from Vera.ChatUI.api.session import sessions, get_or_create_vera
+    
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    if not hasattr(vera, 'focus_manager'):
+        raise HTTPException(status_code=400, detail="Focus manager not available")
+    
+    fm = vera.focus_manager
+    
+    return {
+        "workflow_active": getattr(fm, 'workflow_active', False),
+        "current_stage": getattr(fm, 'current_stage', None),
+        "current_activity": getattr(fm, 'current_activity', None),
+        "stage_progress": getattr(fm, 'stage_progress', 0),
+        "stage_total": getattr(fm, 'stage_total', 0),
+        "running": fm.running,
+        "focus": fm.focus
+    }

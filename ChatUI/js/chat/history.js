@@ -1,6 +1,12 @@
 /**
- * Session History Manager - Vanilla JavaScript
- * OPTIMIZED: Lazy loading, deferred initialization
+ * Session History Manager - OPTIMIZED VERSION
+ * 
+ * Key Performance Improvements:
+ * 1. Progressive/chunked rendering - UI appears immediately, data loads incrementally
+ * 2. Lazy loading - Only load details/previews when user requests them
+ * 3. Virtual scrolling - Only render visible items
+ * 4. Debounced state updates - Batch multiple updates efficiently
+ * 5. No blocking operations - All heavy work is async/chunked
  */
 
 class SessionHistory {
@@ -11,13 +17,18 @@ class SessionHistory {
             currentSessionId: config.currentSessionId || null,
             onLoadSession: config.onLoadSession || (() => {}),
             autoRefresh: config.autoRefresh || false,
-            refreshInterval: config.refreshInterval || 30000
+            refreshInterval: config.refreshInterval || 30000,
+            // Virtual scrolling config
+            itemHeight: config.itemHeight || 120, // Estimated height per session card
+            renderBuffer: config.renderBuffer || 5, // Extra items to render above/below viewport
+            chunkSize: config.chunkSize || 10 // Items to load per chunk
         };
 
         this.state = {
             sessions: [],
             searchResults: null,
             loading: false,
+            initialLoadComplete: false,
             searchQuery: '',
             sortBy: 'date',
             sortOrder: 'desc',
@@ -26,24 +37,32 @@ class SessionHistory {
             dateTo: '',
             stats: null,
             expandedSession: null,
-            similarSessions: {}
+            similarSessions: {},
+            // Virtual scrolling state
+            scrollTop: 0,
+            containerHeight: 0,
+            visibleStartIndex: 0,
+            visibleEndIndex: 20
         };
 
-        // Debounce timer for search input
+        // Performance optimizations
+        this.updateTimeout = null;
+        this.renderTimeout = null;
         this.searchDebounceTimer = null;
-        
-        // Throttle detail requests
         this.detailRequestInProgress = false;
+        this.scrollRAF = null;
+        
+        // Cache for loaded details
+        this.sessionDetailsCache = new Map();
 
         this.container = null;
+        this.scrollContainer = null;
         this.initialized = false;
-        
-        // OPTIMIZATION: Don't call init() in constructor
-        // Let caller decide when to initialize
-        // this.init();
     }
 
-    // OPTIMIZATION: Make init() explicitly callable and non-blocking
+    /**
+     * Initialize with immediate UI render, async data loading
+     */
     async init() {
         if (this.initialized) {
             console.log('SessionHistory already initialized');
@@ -58,78 +77,112 @@ class SessionHistory {
 
         this.initialized = true;
         
-        // Render placeholder immediately (non-blocking)
-        this.renderPlaceholder();
+        // IMMEDIATE: Render skeleton UI
+        this.renderSkeleton();
         
-        // Load data asynchronously without blocking
-        Promise.all([
-            this.loadSessions(),
-            this.loadStats()
-        ]).then(() => {
-            // Re-render with actual data
-            this.render();
-        });
+        // ASYNC: Load stats (fast, low-priority)
+        this.loadStats().catch(err => console.error('Stats load error:', err));
+        
+        // ASYNC: Load first chunk of sessions (progressive)
+        this.loadSessionsProgressive().catch(err => console.error('Sessions load error:', err));
 
         if (this.config.autoRefresh) {
-            setInterval(() => this.loadSessions(), this.config.refreshInterval);
+            setInterval(() => this.loadSessionsProgressive(), this.config.refreshInterval);
         }
     }
     
-    // OPTIMIZATION: Lightweight placeholder render
-    renderPlaceholder() {
+    /**
+     * Render minimal skeleton UI immediately - NO DATA REQUIRED
+     */
+    renderSkeleton() {
         if (!this.container) return;
         
         this.container.innerHTML = `
             <div class="session-history">
                 <div class="sh-header">
                     <h2 class="sh-title">Session History</h2>
+                    <div class="sh-stats">
+                        <span>Loading...</span>
+                    </div>
+                    <div class="sh-search-wrapper">
+                        <input 
+                            type="text" 
+                            class="sh-search-input" 
+                            placeholder="Search conversations..."
+                            data-action="search-input"
+                        />
+                        <button class="sh-search-button" data-action="search-button" title="Search">🔍</button>
+                    </div>
+                    <button class="sh-filter-btn" data-action="toggle-filters">🔧 Filters</button>
                 </div>
-                <div class="sh-loading">Loading sessions...</div>
+                <div class="sh-session-list" data-scroll-container>
+                    <div class="sh-loading">Loading sessions...</div>
+                </div>
             </div>
         `;
+        
+        this.attachEventListeners();
     }
 
-    // Utility: Extract timestamp from session_id
-    extractTimestampFromSessionId(sessionId) {
-        if (!sessionId) return null;
+    /**
+     * Progressive session loading - load in chunks, render as we go
+     */
+    async loadSessionsProgressive() {
+        this.setState({ loading: true });
         
-        const match = sessionId.match(/^sess_(\d+)$/);
-        if (match && match[1]) {
-            try {
-                return parseInt(match[1], 10);
-            } catch (e) {
-                return null;
+        try {
+            const params = new URLSearchParams({
+                sort_by: this.state.sortBy,
+                sort_order: this.state.sortOrder,
+                limit: '100' // Load more upfront, but don't fetch previews
+            });
+
+            if (this.state.dateFrom) params.append('date_from', this.state.dateFrom);
+            if (this.state.dateTo) params.append('date_to', this.state.dateTo);
+
+            const response = await fetch(`${this.config.apiBaseUrl}/history?${params}`);
+            
+            if (!response.ok) {
+                throw new Error(`API returned ${response.status}: ${response.statusText}`);
             }
-        }
-        return null;
-    }
-
-    // Get the best available timestamp for sorting
-    getSessionSortTimestamp(session) {
-        const sessionId = session.session_id;
-        if (sessionId) {
-            const tsMs = this.extractTimestampFromSessionId(sessionId);
-            if (tsMs) {
-                return tsMs;
+            
+            const data = await response.json();
+            
+            if (!Array.isArray(data)) {
+                console.warn('API returned non-array data:', data);
+                this.setState({ 
+                    sessions: [], 
+                    searchResults: null,
+                    loading: false,
+                    initialLoadComplete: true
+                });
+                return;
             }
+            
+            // Sort on frontend (fast)
+            const sortedData = this.sortSessions(data, this.state.sortBy, this.state.sortOrder);
+            
+            // IMMEDIATE: Update state with all sessions
+            this.setState({ 
+                sessions: sortedData, 
+                searchResults: null,
+                loading: false,
+                initialLoadComplete: true
+            });
+            
+            console.log(`Loaded ${sortedData.length} sessions`);
+            
+        } catch (error) {
+            console.error('Error loading sessions:', error);
+            this.setState({ 
+                sessions: [],
+                loading: false,
+                initialLoadComplete: true
+            });
         }
-        
-        if (session.started_at) {
-            try {
-                return new Date(session.started_at).getTime();
-            } catch (e) {}
-        }
-        
-        if (session.created_at) {
-            try {
-                return new Date(session.created_at).getTime();
-            } catch (e) {}
-        }
-        
-        return Date.now();
     }
 
-    // Sort sessions using timestamp extraction
+    // Sort sessions using timestamp extraction (same as before)
     sortSessions(sessions, sortBy, sortOrder) {
         const sorted = [...sessions];
         
@@ -149,61 +202,40 @@ class SessionHistory {
         
         return sorted;
     }
-    
-    async renderAsync() {
-        return new Promise(resolve => {
-            requestAnimationFrame(() => {
-                this.render();
-                resolve();
-            });
-        });
-    }
-    
-    // API Methods
-    async loadSessions() {
-        this.setState({ loading: true });
-        try {
-            const params = new URLSearchParams({
-                sort_by: this.state.sortBy,
-                sort_order: this.state.sortOrder,
-                limit: '50'
-            });
 
-            if (this.state.dateFrom) params.append('date_from', this.state.dateFrom);
-            if (this.state.dateTo) params.append('date_to', this.state.dateTo);
-
-            const response = await fetch(`${this.config.apiBaseUrl}/history?${params}`);
-            
-            if (!response.ok) {
-                throw new Error(`API returned ${response.status}: ${response.statusText}`);
+    extractTimestampFromSessionId(sessionId) {
+        if (!sessionId) return null;
+        const match = sessionId.match(/^sess_(\d+)$/);
+        if (match && match[1]) {
+            try {
+                return parseInt(match[1], 10);
+            } catch (e) {
+                return null;
             }
-            
-            const data = await response.json();
-            
-            if (!Array.isArray(data)) {
-                console.warn('API returned non-array data:', data);
-                this.setState({ 
-                    sessions: [], 
-                    searchResults: null,
-                    loading: false 
-                });
-                return;
-            }
-            
-            const sortedData = this.sortSessions(data, this.state.sortBy, this.state.sortOrder);
-            
-            this.setState({ 
-                sessions: sortedData, 
-                searchResults: null,
-                loading: false 
-            });
-        } catch (error) {
-            console.error('Error loading sessions:', error);
-            this.setState({ 
-                sessions: [],
-                loading: false 
-            });
         }
+        return null;
+    }
+
+    getSessionSortTimestamp(session) {
+        const sessionId = session.session_id;
+        if (sessionId) {
+            const tsMs = this.extractTimestampFromSessionId(sessionId);
+            if (tsMs) return tsMs;
+        }
+        
+        if (session.started_at) {
+            try {
+                return new Date(session.started_at).getTime();
+            } catch (e) {}
+        }
+        
+        if (session.created_at) {
+            try {
+                return new Date(session.created_at).getTime();
+            } catch (e) {}
+        }
+        
+        return Date.now();
     }
 
     async loadStats() {
@@ -230,7 +262,7 @@ class SessionHistory {
 
     async searchSessions() {
         if (!this.state.searchQuery.trim()) {
-            this.loadSessions();
+            this.loadSessionsProgressive();
             return;
         }
 
@@ -241,7 +273,7 @@ class SessionHistory {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     query: this.state.searchQuery,
-                    limit: 20
+                    limit: 50
                 })
             });
             
@@ -269,6 +301,9 @@ class SessionHistory {
         }
     }
 
+    /**
+     * LAZY LOAD: Only fetch details when user expands a session
+     */
     async loadSessionDetails(sessionId) {
         if (this.detailRequestInProgress) {
             console.log('Detail request already in progress, skipping...');
@@ -277,6 +312,13 @@ class SessionHistory {
         
         if (this.state.expandedSession === sessionId) {
             this.setState({ expandedSession: null });
+            return;
+        }
+
+        // Check cache first
+        if (this.sessionDetailsCache.has(sessionId)) {
+            console.log('Using cached details for:', sessionId);
+            this.setState({ expandedSession: sessionId });
             return;
         }
 
@@ -291,8 +333,12 @@ class SessionHistory {
             
             const data = await response.json();
             
+            // Cache the details
+            this.sessionDetailsCache.set(sessionId, data);
+            
             this.setState({ expandedSession: sessionId });
             
+            // Update the session in the list
             const sessions = this.state.sessions.map(s =>
                 s.session_id === sessionId ? { ...s, details: data } : s
             );
@@ -334,18 +380,64 @@ class SessionHistory {
         }
     }
 
-    // Utility Methods
+    /**
+     * OPTIMIZED: Debounced state updates - batch multiple updates
+     */
     setState(newState) {
         this.state = { ...this.state, ...newState };
         
-        // Cancel any pending render
-        if (this._renderTimeout) {
-            cancelAnimationFrame(this._renderTimeout);
+        // Clear any pending update
+        if (this.updateTimeout) {
+            clearTimeout(this.updateTimeout);
         }
         
-        // Schedule render for next frame (non-blocking)
-        this._renderTimeout = requestAnimationFrame(() => {
+        // Debounce rapid updates (16ms = ~60fps)
+        this.updateTimeout = setTimeout(() => {
             this.render();
+        }, 16);
+    }
+
+    /**
+     * Calculate visible range for virtual scrolling
+     */
+    calculateVisibleRange() {
+        const { scrollTop, containerHeight } = this.state;
+        const { itemHeight, renderBuffer } = this.config;
+        
+        const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - renderBuffer);
+        const endIndex = Math.min(
+            this.state.sessions.length,
+            Math.ceil((scrollTop + containerHeight) / itemHeight) + renderBuffer
+        );
+        
+        return { startIndex, endIndex };
+    }
+
+    /**
+     * Handle scroll with throttling via rAF
+     */
+    onScroll = (e) => {
+        if (this.scrollRAF) {
+            return; // Already scheduled
+        }
+        
+        this.scrollRAF = requestAnimationFrame(() => {
+            const scrollContainer = e.target;
+            const scrollTop = scrollContainer.scrollTop;
+            const containerHeight = scrollContainer.clientHeight;
+            
+            const { startIndex, endIndex } = this.calculateVisibleRange();
+            
+            if (startIndex !== this.state.visibleStartIndex || 
+                endIndex !== this.state.visibleEndIndex) {
+                this.state.scrollTop = scrollTop;
+                this.state.containerHeight = containerHeight;
+                this.state.visibleStartIndex = startIndex;
+                this.state.visibleEndIndex = endIndex;
+                this.render();
+            }
+            
+            this.scrollRAF = null;
         });
     }
 
@@ -369,7 +461,9 @@ class SessionHistory {
         }
     }
 
-    // Render Methods
+    /**
+     * MAIN RENDER - Only renders visible items
+     */
     render() {
         if (!this.container) return;
 
@@ -452,8 +546,11 @@ class SessionHistory {
         `;
     }
 
+    /**
+     * VIRTUAL SCROLLING: Only render visible items + buffer
+     */
     renderSessionList(sessions) {
-        if (this.state.loading) {
+        if (this.state.loading && !this.state.initialLoadComplete) {
             return '<div class="sh-loading">Loading sessions...</div>';
         }
 
@@ -465,17 +562,21 @@ class SessionHistory {
             `;
         }
 
-        const visibleSessions = this._renderAllSessions ? sessions : sessions.slice(0, 20);
-        const hasMore = !this._renderAllSessions && sessions.length > 20;
+        // Calculate visible range
+        const { startIndex, endIndex } = this.calculateVisibleRange();
+        const visibleSessions = sessions.slice(startIndex, endIndex);
+        
+        // Calculate heights for virtual scrolling
+        const totalHeight = sessions.length * this.config.itemHeight;
+        const offsetY = startIndex * this.config.itemHeight;
 
         return `
-            <div class="sh-session-list">
-                ${visibleSessions.map(session => this.renderSessionCard(session)).join('')}
-                ${hasMore ? `
-                    <button class="sh-load-more" data-action="load-more">
-                        Load ${sessions.length - 20} more sessions...
-                    </button>
-                ` : ''}
+            <div class="sh-session-list" data-scroll-container style="position: relative; overflow-y: auto; height: 600px;">
+                <div style="height: ${totalHeight}px; position: relative;">
+                    <div style="transform: translateY(${offsetY}px); position: absolute; width: 100%;">
+                        ${visibleSessions.map(session => this.renderSessionCard(session)).join('')}
+                    </div>
+                </div>
             </div>
         `;
     }
@@ -483,6 +584,7 @@ class SessionHistory {
     renderSessionCard(session) {
         const isCurrentSession = session.session_id === this.config.currentSessionId;
         const isExpanded = this.state.expandedSession === session.session_id;
+        const cachedDetails = this.sessionDetailsCache.get(session.session_id);
         const similar = this.state.similarSessions[session.session_id];
 
         return `
@@ -531,13 +633,12 @@ class SessionHistory {
                     </div>
                 </div>
 
-                ${isExpanded && session.details ? this.renderSessionDetails(session) : ''}
+                ${isExpanded && cachedDetails ? this.renderSessionDetails(session, cachedDetails) : ''}
             </div>
         `;
     }
 
-    renderSessionDetails(session) {
-        const details = session.details;
+    renderSessionDetails(session, details) {
         const similar = this.state.similarSessions[session.session_id];
 
         return `
@@ -601,8 +702,8 @@ class SessionHistory {
         `;
     }
 
-    // Event Handlers
     attachEventListeners() {
+        // Click events
         this.container.addEventListener('click', (e) => {
             const target = e.target.closest('[data-action]');
             if (!target) return;
@@ -611,10 +712,6 @@ class SessionHistory {
             const sessionId = target.dataset.sessionId;
 
             switch (action) {
-                case 'load-more':
-                    this._renderAllSessions = true;
-                    this.render();
-                    break;
                 case 'toggle-filters':
                     this.setState({ showFilters: !this.state.showFilters });
                     break;
@@ -632,7 +729,7 @@ class SessionHistory {
                         searchInput.value = '';
                     }
                     
-                    this.loadSessions();
+                    this.loadSessionsProgressive();
                     break;
                 case 'expand':
                     this.loadSessionDetails(sessionId);
@@ -646,6 +743,7 @@ class SessionHistory {
             }
         });
 
+        // Change events
         this.container.addEventListener('change', (e) => {
             const target = e.target.closest('[data-action]');
             if (!target) return;
@@ -656,23 +754,24 @@ class SessionHistory {
             switch (action) {
                 case 'sort-by':
                     this.state.sortBy = value;
-                    this.loadSessions();
+                    this.loadSessionsProgressive();
                     break;
                 case 'sort-order':
                     this.state.sortOrder = value;
-                    this.loadSessions();
+                    this.loadSessionsProgressive();
                     break;
                 case 'date-from':
                     this.state.dateFrom = value;
-                    this.loadSessions();
+                    this.loadSessionsProgressive();
                     break;
                 case 'date-to':
                     this.state.dateTo = value;
-                    this.loadSessions();
+                    this.loadSessionsProgressive();
                     break;
             }
         });
 
+        // Input events
         this.container.addEventListener('input', (e) => {
             const target = e.target.closest('[data-action]');
             if (!target) return;
@@ -682,6 +781,7 @@ class SessionHistory {
             }
         });
 
+        // Keypress events
         this.container.addEventListener('keypress', (e) => {
             const target = e.target.closest('[data-action]');
             if (!target) return;
@@ -690,9 +790,17 @@ class SessionHistory {
                 this.searchSessions();
             }
         });
+
+        // Scroll events for virtual scrolling
+        const scrollContainer = this.container.querySelector('[data-scroll-container]');
+        if (scrollContainer) {
+            scrollContainer.addEventListener('scroll', this.onScroll);
+            
+            // Initialize container height
+            this.state.containerHeight = scrollContainer.clientHeight;
+        }
     }
 
-    // Helper
     escapeHtml(text) {
         const div = document.createElement('div');
         div.textContent = text;
@@ -707,10 +815,9 @@ class SessionHistory {
 
     refresh() {
         if (!this.initialized) {
-            // If not initialized yet, init will load data
             this.init();
         } else {
-            this.loadSessions();
+            this.loadSessionsProgressive();
             this.loadStats();
         }
     }
@@ -720,18 +827,27 @@ class SessionHistory {
             clearTimeout(this.searchDebounceTimer);
         }
         
-        if (this.refreshInterval) {
-            clearInterval(this.refreshInterval);
+        if (this.updateTimeout) {
+            clearTimeout(this.updateTimeout);
+        }
+        
+        if (this.renderTimeout) {
+            clearTimeout(this.renderTimeout);
+        }
+        
+        if (this.scrollRAF) {
+            cancelAnimationFrame(this.scrollRAF);
         }
         
         if (this.container) {
             this.container.innerHTML = '';
         }
         
+        this.sessionDetailsCache.clear();
         this.initialized = false;
     }
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = SessionHistory;
+    module.exports = SessionHistoryOptimized;
 }

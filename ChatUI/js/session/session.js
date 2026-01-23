@@ -51,6 +51,7 @@
             this.tabs = [
                 { id: 'chat', label: 'Chat', columnId: 1 },
                 { id: 'chat-history', label: 'Chat History', columnId: 1 },
+                { id: 'terminal', label: 'Terminal', columnId: 1 },
                 { id: 'agents', label: 'Agents', columnId: 1 },
                 { id: 'organiser', label: 'Organiser', columnId: 1 },
                 { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
@@ -63,10 +64,10 @@
                 { id: 'training', label: 'Training', columnId: 2 },
                 { id: 'orchestration', label: 'Orchestration', columnId: 2 },
                 { id: 'ollama', label: 'Ollama Manager', columnId: 2 },
-                { id: 'analytics', label: 'Analytics', columnId: 2 },
+                // { id: 'analytics', label: 'Analytics', columnId: 2 },
                 // { id: 'files', label: 'Files', columnId: 2 },
                 { id: 'settings', label: 'Settings', columnId: 1 },
-                // 1. ADD TO THE tabs ARRAY in constructor (around line 60):
+                { id: 'ml', label: 'Machine Learning', columnId: 2 },
                 { id: 'config', label: 'Configuration', columnId: 2 }
 
             ];
@@ -371,6 +372,310 @@
         getTabContent(tabId) {
             switch(tabId) {
                 // 2. ADD THIS CASE TO getTabContent() function (around line 500+):
+                case 'ml':
+                    return `
+                        <div id="ml-container" style="padding: 24px; height: 100%; overflow-y: auto;">
+                            
+                            <!-- Header -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid var(--border);">
+                                <div>
+                                    <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700;">Machine Learning Lab</h2>
+                                    <p style="margin: 0; color: var(--text-muted); font-size: 14px;">Train and test AI models</p>
+                                </div>
+                                
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-darker); border-radius: 8px;">
+                                        <div id="ml-status-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted);"></div>
+                                        <span id="ml-status-text" style="font-size: 13px; font-weight: 600;">Ready</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Navigation -->
+                            <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                                <button class="ml-nav-btn active" data-panel="models" onclick="app.switchMLPanel('models')"
+                                        style="padding: 12px 24px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                                    📊 Models
+                                </button>
+                                <button class="ml-nav-btn" data-panel="tictactoe" onclick="app.switchMLPanel('tictactoe')"
+                                        style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                                    🎮 Tic-Tac-Toe AI
+                                </button>
+                                <button class="ml-nav-btn" data-panel="crypto" onclick="app.switchMLPanel('crypto')"
+                                        style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                                    📈 Crypto Predictor
+                                </button>
+                                <button class="ml-nav-btn" data-panel="training" onclick="app.switchMLPanel('training')"
+                                        style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
+                                    🎯 Training
+                                </button>
+                            </div>
+                            
+                            <!-- Models Overview Panel -->
+                            <div id="ml-panel-models" class="ml-panel">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                                    <!-- Tic-Tac-Toe Card -->
+                                    <div style="background: var(--bg); padding: 24px; border-radius: 12px; border-left: 4px solid #4CAF50;">
+                                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                            <div style="font-size: 48px;">🎮</div>
+                                            <div>
+                                                <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600;">Tic-Tac-Toe AI</h3>
+                                                <div style="font-size: 12px; color: var(--text-muted);">Policy Gradient Network</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Win Rate</span>
+                                                <span id="ttt-win-rate" style="font-weight: 600;">0%</span>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Games Played</span>
+                                                <span id="ttt-games" style="font-weight: 600;">0</span>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Network Size</span>
+                                                <span style="font-weight: 600;">9→18→9</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <button onclick="app.switchMLPanel('tictactoe')" 
+                                                style="width: 100%; padding: 10px; background: #4CAF50; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">
+                                            Play Game
+                                        </button>
+                                    </div>
+                                    
+                                    <!-- Crypto Predictor Card -->
+                                    <div style="background: var(--bg); padding: 24px; border-radius: 12px; border-left: 4px solid #2196F3;">
+                                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                            <div style="font-size: 48px;">📈</div>
+                                            <div>
+                                                <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600;">Crypto Predictor</h3>
+                                                <div style="font-size: 12px; color: var(--text-muted);">Vanilla RNN</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Accuracy</span>
+                                                <span id="crypto-accuracy" style="font-weight: 600;">--</span>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Status</span>
+                                                <span id="crypto-status" style="font-weight: 600;">Idle</span>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                                <span style="color: var(--text-muted);">Network Size</span>
+                                                <span style="font-weight: 600;">4→16→1</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <button onclick="app.switchMLPanel('crypto')" 
+                                                style="width: 100%; padding: 10px; background: #2196F3; border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">
+                                            View Predictions
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Tic-Tac-Toe Panel -->
+                            <div id="ml-panel-tictactoe" class="ml-panel" style="display: none;">
+                                <div style="max-width: 800px; margin: 0 auto;">
+                                    <div style="background: var(--bg); padding: 24px; border-radius: 12px; margin-bottom: 20px;">
+                                        <h3 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Play Against the AI</h3>
+                                        
+                                        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 24px;">
+                                            <!-- Game Board -->
+                                            <div>
+                                                <div id="ttt-board" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; aspect-ratio: 1; max-width: 400px; margin: 0 auto;">
+                                                    <!-- Cells generated by JS -->
+                                                </div>
+                                                
+                                                <div style="text-align: center; margin-top: 20px;">
+                                                    <div id="ttt-message" style="font-size: 18px; font-weight: 600; margin-bottom: 12px; min-height: 30px;">
+                                                        Your turn (O)
+                                                    </div>
+                                                    <button onclick="app.resetTicTacToe()" 
+                                                            style="padding: 10px 24px; background: var(--accent); border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">
+                                                        New Game
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            
+                                            <!-- Stats Sidebar -->
+                                            <div>
+                                                <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+                                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: var(--text-muted);">Game Stats</h4>
+                                                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                                                        <div style="display: flex; justify-content: space-between;">
+                                                            <span>AI Wins</span>
+                                                            <span id="ttt-ai-wins" style="font-weight: 600; color: #f44336;">0</span>
+                                                        </div>
+                                                        <div style="display: flex; justify-content: space-between;">
+                                                            <span>Your Wins</span>
+                                                            <span id="ttt-human-wins" style="font-weight: 600; color: #4CAF50;">0</span>
+                                                        </div>
+                                                        <div style="display: flex; justify-content: space-between;">
+                                                            <span>Draws</span>
+                                                            <span id="ttt-draws" style="font-weight: 600;">0</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px;">
+                                                    <h4 style="margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase; color: var(--text-muted);">AI Confidence</h4>
+                                                    <div id="ttt-confidence" style="font-size: 12px; color: var(--text-muted);">
+                                                        Waiting for move...
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Crypto Predictor Panel -->
+                            <div id="ml-panel-crypto" class="ml-panel" style="display: none;">
+                                <div style="background: var(--bg); padding: 24px; border-radius: 12px; margin-bottom: 20px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">BTC/USDT Price Predictor</h3>
+                                    
+                                    <!-- Controls -->
+                                    <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                                        <button id="crypto-start-btn" onclick="app.startCryptoPredictor()" 
+                                                style="padding: 10px 20px; background: var(--success); border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">
+                                            ▶ Start Learning
+                                        </button>
+                                        <button id="crypto-stop-btn" onclick="app.stopCryptoPredictor()" disabled
+                                                style="padding: 10px 20px; background: var(--danger); border: none; border-radius: 6px; color: white; cursor: pointer; font-weight: 600;">
+                                            ⏸ Stop
+                                        </button>
+                                        
+                                        <select id="crypto-symbol" style="padding: 10px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+                                            <option>BTC/USDT</option>
+                                            <option>ETH/USDT</option>
+                                            <option>SOL/USDT</option>
+                                        </select>
+                                        
+                                        <select id="crypto-timeframe" style="padding: 10px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text);">
+                                            <option>1m</option>
+                                            <option>5m</option>
+                                            <option>15m</option>
+                                            <option>1h</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <!-- Stats Grid -->
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                        <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px;">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">ROLLING ACCURACY</div>
+                                            <div id="crypto-accuracy-val" style="font-size: 28px; font-weight: 700;">--%</div>
+                                        </div>
+                                        <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px;">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">PREDICTIONS</div>
+                                            <div id="crypto-predictions" style="font-size: 28px; font-weight: 700;">0</div>
+                                        </div>
+                                        <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px;">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">CURRENT PRICE</div>
+                                            <div id="crypto-current-price" style="font-size: 28px; font-weight: 700;">--</div>
+                                        </div>
+                                        <div style="background: var(--bg-darker); padding: 16px; border-radius: 8px;">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">NEXT PREDICTION</div>
+                                            <div id="crypto-next-pred" style="font-size: 28px; font-weight: 700;">--</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Prediction History -->
+                                    <div style="background: var(--bg-darker); padding: 20px; border-radius: 8px;">
+                                        <h4 style="margin: 0 0 16px 0; font-size: 14px; text-transform: uppercase; color: var(--text-muted);">Recent Predictions</h4>
+                                        <div id="crypto-history" style="max-height: 300px; overflow-y: auto;">
+                                            <div style="text-align: center; padding: 40px; color: var(--text-muted);">
+                                                Start learning to see predictions...
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Training Panel -->
+                            <div id="ml-panel-training" class="ml-panel" style="display: none;">
+                                <div style="background: var(--bg); padding: 24px; border-radius: 12px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Training Dashboard</h3>
+                                    
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+                                        <div style="background: var(--bg-darker); padding: 20px; border-radius: 8px;">
+                                            <h4 style="margin: 0 0 12px 0;">Tic-Tac-Toe</h4>
+                                            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
+                                                Learning through self-play and human games
+                                            </div>
+                                            <div id="ttt-training-info" style="font-size: 12px; margin-top: 12px; padding: 12px; background: var(--bg); border-radius: 4px;">
+                                                Play games to train the network
+                                            </div>
+                                        </div>
+                                        
+                                        <div style="background: var(--bg-darker); padding: 20px; border-radius: 8px;">
+                                            <h4 style="margin: 0 0 12px 0;">Crypto Predictor</h4>
+                                            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;">
+                                                Online learning from live market data
+                                            </div>
+                                            <div id="crypto-training-info" style="font-size: 12px; margin-top: 12px; padding: 12px; background: var(--bg); border-radius: 4px;">
+                                                Status: Idle
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                        </div>
+                        
+                        <style>
+                            .ml-nav-btn.active {
+                                background: var(--accent) !important;
+                                color: white !important;
+                            }
+                            
+                            .ml-nav-btn:hover {
+                                opacity: 0.8;
+                            }
+                            
+                            .ttt-cell {
+                                aspect-ratio: 1;
+                                background: var(--bg-darker);
+                                border: 2px solid var(--border);
+                                border-radius: 8px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 48px;
+                                cursor: pointer;
+                                transition: all 0.2s;
+                            }
+                            
+                            .ttt-cell:hover:not(.filled) {
+                                background: var(--bg);
+                                border-color: var(--accent);
+                            }
+                            
+                            .ttt-cell.filled {
+                                cursor: not-allowed;
+                            }
+                            
+                            .ttt-cell.win {
+                                background: rgba(76, 175, 80, 0.2);
+                                border-color: #4CAF50;
+                            }
+                        </style>
+                    `;
+                case 'terminal':
+                    return `
+                        <div id="terminal-container" style="height: 100%; display: flex; flex-direction: column;">
+                            <div id="terminal-output" style="flex: 1; background: var(--bg-darker); color: var(--text); padding: 15px; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; overflow-y: auto; border-radius: 8px; box-shadow: inset 0 0 10px rgba(0,0,0,0.2);"></div>
+                            <form id="terminal-form" style="display: flex; border-top: 1px solid var(--border);">
+                                <input type="text" id="terminal-input" placeholder="Enter command..." style="flex: 1; padding: 10px; border: none; outline: none; font-family: 'Courier New', Courier, monospace; font-size: 0.9rem; background: var(--bg); color: var(--text); border-radius: 0 0 0 8px;">
+                                <button type="submit" style="padding: 10px 15px; border: none; background: var(--accent); color: white; cursor: pointer; font-size: 0.9rem; border-radius: 0 0 8px 0;">Run</button>
+                            </form>
+                        </div>
+                    `;
+                    
                 case 'config':
                     return `
                         <div id="config-container" style="height: 100%; overflow: hidden; display: flex; flex-direction: column;">
@@ -977,9 +1282,12 @@
                                 <span class="panel-title">KNOWLEDGE GRAPH</span>
                             </span>
                             <div class="panel-controls">
-                                 <button class="panel-btn" id="openGraphStorage" onclick="showGraphStorageMenu(app.VeraChat)" title="Saved Graphs">Saved Graphs</button>
+                                <button class="panel-btn" id="openGraphStorage" onclick="window.GraphCardView.toggle()" title="Card View">Card view</button>
+                                <button class="panel-btn" id="openGraphStorage" onclick="showGraphStorageMenu(app.VeraChat)" title="Saved Graphs">Saved Graphs</button>
                                 <button class="panel-btn" onclick="window.GraphAddon && window.GraphAddon.toggleSettings()" title="Settings">Settings</button>
-                                <button class="panel-btn" onclick="window.CypherQuery && window.CypherQuery.togglePanel()" title="Query Builder">Query</button>
+                                <button class="panel-btn" onclick="window.GraphStyleControl && window.GraphStyleControl.showInCard('');" title="Style Builder">Style</button>
+                                <button class="panel-btn" onclick="window.GraphAdvancedFilters && window.GraphAdvancedFilters.showInCard('');" title="Filter Builder">Filters</button>
+                                <button class="panel-btn" onclick="window.CypherQuery && window.CypherQuery.showInCard('');" title="Query Builder">Query</button>
                                 <button class="panel-btn" onclick="app.fitGraph()" title="Fit Graph to Window">Fit</button>
                                 <button class="panel-btn" onclick="app.zoomIn()"title="Zoom In">🔍+</button>
                                 <button class="panel-btn" onclick="app.zoomOut()" title="Zoom Out">🔍-</button>
@@ -1309,475 +1617,521 @@
                 case 'orchestration':
                     return `
                         <div id="orchestration-container" style="height: 100%; overflow: hidden;">
-                            <!-- Header -->
-                            <div style="padding: 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <h2 style="margin: 0; font-size: 18px;">Task Orchestrator</h2>
-                                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                                        <span id="orch-pool-indicator" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px;"></span>
-                                        <span id="orch-pool-status">Stopped</span>
-                                    </div>
-                                </div>
-                                
-                                <div style="display: flex; gap: 8px;">
-                                    <button onclick="app.startOrchestrator()" style="padding: 8px 16px; background: var(--success); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
-                                        Start
-                                    </button>
-                                    <button onclick="app.stopOrchestrator()" style="padding: 8px 16px; background: var(--danger); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
-                                        Stop
-                                    </button>
+                        <!-- Header -->
+                        <div style="padding: 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2 style="margin: 0; font-size: 18px;">Task Orchestrator</h2>
+                                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                    <span id="orch-pool-indicator" style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px;"></span>
+                                    <span id="orch-pool-status">Stopped</span>
                                 </div>
                             </div>
                             
-                            <!-- Navigation -->
-                            <div style="padding: 12px 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; gap: 8px; overflow-x: auto;">
-                                <button class="orch-nav-btn active" data-panel="dashboard" onclick="app.switchOrchPanel('dashboard')" style="padding: 8px 16px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px; white-space: nowrap;">
-                                    Dashboard
+                            <div style="display: flex; gap: 8px;">
+                                <button onclick="app.startOrchestrator()" style="padding: 8px 16px; background: var(--success); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
+                                    Start
                                 </button>
-                                <button class="orch-nav-btn" data-panel="workers" onclick="app.switchOrchPanel('workers')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
-                                    Worker Pools
+                                <button onclick="app.stopOrchestrator()" style="padding: 8px 16px; background: var(--danger); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 12px;">
+                                    Stop
                                 </button>
-                                <button class="orch-nav-btn" data-panel="tasks" onclick="app.switchOrchPanel('tasks')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
-                                    Tasks
-                                </button>
-                                <button class="orch-nav-btn" data-panel="monitor" onclick="app.switchOrchPanel('monitor')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
-                                    System Monitor
-                                </button>
-                                <button class="orch-nav-btn" data-panel="config" onclick="app.switchOrchPanel('config')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
-                                    Configuration
-                                </button>
-                                <button class="orch-nav-btn" data-panel="infrastructure" onclick="app.switchOrchPanel('infrastructure')">
-                                    Infrastructure
-                                </button>
-                                <button class="orch-nav-btn" data-panel="external" onclick="app.switchOrchPanel('external')">
-                                    External APIs
-                                </button>
-                            </div>
-                            
-                            <!-- Content Area -->
-                            <div style="height: calc(100% - 120px); overflow-y: auto; padding: 16px;">
-                                
-                                <!-- Dashboard Panel -->
-                                <div id="orch-panel-dashboard" class="orch-panel">
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                                        <!-- Workers Card -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--accent);">
-                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Workers</div>
-                                            <div style="font-size: 28px; font-weight: 600;">
-                                                <span id="orch-workers-active">0</span>/<span id="orch-workers-total">0</span>
-                                            </div>
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Active / Total</div>
-                                        </div>
-                                        
-                                        <!-- Queue Card -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--warning);">
-                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Queue</div>
-                                            <div style="font-size: 28px; font-weight: 600;" id="orch-queue">0</div>
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pending Tasks</div>
-                                        </div>
-                                        
-                                        <!-- Utilization Card -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--success);">
-                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Utilization</div>
-                                            <div style="font-size: 28px; font-weight: 600;" id="orch-dash-util">0%</div>
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Worker Usage</div>
-                                        </div>
-                                        
-                                        <!-- CPU Card -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--danger);">
-                                            <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">System CPU</div>
-                                            <div style="font-size: 28px; font-weight: 600;" id="orch-cpu">0%</div>
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Current Usage</div>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Queue Breakdown -->
-                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; margin-bottom: 16px;">
-                                        <h3 style="margin: 0 0 12px 0; font-size: 14px;">Queue by Type</h3>
-                                        <div id="orch-queue-breakdown">
-                                            <p style="color: var(--text-muted); text-align: center;">No data available</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Worker Pools Panel (NEW) -->
-                                <div id="orch-panel-workers" class="orch-panel" style="display: none;">
-                                    <div style="margin-bottom: 16px;">
-                                        <h3 style="margin: 0 0 8px 0; font-size: 16px;">Worker Pool Management</h3>
-                                        <p style="margin: 0; font-size: 12px; color: var(--text-muted);">
-                                            Scale worker pools dynamically based on workload. Each task type has its own dedicated pool.
-                                        </p>
-                                    </div>
-                                    
-                                    <div id="orch-worker-pools-list">
-                                        <p style="color: var(--text-muted); text-align: center;">Loading worker pools...</p>
-                                    </div>
-                                </div>
-                                
-                                <!-- Tasks Panel -->
-                                <div id="orch-panel-tasks" class="orch-panel" style="display: none;">
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                                        <!-- Task Submission -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <h3 style="margin: 0 0 12px 0; font-size: 14px;">Submit Task</h3>
-                                            
-                                            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-muted);">Task Name</label>
-                                            <select id="orch-task-name" style="width: 100%; padding: 8px; margin-bottom: 12px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <option>Loading...</option>
-                                            </select>
-                                            
-                                            <label style="display: block; margin-bottom: 8px; font-size: 12px; color: var(--text-muted);">Payload (JSON)</label>
-                                            <textarea id="orch-task-payload" style="width: 100%; padding: 8px; margin-bottom: 12px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-family: monospace; font-size: 11px; resize: vertical;" rows="6" placeholder='{"key": "value"}'>{}</textarea>
-                                            
-                                            <button onclick="app.submitTask()" style="width: 100%; padding: 10px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px;">
-                                                Submit Task
-                                            </button>
-                                        </div>
-                                        
-                                        <!-- Registered Tasks -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <h3 style="margin: 0 0 12px 0; font-size: 14px;">Registered Tasks</h3>
-                                            <div id="orch-registered-tasks" style="max-height: 400px; overflow-y: auto;">
-                                                <p style="color: var(--text-muted);">Loading...</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- System Monitor Panel -->
-                                <div id="orch-panel-monitor" class="orch-panel" style="display: none;">
-                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
-                                        <!-- CPU Monitor -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                                <h3 style="margin: 0; font-size: 14px;">CPU Usage</h3>
-                                                <span id="orch-mon-cpu" style="font-size: 18px; font-weight: 600;">0%</span>
-                                            </div>
-                                            <div style="height: 12px; background: var(--bg-darker); border-radius: 6px; overflow: hidden;">
-                                                <div id="orch-cpu-bar" style="height: 100%; background: var(--danger); width: 0%; transition: width 0.3s;"></div>
-                                            </div>
-                                        </div>
-                                        
-                                        <!-- Memory Monitor -->
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                                <h3 style="margin: 0; font-size: 14px;">Memory Usage</h3>
-                                                <span id="orch-mon-memory" style="font-size: 18px; font-weight: 600;">0%</span>
-                                            </div>
-                                            <div style="height: 12px; background: var(--bg-darker); border-radius: 6px; overflow: hidden;">
-                                                <div id="orch-memory-bar" style="height: 100%; background: var(--warning); width: 0%; transition: width 0.3s;"></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Top Processes -->
-                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                                            <h3 style="margin: 0; font-size: 14px;">Top Processes</h3>
-                                            <span style="font-size: 12px; color: var(--text-muted);">
-                                                <span id="orch-mon-processes">0</span> active
-                                            </span>
-                                        </div>
-                                        <div id="orch-processes-list" style="max-height: 300px; overflow-y: auto;">
-                                            <p style="color: var(--text-muted); text-align: center;">No data</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Configuration Panel (NEW) -->
-                                <div id="orch-panel-config" class="orch-panel" style="display: none;">
-                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; max-width: 600px;">
-                                        <h3 style="margin: 0 0 16px 0; font-size: 16px;">Orchestrator Configuration</h3>
-                                        <p style="margin: 0 0 24px 0; font-size: 12px; color: var(--text-muted);">
-                                            Configure initial worker pool sizes. Changes require reinitialization.
-                                        </p>
-                                        
-                                        <div style="display: grid; gap: 16px;">
-                                            <!-- LLM Workers -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">LLM Workers</label>
-                                                <input id="orch-llm-workers" type="number" value="3" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for language model tasks</div>
-                                            </div>
-                                            
-                                            <!-- Tool Workers -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Tool Workers</label>
-                                                <input id="orch-tool-workers" type="number" value="4" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for tool execution</div>
-                                            </div>
-                                            
-                                            <!-- Whisper Workers -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Whisper Workers</label>
-                                                <input id="orch-whisper-workers" type="number" value="1" min="0" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for audio transcription</div>
-                                            </div>
-                                            
-                                            <!-- Background Workers -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Background Workers</label>
-                                                <input id="orch-bg-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for background/proactive tasks</div>
-                                            </div>
-                                            
-                                            <!-- General Workers -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">General Workers</label>
-                                                <input id="orch-gen-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for general tasks</div>
-                                            </div>
-                                            
-                                            <!-- CPU Threshold -->
-                                            <div>
-                                                <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">CPU Threshold (%)</label>
-                                                <input id="orch-cpu-threshold" type="number" value="75" min="50" max="95" step="5" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
-                                                <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pause workers when CPU exceeds this threshold</div>
-                                            </div>
-                                        </div>
-                                        
-                                        <button onclick="app.initializeOrchestrator()" style="width: 100%; padding: 12px; margin-top: 24px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: 600;">
-                                            Initialize Orchestrator
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div id="orch-panel-infrastructure" class="orch-panel" style="display: none;">
-                                    <!-- Header -->
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                                        <div>
-                                            <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">Infrastructure Management</h2>
-                                            <p style="margin: 0; color: var(--text-muted); font-size: 14px;">
-                                                Docker containers and Proxmox VMs
-                                            </p>
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 12px;">
-                                            <div id="infra-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted);"></div>
-                                            <span style="font-weight: 600;">Infrastructure</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Status Cards -->
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--accent);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL RESOURCES</div>
-                                            <div id="infra-total-resources" style="font-size: 32px; font-weight: 700;">0</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--success);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">AVAILABLE</div>
-                                            <div id="infra-available-resources" style="font-size: 32px; font-weight: 700; color: var(--success);">0</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--warning);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">IN USE</div>
-                                            <div id="infra-in-use-resources" style="font-size: 32px; font-weight: 700; color: var(--warning);">0</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--info);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TASKS EXECUTED</div>
-                                            <div id="infra-tasks-executed" style="font-size: 32px; font-weight: 700;">0</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- System Status -->
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">DOCKER STATUS</div>
-                                            <div id="infra-docker-status" style="font-weight: 600;">Checking...</div>
-                                        </div>
-                                        <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
-                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">PROXMOX STATUS</div>
-                                            <div id="infra-proxmox-status" style="font-weight: 600;">Checking...</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Capacity Overview -->
-                                    <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
-                                        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">
-                                            Capacity Overview
-                                        </h3>
-                                        <div id="infra-capacity"></div>
-                                    </div>
-
-                                    <!-- Actions Section -->
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
-                                        <!-- Provision Docker -->
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
-                                            <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🐳 Provision Docker Container</h3>
-                                            
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">CPU Cores</label>
-                                                <input type="number" id="docker-cpu" value="2" step="0.5" min="0.5" max="32" 
-                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                            </div>
-                                            
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Memory (MB)</label>
-                                                <input type="number" id="docker-memory" value="2048" step="512" min="512" max="65536" 
-                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                            </div>
-                                            
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Disk (GB)</label>
-                                                <input type="number" id="docker-disk" value="20" step="5" min="5" max="1000" 
-                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                            </div>
-                                            
-                                            <div style="margin-bottom: 12px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Image</label>
-                                                <input type="text" id="docker-image" value="python:3.11-slim" placeholder="e.g., python:3.11-slim"
-                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                            </div>
-                                            
-                                            <div style="margin-bottom: 16px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Task Type (Optional)</label>
-                                                <select id="docker-task-type" 
-                                                        style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                                    <option value="">Auto-select</option>
-                                                    <option value="LLM">LLM</option>
-                                                    <option value="TOOL">Tool</option>
-                                                    <option value="GENERAL">General</option>
-                                                    <option value="ML_MODEL">ML Model</option>
-                                                </select>
-                                            </div>
-                                            
-                                            <button onclick="app.provisionDockerContainer()" 
-                                                    style="width: 100%; padding: 12px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 14px;">
-                                                🚀 Provision Container
-                                            </button>
-                                        </div>
-
-                                        <!-- Cleanup -->
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
-                                            <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🧹 Resource Cleanup</h3>
-                                            
-                                            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-                                                Remove resources that have been idle for a specified period.
-                                            </p>
-                                            
-                                            <div style="margin-bottom: 16px;">
-                                                <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Max Idle Time (seconds)</label>
-                                                <input type="number" id="cleanup-idle-time" value="300" step="60" min="60" max="3600" 
-                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
-                                            </div>
-                                            
-                                            <button onclick="app.cleanupIdleResources()" 
-                                                    style="width: 100%; padding: 12px; background: var(--danger); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 14px;">
-                                                🗑️ Cleanup Idle Resources
-                                            </button>
-                                            
-                                            <div style="margin-top: 24px; padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 3px solid var(--warning);">
-                                                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">⚠️ Note</div>
-                                                <p style="font-size: 11px; color: var(--text-muted); margin: 0;">
-                                                    Only idle resources will be removed. Resources currently running tasks will not be affected.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Resources List -->
-                                    <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px;">
-                                        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Active Resources</h3>
-                                        <div id="infra-resources-list">
-                                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                                Loading resources...
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-
-                                <!-- ========================================================================
-                                    EXTERNAL API MANAGEMENT PANEL
-                                    ======================================================================== -->
-
-                                <div id="orch-panel-external" class="orch-panel" style="display: none;">
-                                    <!-- Header -->
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-                                        <div>
-                                            <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">External API Management</h2>
-                                            <p style="margin: 0; color: var(--text-muted); font-size: 14px;">
-                                                LLM providers and cloud compute APIs
-                                            </p>
-                                        </div>
-                                        <div style="display: flex; align-items: center; gap: 12px;">
-                                            <div id="external-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted);"></div>
-                                            <span style="font-weight: 600;">External APIs</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Stats Cards -->
-                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--accent);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">PROVIDERS</div>
-                                            <div id="external-providers-count" style="font-size: 32px; font-weight: 700;">0</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--danger);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL COST</div>
-                                            <div id="external-total-cost" style="font-size: 32px; font-weight: 700; color: var(--danger);">$0.00</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--info);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL TOKENS</div>
-                                            <div id="external-total-tokens" style="font-size: 32px; font-weight: 700;">0</div>
-                                        </div>
-                                        <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--success);">
-                                            <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">REQUESTS</div>
-                                            <div id="external-total-requests" style="font-size: 32px; font-weight: 700;">0</div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Cost Breakdown -->
-                                    <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
-                                        <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">
-                                            💰 Cost Breakdown
-                                        </h3>
-                                        <div id="external-cost-breakdown">
-                                            <p style="color: var(--text-muted); text-align: center; padding: 24px;">No cost data yet</p>
-                                        </div>
-                                    </div>
-
-                                    <!-- Providers List -->
-                                    <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
-                                        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Configured Providers</h3>
-                                        <div id="external-providers-list">
-                                            <div style="text-align: center; padding: 48px; color: var(--text-muted);">
-                                                Loading providers...
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- Quick Test Section -->
-                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
-                                        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🧪 Quick LLM Test</h3>
-                                        
-                                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-                                            Test your LLM providers with a quick prompt. Monitor costs and performance in real-time.
-                                        </p>
-                                        
-                                        <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 3px solid var(--info);">
-                                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">💡 Tip</div>
-                                            <p style="font-size: 11px; color: var(--text-muted); margin: 0;">
-                                                Use the Test button on each provider card to quickly verify connectivity and compare response quality across different models.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
                             </div>
                         </div>
+                        
+                        <!-- Navigation -->
+                        <div style="padding: 12px 16px; background: var(--bg-darker); border-bottom: 1px solid var(--border); display: flex; gap: 8px; overflow-x: auto;">
+                            <button class="orch-nav-btn active" data-panel="queue" onclick="app.switchOrchPanel('queue')" style="padding: 8px 16px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Queue
+                            </button>
+                            <button class="orch-nav-btn" data-panel="create" onclick="app.switchOrchPanel('create')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Create Task
+                            </button>
+                            <button class="orch-nav-btn" data-panel="dashboard" onclick="app.switchOrchPanel('dashboard')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Dashboard
+                            </button>
+                            <button class="orch-nav-btn" data-panel="workers" onclick="app.switchOrchPanel('workers')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Workers
+                            </button>
+                            <button class="orch-nav-btn" data-panel="tasks" onclick="app.switchOrchPanel('tasks')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Registry
+                            </button>
+                            <button class="orch-nav-btn" data-panel="monitor" onclick="app.switchOrchPanel('monitor')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Monitor
+                            </button>
+                            <button class="orch-nav-btn" data-panel="config" onclick="app.switchOrchPanel('config')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Config
+                            </button>
+                            <button class="orch-nav-btn" data-panel="infrastructure" onclick="app.switchOrchPanel('infrastructure')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                Infrastructure
+                            </button>
+                            <button class="orch-nav-btn" data-panel="external" onclick="app.switchOrchPanel('external')" style="padding: 8px 16px; background: var(--bg); border: none; border-radius: 4px; cursor: pointer; font-size: 13px; white-space: nowrap;">
+                                External APIs
+                            </button>
+                        </div>
+                        
+                        <!-- Content Area -->
+                        <div style="height: calc(100% - 120px); overflow-y: auto; padding: 16px;">
+                            
+                            <!-- ========================================================================
+                                QUEUE PANEL (NEW - PRIMARY VIEW)
+                                ======================================================================== -->
+                            <div id="orch-panel-queue" class="orch-panel">
+                                <div style="margin-bottom: 20px; padding: 20px; background: var(--bg); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <h2 style="margin: 0 0 16px 0; font-size: 24px; font-weight: 700;">Task Queue</h2>
+                                    
+                                    <!-- Quick Stats -->
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                                        <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 4px solid var(--info);">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Active Tasks</div>
+                                            <div style="font-size: 32px; font-weight: 700;" id="orch-active-count">0</div>
+                                        </div>
+                                        <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 4px solid var(--warning);">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Queued</div>
+                                            <div style="font-size: 32px; font-weight: 700;" id="orch-queue">0</div>
+                                        </div>
+                                        <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 4px solid var(--success);">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Completed (Today)</div>
+                                            <div style="font-size: 32px; font-weight: 700;" id="orch-completed-today">0</div>
+                                        </div>
+                                        <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 4px solid var(--danger);">
+                                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Failed (Today)</div>
+                                            <div style="font-size: 32px; font-weight: 700;" id="orch-failed-today">0</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Task Queue Container (Populated by JS) -->
+                                <div id="orch-task-queue-container"></div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                CREATE TASK PANEL (NEW)
+                                ======================================================================== -->
+                            <div id="orch-panel-create" class="orch-panel" style="display: none;">
+                                <div style="margin-bottom: 20px; padding: 20px; background: var(--bg); border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                                    <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700;">Create New Task</h2>
+                                    <p style="margin: 0; color: var(--text-muted);">
+                                        Use templates for common tasks or create advanced custom tasks
+                                    </p>
+                                </div>
+                                
+                                <!-- Task Creation Container (Populated by JS) -->
+                                <div id="orch-task-creation-container"></div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                DASHBOARD PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-dashboard" class="orch-panel" style="display: none;">
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                    <!-- Workers Card -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--accent);">
+                                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Workers</div>
+                                        <div style="font-size: 28px; font-weight: 600;">
+                                            <span id="orch-workers-active">0</span>/<span id="orch-workers-total">0</span>
+                                        </div>
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Active / Total</div>
+                                    </div>
+                                    
+                                    <!-- Queue Card -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--warning);">
+                                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Queue</div>
+                                        <div style="font-size: 28px; font-weight: 600;" id="orch-queue-dash">0</div>
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pending Tasks</div>
+                                    </div>
+                                    
+                                    <!-- Utilization Card -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--success);">
+                                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">Utilization</div>
+                                        <div style="font-size: 28px; font-weight: 600;" id="orch-dash-util">0%</div>
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Worker Usage</div>
+                                    </div>
+                                    
+                                    <!-- CPU Card -->
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px; border-left: 4px solid var(--danger);">
+                                        <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px;">System CPU</div>
+                                        <div style="font-size: 28px; font-weight: 600;" id="orch-cpu">0%</div>
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Current Usage</div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Queue Breakdown -->
+                                <div style="padding: 16px; background: var(--bg); border-radius: 8px; margin-bottom: 16px;">
+                                    <h3 style="margin: 0 0 12px 0; font-size: 14px;">Queue by Type</h3>
+                                    <div id="orch-queue-breakdown">
+                                        <p style="color: var(--text-muted); text-align: center;">No data available</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                WORKER POOLS PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-workers" class="orch-panel" style="display: none;">
+                                <div style="margin-bottom: 16px;">
+                                    <h3 style="margin: 0 0 8px 0; font-size: 16px;">Worker Pool Management</h3>
+                                    <p style="margin: 0; font-size: 12px; color: var(--text-muted);">
+                                        Scale worker pools dynamically based on workload. Each task type has its own dedicated pool.
+                                    </p>
+                                </div>
+                                
+                                <div id="orch-worker-pools-list">
+                                    <p style="color: var(--text-muted); text-align: center;">Loading worker pools...</p>
+                                </div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                TASKS REGISTRY PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-tasks" class="orch-panel" style="display: none;">
+                                <div style="margin-bottom: 16px;">
+                                    <h3 style="margin: 0 0 8px 0; font-size: 16px;">Task Registry</h3>
+                                    <p style="margin: 0; font-size: 12px; color: var(--text-muted);">
+                                        All registered tasks available for execution
+                                    </p>
+                                </div>
+                                
+                                <div id="orch-registered-tasks">
+                                    <p style="color: var(--text-muted);">Loading...</p>
+                                </div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                SYSTEM MONITOR PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-monitor" class="orch-panel" style="display: none;">
+                                <div style="margin-bottom: 20px;">
+                                    <h2 style="margin: 0 0 8px 0; font-size: 24px; font-weight: 700;">System Monitor</h2>
+                                </div>
+                                
+                                <!-- System Metrics -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 20px;">
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">CPU USAGE</div>
+                                        <div style="font-size: 36px; font-weight: 700; margin-bottom: 12px;" id="orch-mon-cpu">0%</div>
+                                        <div id="orch-cpu-bar" style="height: 8px; background: var(--accent); border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
+                                    </div>
+                                    
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">MEMORY USAGE</div>
+                                        <div style="font-size: 36px; font-weight: 700; margin-bottom: 12px;" id="orch-mon-memory">0%</div>
+                                        <div id="orch-memory-bar" style="height: 8px; background: var(--warning); border-radius: 4px; width: 0%; transition: width 0.3s;"></div>
+                                    </div>
+                                    
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">ACTIVE PROCESSES</div>
+                                        <div style="font-size: 36px; font-weight: 700;" id="orch-mon-processes">0</div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Process List -->
+                                <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                    <h3 style="margin: 0 0 16px 0;">Top Processes</h3>
+                                    <div id="orch-processes-list">
+                                        <p style="color: var(--text-muted); text-align: center;">No data</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                CONFIGURATION PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-config" class="orch-panel" style="display: none;">
+                                <div style="padding: 16px; background: var(--bg); border-radius: 8px; max-width: 600px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 16px;">Orchestrator Configuration</h3>
+                                    <p style="margin: 0 0 24px 0; font-size: 12px; color: var(--text-muted);">
+                                        Configure initial worker pool sizes. Changes require reinitialization.
+                                    </p>
+                                    
+                                    <div style="display: grid; gap: 16px;">
+                                        <!-- LLM Workers -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">LLM Workers</label>
+                                            <input id="orch-llm-workers" type="number" value="3" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for language model tasks</div>
+                                        </div>
+                                        
+                                        <!-- Tool Workers -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Tool Workers</label>
+                                            <input id="orch-tool-workers" type="number" value="4" min="1" max="20" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for tool execution</div>
+                                        </div>
+                                        
+                                        <!-- Whisper Workers -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Whisper Workers</label>
+                                            <input id="orch-whisper-workers" type="number" value="1" min="0" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for audio transcription</div>
+                                        </div>
+                                        
+                                        <!-- Background Workers -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">Background Workers</label>
+                                            <input id="orch-bg-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for background/proactive tasks</div>
+                                        </div>
+                                        
+                                        <!-- General Workers -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">General Workers</label>
+                                            <input id="orch-gen-workers" type="number" value="2" min="1" max="10" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Workers for general tasks</div>
+                                        </div>
+                                        
+                                        <!-- CPU Threshold -->
+                                        <div>
+                                            <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600;">CPU Threshold (%)</label>
+                                            <input id="orch-cpu-threshold" type="number" value="75" min="50" max="95" step="5" style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 4px; color: var(--text);">
+                                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Pause workers when CPU exceeds this threshold</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <button onclick="app.initializeOrchestrator()" style="width: 100%; padding: 12px; margin-top: 24px; background: var(--accent); border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: 600;">
+                                        Initialize Orchestrator
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- ========================================================================
+                                INFRASTRUCTURE PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-infrastructure" class="orch-panel" style="display: none;">
+                                <!-- Header -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                                    <div>
+                                        <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">Infrastructure Management</h2>
+                                        <p style="margin: 0; color: var(--text-muted); font-size: 14px;">
+                                            Docker containers and Proxmox VMs
+                                        </p>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <div id="infra-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted);"></div>
+                                        <span style="font-weight: 600;">Infrastructure</span>
+                                    </div>
+                                </div>
 
-                        <style>
-                            .orch-nav-btn {
-                                transition: all 0.2s;
-                            }
+                                <!-- Status Cards -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--accent);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL RESOURCES</div>
+                                        <div id="infra-total-resources" style="font-size: 32px; font-weight: 700;">0</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--success);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">AVAILABLE</div>
+                                        <div id="infra-available-resources" style="font-size: 32px; font-weight: 700; color: var(--success);">0</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--warning);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">IN USE</div>
+                                        <div id="infra-in-use-resources" style="font-size: 32px; font-weight: 700; color: var(--warning);">0</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--info);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TASKS EXECUTED</div>
+                                        <div id="infra-tasks-executed" style="font-size: 32px; font-weight: 700;">0</div>
+                                    </div>
+                                </div>
+
+                                <!-- System Status -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">DOCKER STATUS</div>
+                                        <div id="infra-docker-status" style="font-weight: 600;">Checking...</div>
+                                    </div>
+                                    <div style="padding: 16px; background: var(--bg); border-radius: 8px;">
+                                        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">PROXMOX STATUS</div>
+                                        <div id="infra-proxmox-status" style="font-weight: 600;">Checking...</div>
+                                    </div>
+                                </div>
+
+                                <!-- Capacity Overview -->
+                                <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
+                                    <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">
+                                        Capacity Overview
+                                    </h3>
+                                    <div id="infra-capacity"></div>
+                                </div>
+
+                                <!-- Actions Section -->
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
+                                    <!-- Provision Docker -->
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🐳 Provision Docker Container</h3>
+                                        
+                                        <div style="margin-bottom: 12px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">CPU Cores</label>
+                                            <input type="number" id="docker-cpu" value="2" step="0.5" min="0.5" max="32" 
+                                                style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                        </div>
+                                        
+                                        <div style="margin-bottom: 12px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Memory (MB)</label>
+                                            <input type="number" id="docker-memory" value="2048" step="512" min="512" max="65536" 
+                                                style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                        </div>
+                                        
+                                        <div style="margin-bottom: 12px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Disk (GB)</label>
+                                            <input type="number" id="docker-disk" value="20" step="5" min="5" max="1000" 
+                                                style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                        </div>
+                                        
+                                        <div style="margin-bottom: 12px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Image</label>
+                                            <input type="text" id="docker-image" value="python:3.11-slim" placeholder="e.g., python:3.11-slim"
+                                                style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                        </div>
+                                        
+                                        <div style="margin-bottom: 16px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Task Type (Optional)</label>
+                                            <select id="docker-task-type" 
+                                                    style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                                <option value="">Auto-select</option>
+                                                <option value="LLM">LLM</option>
+                                                <option value="TOOL">Tool</option>
+                                                <option value="GENERAL">General</option>
+                                                <option value="ML_MODEL">ML Model</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <button onclick="app.provisionDockerContainer()" 
+                                                style="width: 100%; padding: 12px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 14px;">
+                                            🚀 Provision Container
+                                        </button>
+                                    </div>
+
+                                    <!-- Cleanup -->
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                        <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🧹 Resource Cleanup</h3>
+                                        
+                                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                                            Remove resources that have been idle for a specified period.
+                                        </p>
+                                        
+                                        <div style="margin-bottom: 16px;">
+                                            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">Max Idle Time (seconds)</label>
+                                            <input type="number" id="cleanup-idle-time" value="300" step="60" min="60" max="3600" 
+                                                style="width: 100%; padding: 8px; background: var(--bg-darker); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px;">
+                                        </div>
+                                        
+                                        <button onclick="app.cleanupIdleResources()" 
+                                                style="width: 100%; padding: 12px; background: var(--danger); border: none; border-radius: 8px; color: white; cursor: pointer; font-weight: 600; font-size: 14px;">
+                                            🗑️ Cleanup Idle Resources
+                                        </button>
+                                        
+                                        <div style="margin-top: 24px; padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 3px solid var(--warning);">
+                                            <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">⚠️ Note</div>
+                                            <p style="font-size: 11px; color: var(--text-muted); margin: 0;">
+                                                Only idle resources will be removed. Resources currently running tasks will not be affected.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Resources List -->
+                                <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Active Resources</h3>
+                                    <div id="infra-resources-list">
+                                        <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                                            Loading resources...
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ========================================================================
+                                EXTERNAL API MANAGEMENT PANEL
+                                ======================================================================== -->
+                            <div id="orch-panel-external" class="orch-panel" style="display: none;">
+                                <!-- Header -->
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                                    <div>
+                                        <h2 style="margin: 0 0 4px 0; font-size: 24px; font-weight: 700;">External API Management</h2>
+                                        <p style="margin: 0; color: var(--text-muted); font-size: 14px;">
+                                            LLM providers and cloud compute APIs
+                                        </p>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 12px;">
+                                        <div id="external-indicator" style="width: 12px; height: 12px; border-radius: 50%; background: var(--text-muted);"></div>
+                                        <span style="font-weight: 600;">External APIs</span>
+                                    </div>
+                                </div>
+
+                                <!-- Stats Cards -->
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--accent);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">PROVIDERS</div>
+                                        <div id="external-providers-count" style="font-size: 32px; font-weight: 700;">0</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--danger);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL COST</div>
+                                        <div id="external-total-cost" style="font-size: 32px; font-weight: 700; color: var(--danger);">$0.00</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--info);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">TOTAL TOKENS</div>
+                                        <div id="external-total-tokens" style="font-size: 32px; font-weight: 700;">0</div>
+                                    </div>
+                                    <div style="padding: 20px; background: var(--bg); border-radius: 12px; border-left: 4px solid var(--success);">
+                                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">REQUESTS</div>
+                                        <div id="external-total-requests" style="font-size: 32px; font-weight: 700;">0</div>
+                                    </div>
+                                </div>
+
+                                <!-- Cost Breakdown -->
+                                <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
+                                    <h3 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 700; text-transform: uppercase; color: var(--text-muted);">
+                                        💰 Cost Breakdown
+                                    </h3>
+                                    <div id="external-cost-breakdown">
+                                        <p style="color: var(--text-muted); text-align: center; padding: 24px;">No cost data yet</p>
+                                    </div>
+                                </div>
+
+                                <!-- Providers List -->
+                                <div style="padding: 20px; background: var(--bg-darker); border-radius: 12px; margin-bottom: 24px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Configured Providers</h3>
+                                    <div id="external-providers-list">
+                                        <div style="text-align: center; padding: 48px; color: var(--text-muted);">
+                                            Loading providers...
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Quick Test Section -->
+                                <div style="padding: 20px; background: var(--bg); border-radius: 12px;">
+                                    <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">🧪 Quick LLM Test</h3>
+                                    
+                                    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+                                        Test your LLM providers with a quick prompt. Monitor costs and performance in real-time.
+                                    </p>
+                                    
+                                    <div style="padding: 16px; background: var(--bg-darker); border-radius: 8px; border-left: 3px solid var(--info);">
+                                        <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">💡 Tip</div>
+                                        <p style="font-size: 11px; color: var(--text-muted); margin: 0;">
+                                            Use the Test button on each provider card to quickly verify connectivity and compare response quality across different models.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
                             
-                            .orch-nav-btn:hover {
-                                background: var(--accent-muted) !important;
-                            }
-                            
-                            .orch-nav-btn.active {
-                                background: var(--accent) !important;
-                                color: white !important;
-                            }
-                        </style>
+                        </div>
+                    </div>
+
+                    <!-- Task Details Modal Container (for popups) -->
+                    <div id="orch-task-details-modal"></div>
+
+                    <style>
+                        .orch-nav-btn {
+                            transition: all 0.2s;
+                        }
+                        
+                        .orch-nav-btn:hover {
+                            background: var(--accent-muted) !important;
+                        }
+                        
+                        .orch-nav-btn.active {
+                            background: var(--accent) !important;
+                            color: white !important;
+                        }
+                    </style>
                     `;
                 case 'analytics':
                     return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📈 Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;

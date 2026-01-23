@@ -2104,7 +2104,666 @@ applyCircularLayout: function(nodes) {
             const div = document.createElement('div');
             div.textContent = String(s);
             return div.innerHTML;
-        }
+        },
+        
+        /**
+         * Get the full query panel HTML (for inline display)
+         */
+        getQueryPanelHTML: function() {
+            return `
+                <div class="cypher-panel-inline">
+                    <style>
+                        /* Inline panel styles - scoped */
+                        .cypher-panel-inline .cypher-tabs {
+                            display: flex;
+                            gap: 8px;
+                            margin-bottom: 16px;
+                            border-bottom: 2px solid var(--border);
+                            padding-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-btn {
+                            padding: 8px 16px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px 6px 0 0;
+                            cursor: pointer;
+                            font-size: 13px;
+                            font-weight: 600;
+                            transition: all 0.2s;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-content {
+                            display: none;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-content.active {
+                            display: block;
+                        }
+                        
+                        .cypher-panel-inline .section-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 12px;
+                        }
+                        
+                        .cypher-panel-inline .section-title {
+                            padding: 12px;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                            border-bottom: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline .section-body {
+                            padding: 12px;
+                        }
+                        
+                        .cypher-panel-inline .section-body.collapsed {
+                            display: none;
+                        }
+                        
+                        .cypher-panel-inline .section-toggle {
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        }
+                        
+                        .cypher-panel-inline .field {
+                            margin-bottom: 12px;
+                        }
+                        
+                        .cypher-panel-inline .field label {
+                            display: block;
+                            color: var(--text-secondary);
+                            font-size: 11px;
+                            font-weight: 600;
+                            margin-bottom: 4px;
+                        }
+                        
+                        .cypher-panel-inline .field-select,
+                        .cypher-panel-inline .field-input {
+                            width: 100%;
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            font-size: 13px;
+                        }
+                        
+                        .cypher-panel-inline .filters-area {
+                            margin-top: 12px;
+                        }
+                        
+                        .cypher-panel-inline .filters-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            margin-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .btn-add {
+                            padding: 4px 12px;
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .filter-row {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr 1fr auto;
+                            gap: 6px;
+                            margin-bottom: 6px;
+                        }
+                        
+                        .cypher-panel-inline .filter-prop,
+                        .cypher-panel-inline .filter-op,
+                        .cypher-panel-inline .filter-val {
+                            padding: 6px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline .filter-del {
+                            padding: 4px 8px;
+                            background: var(--error, #ef4444);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        }
+                        
+                        .cypher-panel-inline .dir-buttons {
+                            display: flex;
+                            gap: 4px;
+                        }
+                        
+                        .cypher-panel-inline .dir-btn {
+                            flex: 1;
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        }
+                        
+                        .cypher-panel-inline .dir-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .order-row {
+                            display: flex;
+                            gap: 6px;
+                        }
+                        
+                        .cypher-panel-inline .order-dir {
+                            padding: 8px 16px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        }
+                        
+                        .cypher-panel-inline .quick-actions {
+                            display: grid;
+                            grid-template-columns: repeat(3, 1fr);
+                            gap: 6px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .quick-btn {
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .quick-btn:hover {
+                            background: var(--hover);
+                        }
+                        
+                        .cypher-panel-inline .query-preview-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .preview-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                        }
+                        
+                        .cypher-panel-inline .tiny-btn {
+                            padding: 4px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline #cypher-query-preview {
+                            padding: 12px;
+                            margin: 0;
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            color: var(--text);
+                            white-space: pre-wrap;
+                            word-wrap: break-word;
+                            max-height: 200px;
+                            overflow-y: auto;
+                        }
+                        
+                        .cypher-panel-inline .execute-section {
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .exec-options {
+                            display: flex;
+                            gap: 12px;
+                            margin-bottom: 8px;
+                            font-size: 12px;
+                            color: var(--text);
+                        }
+                        
+                        .cypher-panel-inline .exec-options label {
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                        }
+                        
+                        .cypher-panel-inline .exec-options input[type="checkbox"] {
+                            accent-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .btn-execute {
+                            width: 100%;
+                            padding: 12px;
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 14px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .btn-execute:hover {
+                            background: var(--hover);
+                        }
+                        
+                        .cypher-panel-inline .results-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .results-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                        }
+                        
+                        .cypher-panel-inline #cypher-results-content {
+                            padding: 12px;
+                        }
+                        
+                        .cypher-panel-inline .results-stats {
+                            display: flex;
+                            gap: 16px;
+                            font-size: 12px;
+                            color: var(--text);
+                        }
+                        
+                        .cypher-panel-inline .date-range-fields {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 8px;
+                        }
+                        
+                        .cypher-panel-inline .date-quick-btns {
+                            display: flex;
+                            gap: 4px;
+                            margin-top: 8px;
+                        }
+                        
+                        .cypher-panel-inline .date-quick {
+                            flex: 1;
+                            padding: 6px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                        }
+                        
+                        .cypher-panel-inline .subsection {
+                            margin-top: 12px;
+                            padding: 12px;
+                            background: var(--bg-surface);
+                            border-radius: 6px;
+                        }
+                        
+                        .cypher-panel-inline .subsection-title {
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                            margin-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .layout-modes {
+                            display: grid;
+                            grid-template-columns: repeat(5, 1fr);
+                            gap: 8px;
+                        }
+                        
+                        .cypher-panel-inline .layout-btn {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            gap: 4px;
+                            padding: 12px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 10px;
+                        }
+                        
+                        .cypher-panel-inline .layout-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .layout-icon {
+                            font-size: 20px;
+                        }
+                        
+                        .cypher-panel-inline .action-btn {
+                            padding: 10px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .action-btn.primary {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .physics-actions,
+                        .cypher-panel-inline .layout-actions {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr 1fr;
+                            gap: 6px;
+                        }
+                        
+                        .cypher-panel-inline .editor-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .editor-toolbar {
+                            display: flex;
+                            gap: 8px;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline .tool-btn {
+                            padding: 4px 12px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline .editor-wrapper {
+                            display: flex;
+                            max-height: 300px;
+                        }
+                        
+                        .cypher-panel-inline .line-nums {
+                            padding: 12px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text-secondary);
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            text-align: right;
+                            user-select: none;
+                            border-right: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline #cypher-editor {
+                            flex: 1;
+                            padding: 12px;
+                            background: var(--bg);
+                            color: var(--text);
+                            border: none;
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            resize: none;
+                            outline: none;
+                        }
+                    </style>
+                    <div class="cypher-inline-header">
+                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">🔄</button>
+                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">📊</button>
+                    </div>
+                    <!-- Tabs -->
+                    <div class="cypher-tabs">
+                        <button class="cypher-tab-btn active" data-cypher-tab="builder">🔧 Build</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="layout">📐 Layout</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="editor">✏️ Raw</button>
+                    </div>
+                    
+                    <!-- Builder Tab -->
+                    <div id="cypher-tab-builder" class="cypher-tab-content active">
+                        ${this.renderBuilderTab()}
+                    </div>
+                    
+                    <!-- Layout Tab -->
+                    <div id="cypher-tab-layout" class="cypher-tab-content">
+                        ${this.renderLayoutTab()}
+                    </div>
+                    
+                    <!-- Editor Tab -->
+                    <div id="cypher-tab-editor" class="cypher-tab-content">
+                        ${this.renderEditorTab()}
+                    </div>
+                    
+                    <!-- Query Preview -->
+                    <div class="query-preview-box">
+                        <div class="preview-hdr">
+                            <span>Generated Query</span>
+                            <button id="cypher-btn-copy" class="tiny-btn" title="Copy">📋</button>
+                        </div>
+                        <pre id="cypher-query-preview"></pre>
+                    </div>
+                    
+                    <!-- Execute -->
+                    <div class="execute-section">
+                        <div class="exec-options">
+                            <label><input type="checkbox" id="cypher-opt-replace" checked> Replace</label>
+                            <label><input type="checkbox" id="cypher-opt-fit"> Fit view</label>
+                            <label><input type="checkbox" id="cypher-opt-apply-layout" checked> Apply layout</label>
+                        </div>
+                        <button id="cypher-btn-execute" class="btn-execute">▶ Execute</button>
+                    </div>
+                    
+                    <!-- Results -->
+                    <div id="cypher-results-box" class="results-box" style="display:none">
+                        <div class="results-hdr">
+                            <span>Results</span>
+                            <button id="cypher-btn-clear-results" class="tiny-btn">✕</button>
+                        </div>
+                        <div id="cypher-results-content"></div>
+                    </div>
+                </div>
+            `;
+        },
+
+        /**
+        * Show query builder in GraphInfoCard
+        */
+        showInCard: function(nodeId) {
+            if (!window.GraphInfoCard) {
+                console.warn('GraphInfoCard not available');
+                return;
+            }
+            
+            // Ensure schema is loaded
+            if (!this.schemaLoaded) {
+                this.loadSchema();
+            }
+            
+            const html = this.getQueryPanelHTML();
+            
+            window.GraphInfoCard.showInlineContent(
+                '⚡ Query Builder',
+                html,
+                nodeId ? `window.GraphInfoCard.expandNodeInfo('${nodeId}')` : null
+            );
+            
+            // Re-setup event listeners after rendering
+            setTimeout(() => {
+                this.setupInlineEventListeners();
+                this.updatePreview();
+            }, 100);
+        },
+
+        /**
+        * Setup event listeners for inline version
+        * (Simplified version of setupEventListeners that works in the card)
+        */
+        setupInlineEventListeners: function() {
+            const self = this;
+            this.on('cypher-btn-refresh-schema', 'click', () => self.loadSchema(true));
+            this.on('cypher-btn-stats', 'click', () => self.showStats());
+            // Tabs
+            document.querySelectorAll('.cypher-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.switchTab(btn.dataset.cypherTab));
+            });
+            
+            // Builder controls
+            this.on('cypher-node-label', 'change', () => self.updateBuilder());
+            this.on('cypher-btn-add-filter', 'click', () => self.addFilter('cypher-node-filters'));
+            this.on('cypher-btn-add-target-filter', 'click', () => self.addFilter('cypher-target-filters'));
+            
+            // Date controls
+            this.on('cypher-date-enabled', 'change', (e) => {
+                document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.dateEnabled = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
+            this.on('cypher-time-field', 'change', (e) => {
+                self.builder.timeField = e.target.value;
+                self.updateBuilder();
+            });
+            
+            document.querySelectorAll('.date-quick').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const hours = parseInt(btn.dataset.hours);
+                    self.setDateRange(hours);
+                });
+            });
+            
+            // Relationships
+            this.on('cypher-rels-enabled', 'change', (e) => {
+                document.getElementById('cypher-rels-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.includeRelationships = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-rel-type', 'change', () => self.updateBuilder());
+            this.on('cypher-rel-depth', 'input', (e) => {
+                document.getElementById('cypher-depth-val').textContent = e.target.value;
+                self.builder.relationshipDepth = parseInt(e.target.value);
+                self.updateBuilder();
+            });
+            this.on('cypher-target-label', 'change', () => self.updateBuilder());
+            
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    self.builder.relationshipDirection = btn.dataset.dir;
+                    self.updateBuilder();
+                });
+            });
+            
+            // Return options
+            this.on('cypher-return-type', 'change', () => self.updateBuilder());
+            this.on('cypher-order-by', 'change', () => self.updateBuilder());
+            this.on('cypher-order-dir-btn', 'click', () => {
+                self.builder.orderDirection = self.builder.orderDirection === 'DESC' ? 'ASC' : 'DESC';
+                document.getElementById('cypher-order-dir-btn').textContent = self.builder.orderDirection === 'DESC' ? '↓' : '↑';
+                self.updateBuilder();
+            });
+            this.on('cypher-limit-input', 'change', () => self.updateBuilder());
+            
+            // Quick actions
+            document.querySelectorAll('.quick-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.applyQuickAction(btn.dataset.quick));
+            });
+            
+            // Layout controls
+            document.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.setLayoutMode(btn.dataset.layout));
+            });
+            
+            // Physics controls
+            this.on('cypher-physics-enabled', 'change', (e) => self.togglePhysics(e.target.checked));
+            this.on('cypher-gravity-slider', 'input', (e) => self.updatePhysics('gravity', e.target.value));
+            this.on('cypher-spring-slider', 'input', (e) => self.updatePhysics('spring', e.target.value));
+            this.on('cypher-damping-slider', 'input', (e) => self.updatePhysics('damping', e.target.value));
+            
+            this.on('cypher-btn-stabilize', 'click', () => self.quickStabilize());
+            this.on('cypher-btn-freeze', 'click', () => self.freezeGraph());
+            this.on('cypher-btn-unfreeze', 'click', () => self.unfreezeGraph());
+            this.on('cypher-btn-apply-layout', 'click', () => self.applyCurrentLayout());
+            this.on('cypher-btn-fit-view', 'click', () => self.fitView());
+            this.on('cypher-btn-reset-layout', 'click', () => self.resetLayout());
+            
+            // Execute
+            this.on('cypher-btn-execute', 'click', () => self.executeQuery());
+            this.on('cypher-btn-copy', 'click', () => self.copyQuery());
+            this.on('cypher-btn-clear-results', 'click', () => {
+                document.getElementById('cypher-results-box').style.display = 'none';
+            });
+            
+            // Editor
+            const editor = document.getElementById('cypher-editor');
+            if (editor) {
+                editor.addEventListener('input', () => {
+                    self.updateLineNumbers();
+                    self.updatePreview();
+                });
+            }
+            
+            this.on('cypher-btn-format', 'click', () => self.formatQuery());
+            this.on('cypher-btn-clear-editor', 'click', () => {
+                document.getElementById('cypher-editor').value = '';
+                self.updateLineNumbers();
+            });
+            this.on('cypher-btn-save-query', 'click', () => self.saveCurrentQuery());
+            
+            this.updateLineNumbers();
+        },
+
     };
     
     // Init
@@ -2113,4 +2772,6 @@ applyCircularLayout: function(nodes) {
     } else {
         CypherQuery.init();
     }
+
+    
 })();

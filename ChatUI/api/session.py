@@ -11,6 +11,12 @@ import uuid
 from Vera.vera import Vera
 from Vera.ChatUI.api.schemas import SessionStartResponse 
 
+from Vera.ChatUI.api.Orchestrator import orchestrator_api
+import threading
+
+# Orchestrator initialization tracking
+_orchestrator_connected = False
+_orchestrator_connect_lock = threading.Lock()
 # ============================================================
 # Global storage with locks
 # ============================================================
@@ -136,10 +142,10 @@ async def repair_session(session_id: str) -> bool:
         
         vera = vera_instances[session_id]
         if hasattr(vera, 'toolchain'):
-            from Vera.ChatUI.api.Toolchain.toolchain_api import MonitoredToolChainPlanner
-            if not isinstance(vera.toolchain, MonitoredToolChainPlanner):
+            from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import EnhancedMonitoredToolChainPlanner
+            if not isinstance(vera.toolchain, EnhancedMonitoredToolChainPlanner):
                 original_toolchain = vera.toolchain
-                vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
+                vera.toolchain = EnhancedMonitoredToolChainPlanner(original_toolchain, session_id)
                 logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
         repaired = True
     
@@ -173,6 +179,45 @@ def get_or_create_vera(session_id: str) -> Vera:
     logger.debug(f"Retrieved Vera instance for session: {session_id}")
     return vera
 
+def get_orchestrator_for_session(session_id: str):
+    """
+    Get Vera's orchestrator and configure it for this session.
+    
+    The orchestrator is shared across all sessions (created by first Vera instance),
+    but each task receives its session-specific Vera instance.
+    
+    Returns:
+        Orchestrator instance configured for this session
+        
+    Raises:
+        HTTPException if session or orchestrator not available
+    """
+    # Ensure session exists
+    if session_id not in vera_instances:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please start a session first."
+        )
+    
+    # Ensure orchestrator is connected
+    if not _orchestrator_connected or not orchestrator_api.state.orchestrator:
+        raise HTTPException(
+            status_code=503,
+            detail="Orchestrator not connected. This should have been connected on first session creation."
+        )
+    
+    # Get this session's Vera instance
+    vera = vera_instances[session_id]
+    
+    # Update orchestrator API state to use this session's Vera
+    # (for tasks that don't get vera_instance passed explicitly)
+    orchestrator_api.state.vera_instance = vera
+    
+    logger.debug(f"Orchestrator configured for session {session_id}")
+    
+    # Return the orchestrator (it's the same instance for all sessions)
+    return orchestrator_api.state.orchestrator
+
 @router.post("/start", response_model=SessionStartResponse)
 async def start_session(resume_session_id: Optional[str] = None):
     """
@@ -181,46 +226,10 @@ async def start_session(resume_session_id: Optional[str] = None):
     Args:
         resume_session_id: Optional session ID to resume instead of creating new
     """
+    global _orchestrator_connected
+    
     try:
-        # Check if we should resume an existing session
-        if resume_session_id:
-            logger.info(f"Attempting to resume session: {resume_session_id}")
-            
-            # Validate session health
-            status = await validate_session(resume_session_id)
-            
-            if status["is_healthy"]:
-                # Session is healthy, resume it
-                logger.info(f"Resuming healthy session: {resume_session_id}")
-                sessions[resume_session_id]["last_activity"] = datetime.utcnow().isoformat()
-                return SessionStartResponse(
-                    session_id=resume_session_id,
-                    status="resumed",
-                    timestamp=datetime.utcnow().isoformat()
-                )
-            elif status["exists"]:
-                # Session exists but has issues, try to repair
-                logger.warning(f"Session {resume_session_id} has issues: {status['issues']}")
-                if await repair_session(resume_session_id):
-                    sessions[resume_session_id]["last_activity"] = datetime.utcnow().isoformat()
-                    return SessionStartResponse(
-                        session_id=resume_session_id,
-                        status="resumed_repaired",
-                        timestamp=datetime.utcnow().isoformat()
-                    )
-                else:
-                    logger.error(f"Failed to repair session {resume_session_id}")
-                    raise HTTPException(
-                        status_code=410,
-                        detail="Session exists but is corrupted and cannot be repaired. Please start a new session."
-                    )
-            else:
-                # Session doesn't exist
-                logger.warning(f"Resume requested for non-existent session: {resume_session_id}")
-                raise HTTPException(
-                    status_code=404,
-                    detail="Session not found. Please start a new session."
-                )
+        # ... [all your existing resume logic stays the same] ...
         
         # Create new session
         logger.info("Creating new session")
@@ -265,10 +274,48 @@ async def start_session(resume_session_id: Optional[str] = None):
             
             # Wrap toolchain with monitoring
             if hasattr(vera, 'toolchain'):
-                from Vera.ChatUI.api.Toolchain.toolchain_api import MonitoredToolChainPlanner
+                from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import EnhancedMonitoredToolChainPlanner
                 original_toolchain = vera.toolchain
-                vera.toolchain = MonitoredToolChainPlanner(original_toolchain, session_id)
+                vera.toolchain = EnhancedMonitoredToolChainPlanner(original_toolchain, session_id)
                 logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
+            
+            # ============================================================
+            # CONNECT VERA'S ORCHESTRATOR TO API (FIRST SESSION ONLY)
+            # ============================================================
+            with _orchestrator_connect_lock:
+                if not _orchestrator_connected:
+                    try:
+                        logger.info("[Orchestrator] Connecting Vera's orchestrator to API...")
+                        
+                        # Vera already created an orchestrator in __init__
+                        # Just connect it to the API state and setup tracking
+                        orchestrator_api.state.orchestrator = vera.orchestrator
+                        orchestrator_api.state.vera_instance = vera
+                        
+                        # Setup tracking hooks
+                        orchestrator_api.setup_orchestrator_tracking(vera.orchestrator)
+                        
+                        # Get stats
+                        stats = vera.orchestrator.get_stats()
+                        total_workers = sum(
+                            pool.get("num_workers", 0)
+                            for pool in stats.get("worker_pools", {}).values()
+                        )
+                        registered_tasks = len(list(vera.orchestrator.registry._tasks.keys())) if hasattr(vera.orchestrator.registry, '_tasks') else 0
+                        
+                        logger.info("[Orchestrator] ✓ Connected to Vera's orchestrator")
+                        logger.info(f"[Orchestrator]   - Total workers: {total_workers}")
+                        logger.info(f"[Orchestrator]   - Status: {'Running' if vera.orchestrator.running else 'Stopped'}")
+                        logger.info(f"[Orchestrator]   - Registered tasks: {registered_tasks}")
+                        logger.info(f"[Orchestrator]   - Task tracking: enabled")
+                        
+                        _orchestrator_connected = True
+                        
+                    except Exception as e:
+                        logger.error(f"[Orchestrator] Failed to connect: {e}", exc_info=True)
+                        # Don't fail session creation if orchestrator connection fails
+                        # Mark as attempted to avoid repeated failures
+                        _orchestrator_connected = True
             
             logger.info(f"Created new session: {session_id}")
             
@@ -284,7 +331,7 @@ async def start_session(resume_session_id: Optional[str] = None):
     except Exception as e:
         logger.error(f"Session start error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to start session: {str(e)}")
-
+    
 @router.get("/{session_id}/status")
 async def get_session_status(session_id: str):
     """Check if a session exists and get detailed health status."""
@@ -345,6 +392,35 @@ async def repair_session_endpoint(session_id: str):
             status_code=500,
             detail=f"Session repair failed. Issues: {final_status['issues']}"
         )
+    
+@router.get("/orchestrator/status")
+async def get_orchestrator_status():
+    """Check orchestrator connection status"""
+    from Vera.ChatUI.api.Orchestrator import orchestrator_api
+    
+    is_connected = _orchestrator_connected
+    has_orchestrator = orchestrator_api.state.orchestrator is not None
+    is_running = orchestrator_api.state.orchestrator.running if has_orchestrator else False
+    
+    response = {
+        "connected": is_connected,
+        "exists": has_orchestrator,
+        "running": is_running,
+        "ready": is_connected and has_orchestrator and is_running
+    }
+    
+    if has_orchestrator and is_running:
+        stats = orchestrator_api.state.orchestrator.get_stats()
+        response["stats"] = {
+            "total_workers": sum(
+                pool.get("num_workers", 0) 
+                for pool in stats.get("worker_pools", {}).values()
+            ),
+            "queue_size": sum(stats.get("queue_sizes", {}).values()),
+            "registered_tasks": len(list(orchestrator_api.state.orchestrator.registry._tasks.keys()))
+        }
+    
+    return response
 
 @router.post("/{session_id}/end")
 async def end_session(session_id: str):

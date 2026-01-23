@@ -1541,6 +1541,32 @@
         this.addMessage('system', content);
     };
     
+    // Add streaming state tracker
+    VeraChat.prototype.initStreamingState = function(messageId) {
+        if (!this.streamingStates) {
+            this.streamingStates = {};
+        }
+        
+        this.streamingStates[messageId] = {
+            processedLength: 0,
+            thoughtDepth: 0,  // Track nesting level
+            currentThought: '',
+            accumulatedThoughts: [],
+            mainContent: '',
+            lastTTSPosition: 0
+        };
+        
+        return this.streamingStates[messageId];
+    };
+    VeraChat.prototype.getStreamingState = function(messageId) {
+        return this.streamingStates?.[messageId] || this.initStreamingState(messageId);
+    };
+
+    VeraChat.prototype.clearStreamingState = function(messageId) {
+        if (this.streamingStates) {
+            delete this.streamingStates[messageId];
+        }
+    };
     VeraChat.prototype.formatFileSize = function(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';

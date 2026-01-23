@@ -218,7 +218,7 @@ def get_agent_status(agent_name: str) -> Dict[str, Any]:
 def get_agent_manager():
     """Get or create AgentManager instance"""
     try:
-        from Vera.Agents.agent_manager import AgentManager
+        from Vera.Ollama.Agents.agent_manager import AgentManager
         
         # Try to get Vera logger
         try:

@@ -356,154 +356,162 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
         }, 0);
     }
 };
-VeraChat.prototype.renderCurrentExecution = function() {
-    // Initialize toolchainExecutions if it doesn't exist
-    if (!this.toolchainExecutions) {
-        this.toolchainExecutions = [];
-    }
-    
-    if (!this.currentExecution && this.toolchainExecutions.length === 0) {
-        return `
-            <div style="padding: 20px; text-align: center;">
-                <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">⚙️</div>
-                <p style="color: #94a3b8;">No active toolchain executions.</p>
-                <p style="color: #64748b; font-size: 12px;">Toolchain executions will appear here when tools are used in conversation.</p>
-            </div>
-        `;
-    }
-    
-    let html = '';
-    
-    // Show current execution
-    if (this.currentExecution) {
-        const statusColor = this.currentExecution.status === 'completed' ? '#10b981' :
-                        this.currentExecution.status === 'failed' ? '#ef4444' :
-                        this.currentExecution.status === 'executing' ? '#3b82f6' : '#f59e0b';
+    VeraChat.prototype.renderCurrentExecution = function() {
+        // Initialize toolchainExecutions if it doesn't exist
+        if (!this.toolchainExecutions) {
+            this.toolchainExecutions = [];
+        }
         
-        html += `
-            <div class="tool-card" style="border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                    <div style="font-weight: 600; color: #e2e8f0;">Current Execution</div>
-                    <div style="color: ${statusColor}; font-size: 12px; text-transform: uppercase;">${this.currentExecution.status}</div>
+        if (!this.currentExecution && this.toolchainExecutions.length === 0) {
+            return `
+                <div style="padding: 20px; text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 16px; opacity: 0.3;">⚙️</div>
+                    <p style="color: #94a3b8;">No active toolchain executions.</p>
+                    <p style="color: #64748b; font-size: 12px;">Toolchain executions will appear here when tools are used in conversation.</p>
                 </div>
-                <div style="color: #94a3b8; font-size: 13px; margin-bottom: 8px;">${this.escapeHtml(this.currentExecution.query)}</div>
-                ${this.currentExecution.totalSteps ? `<div style="color: #94a3b8; font-size: 12px;">Steps: ${this.currentExecution.steps.length}/${this.currentExecution.totalSteps}</div>` : ''}
-            </div>
-        `;
+            `;
+        }
         
-        // Show plan if available
-        if (this.currentExecution.plan || this.currentExecution.plan_text) {
+        let html = '';
+        
+        // Show current execution
+        if (this.currentExecution) {
+            const statusColor = this.currentExecution.status === 'completed' ? '#10b981' :
+                            this.currentExecution.status === 'failed' ? '#ef4444' :
+                            this.currentExecution.status === 'executing' ? '#3b82f6' : '#f59e0b';
+            
             html += `
-                <div class="tool-container" style="border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-                    <div style="font-weight: 600; margin-bottom: 12px;">Execution Plan</div>
+                <div class="tool-card" style="border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid ${statusColor};">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
+                        <div style="font-weight: 600; color: #e2e8f0;">Current Execution</div>
+                        <div style="color: ${statusColor}; font-size: 12px; text-transform: uppercase;">${this.currentExecution.status}</div>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 13px; margin-bottom: 8px;">${this.escapeHtml(this.currentExecution.query)}</div>
+                    ${this.currentExecution.totalSteps ? `<div style="color: #94a3b8; font-size: 12px;">Steps: ${this.currentExecution.steps.length}/${this.currentExecution.totalSteps}</div>` : ''}
+                </div>
             `;
             
-            // Show streaming plan text if available
-            if (this.currentExecution.plan_text) {
+            // Show plan if available
+            if (this.currentExecution.plan || this.currentExecution.plan_text) {
                 html += `
-                    <div class="tool-card" style="padding: 12px; border-radius: 6px; border-left: 3px solid #60a5fa; margin-bottom: 12px;">
-                        <div id="execution-plan-text" style="color: #cbd5e1; font-size: 12px; line-height: 1.6; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">${this.escapeHtml(this.currentExecution.plan_text)}</div>
-                    </div>
+                    <div class="tool-container" style="border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        <div style="font-weight: 600; margin-bottom: 12px;">Execution Plan</div>
                 `;
-            }
-            
-            // Show structured plan if available
-            if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
-                html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
                 
-                this.currentExecution.plan.forEach((step, i) => {
-                    const toolInfo = this.availableTools && this.availableTools[step.tool];
+                // Show streaming plan text if available
+                if (this.currentExecution.plan_text) {
                     html += `
-                        <div class="tool-card" style="padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
-                            <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Step ${i + 1}</div>
-                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
-                                <div style="color: #e2e8f0; font-size: 13px; font-weight: 600;">${this.escapeHtml(step.tool)}</div>
-                                ${toolInfo ? `<span style="color: #60a5fa; font-size: 11px; cursor: help;" title="${this.escapeHtml(toolInfo.description)}">ℹ️</span>` : ''}
-                            </div>
-                            ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-bottom: 6px; font-style: italic;">${this.escapeHtml(toolInfo.description.substring(0, 80))}${toolInfo.description.length > 80 ? '...' : ''}</div>` : ''}
-                            <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">${this.escapeHtml(step.input)}</div>
+                        <div class="tool-card" style="padding: 12px; border-radius: 6px; border-left: 3px solid #60a5fa; margin-bottom: 12px;">
+                            <div id="execution-plan-text" style="color: #cbd5e1; font-size: 12px; line-height: 1.6; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">${this.escapeHtml(this.currentExecution.plan_text)}</div>
                         </div>
                     `;
-                });
+                }
+                
+                // Show structured plan if available
+                if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
+                    html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
+                    
+                    this.currentExecution.plan.forEach((step, i) => {
+                        const toolInfo = this.availableTools && this.availableTools[step.tool];
+                        html += `
+                            <div class="tool-card" style="padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
+                                <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Step ${i + 1}</div>
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                                    <div style="color: #e2e8f0; font-size: 13px; font-weight: 600;">${this.escapeHtml(step.tool)}</div>
+                                    ${toolInfo ? `<span style="color: #60a5fa; font-size: 11px; cursor: help;" title="${this.escapeHtml(toolInfo.description)}">ℹ️</span>` : ''}
+                                </div>
+                                ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-bottom: 6px; font-style: italic;">${this.escapeHtml(toolInfo.description.substring(0, 80))}${toolInfo.description.length > 80 ? '...' : ''}</div>` : ''}
+                                <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">${this.escapeHtml(step.input)}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += `</div>`;
+                }
                 
                 html += `</div>`;
             }
             
-            html += `</div>`;
-        }
-        
-        // Show steps execution
-        if (this.currentExecution.steps && this.currentExecution.steps.length > 0) {
-            html += `
-                <div class="tool-container" style="border-radius: 8px; padding: 16px;">
-                    <div style="font-weight: 600; color: #60a5fa; margin-bottom: 12px;">Step Execution</div>
-                    <div style="display: flex; flex-direction: column; gap: 12px;">
-            `;
-            
-            this.currentExecution.steps.forEach(step => {
-                const stepStatusColor = step.status === 'completed' ? '#10b981' :
-                                    step.status === 'failed' ? '#ef4444' : '#3b82f6';
-                const toolInfo = this.availableTools && this.availableTools[step.toolName];
-                
+            // Show steps execution
+            if (this.currentExecution.steps && this.currentExecution.steps.length > 0) {
                 html += `
-                    <div class="tool-card" style="border-radius: 6px; overflow: hidden;">
-                        <div style="padding: 12px; border-left: 4px solid ${stepStatusColor};">
-                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
-                                <div>
-                                    <div style="color: #e2e8f0; font-weight: 600;">Step ${step.number}: ${this.escapeHtml(step.toolName)}</div>
-                                    ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-top: 2px;">${this.escapeHtml(toolInfo.description)}</div>` : ''}
+                    <div class="tool-container" style="border-radius: 8px; padding: 16px;">
+                        <div style="font-weight: 600; color: #60a5fa; margin-bottom: 12px;">Step Execution</div>
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                `;
+                
+                this.currentExecution.steps.forEach(step => {
+                    const stepStatusColor = step.status === 'completed' ? '#10b981' :
+                                        step.status === 'failed' ? '#ef4444' : '#3b82f6';
+                    const toolInfo = this.availableTools && this.availableTools[step.toolName];
+                    
+                    html += `
+                        <div class="tool-card" style="border-radius: 6px; overflow: hidden;">
+                            <div style="padding: 12px; border-left: 4px solid ${stepStatusColor};">
+                                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                    <div>
+                                        <div style="color: #e2e8f0; font-weight: 600;">Step ${step.number}: ${this.escapeHtml(step.toolName)}</div>
+                                        ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-top: 2px;">${this.escapeHtml(toolInfo.description)}</div>` : ''}
+                                    </div>
+                                    <div style="color: ${stepStatusColor}; font-size: 11px; text-transform: uppercase; white-space: nowrap;">${step.status}</div>
                                 </div>
-                                <div style="color: ${stepStatusColor}; font-size: 11px; text-transform: uppercase; white-space: nowrap;">${step.status}</div>
+                                
+                                <div class="tool-subcard" style="padding: 8px; border-radius: 4px; margin-bottom: 8px;">
+                                    <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
+                                    <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${step.input ? this.escapeHtml(step.input.substring(0, 200)) : 'No input'}${step.input.length > 200 ? '...' : ''}</div>
+                                </div>
+                                
+                                ${step.output ? `
+                                    <div class="tool-subcard" style="padding: 8px; border-radius: 4px;">
+                                        <div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">Output:</div>
+                                        <div id="step-output-${step.number}" style="color: #cbd5e1; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto;">${this.escapeHtml(step.output)}</div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${step.error ? `
+                                    <div style="background: #7f1d1d; padding: 8px; border-radius: 4px; margin-top: 8px;">
+                                        <div style="color: #fca5a5; font-size: 11px; margin-bottom: 4px;">Error:</div>
+                                        <div style="color: #fecaca; font-size: 12px;">${this.escapeHtml(step.error)}</div>
+                                    </div>
+                                ` : ''}
+                                
+                                ${step.startTime && step.endTime ? `
+                                    <div style="color: #64748b; font-size: 10px; margin-top: 8px;">
+                                        Duration: ${((new Date(step.endTime) - new Date(step.startTime)) / 1000).toFixed(2)}s
+                                    </div>
+                                ` : ''}
                             </div>
-                            
-                            <div class="tool-subcard" style="padding: 8px; border-radius: 4px; margin-bottom: 8px;">
-                                <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
-                                <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${step.input ? this.escapeHtml(step.input.substring(0, 200)) : 'No input'}${step.input.length > 200 ? '...' : ''}</div>
-                            </div>
-                            
-                            ${step.output ? `
-                                <div class="tool-subcard" style="padding: 8px; border-radius: 4px;">
-                                    <div style="color: #10b981; font-size: 11px; margin-bottom: 4px;">Output:</div>
-                                    <div id="step-output-${step.number}" style="color: #cbd5e1; font-size: 12px; font-family: monospace; max-height: 150px; overflow-y: auto;">${this.escapeHtml(step.output)}</div>
-                                </div>
-                            ` : ''}
-                            
-                            ${step.error ? `
-                                <div style="background: #7f1d1d; padding: 8px; border-radius: 4px; margin-top: 8px;">
-                                    <div style="color: #fca5a5; font-size: 11px; margin-bottom: 4px;">Error:</div>
-                                    <div style="color: #fecaca; font-size: 12px;">${this.escapeHtml(step.error)}</div>
-                                </div>
-                            ` : ''}
-                            
-                            ${step.startTime && step.endTime ? `
-                                <div style="color: #64748b; font-size: 10px; margin-top: 8px;">
-                                    Duration: ${((new Date(step.endTime) - new Date(step.startTime)) / 1000).toFixed(2)}s
-                                </div>
-                            ` : ''}
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            }
+            
+            // Show final result if completed
+            if (this.currentExecution.status === 'completed' && this.currentExecution.finalResult) {
+                html += `
+                    <div style="background: #064e3b; border-radius: 8px; padding: 16px; margin-top: 16px; border-left: 4px solid #10b981;">
+                        <div style="font-weight: 600; color: #10b981; margin-bottom: 12px;">✓ Final Result</div>
+                        <div style="color: #d1fae5; font-size: 13px; line-height: 1.5; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
+                            ${this.escapeHtml(this.currentExecution.finalResult.substring(0, 500))}${this.currentExecution.finalResult.length > 500 ? '...' : ''}
                         </div>
                     </div>
                 `;
-            });
-            
-            html += `</div></div>`;
+            }
         }
         
-        // Show final result if completed
-        if (this.currentExecution.status === 'completed' && this.currentExecution.finalResult) {
-            html += `
-                <div style="background: #064e3b; border-radius: 8px; padding: 16px; margin-top: 16px; border-left: 4px solid #10b981;">
-                    <div style="font-weight: 600; color: #10b981; margin-bottom: 12px;">✓ Final Result</div>
-                    <div style="color: #d1fae5; font-size: 13px; line-height: 1.5; white-space: pre-wrap; max-height: 300px; overflow-y: auto;">
-                        ${this.escapeHtml(this.currentExecution.finalResult.substring(0, 500))}${this.currentExecution.finalResult.length > 500 ? '...' : ''}
-                    </div>
-                </div>
-            `;
-        }
-    }
-    
-    return html;
-};
 
+        if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
+            // Flowchart overview (always visible)
+            html += this.buildFlowchartHTML(this.currentExecution.execution_id, this.currentExecution.plan);
+            
+            // The flowchart already has collapsible step details built-in!
+            // Just make sure it's rendered with the details section
+        }
+        
+        return html;
+    };
     VeraChat.prototype.renderExecutionHistory = function() {
         if (!this.toolchainExecutions || this.toolchainExecutions.length === 0) {
             return `

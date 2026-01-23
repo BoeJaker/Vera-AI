@@ -28,9 +28,9 @@ class AgentSystemConfig:
     auto_load: bool = True
     auto_build: bool = False
     
-    agents_dir: str = "./Vera/Agents/agents"
-    templates_dir: str = "./Vera/Agents/templates"
-    build_dir: str = "./Vera/build/agents"
+    agents_dir: str = "./Vera/Ollama/Agents/agents"
+    templates_dir: str = "./Vera/Ollama/Agents/templates"
+    build_dir: str = "./Vera/Ollama/build/agents"
     
     # Default agents for different tasks
     default_agents: Dict[str, str] = field(default_factory=lambda: {
@@ -225,7 +225,7 @@ class VeraConfig:
     
     # General settings
     enable_hot_reload: bool = True
-    config_file: str = "Configuration/vera_config.yaml"
+    config_file: str = "./Vera/Configuration/vera_config.yaml"
 
 class ConfigFileHandler(FileSystemEventHandler):
     """Watch for config file changes"""
@@ -251,7 +251,7 @@ class ConfigManager:
     
     def __init__(
         self, 
-        config_file: str = "Configuration/vera_config.yaml",
+        config_file: str = "./Vera/Configuration/vera_config.yaml",
         auto_create: bool = True
     ):
         self.config_path = Path(config_file)
@@ -503,7 +503,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     
     # Create config manager
-    config_manager = ConfigManager("Configuration/vera_config.yaml")
+    config_manager = ConfigManager("./Vera/Configuration/vera_config.yaml")
     
     # Validate configuration
     issues = validate_config(config_manager.config)

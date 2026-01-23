@@ -69,7 +69,7 @@ class FilePathInput(BaseModel):
 
 class WriteFileInput(BaseModel):
     """Input schema for writing files."""
-    path: str = Field(..., description="Full path where file should be written")
+    filepath: str = Field(..., description="Full path where file should be written")
     content: str = Field(..., description="Content to write to the file")
 
 

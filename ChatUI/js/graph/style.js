@@ -1027,7 +1027,7 @@
                 </style>
                 
                 <div class="graph-settings-section">
-                    <div class="graph-settings-title">🎨 Graph Style Control</div>
+                    <!-- <div class="graph-settings-title">🎨 Graph Style Control</div> -->
                     
                     <!-- Color Mode -->
                     <div class="graph-setting-item">
@@ -1938,7 +1938,418 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        }
+        },
+
+        // /**
+        //  * Create settings panel UI - Returns HTML instead of inserting
+        //  */
+        // createSettingsPanel: function() {
+        //     // Store reference but don't insert into settings-panel
+        //     console.log('GraphStyleControl: Panel creation deferred to inline display');
+        // },
+
+        /**
+         * Get the style controls HTML
+         */
+        getStyleControlsHTML: function() {
+            // Populate label property options first
+            this.populateLabelOptions();
+            
+            return `
+                <style>
+                /* Theme-compatible toggle switches */
+                .toggle-switch {
+                    position: relative;
+                    display: inline-block;
+                    width: 44px;
+                    height: 24px;
+                }
+                .toggle-switch input {
+                    opacity: 0;
+                    width: 0;
+                    height: 0;
+                }
+                .toggle-slider {
+                    position: absolute;
+                    cursor: pointer;
+                    top: 0; left: 0; right: 0; bottom: 0;
+                    background-color: var(--border);
+                    transition: .3s;
+                    border-radius: 24px;
+                }
+                .toggle-slider:before {
+                    position: absolute;
+                    content: "";
+                    height: 18px;
+                    width: 18px;
+                    left: 3px;
+                    bottom: 3px;
+                    background-color: var(--text-inverted);
+                    transition: .3s;
+                    border-radius: 50%;
+                }
+                input:checked + .toggle-slider {
+                    background-color: var(--accent);
+                }
+                input:checked + .toggle-slider:before {
+                    transform: translateX(20px);
+                }
+                
+                /* Theme-compatible controls */
+                .graph-settings-section {
+                    border-bottom: 2px solid var(--border);
+                    padding-bottom: 16px;
+                    margin-bottom: 16px;
+                }
+                
+                .graph-settings-title {
+                    font-size: 16px;
+                    color: var(--accent);
+                    margin-bottom: 12px;
+                    font-weight: 600;
+                }
+                
+                .graph-setting-item {
+                    margin-bottom: 12px;
+                }
+                
+                .graph-setting-label {
+                    display: block;
+                    color: var(--text-secondary);
+                    font-size: 12px;
+                    font-weight: 600;
+                    margin-bottom: 6px;
+                }
+                
+                .graph-setting-select,
+                .graph-setting-input {
+                    width: 100%;
+                    padding: 8px;
+                    background: var(--bg-surface);
+                    color: var(--text);
+                    border: 1px solid var(--border);
+                    border-radius: 6px;
+                    font-size: 13px;
+                }
+                
+                .graph-setting-select:focus,
+                .graph-setting-input:focus {
+                    outline: none;
+                    border-color: var(--accent);
+                }
+                
+                .graph-setting-hint {
+                    color: var(--text-secondary);
+                    font-size: 10px;
+                    margin-top: 4px;
+                    opacity: 0.7;
+                }
+                
+                .graph-control-box {
+                    background: var(--bg);
+                    padding: 12px;
+                    border-radius: 8px;
+                    border: 1px solid var(--border-subtle);
+                    margin-bottom: 12px;
+                }
+                
+                .graph-control-header {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: 8px;
+                }
+                
+                .graph-control-title {
+                    color: var(--text-secondary);
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+                
+                .graph-btn {
+                    padding: 10px;
+                    background: var(--accent);
+                    color: var(--text-inverted);
+                    border: none;
+                    border-radius: 6px;
+                    cursor: pointer;
+                    font-weight: 600;
+                    font-size: 13px;
+                    transition: all 0.2s;
+                }
+                
+                .graph-btn:hover {
+                    background: var(--hover);
+                    transform: translateY(-1px);
+                }
+                
+                .graph-btn-secondary {
+                    background: var(--bg-surface);
+                    color: var(--text);
+                    border: 1px solid var(--border);
+                }
+                
+                .graph-btn-secondary:hover {
+                    background: var(--hover);
+                }
+                
+                .graph-checkbox-label {
+                    display: flex;
+                    align-items: center;
+                    margin-bottom: 6px;
+                    font-size: 12px;
+                    color: var(--text);
+                }
+                
+                .graph-checkbox-label input[type="checkbox"] {
+                    margin-right: 8px;
+                    accent-color: var(--accent);
+                }
+                </style>
+                
+                <div class="graph-settings-section">
+                    <!-- <div class="graph-settings-title">🎨 Graph Style Control</div> -->
+                    
+                    <!-- Color Mode -->
+                    <div class="graph-setting-item">
+                        <label class="graph-setting-label">Color Mode</label>
+                        <select id="style-color-mode" class="graph-setting-select" onchange="window.GraphStyleControl.setColorMode(this.value)">
+                            <option value="category">Category Colors</option>
+                            <option value="theme">Theme Colors</option>
+                            <option value="mixed">Mixed Mode</option>
+                        </select>
+                        <div class="graph-setting-hint">How nodes/edges are colored</div>
+                    </div>
+                    
+                    <!-- Color Palette -->
+                    <div class="graph-setting-item">
+                        <label class="graph-setting-label">Color Palette</label>
+                        <select id="style-color-palette" class="graph-setting-select" onchange="window.GraphStyleControl.setPalette(this.value)">
+                            <option value="vibrant">Vibrant</option>
+                            <option value="pastel">Pastel</option>
+                            <option value="dark">Dark</option>
+                            <option value="neon">Neon</option>
+                            <option value="ocean">Ocean</option>
+                            <option value="sunset">Sunset</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Category Indicators -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-header">
+                            <label class="graph-control-title">Category Indicators</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="style-indicator-enabled" checked 
+                                    onchange="window.GraphStyleControl.toggleIndicators(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div id="indicator-controls">
+                            <select id="style-indicator-style" class="graph-setting-select" onchange="window.GraphStyleControl.setIndicatorStyle(this.value)" style="margin-bottom: 6px;">
+                                <option value="border" selected>Colored Border</option>
+                                <option value="background">Colored Background</option>
+                                <option value="glow">Glow Effect</option>
+                                <option value="badge">Badge Prefix</option>
+                                <option value="none">None</option>
+                            </select>
+                            
+                            <div id="border-width-control" style="margin-top: 6px;">
+                                <label class="graph-setting-label" style="font-size: 10px;">Border Width</label>
+                                <input type="range" id="style-border-width" min="1" max="8" value="4" 
+                                    oninput="document.getElementById('border-width-val').textContent = this.value; window.GraphStyleControl.setBorderWidth(parseInt(this.value));"
+                                    style="width: 100%;">
+                                <div style="text-align: center; color: var(--text-secondary); font-size: 10px;">
+                                    <span id="border-width-val">4</span>px
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Node Styling -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-title" style="margin-bottom: 8px;">Node Styling</div>
+                        
+                        <label class="graph-setting-label">Style Preset</label>
+                        <select id="style-node-preset" class="graph-setting-select" onchange="window.GraphStyleControl.setNodePreset(this.value)" style="margin-bottom: 8px;">
+                            <option value="minimal">Minimal</option>
+                            <option value="default" selected>Default</option>
+                            <option value="detailed">Detailed</option>
+                            <option value="card">Card View</option>
+                        </select>
+                        
+                        <div id="node-shape-control">
+                            <label class="graph-setting-label">Shape</label>
+                            <select id="style-node-shape" class="graph-setting-select" onchange="window.GraphStyleControl.setNodeShape(this.value)" style="margin-bottom: 8px;">
+                                <option value="dot">Dot</option>
+                                <option value="circle">Circle</option>
+                                <option value="diamond">Diamond</option>
+                                <option value="square">Square</option>
+                                <option value="triangle">Triangle</option>
+                                <option value="star">Star</option>
+                                <option value="hexagon">Hexagon</option>
+                            </select>
+                        </div>
+                        
+                        <label class="graph-setting-label">Size</label>
+                        <input type="range" id="style-node-size" min="10" max="50" value="25" 
+                            oninput="document.getElementById('node-size-val').textContent = this.value; window.GraphStyleControl.setNodeSize(parseInt(this.value));"
+                            style="width: 100%;">
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 10px; margin-bottom: 8px;">
+                            <span id="node-size-val">25</span>px
+                        </div>
+                        
+                        <label class="graph-setting-label">Label Property</label>
+                        <select id="node-label-property" class="graph-setting-select" onchange="window.GraphStyleControl.updateNodeLabels()">
+                            <option value="display_name">Display Name</option>
+                            <option value="id">ID</option>
+                            <option value="label">Label</option>
+                        </select>
+                        
+                        <label class="graph-checkbox-label" style="margin-top: 8px;">
+                            <input type="checkbox" id="style-node-labels" checked
+                                onchange="window.GraphStyleControl.toggleNodeLabels(this.checked)">
+                            Show Labels
+                        </label>
+                    </div>
+                    
+                    <!-- Edge Styling -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-title" style="margin-bottom: 8px;">Edge Styling</div>
+                        
+                        <label class="graph-setting-label">Color Mode</label>
+                        <select id="style-edge-color-mode" class="graph-setting-select" onchange="window.GraphStyleControl.setEdgeColorMode(this.value)" style="margin-bottom: 8px;">
+                            <option value="category">By Category/Type</option>
+                            <option value="source">Match Source Node</option>
+                            <option value="target">Match Target Node</option>
+                            <option value="gradient">Gradient (Source→Target)</option>
+                            <option value="theme">Theme Colors</option>
+                        </select>
+                        
+                        <label class="graph-setting-label">Width</label>
+                        <input type="range" id="style-edge-width" min="1" max="8" value="2" 
+                            oninput="document.getElementById('edge-width-val').textContent = this.value; window.GraphStyleControl.setEdgeWidth(parseInt(this.value));"
+                            style="width: 100%;">
+                        <div style="text-align: center; color: var(--text-secondary); font-size: 10px; margin-bottom: 8px;">
+                            <span id="edge-width-val">2</span>px
+                        </div>
+                        
+                        <label class="graph-setting-label">Style</label>
+                        <select id="style-edge-style" class="graph-setting-select" onchange="window.GraphStyleControl.setEdgeStyle(this.value)" style="margin-bottom: 8px;">
+                            <option value="dynamic" selected>Dynamic</option>
+                            <option value="straight">Straight</option>
+                            <option value="curved">Curved</option>
+                        </select>
+                        
+                        <label class="graph-setting-label">Label Property</label>
+                        <select id="edge-label-property" class="graph-setting-select" onchange="window.GraphStyleControl.updateEdgeLabels()" style="margin-bottom: 8px;">
+                            <option value="label">Label</option>
+                            <option value="type">Type</option>
+                            <option value="title">Title</option>
+                        </select>
+                        
+                        <label class="graph-checkbox-label">
+                            <input type="checkbox" id="style-edge-arrows" checked
+                                onchange="window.GraphStyleControl.toggleEdgeArrows(this.checked)">
+                            Show Arrows
+                        </label>
+                        
+                        <label class="graph-checkbox-label">
+                            <input type="checkbox" id="style-edge-labels" checked
+                                onchange="window.GraphStyleControl.toggleEdgeLabels(this.checked)">
+                            Show Labels
+                        </label>
+                        
+                        <label class="graph-checkbox-label">
+                            <input type="checkbox" id="style-reverse-follows"
+                                onchange="window.GraphStyleControl.toggleReverseFollows(this.checked)">
+                            Reverse "follows" arrows
+                        </label>
+                    </div>
+                    
+                    <!-- Animation Settings -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-header">
+                            <label class="graph-control-title">Animations</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="style-animation-enabled" checked
+                                    onchange="window.GraphStyleControl.toggleAnimations(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div id="animation-controls">
+                            <label class="graph-setting-label" style="font-size: 10px;">Node Entry</label>
+                            <select id="style-animation-node-entry" class="graph-setting-select" onchange="window.GraphStyleControl.setAnimationNodeEntry(this.value)" style="font-size: 11px; margin-bottom: 6px;">
+                                <option value="fade" selected>Fade In</option>
+                                <option value="scale">Scale Up</option>
+                                <option value="slide">Slide In</option>
+                                <option value="none">None</option>
+                            </select>
+                            
+                            <label class="graph-setting-label" style="font-size: 10px;">Edge Entry</label>
+                            <select id="style-animation-edge-entry" class="graph-setting-select" onchange="window.GraphStyleControl.setAnimationEdgeEntry(this.value)" style="font-size: 11px;">
+                                <option value="draw" selected>Draw</option>
+                                <option value="fade">Fade In</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtering -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-title" style="margin-bottom: 8px;">Filters</div>
+                        
+                        <button onclick="window.GraphStyleControl.showFilterPanel()" class="graph-btn graph-btn-secondary" style="width: 100%; margin-bottom: 8px;">
+                            🔍 Configure Filters
+                        </button>
+                        
+                        <label class="graph-checkbox-label">
+                            <input type="checkbox" id="style-hide-isolated" 
+                                onchange="window.GraphStyleControl.toggleHideIsolatedNodes(this.checked)">
+                            Hide Isolated Nodes
+                        </label>
+                    </div>
+                    
+                    <!-- Color Legend -->
+                    <div class="graph-control-box">
+                        <div class="graph-control-header">
+                            <label class="graph-control-title">Show Color Legend</label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="style-legend-enabled" checked
+                                    onchange="window.GraphStyleControl.toggleLegend(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Apply/Reset Buttons -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                        <button onclick="window.GraphStyleControl.applyAllStyles()" class="graph-btn">Apply</button>
+                        <button onclick="window.GraphStyleControl.resetToDefaults()" class="graph-btn graph-btn-secondary">Reset</button>
+                    </div>
+                </div>
+            `;
+        },
+
+        /**
+         * Show style controls in GraphInfoCard
+         */
+        showInCard: function(nodeId) {
+            if (!window.GraphInfoCard) return;
+            
+            const html = this.getStyleControlsHTML();
+            
+            window.GraphInfoCard.showInlineContent(
+                '🎨 Style Controls',
+                html,
+                nodeId ? `window.GraphInfoCard.expandNodeInfo('${nodeId}')` : null
+            );
+            
+            // Sync UI after rendering
+            setTimeout(() => {
+                this.syncUIWithSettings();
+            }, 100);
+        },
     };
-    
 })();

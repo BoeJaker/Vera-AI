@@ -228,6 +228,8 @@
             if (window.applyThemeToGraph) {
                 window.applyThemeToGraph();
             }
+            // Apply initial styles
+            app.GraphStyleControl.applyAllStyles();
         });
 
         // Initialize GraphStyleControl with session ID
@@ -418,6 +420,8 @@
                         if (window.applyThemeToGraph) {
                             window.applyThemeToGraph();
                         }
+                        // Apply initial styles
+                        app.GraphStyleControl.applyAllStyles();
                     });
                 });
             }
@@ -462,409 +466,409 @@
      * Add nodes to graph - OPTIMIZED for performance
      * NO animation delays - batch operations instead
      */
- VeraChat.prototype.addNodesToGraph = function(nodes, edges) {
-    if (!nodes || nodes.length === 0) return;
-    
-    const wasEmpty = (this.networkData.nodes?.length || 0) === 0;
-    const newNodeCount = nodes.length;
-    const shouldAnimate = newNodeCount < 200; // Animate for reasonable sizes
-    
-    if (wasEmpty) {
-        if (window.graphLoaderUtils) {
-            window.graphLoaderUtils.show('Adding nodes');
-        }
-    }
-    
-    if (!this.networkInstance) {
-        console.warn('Network instance not available');
-        return;
-    }
-    
-    const nodesDataSet = this.networkInstance.body.data.nodes;
-    const edgesDataSet = this.networkInstance.body.data.edges;
-    
-    // Build parent-child relationships from edges
-    const parentMap = new Map(); // nodeId -> [parent node IDs]
-    const newNodeIds = new Set(nodes.map(n => n.id));
-    
-    if (edges && edges.length > 0) {
-        edges.forEach(edge => {
-            const isNewNodeTo = newNodeIds.has(edge.to);
-            const isNewNodeFrom = newNodeIds.has(edge.from);
-            
-            // If edge connects new node to existing node
-            if (isNewNodeTo && !isNewNodeFrom) {
-                // edge.from is parent of edge.to
-                if (!parentMap.has(edge.to)) {
-                    parentMap.set(edge.to, []);
-                }
-                parentMap.get(edge.to).push(edge.from);
-            } else if (isNewNodeFrom && !isNewNodeTo) {
-                // edge.to is parent of edge.from
-                if (!parentMap.has(edge.from)) {
-                    parentMap.set(edge.from, []);
-                }
-                parentMap.get(edge.from).push(edge.to);
+    VeraChat.prototype.addNodesToGraph = function(nodes, edges) {
+        if (!nodes || nodes.length === 0) return;
+        
+        const wasEmpty = (this.networkData.nodes?.length || 0) === 0;
+        const newNodeCount = nodes.length;
+        const shouldAnimate = newNodeCount < 200; // Animate for reasonable sizes
+        
+        if (wasEmpty) {
+            if (window.graphLoaderUtils) {
+                window.graphLoaderUtils.show('Adding nodes');
             }
-        });
-    }
-    
-    console.log(`Adding ${nodes.length} nodes (${parentMap.size} with parents)`);
-    
-    // Get existing node positions for parent positioning
-    const existingPositions = {};
-    if (shouldAnimate) {
-        try {
-            this.networkInstance.body.data.nodes.forEach(node => {
-                const pos = this.networkInstance.getPositions([node.id])[node.id];
-                if (pos) {
-                    existingPositions[node.id] = pos;
+        }
+        
+        if (!this.networkInstance) {
+            console.warn('Network instance not available');
+            return;
+        }
+        
+        const nodesDataSet = this.networkInstance.body.data.nodes;
+        const edgesDataSet = this.networkInstance.body.data.edges;
+        
+        // Build parent-child relationships from edges
+        const parentMap = new Map(); // nodeId -> [parent node IDs]
+        const newNodeIds = new Set(nodes.map(n => n.id));
+        
+        if (edges && edges.length > 0) {
+            edges.forEach(edge => {
+                const isNewNodeTo = newNodeIds.has(edge.to);
+                const isNewNodeFrom = newNodeIds.has(edge.from);
+                
+                // If edge connects new node to existing node
+                if (isNewNodeTo && !isNewNodeFrom) {
+                    // edge.from is parent of edge.to
+                    if (!parentMap.has(edge.to)) {
+                        parentMap.set(edge.to, []);
+                    }
+                    parentMap.get(edge.to).push(edge.from);
+                } else if (isNewNodeFrom && !isNewNodeTo) {
+                    // edge.to is parent of edge.from
+                    if (!parentMap.has(edge.from)) {
+                        parentMap.set(edge.from, []);
+                    }
+                    parentMap.get(edge.from).push(edge.to);
                 }
             });
-        } catch (e) {
-            console.warn('Could not get existing positions:', e);
-        }
-    }
-    
-    // Disable physics temporarily for controlled animation
-    const hadPhysics = this.networkInstance.physics.options.enabled;
-    if (hadPhysics) {
-        this.networkInstance.setOptions({ physics: { enabled: false } });
-    }
-    
-    // Process nodes with initial positioning near parents
-    const processedNodes = nodes.map(node => {
-        let initialX, initialY;
-        
-        if (shouldAnimate && parentMap.has(node.id)) {
-            // Position near parent node(s)
-            const parents = parentMap.get(node.id);
-            const parentPositions = parents
-                .map(parentId => existingPositions[parentId])
-                .filter(pos => pos !== undefined);
-            
-            if (parentPositions.length > 0) {
-                // Average position of all parents
-                const avgX = parentPositions.reduce((sum, pos) => sum + pos.x, 0) / parentPositions.length;
-                const avgY = parentPositions.reduce((sum, pos) => sum + pos.y, 0) / parentPositions.length;
-                
-                // Add small random offset so nodes don't stack perfectly
-                const offset = 40;
-                initialX = avgX + (Math.random() - 0.5) * offset;
-                initialY = avgY + (Math.random() - 0.5) * offset;
-            }
         }
         
-        const processedNode = {
-            id: node.id,
-            label: node.label,
-            title: node.title,
-            properties: node.properties,
-            type: node.type || node.labels,
-            color: node.color || '#3b82f6',
-            size: node.size || 25,
-            scaling: {
-                min: 1,
-                max: 50
-            }
-        };
+        console.log(`Adding ${nodes.length} nodes (${parentMap.size} with parents)`);
         
-        // Set initial position if we have one (nodes spawn near parents)
-        if (initialX !== undefined && initialY !== undefined) {
-            processedNode.x = initialX;
-            processedNode.y = initialY;
-            processedNode.fixed = { x: false, y: false }; // Allow physics to move them
-        }
-        
-        // Start with small size and low opacity for animation
+        // Get existing node positions for parent positioning
+        const existingPositions = {};
         if (shouldAnimate) {
-            processedNode.value = 1; // Start tiny
-            processedNode.opacity = 0.1; // Start transparent
-        } else {
-            processedNode.value = node.size || 25;
-            processedNode.opacity = 1.0;
+            try {
+                this.networkInstance.body.data.nodes.forEach(node => {
+                    const pos = this.networkInstance.getPositions([node.id])[node.id];
+                    if (pos) {
+                        existingPositions[node.id] = pos;
+                    }
+                });
+            } catch (e) {
+                console.warn('Could not get existing positions:', e);
+            }
         }
         
-        return processedNode;
-    });
-    
-    // BATCH ADD - All nodes at once (fast!)
-    try {
-        nodesDataSet.add(processedNodes);
-        console.log(`✓ Batch added ${processedNodes.length} nodes`);
-    } catch (e) {
-        console.warn('Some nodes exist, updating:', e);
-        nodesDataSet.update(processedNodes);
-    }
-    
-    // Animate nodes growing to full size with smooth easing
-    if (shouldAnimate) {
-        const animationDuration = 800; // ms
-        const startTime = performance.now();
+        // Disable physics temporarily for controlled animation
+        const hadPhysics = this.networkInstance.physics.options.enabled;
+        if (hadPhysics) {
+            this.networkInstance.setOptions({ physics: { enabled: false } });
+        }
         
-        const animate = (currentTime) => {
-            const elapsed = currentTime - startTime;
-            const progress = Math.min(elapsed / animationDuration, 1);
+        // Process nodes with initial positioning near parents
+        const processedNodes = nodes.map(node => {
+            let initialX, initialY;
             
-            // Ease-out cubic for smooth deceleration
-            const easeProgress = 1 - Math.pow(1 - progress, 3);
-            
-            // Update all nodes in batch (efficient!)
-            const updates = processedNodes.map(node => {
-                const targetSize = nodes.find(n => n.id === node.id)?.size || 25;
+            if (shouldAnimate && parentMap.has(node.id)) {
+                // Position near parent node(s)
+                const parents = parentMap.get(node.id);
+                const parentPositions = parents
+                    .map(parentId => existingPositions[parentId])
+                    .filter(pos => pos !== undefined);
                 
-                return {
-                    id: node.id,
-                    value: 1 + (targetSize - 1) * easeProgress,
-                    opacity: 0.1 + 0.9 * easeProgress
-                };
-            });
+                if (parentPositions.length > 0) {
+                    // Average position of all parents
+                    const avgX = parentPositions.reduce((sum, pos) => sum + pos.x, 0) / parentPositions.length;
+                    const avgY = parentPositions.reduce((sum, pos) => sum + pos.y, 0) / parentPositions.length;
+                    
+                    // Add small random offset so nodes don't stack perfectly
+                    const offset = 40;
+                    initialX = avgX + (Math.random() - 0.5) * offset;
+                    initialY = avgY + (Math.random() - 0.5) * offset;
+                }
+            }
             
-            nodesDataSet.update(updates);
+            const processedNode = {
+                id: node.id,
+                label: node.label,
+                title: node.title,
+                properties: node.properties,
+                type: node.type || node.labels,
+                color: node.color || '#3b82f6',
+                size: node.size || 25,
+                scaling: {
+                    min: 1,
+                    max: 50
+                }
+            };
             
-            if (progress < 1) {
-                requestAnimationFrame(animate);
+            // Set initial position if we have one (nodes spawn near parents)
+            if (initialX !== undefined && initialY !== undefined) {
+                processedNode.x = initialX;
+                processedNode.y = initialY;
+                processedNode.fixed = { x: false, y: false }; // Allow physics to move them
+            }
+            
+            // Start with small size and low opacity for animation
+            if (shouldAnimate) {
+                processedNode.value = 1; // Start tiny
+                processedNode.opacity = 0.1; // Start transparent
             } else {
-                // Animation complete - finalize node properties
-                const finalUpdates = processedNodes.map(node => {
+                processedNode.value = node.size || 25;
+                processedNode.opacity = 1.0;
+            }
+            
+            return processedNode;
+        });
+        
+        // BATCH ADD - All nodes at once (fast!)
+        try {
+            nodesDataSet.add(processedNodes);
+            console.log(`✓ Batch added ${processedNodes.length} nodes`);
+        } catch (e) {
+            console.warn('Some nodes exist, updating:', e);
+            nodesDataSet.update(processedNodes);
+        }
+        
+        // Animate nodes growing to full size with smooth easing
+        if (shouldAnimate) {
+            const animationDuration = 800; // ms
+            const startTime = performance.now();
+            
+            const animate = (currentTime) => {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / animationDuration, 1);
+                
+                // Ease-out cubic for smooth deceleration
+                const easeProgress = 1 - Math.pow(1 - progress, 3);
+                
+                // Update all nodes in batch (efficient!)
+                const updates = processedNodes.map(node => {
                     const targetSize = nodes.find(n => n.id === node.id)?.size || 25;
+                    
                     return {
                         id: node.id,
-                        value: targetSize,
-                        opacity: 1.0
+                        value: 1 + (targetSize - 1) * easeProgress,
+                        opacity: 0.1 + 0.9 * easeProgress
                     };
                 });
-                nodesDataSet.update(finalUpdates);
-                console.log('✓ Node animation complete');
                 
-                // Re-enable physics after animation for natural spreading
-                if (hadPhysics) {
-                    setTimeout(() => {
-                        const totalNodes = this.networkData.nodes.length + nodes.length;
-                        
-                        // Use adaptive physics if available
-                        let physicsConfig;
-                        if (typeof getPhysicsConfig === 'function') {
-                            physicsConfig = getPhysicsConfig(totalNodes);
-                        } else {
-                            physicsConfig = { enabled: true };
-                        }
-                        
-                        this.networkInstance.setOptions({ physics: physicsConfig });
-                        
-                        // Smoothly fit view after physics settles
+                nodesDataSet.update(updates);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Animation complete - finalize node properties
+                    const finalUpdates = processedNodes.map(node => {
+                        const targetSize = nodes.find(n => n.id === node.id)?.size || 25;
+                        return {
+                            id: node.id,
+                            value: targetSize,
+                            opacity: 1.0
+                        };
+                    });
+                    nodesDataSet.update(finalUpdates);
+                    console.log('✓ Node animation complete');
+                    
+                    // Re-enable physics after animation for natural spreading
+                    if (hadPhysics) {
                         setTimeout(() => {
-                            const newNodeIdsList = nodes.map(n => n.id);
-                            this.networkInstance.fit({
-                                nodes: newNodeIdsList,
-                                animation: {
-                                    duration: 1000,
-                                    easingFunction: 'easeInOutQuad'
-                                }
-                            });
-                        }, 500);
-                    }, 100);
-                }
-                
-                // Update GraphAddon data after animation
-                if (window.GraphAddon && window.GraphAddon.networkReady) {
-                    setTimeout(() => {
-                        window.GraphAddon.buildNodesData();
-                        window.GraphAddon.initializeFilters();
-                    }, 100);
-                }
-            }
-        };
-        
-        requestAnimationFrame(animate);
-    } else {
-        // No animation - just add everything immediately
-        if (hadPhysics) {
-            const totalNodes = this.networkData.nodes.length + nodes.length;
-            let physicsConfig;
-            if (typeof getPhysicsConfig === 'function') {
-                physicsConfig = getPhysicsConfig(totalNodes);
-            } else {
-                physicsConfig = { enabled: true };
-            }
-            this.networkInstance.setOptions({ physics: physicsConfig });
-        }
-    }
-    
-    // Add edges with fade-in animation
-    if (edges && edges.length > 0) {
-        const processedEdges = edges.map((edge, index) => ({
-            id: edge.id || `edge_${edge.from}_${edge.to}_${index}`,
-            from: edge.from,
-            to: edge.to,
-            label: edge.label,
-            title: edge.label,
-            color: shouldAnimate ? { opacity: 0.0 } : undefined,
-            width: shouldAnimate ? 0.1 : 2
-        }));
-        
-        try {
-            edgesDataSet.add(processedEdges);
-            console.log(`✓ Batch added ${processedEdges.length} edges`);
-        } catch (e) {
-            console.warn('Some edges exist, updating:', e);
-            edgesDataSet.update(processedEdges);
-        }
-        
-        // Fade in edges after node animation starts
-        if (shouldAnimate) {
-            setTimeout(() => {
-                const edgeAnimationDuration = 600;
-                const startTime = performance.now();
-                
-                const animateEdges = (currentTime) => {
-                    const elapsed = currentTime - startTime;
-                    const progress = Math.min(elapsed / edgeAnimationDuration, 1);
-                    const easeProgress = 1 - Math.pow(1 - progress, 2);
-                    
-                    const edgeUpdates = processedEdges.map(edge => ({
-                        id: edge.id,
-                        color: { opacity: easeProgress },
-                        width: 0.1 + 1.9 * easeProgress
-                    }));
-                    
-                    edgesDataSet.update(edgeUpdates);
-                    
-                    if (progress < 1) {
-                        requestAnimationFrame(animateEdges);
-                    } else {
-                        // Finalize edges
-                        const finalEdgeUpdates = processedEdges.map(edge => ({
-                            id: edge.id,
-                            color: { opacity: 1.0 },
-                            width: 2
-                        }));
-                        edgesDataSet.update(finalEdgeUpdates);
-                        console.log('✓ Edge animation complete');
+                            const totalNodes = this.networkData.nodes.length + nodes.length;
+                            
+                            // Use adaptive physics if available
+                            let physicsConfig;
+                            if (typeof getPhysicsConfig === 'function') {
+                                physicsConfig = getPhysicsConfig(totalNodes);
+                            } else {
+                                physicsConfig = { enabled: true };
+                            }
+                            
+                            this.networkInstance.setOptions({ physics: physicsConfig });
+                            
+                            // Smoothly fit view after physics settles
+                            setTimeout(() => {
+                                const newNodeIdsList = nodes.map(n => n.id);
+                                this.networkInstance.fit({
+                                    nodes: newNodeIdsList,
+                                    animation: {
+                                        duration: 1000,
+                                        easingFunction: 'easeInOutQuad'
+                                    }
+                                });
+                            }, 500);
+                        }, 100);
                     }
-                };
-                
-                requestAnimationFrame(animateEdges);
-            }, 200); // Start edge animation 200ms after nodes
+                    
+                    // Update GraphAddon data after animation
+                    if (window.GraphAddon && window.GraphAddon.networkReady) {
+                        setTimeout(() => {
+                            window.GraphAddon.buildNodesData();
+                            window.GraphAddon.initializeFilters();
+                        }, 100);
+                    }
+                }
+            };
+            
+            requestAnimationFrame(animate);
+        } else {
+            // No animation - just add everything immediately
+            if (hadPhysics) {
+                const totalNodes = this.networkData.nodes.length + nodes.length;
+                let physicsConfig;
+                if (typeof getPhysicsConfig === 'function') {
+                    physicsConfig = getPhysicsConfig(totalNodes);
+                } else {
+                    physicsConfig = { enabled: true };
+                }
+                this.networkInstance.setOptions({ physics: physicsConfig });
+            }
         }
-    }
-    
-    // Update internal arrays
-    if (nodes && nodes.length > 0) {
-        this.networkData.nodes = [...(this.networkData.nodes || []), ...nodes];
-    }
-    if (edges && edges.length > 0) {
-        this.networkData.edges = [...(this.networkData.edges || []), ...edges];
-    }
-    
-    // Update counters
-    document.getElementById('nodeCount').textContent = this.networkData.nodes.length;
-    document.getElementById('edgeCount').textContent = this.networkData.edges.length;
-    
-    // Hide loader when done
-    if (window.graphLoaderUtils) {
-        setTimeout(() => {
-            if (this.networkData.nodes?.length > 0) {
-                window.graphLoaderUtils.hide(true);
+        
+        // Add edges with fade-in animation
+        if (edges && edges.length > 0) {
+            const processedEdges = edges.map((edge, index) => ({
+                id: edge.id || `edge_${edge.from}_${edge.to}_${index}`,
+                from: edge.from,
+                to: edge.to,
+                label: edge.label,
+                title: edge.label,
+                color: shouldAnimate ? { opacity: 0.0 } : undefined,
+                width: shouldAnimate ? 0.1 : 2
+            }));
+            
+            try {
+                edgesDataSet.add(processedEdges);
+                console.log(`✓ Batch added ${processedEdges.length} edges`);
+            } catch (e) {
+                console.warn('Some edges exist, updating:', e);
+                edgesDataSet.update(processedEdges);
             }
-        }, shouldAnimate ? 1500 : 500);
-    }
-};
+            
+            // Fade in edges after node animation starts
+            if (shouldAnimate) {
+                setTimeout(() => {
+                    const edgeAnimationDuration = 600;
+                    const startTime = performance.now();
+                    
+                    const animateEdges = (currentTime) => {
+                        const elapsed = currentTime - startTime;
+                        const progress = Math.min(elapsed / edgeAnimationDuration, 1);
+                        const easeProgress = 1 - Math.pow(1 - progress, 2);
+                        
+                        const edgeUpdates = processedEdges.map(edge => ({
+                            id: edge.id,
+                            color: { opacity: easeProgress },
+                            width: 0.1 + 1.9 * easeProgress
+                        }));
+                        
+                        edgesDataSet.update(edgeUpdates);
+                        
+                        if (progress < 1) {
+                            requestAnimationFrame(animateEdges);
+                        } else {
+                            // Finalize edges
+                            const finalEdgeUpdates = processedEdges.map(edge => ({
+                                id: edge.id,
+                                color: { opacity: 1.0 },
+                                width: 2
+                            }));
+                            edgesDataSet.update(finalEdgeUpdates);
+                            console.log('✓ Edge animation complete');
+                        }
+                    };
+                    
+                    requestAnimationFrame(animateEdges);
+                }, 200); // Start edge animation 200ms after nodes
+            }
+        }
+        
+        // Update internal arrays
+        if (nodes && nodes.length > 0) {
+            this.networkData.nodes = [...(this.networkData.nodes || []), ...nodes];
+        }
+        if (edges && edges.length > 0) {
+            this.networkData.edges = [...(this.networkData.edges || []), ...edges];
+        }
+        
+        // Update counters
+        document.getElementById('nodeCount').textContent = this.networkData.nodes.length;
+        document.getElementById('edgeCount').textContent = this.networkData.edges.length;
+        
+        // Hide loader when done
+        if (window.graphLoaderUtils) {
+            setTimeout(() => {
+                if (this.networkData.nodes?.length > 0) {
+                    window.graphLoaderUtils.hide(true);
+                }
+            }, shouldAnimate ? 1500 : 500);
+        }
+    };
 
-/**
- * Optional: Advanced version with staggered spawning (wave effect)
- * Nodes appear in waves based on their distance from parents
- */
-VeraChat.prototype.addNodesToGraphWithWaves = function(nodes, edges) {
-    if (!nodes || nodes.length === 0) return;
-    
-    const newNodeCount = nodes.length;
-    const shouldAnimate = newNodeCount < 200;
-    
-    if (!this.networkInstance) {
-        console.warn('Network instance not available');
-        return;
-    }
-    
-    // Build dependency graph to determine spawn order
-    const parentMap = new Map();
-    const newNodeIds = new Set(nodes.map(n => n.id));
-    
-    if (edges && edges.length > 0) {
-        edges.forEach(edge => {
-            const isNewNodeTo = newNodeIds.has(edge.to);
-            const isNewNodeFrom = newNodeIds.has(edge.from);
-            
-            if (isNewNodeTo && !isNewNodeFrom) {
-                if (!parentMap.has(edge.to)) {
-                    parentMap.set(edge.to, []);
+    /**
+     * Optional: Advanced version with staggered spawning (wave effect)
+     * Nodes appear in waves based on their distance from parents
+     */
+    VeraChat.prototype.addNodesToGraphWithWaves = function(nodes, edges) {
+        if (!nodes || nodes.length === 0) return;
+        
+        const newNodeCount = nodes.length;
+        const shouldAnimate = newNodeCount < 200;
+        
+        if (!this.networkInstance) {
+            console.warn('Network instance not available');
+            return;
+        }
+        
+        // Build dependency graph to determine spawn order
+        const parentMap = new Map();
+        const newNodeIds = new Set(nodes.map(n => n.id));
+        
+        if (edges && edges.length > 0) {
+            edges.forEach(edge => {
+                const isNewNodeTo = newNodeIds.has(edge.to);
+                const isNewNodeFrom = newNodeIds.has(edge.from);
+                
+                if (isNewNodeTo && !isNewNodeFrom) {
+                    if (!parentMap.has(edge.to)) {
+                        parentMap.set(edge.to, []);
+                    }
+                    parentMap.get(edge.to).push(edge.from);
+                } else if (isNewNodeFrom && !isNewNodeTo) {
+                    if (!parentMap.has(edge.from)) {
+                        parentMap.set(edge.from, []);
+                    }
+                    parentMap.get(edge.from).push(edge.to);
                 }
-                parentMap.get(edge.to).push(edge.from);
-            } else if (isNewNodeFrom && !isNewNodeTo) {
-                if (!parentMap.has(edge.from)) {
-                    parentMap.set(edge.from, []);
-                }
-                parentMap.get(edge.from).push(edge.to);
-            }
-        });
-    }
-    
-    // Calculate spawn waves (nodes with parents spawn in waves)
-    const waves = [];
-    const processed = new Set();
-    
-    // Wave 0: Nodes with no parents (or orphans)
-    const wave0 = nodes.filter(n => !parentMap.has(n.id));
-    if (wave0.length > 0) {
-        waves.push(wave0);
-        wave0.forEach(n => processed.add(n.id));
-    }
-    
-    // Subsequent waves: Nodes whose parents are in previous waves
-    let currentWave = 1;
-    while (processed.size < nodes.length && currentWave < 10) {
-        const waveNodes = nodes.filter(n => {
-            if (processed.has(n.id)) return false;
-            
-            const parents = parentMap.get(n.id) || [];
-            // All parents must be processed or not exist
-            return parents.length === 0 || parents.every(p => {
-                // Parent is either existing node or processed new node
-                return !newNodeIds.has(p) || processed.has(p);
             });
+        }
+        
+        // Calculate spawn waves (nodes with parents spawn in waves)
+        const waves = [];
+        const processed = new Set();
+        
+        // Wave 0: Nodes with no parents (or orphans)
+        const wave0 = nodes.filter(n => !parentMap.has(n.id));
+        if (wave0.length > 0) {
+            waves.push(wave0);
+            wave0.forEach(n => processed.add(n.id));
+        }
+        
+        // Subsequent waves: Nodes whose parents are in previous waves
+        let currentWave = 1;
+        while (processed.size < nodes.length && currentWave < 10) {
+            const waveNodes = nodes.filter(n => {
+                if (processed.has(n.id)) return false;
+                
+                const parents = parentMap.get(n.id) || [];
+                // All parents must be processed or not exist
+                return parents.length === 0 || parents.every(p => {
+                    // Parent is either existing node or processed new node
+                    return !newNodeIds.has(p) || processed.has(p);
+                });
+            });
+            
+            if (waveNodes.length === 0) break;
+            
+            waves.push(waveNodes);
+            waveNodes.forEach(n => processed.add(n.id));
+            currentWave++;
+        }
+        
+        // Add any remaining nodes to final wave
+        const remaining = nodes.filter(n => !processed.has(n.id));
+        if (remaining.length > 0) {
+            waves.push(remaining);
+        }
+        
+        console.log(`Adding ${nodes.length} nodes in ${waves.length} waves:`, 
+                    waves.map(w => w.length));
+        
+        // Add nodes wave by wave with delays
+        const waveDelay = shouldAnimate ? 300 : 0; // 300ms between waves
+        
+        waves.forEach((waveNodes, waveIndex) => {
+            setTimeout(() => {
+                // Use the standard addNodesToGraph for each wave
+                const waveEdges = edges ? edges.filter(e => 
+                    waveNodes.some(n => n.id === e.from || n.id === e.to)
+                ) : [];
+                
+                this.addNodesToGraph(waveNodes, waveEdges);
+            }, waveIndex * waveDelay);
         });
         
-        if (waveNodes.length === 0) break;
-        
-        waves.push(waveNodes);
-        waveNodes.forEach(n => processed.add(n.id));
-        currentWave++;
-    }
-    
-    // Add any remaining nodes to final wave
-    const remaining = nodes.filter(n => !processed.has(n.id));
-    if (remaining.length > 0) {
-        waves.push(remaining);
-    }
-    
-    console.log(`Adding ${nodes.length} nodes in ${waves.length} waves:`, 
-                waves.map(w => w.length));
-    
-    // Add nodes wave by wave with delays
-    const waveDelay = shouldAnimate ? 300 : 0; // 300ms between waves
-    
-    waves.forEach((waveNodes, waveIndex) => {
-        setTimeout(() => {
-            // Use the standard addNodesToGraph for each wave
-            const waveEdges = edges ? edges.filter(e => 
-                waveNodes.some(n => n.id === e.from || n.id === e.to)
-            ) : [];
-            
-            this.addNodesToGraph(waveNodes, waveEdges);
-        }, waveIndex * waveDelay);
-    });
-    
-};
+    };
 /**
  * Unified Graph Data Loader - PERFORMANCE OPTIMIZED
  * Single source of truth for loading data into the graph

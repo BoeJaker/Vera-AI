@@ -96,3 +96,203 @@
     font-size: 11px;
     border: 1px solid #334155;
 }
+
+
+
+
+
+/**
+ * GraphCardView Styles - Pure HTML/CSS Version
+ * Theme-compatible styling for hierarchical card visualization
+ */
+
+/* Main container */
+#graph-card-view {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    user-select: none;
+}
+
+/* Canvas - the pannable area */
+#card-view-canvas {
+    cursor: inherit;
+}
+
+/* Prevent text selection during drag */
+#graph-card-view.dragging {
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+/* Card nodes */
+.graph-card-node {
+    user-select: none;
+}
+
+.graph-card-node:hover {
+    z-index: 100 !important;
+}
+
+.graph-card-node.focused {
+    border-color: var(--accent) !important;
+    box-shadow: 0 8px 32px rgba(96, 165, 250, 0.4) !important;
+}
+
+/* Card animations */
+@keyframes cardFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.95) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.graph-card-node {
+    animation: cardFadeIn 0.3s ease-out;
+}
+
+/* Edge container */
+#card-view-edges {
+    pointer-events: none;
+}
+
+/* Edge lines */
+#card-view-edges > div {
+    transition: opacity 0.2s;
+}
+
+/* Control buttons */
+#graph-card-view button:hover {
+    background: var(--hover) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+#graph-card-view button:active {
+    transform: translateY(0);
+}
+
+/* Highlight mode */
+.graph-card-node.highlighted {
+    border-color: var(--accent) !important;
+    background: var(--accent-bg, rgba(96, 165, 250, 0.1)) !important;
+}
+
+/* Smooth transitions */
+.graph-card-node {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#card-view-canvas {
+    will-change: transform;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .graph-card-node {
+        width: 240px !important;
+    }
+    
+    #graph-card-view button {
+        padding: 8px 12px !important;
+        font-size: 11px !important;
+    }
+}
+
+/* Loading state */
+#graph-card-view.loading::after {
+    content: 'Loading...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-secondary);
+    font-size: 18px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+/* Empty state */
+#graph-card-view.empty::after {
+    content: 'No nodes to display';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-secondary);
+    font-size: 16px;
+    font-style: italic;
+    pointer-events: none;
+}
+
+/* Scrollbar styling for webkit browsers */
+#graph-card-view::-webkit-scrollbar {
+    display: none;
+}
+
+/* Print styles */
+@media print {
+    #graph-card-view {
+        background: white !important;
+    }
+    
+    .graph-card-node {
+        border-color: #000 !important;
+        box-shadow: none !important;
+    }
+    
+    #graph-card-view button {
+        display: none !important;
+    }
+    
+    #card-view-edges > div {
+        opacity: 1 !important;
+    }
+}
+
+/* Performance optimization */
+#card-view-canvas {
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+/* Cursor states */
+#graph-card-view[data-dragging="true"] {
+    cursor: grabbing !important;
+}
+
+#graph-card-view[data-dragging="false"] {
+    cursor: grab !important;
+}
+
+/* Edge hover effect */
+#card-view-edges > div:hover {
+    opacity: 1 !important;
+    background: var(--accent) !important;
+}
+
+/* Expand/collapse button */
+.graph-card-node [data-expand] {
+    transition: transform 0.2s;
+}
+
+.graph-card-node [data-expand]:hover {
+    transform: scale(1.2);
+}
+
+/* Compact mode for smaller screens */
+@media (max-height: 600px) {
+    .graph-card-node {
+        min-height: 120px !important;
+        padding: 10px !important;
+    }
+    
+    .graph-card-node > div {
+        margin-bottom: 6px !important;
+    }
+}

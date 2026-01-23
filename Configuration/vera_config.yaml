@@ -1,0 +1,382 @@
+# Vera AI System Configuration
+# This file supports hot-reloading - changes will be automatically detected
+# Environment variables can override these settings (see VERA_* prefixes)
+
+# Ollama API Configuration
+ollama:
+  api_url: "http://localhost:11434"
+  timeout: 2400
+  use_local_fallback: true
+  connection_retry_attempts: 3
+  connection_retry_delay: 1.0
+  
+  # Thought capture (for models like DeepSeek, GPT-OSS, etc.)
+  enable_thought_capture: true
+  thought_display_format: "inline"  # inline, separate, minimal
+  
+  # Default inference parameters
+  temperature: 0.7
+  top_k: 40
+  top_p: 0.9
+  num_predict: -1  # -1 = unlimited tokens
+  repeat_penalty: 1.1
+  
+  # Model metadata
+  cache_model_metadata: true
+  metadata_cache_ttl: 3600  # seconds
+
+# Model Selection and Parameters
+models:
+  # Model names (must be available in Ollama)
+  embedding_model: "mistral:7b"
+  fast_llm: "gemma2"
+  intermediate_llm: "gemma3:12b"
+  deep_llm: "gemma3:27b"
+  reasoning_llm: "gpt-oss:20b"
+  tool_llm: "gemma3:12b"
+  
+  # Temperature settings for each model type
+  fast_temperature: 0.6
+  intermediate_temperature: 0.4
+  deep_temperature: 0.6
+  reasoning_temperature: 0.7
+  tool_temperature: 0.1
+  
+  # Advanced parameters per model type
+  fast_top_k: 40
+  fast_top_p: 0.9
+  intermediate_top_k: 40
+  intermediate_top_p: 0.85
+  deep_top_k: 50
+  deep_top_p: 0.95
+  reasoning_top_k: 40
+  reasoning_top_p: 0.9
+  tool_top_k: 20
+  tool_top_p: 0.8
+  
+  # Context management
+  max_context_tokens: 4096
+  context_overflow_strategy: "truncate"  # truncate, summarize, error
+
+# Memory System Configuration
+memory:
+  chroma_path: "./Memory/vera_agent_memory"
+  chroma_dir: "./Memory/chroma_store"
+  archive_path: "./Memory/archive/memory_archive.jsonl"
+  
+  # Neo4j Graph Database
+  neo4j_uri: "bolt://localhost:7687"
+  neo4j_user: "neo4j"
+  neo4j_password: "testpassword"
+  
+  # Vector Store Settings
+  vector_search_k: 5
+  plan_vector_search_k: 5
+  
+  # Memory Management
+  enable_memory_triage: false
+  auto_persist: true
+  persist_interval: 300  # seconds
+
+# Task Orchestration
+orchestrator:
+  redis_url: "redis://localhost:6379"
+  cpu_threshold: 75.0
+  
+  # Worker pool sizes per task type
+  llm_workers: 3
+  whisper_workers: 1
+  tool_workers: 4
+  ml_model_workers: 1
+  background_workers: 2
+  general_workers: 2
+  
+  # Operation timeouts (seconds)
+  triage_timeout: 10.0
+  toolchain_timeout: 120.0
+  llm_timeout: 60.0
+  fast_llm_timeout: 30.0
+
+# Infrastructure Orchestration (Advanced)
+infrastructure:
+  enable_infrastructure: false
+  enable_docker: false
+  enable_proxmox: false
+  auto_scale: true
+  max_resources: 10
+  
+  # Docker Configuration
+  docker_url: "unix://var/run/docker.sock"
+  docker_registry: null  # Optional: private registry URL
+  
+  # Proxmox Configuration
+  proxmox_host: null  # e.g., "proxmox.example.com"
+  proxmox_user: null  # e.g., "root@pam"
+  proxmox_password: null
+  proxmox_verify_ssl: false
+  proxmox_node: "pve"
+  
+  # Resource Management
+  idle_resource_cleanup_interval: 300  # seconds
+  max_idle_time: 600  # seconds
+
+# Proactive Focus Manager
+proactive_focus:
+  enabled: true
+  default_focus: null  # Optional: set a default focus topic
+  iteration_interval: 600  # seconds between proactive thoughts
+  auto_execute: true
+  max_iterations: null  # null = unlimited
+
+# Playwright Browser Automation
+playwright:
+  enabled: true
+  headless: true
+  browser_type: "chromium"  # chromium, firefox, or webkit
+  timeout: 30000  # milliseconds
+
+# ============================================================================
+# Agent Configuration System
+# ============================================================================
+
+agents:
+  # Enable/disable agent system
+  enabled: true
+  
+  # Auto-load agent configs on startup
+  auto_load: true
+  
+  # Auto-build Ollama models on startup (can be slow)
+  auto_build: false
+  
+  # Directories
+  agents_dir: "./Vera/Ollama/Agents/agents"
+  templates_dir: "./Vera/Ollama/Agents/templates"
+  build_dir: "./Vera/Agents/build/agents"
+  
+  # Default agents for different task types
+  default_agents:
+    triage: "triage-agent"           # Fast query classification
+    tool_execution: "tool-agent"     # Precise tool execution
+    reasoning: "reasoning-agent"     # Deep thinking
+    conversation: "gemma2"           # General chat
+  
+  # Agent-specific overrides (optional)
+  agent_configs:
+    tool-agent:
+      temperature: 0.05              # Even lower for production
+      memory:
+        vector_top_k: 10
+    
+    reasoning-agent:
+      num_ctx: 65536                 # Extra large context
+      memory:
+        enable_triage: true
+  
+  # Hot reload settings
+  hot_reload: true
+  check_interval: 60
+  
+  # Validation
+  validate_on_load: true
+  strict_validation: false
+
+# ============================================================================
+# Enhanced Logging Configuration (Unified Logging System)
+# ============================================================================
+logging:
+  # -------------------------------------------------------------------------
+  # Global Settings
+  # -------------------------------------------------------------------------
+  
+  # Global log level - applies to all components unless overridden
+  # Options: TRACE, DEBUG, INFO, SUCCESS, WARNING, ERROR, CRITICAL, SILENT
+  level: "DEBUG"
+  
+  # Component-specific levels (override global setting)
+  # Allows fine-grained control over verbosity per component
+  component_levels:
+    vera: "DEBUG"           # Main Vera system
+    ollama: "DEBUG"         # Ollama API/LLM interactions
+    orchestrator: "DEBUG"   # Task orchestration
+    infrastructure: "DEBUG" # Resource management
+    memory: "WARNING"      # Memory operations (less verbose)
+    toolchain: "DEBUG"      # Tool execution
+    
+    # Example: Enable debug for specific components
+    # ollama: "DEBUG"      # Detailed Ollama logging
+    # orchestrator: "TRACE" # Maximum orchestrator detail
+  
+  # -------------------------------------------------------------------------
+  # Output Destinations
+  # -------------------------------------------------------------------------
+  
+  # File logging (rotating log files)
+  file: "./logs/vera.log"
+  max_bytes: 10485760  # 10MB per file
+  backup_count: 5      # Keep 5 backup files
+  
+  # JSON logging (for analysis/monitoring tools)
+  json_file: "./logs/vera.jsonl"  # Set to null to disable
+  
+  # Console output
+  console: true
+  
+  # -------------------------------------------------------------------------
+  # Display Options
+  # -------------------------------------------------------------------------
+  
+  # Colors and formatting
+  enable_colors: true              # ANSI color codes for terminal
+  enable_timestamps: true          # Show timestamps
+  show_milliseconds: true          # Include milliseconds in timestamps
+  timestamp_format: "%Y-%m-%d %H:%M:%S.%f"
+  
+  # Context information in log messages
+  enable_thread_info: true        # Show thread names (useful for debugging)
+  enable_session_info: true        # Show session IDs
+  enable_model_info: true          # Show model names in context
+  
+  # Line formatting
+  max_line_width: 100              # Maximum width for boxed content
+  
+  # -------------------------------------------------------------------------
+  # Special Output Formatting
+  # -------------------------------------------------------------------------
+  
+  # Box formatting for different output types
+  # When enabled, special content is displayed in decorative boxes
+  box_thoughts: false       # Box model reasoning/thoughts
+  box_responses: false     # Box final responses (can be noisy)
+  box_tools: true          # Box tool executions
+  
+  # -------------------------------------------------------------------------
+  # Verbose Debugging Options
+  # -------------------------------------------------------------------------
+  # These options provide extremely detailed output for troubleshooting
+  # WARNING: Enabling these can produce VERY verbose output!
+  
+  # Show raw chunks from Ollama API (EXTREMELY VERBOSE!)
+  # Displays every chunk received from Ollama in full JSON format
+  # Useful for debugging streaming issues or thought capture
+  show_raw_ollama_chunks: false
+  
+  # Show detailed orchestrator operations
+  # Task submissions, completions, worker activity, queue stats
+  show_orchestrator_details: true
+  
+  # Show memory operations
+  # Graph operations, vector store updates, memory triage
+  show_memory_operations: false
+  
+  # Show infrastructure events
+  # Container provisioning, resource cleanup, scaling events
+  show_infrastructure_events: true
+  
+  # -------------------------------------------------------------------------
+  # Performance Tracking
+  # -------------------------------------------------------------------------
+  
+  # Enable automatic performance measurement and reporting
+  enable_performance_tracking: true
+  
+  # Track specific operation types
+  track_llm_latency: true      # Measure LLM generation time
+  track_tool_latency: true     # Measure tool execution time
+  
+  # -------------------------------------------------------------------------
+  # Stream Handling
+  # -------------------------------------------------------------------------
+  
+  # Stream thoughts inline as they're generated
+  # When false, thoughts are buffered and shown after completion
+  stream_thoughts_inline: true
+
+# General Settings
+enable_hot_reload: true
+config_file: "Configuration/vera_config.yaml"
+
+# ============================================================================
+# LOGGING CONFIGURATION PRESETS
+# ============================================================================
+# 
+# Uncomment and use these presets for different scenarios:
+#
+# --- MINIMAL (Production) ---
+# Minimal output, only warnings and errors
+# logging:
+#   level: "WARNING"
+#   file: "./logs/vera.log"
+#   console: true
+#   enable_colors: false
+#   box_thoughts: false
+#   box_tools: false
+#   show_raw_ollama_chunks: false
+#   show_orchestrator_details: false
+#   enable_performance_tracking: false
+#
+# --- STANDARD (Development) ---
+# Good balance of detail and readability
+# logging:
+#   level: "INFO"
+#   file: "./logs/vera.log"
+#   console: true
+#   enable_colors: true
+#   box_thoughts: true
+#   box_tools: true
+#   show_orchestrator_details: true
+#   enable_performance_tracking: true
+#
+# --- DEBUG (Troubleshooting) ---
+# Maximum detail for finding issues
+# logging:
+#   level: "DEBUG"
+#   component_levels:
+#     ollama: "TRACE"
+#     orchestrator: "DEBUG"
+#   file: "./logs/vera_debug.log"
+#   json_file: "./logs/vera_debug.jsonl"
+#   console: true
+#   enable_colors: true
+#   enable_timestamps: true
+#   enable_thread_info: true
+#   show_raw_ollama_chunks: true
+#   show_orchestrator_details: true
+#   show_memory_operations: true
+#   enable_performance_tracking: true
+#
+# --- SILENT (Automated) ---
+# No console output, only log errors to file
+# logging:
+#   level: "ERROR"
+#   file: "./logs/vera_errors.log"
+#   console: false
+#   json_file: "./logs/vera_automation.jsonl"
+#
+# ============================================================================
+# QUICK ADJUSTMENTS
+# ============================================================================
+#
+# Want more detail? Lower the log level:
+#   level: "DEBUG"  # or "TRACE" for maximum detail
+#
+# Too much output? Raise the log level:
+#   level: "WARNING"  # Only warnings and errors
+#
+# Debug specific component:
+#   component_levels:
+#     ollama: "DEBUG"  # Detailed Ollama logs only
+#
+# See raw Ollama chunks (for streaming debug):
+#   show_raw_ollama_chunks: true  # VERY verbose!
+#
+# Disable colors (for log files or older terminals):
+#   enable_colors: false
+#
+# Minimize output in production:
+#   level: "WARNING"
+#   box_thoughts: false
+#   box_tools: false
+#   enable_performance_tracking: false
+#
+# ============================================================================

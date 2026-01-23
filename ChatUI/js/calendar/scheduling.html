@@ -1,616 +1,662 @@
-/**
- * Calendar Module for Vera AI
- * Provides interactive calendar interface with multi-source support
- * Features: FullCalendar integration, WebSocket updates, event CRUD
- */
+<!-- Calendar Tab Content for Vera AI - Responsive Edition -->
+<!-- Features: Unified sidebar, responsive layout, agent chat, clean design -->
 
-class CalendarManager {
-    constructor() {
-        this.calendar = null;
-        this.ws = null;
-        this.sources = [];
-        this.currentView = 'dayGridMonth';
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        
-        this.init();
-    }
+<div id="calendar-container" style="display: grid; grid-template-columns: 1fr 320px; gap: 15px; padding: 15px; height: 100%; transition: grid-template-columns 0.3s ease;">
     
-    async init() {
-        console.log('[Calendar] Initializing...');
+    <!-- Main Calendar Area -->
+    <div style="background: var(--bg-darker); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; overflow: hidden; min-width: 0;">
         
-        // Load calendar sources
-        await this.loadSources();
+        <!-- Calendar Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px;">
+            <div id="calendarStats" style="font-size: 0.9rem; color: var(--text-muted);">
+                <!-- Stats populated by JS -->
+            </div>
+            <button id="toggleSidebar" class="sidebar-toggle-mobile" style="display: none; background: var(--accent); color: white; border: none; padding: 8px 15px; border-radius: 6px; cursor: pointer; font-size: 0.9rem;">
+                Show Panel
+            </button>
+        </div>
         
-        // Initialize FullCalendar
-        this.initCalendar();
-        
-        // Setup WebSocket
-        this.setupWebSocket();
-        
-        // Load initial events
-        await this.loadEvents();
-        
-        // Setup UI event handlers
-        this.setupEventHandlers();
-        
-        // Load cron jobs
-        await this.loadCronJobs();
-        
-        console.log('[Calendar] Initialization complete');
-    }
+        <!-- Calendar -->
+        <div id="calendar" style="flex: 1; overflow: auto;"></div>
+    </div>
     
-    async loadSources() {
-        try {
-            const response = await fetch('/api/calendar/sources');
-            const data = await response.json();
-            this.sources = data.sources;
+    <!-- Unified Sidebar -->
+    <div class="calendar-sidebar" style="background: var(--bg-darker); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; gap: 15px; overflow: hidden; transition: all 0.3s ease; min-width: 0;">
+        
+        <!-- Header with Toggle -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 1px solid var(--border);">
+            <h3 style="font-size: 1.2rem; font-weight: 600; margin: 0;">Controls</h3>
+            <button id="collapseSidebar" class="sidebar-toggle-btn" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1.2rem; padding: 4px 8px;" title="Toggle panel">×</button>
+        </div>
+        
+        <div class="sidebar-content" style="flex: 1; display: flex; flex-direction: column; gap: 15px; overflow-y: auto; overflow-x: hidden;">
             
-            // Update source filter UI
-            this.renderSourceFilters();
-        } catch (error) {
-            console.error('[Calendar] Error loading sources:', error);
-            this.showNotification('Failed to load calendar sources', 'error');
-        }
-    }
-    
-    initCalendar() {
-        const calendarEl = document.getElementById('calendar');
-        if (!calendarEl) {
-            console.error('[Calendar] Calendar element not found');
-            return;
-        }
-        
-        this.calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: this.currentView,
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
-            },
-            editable: true,
-            selectable: true,
-            selectMirror: true,
-            dayMaxEvents: true,
-            weekends: true,
-            height: 'auto',
-            
-            // Event handlers
-            select: (info) => this.handleDateSelect(info),
-            eventClick: (info) => this.handleEventClick(info),
-            eventDrop: (info) => this.handleEventDrop(info),
-            eventResize: (info) => this.handleEventResize(info),
-            
-            // Custom event rendering
-            eventContent: (arg) => this.renderEventContent(arg),
-            
-            // View change handler
-            datesSet: (info) => {
-                this.currentView = info.view.type;
-            }
-        });
-        
-        this.calendar.render();
-    }
-    
-    async loadEvents() {
-        try {
-            const response = await fetch('/api/calendar/events?days_ahead=30');
-            const events = await response.json();
-            
-            // Clear existing events
-            this.calendar.removeAllEvents();
-            
-            // Add events to calendar
-            events.forEach(event => {
-                this.calendar.addEvent({
-                    id: `${event.source}_${event.id}`,
-                    title: event.title,
-                    start: event.start,
-                    end: event.end || event.start,
-                    backgroundColor: event.color || this.getSourceColor(event.source),
-                    borderColor: event.color || this.getSourceColor(event.source),
-                    extendedProps: {
-                        source: event.source,
-                        originalId: event.id,
-                        description: event.description,
-                        recurrence: event.recurrence
-                    },
-                    allDay: event.all_day || false
-                });
-            });
-            
-            console.log(`[Calendar] Loaded ${events.length} events`);
-        } catch (error) {
-            console.error('[Calendar] Error loading events:', error);
-            this.showNotification('Failed to load events', 'error');
-        }
-    }
-    
-    setupWebSocket() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/calendar/ws`;
-        
-        console.log('[Calendar WS] Connecting to:', wsUrl);
-        
-        this.ws = new WebSocket(wsUrl);
-        
-        this.ws.onopen = () => {
-            console.log('[Calendar WS] Connected');
-            this.reconnectAttempts = 0;
-            
-            // Subscribe to updates
-            this.ws.send(JSON.stringify({ type: 'subscribe' }));
-            
-            // Start heartbeat
-            this.startHeartbeat();
-        };
-        
-        this.ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                this.handleWebSocketMessage(message);
-            } catch (error) {
-                console.error('[Calendar WS] Error parsing message:', error);
-            }
-        };
-        
-        this.ws.onerror = (error) => {
-            console.error('[Calendar WS] Error:', error);
-        };
-        
-        this.ws.onclose = () => {
-            console.log('[Calendar WS] Disconnected');
-            this.stopHeartbeat();
-            this.attemptReconnect();
-        };
-    }
-    
-    handleWebSocketMessage(message) {
-        console.log('[Calendar WS] Received:', message.type);
-        
-        switch (message.type) {
-            case 'subscribed':
-                console.log('[Calendar WS] Subscription confirmed');
-                break;
-                
-            case 'events_update':
-                console.log('[Calendar WS] Events update received');
-                // Reload events
-                this.loadEvents();
-                break;
-                
-            case 'event_created':
-                console.log('[Calendar WS] New event created');
-                const newEvent = message.data;
-                this.calendar.addEvent({
-                    id: `${newEvent.source}_${newEvent.id}`,
-                    title: newEvent.title,
-                    start: newEvent.start,
-                    end: newEvent.end,
-                    backgroundColor: newEvent.color || this.getSourceColor(newEvent.source),
-                    extendedProps: { source: newEvent.source, originalId: newEvent.id }
-                });
-                this.showNotification('New event created', 'success');
-                break;
-                
-            case 'event_deleted':
-                console.log('[Calendar WS] Event deleted');
-                const deletedId = `${message.data.source}_${message.data.id}`;
-                const eventToRemove = this.calendar.getEventById(deletedId);
-                if (eventToRemove) {
-                    eventToRemove.remove();
-                    this.showNotification('Event deleted', 'info');
-                }
-                break;
-                
-            case 'pong':
-                // Heartbeat response
-                break;
-                
-            default:
-                console.log('[Calendar WS] Unknown message type:', message.type);
-        }
-    }
-    
-    startHeartbeat() {
-        this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 30000); // Every 30 seconds
-    }
-    
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-    
-    attemptReconnect() {
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.log('[Calendar WS] Max reconnection attempts reached');
-            this.showNotification('WebSocket disconnected. Please refresh the page.', 'warning');
-            return;
-        }
-        
-        this.reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
-        
-        console.log(`[Calendar WS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-        
-        setTimeout(() => {
-            this.setupWebSocket();
-        }, delay);
-    }
-    
-    handleDateSelect(info) {
-        console.log('[Calendar] Date selected:', info.startStr, 'to', info.endStr);
-        
-        // Show create event modal
-        this.showCreateEventModal(info.start, info.end, info.allDay);
-        
-        // Clear selection
-        this.calendar.unselect();
-    }
-    
-    handleEventClick(info) {
-        console.log('[Calendar] Event clicked:', info.event.title);
-        
-        // Show event details modal
-        this.showEventDetailsModal(info.event);
-    }
-    
-    async handleEventDrop(info) {
-        console.log('[Calendar] Event dropped:', info.event.title);
-        
-        // In a full implementation, you'd update the event on the server
-        // For now, just show a notification
-        this.showNotification(`Event "${info.event.title}" moved`, 'info');
-        
-        // Optionally revert if update fails
-        // info.revert();
-    }
-    
-    async handleEventResize(info) {
-        console.log('[Calendar] Event resized:', info.event.title);
-        this.showNotification(`Event "${info.event.title}" resized`, 'info');
-    }
-    
-    renderEventContent(arg) {
-        const source = arg.event.extendedProps.source;
-        const sourceIcon = this.getSourceIcon(source);
-        
-        return {
-            html: `
-                <div class="fc-event-main-frame">
-                    <div class="fc-event-time">${arg.timeText}</div>
-                    <div class="fc-event-title-container">
-                        <span class="fc-event-source-icon">${sourceIcon}</span>
-                        <div class="fc-event-title">${arg.event.title}</div>
-                    </div>
+            <!-- Connection & Quick Actions -->
+            <div>
+                <div id="connectionStatus" class="connection-status status-disconnected" style="padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; text-align: center; margin-bottom: 12px;">
+                    Disconnected
                 </div>
-            `
-        };
-    }
-    
-    showCreateEventModal(start, end, allDay = false) {
-        const modal = document.getElementById('eventModal');
-        const form = document.getElementById('eventForm');
-        const titleInput = document.getElementById('eventTitle');
-        const startInput = document.getElementById('eventStart');
-        const endInput = document.getElementById('eventEnd');
-        const sourceSelect = document.getElementById('eventSource');
-        const descriptionInput = document.getElementById('eventDescription');
-        
-        // Reset form
-        form.reset();
-        
-        // Set default values
-        startInput.value = this.formatDatetimeLocal(start);
-        endInput.value = this.formatDatetimeLocal(end);
-        
-        // Populate source dropdown
-        sourceSelect.innerHTML = this.sources
-            .filter(s => s.enabled && s.id !== 'apscheduler')
-            .map(s => `<option value="${s.id}">${s.name}</option>`)
-            .join('');
-        
-        // Show modal
-        modal.style.display = 'block';
-        titleInput.focus();
-        
-        // Handle form submission
-        form.onsubmit = async (e) => {
-            e.preventDefault();
-            
-            const eventData = {
-                title: titleInput.value,
-                start: new Date(startInput.value).toISOString(),
-                end: new Date(endInput.value).toISOString(),
-                source: sourceSelect.value,
-                description: descriptionInput.value || null
-            };
-            
-            await this.createEvent(eventData);
-            modal.style.display = 'none';
-        };
-    }
-    
-    showEventDetailsModal(event) {
-        const modal = document.getElementById('eventDetailsModal');
-        const content = document.getElementById('eventDetailsContent');
-        
-        const props = event.extendedProps;
-        const source = this.sources.find(s => s.id === props.source);
-        
-        content.innerHTML = `
-            <div class="event-details">
-                <h3>${event.title}</h3>
-                <div class="event-info">
-                    <div class="info-row">
-                        <strong>Source:</strong>
-                        <span class="source-badge" style="background-color: ${source?.color || '#999'}">
-                            ${source?.name || props.source}
-                        </span>
-                    </div>
-                    <div class="info-row">
-                        <strong>Start:</strong>
-                        <span>${this.formatDatetime(event.start)}</span>
-                    </div>
-                    <div class="info-row">
-                        <strong>End:</strong>
-                        <span>${event.end ? this.formatDatetime(event.end) : 'N/A'}</span>
-                    </div>
-                    ${props.description ? `
-                        <div class="info-row">
-                            <strong>Description:</strong>
-                            <p>${props.description}</p>
-                        </div>
-                    ` : ''}
-                    ${props.recurrence ? `
-                        <div class="info-row">
-                            <strong>Recurrence:</strong>
-                            <span>${props.recurrence}</span>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="event-actions">
-                    <button class="btn btn-danger" onclick="calendarManager.deleteEvent('${props.source}', '${props.originalId}')">
-                        Delete Event
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <button id="newEventBtn" class="btn btn-primary" style="padding: 10px; border: none; border-radius: 6px; cursor: pointer; background: var(--accent); color: white; font-size: 0.9rem; white-space: nowrap;">
+                        + Event
                     </button>
-                    <button class="btn btn-secondary" onclick="document.getElementById('eventDetailsModal').style.display='none'">
-                        Close
+                    <button id="refreshCalendar" class="btn btn-secondary" style="padding: 10px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; background: var(--bg); color: var(--text); font-size: 0.9rem;">
+                        Refresh
                     </button>
                 </div>
             </div>
-        `;
-        
-        modal.style.display = 'block';
-    }
-    
-    async createEvent(eventData) {
-        try {
-            const response = await fetch('/api/calendar/events', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(eventData)
-            });
             
-            if (!response.ok) {
-                throw new Error('Failed to create event');
-            }
-            
-            const newEvent = await response.json();
-            this.showNotification('Event created successfully', 'success');
-            
-            // Event will be added via WebSocket, but we can add it immediately for responsiveness
-            this.calendar.addEvent({
-                id: `${newEvent.source}_${newEvent.id}`,
-                title: newEvent.title,
-                start: newEvent.start,
-                end: newEvent.end,
-                backgroundColor: newEvent.color || this.getSourceColor(newEvent.source),
-                extendedProps: { source: newEvent.source, originalId: newEvent.id }
-            });
-            
-        } catch (error) {
-            console.error('[Calendar] Error creating event:', error);
-            this.showNotification('Failed to create event', 'error');
-        }
-    }
-    
-    async deleteEvent(source, eventId) {
-        if (!confirm('Are you sure you want to delete this event?')) {
-            return;
-        }
-        
-        try {
-            const response = await fetch(`/api/calendar/events/${source}/${eventId}`, {
-                method: 'DELETE'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Failed to delete event');
-            }
-            
-            // Remove from calendar
-            const calendarEventId = `${source}_${eventId}`;
-            const event = this.calendar.getEventById(calendarEventId);
-            if (event) {
-                event.remove();
-            }
-            
-            // Close modal
-            document.getElementById('eventDetailsModal').style.display = 'none';
-            
-            this.showNotification('Event deleted successfully', 'success');
-            
-        } catch (error) {
-            console.error('[Calendar] Error deleting event:', error);
-            this.showNotification('Failed to delete event', 'error');
-        }
-    }
-    
-    async loadCronJobs() {
-        try {
-            const response = await fetch('/api/calendar/cron');
-            const jobs = await response.json();
-            
-            this.renderCronJobs(jobs);
-        } catch (error) {
-            console.error('[Calendar] Error loading cron jobs:', error);
-        }
-    }
-    
-    renderCronJobs(jobs) {
-        const container = document.getElementById('cronJobsList');
-        if (!container) return;
-        
-        if (jobs.length === 0) {
-            container.innerHTML = '<p class="text-muted">No scheduled jobs</p>';
-            return;
-        }
-        
-        container.innerHTML = jobs.map(job => `
-            <div class="cron-job-item">
-                <div class="cron-job-header">
-                    <strong>${job.name}</strong>
-                    <span class="badge badge-${job.enabled ? 'success' : 'secondary'}">
-                        ${job.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                </div>
-                <div class="cron-job-details">
-                    <small>Schedule: ${job.schedule}</small>
-                    ${job.next_run ? `<small>Next run: ${this.formatDatetime(new Date(job.next_run))}</small>` : ''}
+            <!-- Calendar Sources -->
+            <div>
+                <div style="font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Sources</div>
+                <div id="sourceFilters" style="display: flex; flex-direction: column; gap: 6px;">
+                    <!-- Populated by JS -->
                 </div>
             </div>
-        `).join('');
-    }
-    
-    renderSourceFilters() {
-        const container = document.getElementById('sourceFilters');
-        if (!container) return;
-        
-        container.innerHTML = this.sources.map(source => `
-            <label class="source-filter">
-                <input type="checkbox" 
-                       value="${source.id}" 
-                       ${source.enabled ? 'checked' : ''}
-                       onchange="calendarManager.toggleSource('${source.id}', this.checked)">
-                <span class="source-color" style="background-color: ${source.color}"></span>
-                ${source.name}
-            </label>
-        `).join('');
-    }
-    
-    toggleSource(sourceId, enabled) {
-        console.log(`[Calendar] Toggle source ${sourceId}:`, enabled);
-        
-        // Filter events by source
-        const events = this.calendar.getEvents();
-        events.forEach(event => {
-            if (event.extendedProps.source === sourceId) {
-                event.setProp('display', enabled ? 'auto' : 'none');
-            }
-        });
-    }
-    
-    setupEventHandlers() {
-        // Modal close buttons
-        const modals = document.querySelectorAll('.modal');
-        modals.forEach(modal => {
-            const closeBtn = modal.querySelector('.close');
-            if (closeBtn) {
-                closeBtn.onclick = () => {
-                    modal.style.display = 'none';
-                };
-            }
-        });
-        
-        // Click outside modal to close
-        window.onclick = (event) => {
-            modals.forEach(modal => {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
-                }
-            });
-        };
-        
-        // Refresh button
-        const refreshBtn = document.getElementById('refreshCalendar');
-        if (refreshBtn) {
-            refreshBtn.onclick = () => this.loadEvents();
-        }
-        
-        // Today button (already handled by FullCalendar)
-    }
-    
-    // Utility methods
-    
-    getSourceColor(source) {
-        const sourceObj = this.sources.find(s => s.id === source);
-        return sourceObj?.color || '#999';
-    }
-    
-    getSourceIcon(source) {
-        const icons = {
-            'google': '📅',
-            'local': '📋',
-            'apscheduler': '⏰',
-            'cron': '🔄'
-        };
-        return icons[source] || '📌';
-    }
-    
-    formatDatetime(date) {
-        if (!date) return 'N/A';
-        const d = new Date(date);
-        return d.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-    
-    formatDatetimeLocal(date) {
-        const d = new Date(date);
-        const offset = d.getTimezoneOffset();
-        const localDate = new Date(d.getTime() - (offset * 60 * 1000));
-        return localDate.toISOString().slice(0, 16);
-    }
-    
-    showNotification(message, type = 'info') {
-        // Create notification element
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.textContent = message;
-        
-        // Add to page
-        const container = document.getElementById('notificationContainer') || document.body;
-        container.appendChild(notification);
-        
-        // Fade in
-        setTimeout(() => notification.classList.add('show'), 10);
-        
-        // Remove after delay
-        setTimeout(() => {
-            notification.classList.remove('show');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
+            
+            <!-- Agent Chat - Collapsible -->
+            <div style="border-top: 1px solid var(--border); padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" id="agentChatToggle">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Scheduling Agent</div>
+                    <span style="color: var(--text-muted); font-size: 1rem;">▼</span>
+                </div>
+                
+                <div id="agentChatContainer" style="display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
+                    <div style="padding: 10px; background: var(--bg); border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--text-muted);">
+                        Ask about events, create tasks, manage schedule
+                    </div>
+                    
+                    <div id="agentChatMessages" style="overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 150px; max-height: 300px; background: rgba(0, 0, 0, 0.2);">
+                        <div class="chat-message chat-message-assistant">
+                            <div class="chat-message-content" style="background: var(--bg); padding: 8px 10px; border-radius: 6px; font-size: 0.85rem; line-height: 1.4;">
+                                Hi! I can help you manage your calendar. Try:
+                                <ul style="margin: 6px 0 0 16px; padding: 0; font-size: 0.8rem;">
+                                    <li>Schedule a meeting</li>
+                                    <li>Check what's coming up</li>
+                                    <li>Find free time</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <form id="agentChatForm" style="padding: 10px; background: var(--bg); border-top: 1px solid var(--border); display: flex; gap: 6px;">
+                        <input type="text" id="agentChatInput" placeholder="Ask..." style="flex: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.85rem; min-width: 0;" />
+                        <button type="submit" id="agentChatSend" style="padding: 8px 12px; border: none; border-radius: 4px; background: var(--accent); color: white; cursor: pointer; font-size: 0.85rem; white-space: nowrap;">
+                            Send
+                        </button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Scheduled Jobs - Collapsible -->
+            <div style="border-top: 1px solid var(--border); padding-top: 15px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; cursor: pointer;" id="jobsToggle">
+                    <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Scheduled Jobs</div>
+                    <span style="color: var(--text-muted); font-size: 1rem;">▼</span>
+                </div>
+                <div id="cronJobsList" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Event Creation Modal -->
+<div id="eventModal" class="modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--bg); border-radius: 12px; padding: 25px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+            <h2 style="margin: 0; font-size: 1.4rem;">Create Event</h2>
+            <span class="close" style="font-size: 1.8rem; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <form id="eventForm">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventTitle" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted); font-size: 0.9rem;">Title *</label>
+                <input type="text" id="eventTitle" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.9rem;">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <div class="form-group">
+                    <label for="eventStart" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted); font-size: 0.9rem;">Start *</label>
+                    <input type="datetime-local" id="eventStart" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.85rem;">
+                </div>
+                <div class="form-group">
+                    <label for="eventEnd" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted); font-size: 0.9rem;">End *</label>
+                    <input type="datetime-local" id="eventEnd" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.85rem;">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label for="eventSource" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted); font-size: 0.9rem;">Calendar *</label>
+                <select id="eventSource" required style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); font-size: 0.9rem;"></select>
+            </div>
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label for="eventDescription" style="display: block; margin-bottom: 5px; font-weight: 500; color: var(--text-muted); font-size: 0.9rem;">Description</label>
+                <textarea id="eventDescription" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--bg-darker); color: var(--text); min-height: 80px; resize: vertical; font-size: 0.9rem;"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; background: var(--accent); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500;">
+                Create Event
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Event Details Modal -->
+<div id="eventDetailsModal" class="modal" style="display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); align-items: center; justify-content: center;">
+    <div class="modal-content" style="background: var(--bg); border-radius: 12px; padding: 25px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border);">
+            <h2 style="margin: 0; font-size: 1.4rem;">Event Details</h2>
+            <span class="close" style="font-size: 1.8rem; cursor: pointer; color: var(--text-muted);">&times;</span>
+        </div>
+        <div id="eventDetailsContent">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+</div>
+
+<style>
+/* Responsive Grid Layout */
+@media (max-width: 1024px) {
+    #calendar-container {
+        grid-template-columns: 1fr 280px !important;
     }
 }
 
-// Initialize calendar when DOM is ready
-let calendarManager;
+@media (max-width: 768px) {
+    #calendar-container {
+        grid-template-columns: 1fr !important;
+        grid-template-rows: auto auto;
+    }
+    
+    .calendar-sidebar {
+        order: 2;
+        max-height: 500px;
+    }
+    
+    .sidebar-toggle-mobile {
+        display: block !important;
+    }
+    
+    .calendar-sidebar.mobile-hidden {
+        display: none !important;
+    }
+    
+    .sidebar-toggle-btn {
+        display: none !important;
+    }
+}
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        calendarManager = new CalendarManager();
+@media (max-width: 480px) {
+    #calendar-container {
+        padding: 10px !important;
+        gap: 10px !important;
+    }
+    
+    .calendar-sidebar {
+        padding: 12px !important;
+        max-height: 400px;
+    }
+}
+
+/* Sidebar Collapsed State */
+.calendar-sidebar.collapsed {
+    width: 50px;
+    min-width: 50px;
+    padding: 15px 10px !important;
+}
+
+.calendar-sidebar.collapsed .sidebar-content {
+    display: none;
+}
+
+.calendar-sidebar.collapsed h3 {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    margin: 0;
+    font-size: 1rem;
+}
+
+.sidebar-toggle-btn {
+    transition: transform 0.3s ease;
+}
+
+.calendar-sidebar.collapsed .sidebar-toggle-btn {
+    transform: rotate(45deg);
+}
+
+.sidebar-toggle-btn:hover {
+    color: var(--text) !important;
+}
+
+/* Source filter styles */
+.source-filter {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.2s;
+    font-size: 0.85rem;
+}
+
+.source-filter:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.source-filter.disabled {
+    opacity: 0.5;
+}
+
+.source-filter.disabled:hover {
+    cursor: not-allowed;
+    background: transparent;
+}
+
+.source-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.source-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Connection status */
+.connection-status {
+    transition: all 0.3s;
+    font-weight: 500;
+}
+
+.status-connected {
+    background: rgba(52, 168, 83, 0.2);
+    color: var(--success, #34a853);
+}
+
+.status-disconnected {
+    background: rgba(234, 67, 53, 0.2);
+    color: var(--danger, #ea4335);
+}
+
+.status-error {
+    background: rgba(251, 188, 4, 0.2);
+    color: var(--warning, #fbbc04);
+}
+
+/* Cron job items */
+.cron-job-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+}
+
+.cron-job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    gap: 8px;
+}
+
+.cron-job-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.cron-job-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cron-job-details small {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+/* Chat messages */
+.chat-message {
+    display: flex;
+    animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.chat-message-user {
+    justify-content: flex-end;
+}
+
+.chat-message-user .chat-message-content {
+    background: var(--accent) !important;
+    color: white;
+}
+
+.chat-message-assistant .chat-message-content {
+    background: var(--bg);
+}
+
+.chat-message-content {
+    max-width: 90%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.chat-message-content ul {
+    margin: 6px 0 0 16px;
+    padding: 0;
+}
+
+.chat-message-content li {
+    margin: 2px 0;
+}
+
+/* Collapsible sections */
+.collapsible-header {
+    cursor: pointer;
+    user-select: none;
+}
+
+.collapsible-header:hover span {
+    color: var(--text) !important;
+}
+
+.collapsed-section {
+    display: none !important;
+}
+
+/* Stats */
+.stat-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-right: 10px;
+    font-size: 0.85rem;
+}
+
+.stat-color {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+/* Event details */
+.event-details h3 {
+    margin: 0 0 15px 0;
+    font-size: 1.3rem;
+}
+
+.event-info {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.info-row {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.info-row strong {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.source-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 0.85rem;
+    width: fit-content;
+}
+
+.event-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.btn {
+    padding: 10px 15px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.btn-danger {
+    background: var(--danger, #ea4335);
+    color: white;
+    border: none;
+}
+
+.btn-danger:hover {
+    opacity: 0.9;
+}
+
+.btn-secondary {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--bg-darker);
+}
+
+.badge {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: rgba(52, 168, 83, 0.2);
+    color: var(--success, #34a853);
+}
+
+.badge-secondary {
+    background: rgba(154, 160, 166, 0.2);
+    color: var(--text-muted);
+}
+
+/* Notifications */
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.calendar-notification {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 18px;
+    min-width: 250px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transform: translateX(400px);
+    transition: all 0.3s ease-out;
+    font-size: 0.9rem;
+}
+
+.calendar-notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.notification-success {
+    border-left: 4px solid var(--success, #34a853);
+}
+
+.notification-error {
+    border-left: 4px solid var(--danger, #ea4335);
+}
+
+.notification-warning {
+    border-left: 4px solid var(--warning, #fbbc04);
+}
+
+.notification-info {
+    border-left: 4px solid var(--accent, #4285f4);
+}
+
+/* FullCalendar theme */
+.fc {
+    --fc-border-color: var(--border);
+    --fc-button-bg-color: var(--accent, #4285f4);
+    --fc-button-border-color: var(--accent, #4285f4);
+    --fc-button-hover-bg-color: #3367d6;
+    --fc-button-active-bg-color: #2851a3;
+    --fc-today-bg-color: rgba(66, 133, 244, 0.1);
+}
+
+.fc .fc-toolbar-title {
+    color: var(--text);
+    font-size: 1.4rem;
+}
+
+.fc .fc-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.fc .fc-col-header-cell {
+    background: var(--bg);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    padding: 8px 0;
+}
+
+.fc .fc-daygrid-day-number {
+    color: var(--text);
+    padding: 6px;
+}
+
+.fc-event {
+    border-radius: 3px;
+    padding: 2px 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+/* Scrollbar styling */
+.sidebar-content::-webkit-scrollbar,
+#agentChatMessages::-webkit-scrollbar,
+#cronJobsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-content::-webkit-scrollbar-track,
+#agentChatMessages::-webkit-scrollbar-track,
+#cronJobsList::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb,
+#agentChatMessages::-webkit-scrollbar-thumb,
+#cronJobsList::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+.sidebar-content::-webkit-scrollbar-thumb:hover,
+#agentChatMessages::-webkit-scrollbar-thumb:hover,
+#cronJobsList::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+</style>
+
+<script>
+// Sidebar collapse functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const sidebar = document.querySelector('.calendar-sidebar');
+    const collapseBtn = document.getElementById('collapseSidebar');
+    const toggleMobileBtn = document.getElementById('toggleSidebar');
+    
+    // Desktop collapse
+    if (collapseBtn) {
+        collapseBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('collapsed');
+        });
+    }
+    
+    // Mobile toggle
+    if (toggleMobileBtn) {
+        toggleMobileBtn.addEventListener('click', function() {
+            sidebar.classList.toggle('mobile-hidden');
+            this.textContent = sidebar.classList.contains('mobile-hidden') ? 'Show Panel' : 'Hide Panel';
+        });
+    }
+    
+    // Collapsible sections
+    const agentToggle = document.getElementById('agentChatToggle');
+    const agentContainer = document.getElementById('agentChatContainer');
+    const jobsToggle = document.getElementById('jobsToggle');
+    const jobsList = document.getElementById('cronJobsList');
+    
+    if (agentToggle && agentContainer) {
+        agentToggle.addEventListener('click', function() {
+            agentContainer.classList.toggle('collapsed-section');
+            const arrow = this.querySelector('span');
+            arrow.textContent = agentContainer.classList.contains('collapsed-section') ? '▶' : '▼';
+        });
+    }
+    
+    if (jobsToggle && jobsList) {
+        jobsToggle.addEventListener('click', function() {
+            jobsList.classList.toggle('collapsed-section');
+            const arrow = this.querySelector('span');
+            arrow.textContent = jobsList.classList.contains('collapsed-section') ? '▶' : '▼';
+        });
+    }
+    
+    // Auto-hide sidebar on mobile on initial load
+    if (window.innerWidth <= 768) {
+        sidebar.classList.add('mobile-hidden');
+    }
+    
+    // Handle window resize
+    let resizeTimer;
+    window.addEventListener('resize', function() {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function() {
+            if (window.innerWidth > 768) {
+                sidebar.classList.remove('mobile-hidden');
+                if (toggleMobileBtn) {
+                    toggleMobileBtn.textContent = 'Show Panel';
+                }
+            }
+        }, 250);
     });
-} else {
-    calendarManager = new CalendarManager();
-}
+});
+</script>

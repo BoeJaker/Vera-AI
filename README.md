@@ -150,7 +150,7 @@ This distributed agent design enables parallel specialization—some agents focu
 
 A hallmark of Vera's architecture is its capacity for proactive background processing. Autonomous sub-agents continuously monitor context and system state, coordinating via dynamic focus prioritization. This allows Vera to process perceptual inputs, data processing, and environmental interactions adaptively, even without direct user prompts, enabling it to enrich its own memories and progress toward long-term goals. 
 
-Vera grounds its intelligence in a highly structured, multi-layered memory system (Layers 1-4) that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. All the while postgres is keeping an immutable, versioned record of everything.
+Vera grounds its intelligence in a highly structured, multi-layered memory system that mirrors human cognition by separating volatile context from persistent knowledge. This memory uses a hybrid storage model: the Neo4j Knowledge Graph stores entities and rich, typed relationships, while ChromaDB serves as a vector database for the full text content of documents, notes, and code, binding the textual information to its contextual network. All the while postgres is keeping an immutable, versioned record of everything.
 
 Vera is fundamentally designed for extensibility and seamless interaction with external systems, achieved through the Integration API Shim (IAS) and the Babelfish Translator (BFT), complemented by the ToolChain Executor (TCE). The IAS serves as a compatibility layer and API endpoint that allows Vera to mimic other LLM APIs (such as those provided by OpenAI's ChatGPT or Anthropic's Claude), enabling Vera to effectively take their place in existing workflows. Crucially, the IAS also allows those external LLM APIs to interface with Vera’s systems, which means Vera can effectively share and pull in context from the external models while simultaneously allowing them access to Vera’s own structured memory and context.
 
@@ -289,14 +289,14 @@ The key value proposition of Vera is not mere context persistence, but its found
 
 **GPU Build (Linux)**
 - CPU: Varies by workload
-- RAM: 8GB system + 14–150GB VRAM
+- RAM: 8GB system + 16–150GB VRAM
 - HDD: 100GB
 - GPU: 14–150GB VRAM (NVIDIA recommended)
 
 ### Understanding the Requirements
 
-- **RAM:** Determines how many models can run simultaneously. 16GB minimum runs single models; 32GB+ enables parallel agent execution.
-- **CPU cores:** Each agent requires ~1–2 cores. More cores allow higher parallelism. Hyperthreading counts as 0.5 cores each for planning purposes.
+- **RAM:** Determines how many models can be loaded simultaneously into system memory. and how many can be run simultaneously in CPU builds.
+- **CPU cores:** Determines how many models can run in CPU builds Each agent requires ~12 cores. In GPU builds Each agent takes 1-2 cores.
 - **VRAM:** GPU builds allow running larger models (20B–70B parameters). CPU-only builds use quantized models (3B–13B).
 - **Storage:** Accommodates Neo4j database, ChromaDB vector store, and model weights.
 
@@ -304,9 +304,9 @@ The key value proposition of Vera is not mere context persistence, but its found
 
 | Tier | CPU | RAM | Storage | VRAM | Use Case |
 |------|-----|-----|---------|------|----------|
-| **Basic** | 8 cores | 16GB | 100GB | — | Development & testing |
+| **Basic** | 12 cores | 16GB | 100GB | — | Development & testing |
 | **Standard** | 12+ cores | 32GB | 100GB | — | Production (CPU-only) |
-| **Advanced** | 16+ cores | 64GB | 200GB | 14GB+ | GPU-accelerated |
+| **Advanced** | 16+ cores | 64GB | 200GB | 16GB+ | GPU-accelerated |
 | **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
 
 <!-- ### Supported LLM Models
@@ -321,7 +321,7 @@ The key value proposition of Vera is not mere context persistence, but its found
 ### Minimum Viable Setup
 
 If you have fewer resources, Vera runs with reduced capability:
-- **16GB RAM + CPU only:** Single fast model, no parallelism
+- **8GB idle RAM + CPU only:** Single fast model, no parallelism
 - **8+ physical cores:** Suitable for background processing, not real-time queries
 - **Smaller SSD:** Start with one small model (3–7B parameters)
 
@@ -556,13 +556,13 @@ make check-chromadb              # Check ChromaDB status
 mkdir ./VeraAI
 cd ./VeraAI
 git clone https://github.com/BoeJaker/Vera-AI.git
-cp ./Vera-AI ./Vera
+mv ./Vera-AI ./Vera
 ```
 
 ### Terminal Interface
 
 ```bash
-cd <your/path/to/VeraAI>
+cd <your/path/to/VeraAI> # not ../Vera
 python -m Vera.vera
 ```
 
@@ -574,9 +574,9 @@ python -m Vera.ChatUI.api.vera_api.py
 
 # Opens on localhost:8000
 ```
-Open a prowser and visit http://localhost:8000
+Open a browser and visit http://localhost:8000
 
-### Python API
+### Python Library
 
 ```python
 from vera import Vera
@@ -611,7 +611,7 @@ Use these flags at the command line when starting Vera:
 
 | Flag | Description |
 |------|-------------|
-| `--triage-memory` | Enable triage agent memory of past interactions |
+| `--triage-memory` | Enable triage agent memory of past interactions - slows response times |
 | `--forgetful` | No memories will be saved or recalled this session |
 | `--dumbledore` | Won't respond to questions. <!-- Hes dead harry --> |
 | `--replay` | Replays the last plan |
@@ -634,7 +634,9 @@ Use these commands with `/` prefix in chat:
 
 ## Configuration
 
-Vera's configuration is controlled via environment variables in `.env`:
+Vera's configuration is controlled via environment variables in `.env` and/or a config yaml in /Configuration:
+
+### .Env
 
 **LLM Configuration**
 ```
@@ -658,19 +660,63 @@ MAX_PARALLEL_TASKS=4
 CPU_PINNING=false
 NUMA_ENABLED=false
 ```
----
 
+
+### YAML
+
+---
 
 ## Core Concepts
 
-### Agents vs LLMs vs Encoders in Vera 
-**A Multi-Level Hierarchy**
+### Machine learning models in Vera 
 
-Vera’s architecture distinguishes between **LLMs** and **Agents**, each operating at multiple levels of complexity and capability to handle diverse tasks efficiently.
+**A Multi-Level Hierarchy** 
+
+Vera’s architecture distinguishes between **Neural Networks**, **Encoders**, **Classifiers**, **LLMs** and **Agents**, each operating at multiple levels of complexity and capability to handle diverse tasks efficiently.
+
+#### Neural Networks
+
+Neural Networks are parameterized function approximators trained via optimization. They learn implicit decision behavior by adjusting weights and biases to minimize a loss function over many iterations.
+
+In Vera, neural networks serve as foundational computational primitives, used where fast, deterministic inference is required without higher-level reasoning or language understanding.
+
+Key characteristics:
+
+- Learn mappings from input → output
+
+- Trained via gradient-based optimization
+
+- No intrinsic notion of goals, memory, or agency
+
+- May be embedded inside higher-level systems (e.g., classifiers, encoders, RL policies)
+
+#### Classifiers
+
+Classifiers are extremely lightweight models specialized for categorizing structured or semi-structured input data into predefined labels.
+
+In Vera, classifiers are used for:
+
+- Fast intent detection
+
+- Routing and triage decisions
+
+- Binary or multi-class judgments where interpretability and speed are critical
+
+- They are typically implemented using compact neural architectures.
 
 #### Encoders
 
-- Encoders: Extremely light models specialized to encode text. Parses all data sent the vectorstore. 
+Encoders are lightweight representation models specialized in transforming raw input—primarily text—into dense vector embeddings.
+
+In Vera:
+
+- Encoders process all data sent to the vector store
+
+- They normalize and compress information into semantic representations
+
+- They are optimized for throughput and consistency rather than reasoning
+
+- Encoders do not generate text or make decisions; they strictly encode meaning into vector space for retrieval and similarity operations.
 
 #### Large Language Models (LLMs)
 
@@ -685,7 +731,7 @@ LLMs are the foundational language engines performing natural language understan
 - **Specialized Reasoning LLMs:** Models fine-tuned or architected specifically for heavy logical textual processing and multi-step deduction.
     
 
-Each LLM level provides different trade-offs between speed, resource use, and depth of reasoning. Models can be upgraded in-place meaning when a new model is released it is plug-and-play so to speak. The memories will carry over as if nothing changed.
+Each LLM level provides different trade-offs between speed, resource use, temperature, and depth of reasoning. Models can be upgraded in-place meaning when a new model is released it is plug-and-play so to speak. The memories will carry over as if nothing changed.
 
 ##### How Levels Interact
 
@@ -700,7 +746,7 @@ This multi-level, hierarchical approach allows Vera to balance responsiveness wi
 
 #### Agents
 
-Agents are **LLM instances configured with augmented capabilities**, including memory management, tool integration, task triage, and autonomous goal setting. Vera’s agents also exist at multiple levels:
+Agents are **LLM models configured with specialised capabilities**, including memory management, tool integration, task triage, and autonomous goal setting. Vera’s agents also exist at multiple levels:
 
 - **Triage Agents:** Lightweight agents responsible for prioritizing tasks and delegating work among other agents or tools.
 
@@ -710,7 +756,7 @@ Agents are **LLM instances configured with augmented capabilities**, including m
     
 - **Specialized Agents:** Agents with domain-specific expertise or enhanced reasoning modules, capable of focused tasks like code generation, calendar management, or data analysis.
     
-These LLMs & Agents can communicate via shared memory and coordinate through a dynamic 
+LLMs & Agents can communicate via shared memory and coordinate through a dynamic 
 
 
 #### Micro Models
@@ -818,6 +864,8 @@ The remote pool of workers
 #### Task
 A processing task to be completed by the pool -->
 
+
+<!-- 
 ---
 
 ## Core Components
@@ -866,23 +914,21 @@ Version control for edits the AI makes to files, settings etc
 
 #### User Interfaces
 
-**CUI - Chat UI**  
-A web UI to chat with the triage agent. With full duplex speech synthesis and chat logs
+**Chat UI**  
+A web UI to chat with Vera. With full duplex speech synthesis and chat logs.
 
-**SUI - Schedule UI**
+**Scheduling**
 A web UI for the scheduling agent. view & manage your calendar, veras calendar, chat with the scheduling agent
 
-**OUI - Orchestrator UI**  
-A web UI for management of the orchestrator
+**Orchestrator Monitor**  
+An orchestration interface where you can moitor the task queue, setup API connections and provision resources
 
-**TCEUI - ToolChain Engine UI**  
-A standalone UI for managing the ToolChain Engine
+**ToolChain Monitor**  
+Allows you to monitor the ToolChain Engine
 
-**MX - Memory Explorer**  
-A web UI enabling broad or targeted traversal of the knowledge graph. The Graph contains more than just memories, its a networks of relationships. for example if vera has interacted with a network, a map of the network will be navigable in the explorer. If vera has navigated a website, it and all its resources will be mapped into the graph. This allows you to navigate these systems ina  visually appealing and data rich form.
-
-**GUI - Graph UI**
-A web compponent for monitoring graph events of any scale
+**Memory Explorer**  
+ Enabling broad or targeted traversal of the knowledge graph. The Graph contains more than just memories, its a networks of relationships. for example if vera has interacted with a network, a map of the network will be navigable in the explorer. If vera has navigated a website, it and all its resources will be mapped into the graph. This allows you to navigate these systems in a  visually appealing and data rich form.
+ -->
 
 ---
 

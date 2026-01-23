@@ -147,7 +147,7 @@ def _get_router(vera_instance):
                 agent_count = len(vera_instance.agents.list_loaded_agents())
                 agent_names = vera_instance.agents.list_loaded_agents()
                 logger.success(
-                    f"Agent router initialized with {agent_count} agents: {', '.join(str(agent_names))}",
+                    f"Agent router initialized with {agent_count} agents: {agent_names}",
                     context=LogContext(extra={'component': 'task_router', 'agents': agent_names})
                 )
         else:
@@ -694,6 +694,9 @@ def toolchain_execute(vera_instance, query: str):
                         })
                     )
                 return
+        
+            except Exception as e:
+                log_fallback(logger, "Agent toolchain execution failed", e, context)
 
             finally:
                 vera_instance.tool_llm = original_llm
@@ -799,15 +802,14 @@ def tool_single(vera_instance, tool_name: str, **kwargs):
         
         return {"error": f"Tool execution failed: {str(e)}"}
 
-
 # ============================================================================
-# WHISPER TASK
+# WHISPER TASKS (STT & TTS)
 # ============================================================================
 
 @task("whisper.transcribe", task_type=TaskType.WHISPER, priority=Priority.NORMAL, 
       estimated_duration=10.0, requires_gpu=True, memory_mb=4096)
 def whisper_transcribe(vera_instance, audio_path: str):
-    """Transcribe audio using Whisper"""
+    """Transcribe audio using Whisper (STT - Speech-to-Text)"""
     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
     context = LogContext(extra={'component': 'task', 'task': 'whisper.transcribe', 'audio_path': audio_path})
     
@@ -853,6 +855,220 @@ def whisper_transcribe(vera_instance, audio_path: str):
     
     return {"error": "Whisper not available"}
 
+
+@task("whisper.stt", task_type=TaskType.WHISPER, priority=Priority.NORMAL, 
+      estimated_duration=10.0, requires_gpu=True, memory_mb=4096)
+def whisper_stt(vera_instance, audio_path: str):
+    """
+    Speech-to-Text using Whisper (alias for whisper.transcribe)
+    Converts audio file to text transcription
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={'component': 'task', 'task': 'whisper.stt', 'audio_path': audio_path})
+    
+    if logger:
+        logger.debug(f"STT task routing to whisper.transcribe", context=context)
+    
+    return whisper_transcribe(vera_instance, audio_path)
+
+
+@task("whisper.tts", task_type=TaskType.WHISPER, priority=Priority.NORMAL, 
+      estimated_duration=8.0, requires_gpu=True, memory_mb=2048)
+def whisper_tts(vera_instance, text: str, voice: str = "default", output_path: str = None):
+    """
+    Text-to-Speech generation
+    Converts text to audio using TTS model
+    
+    Args:
+        text: Text to convert to speech
+        voice: Voice model to use (default, male, female, etc.)
+        output_path: Optional path for output audio file
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task', 
+        'task': 'whisper.tts', 
+        'text_length': len(text),
+        'voice': voice,
+        'output_path': output_path
+    })
+    
+    if logger:
+        logger.info(
+            f"🔊 TTS generation starting: {len(text)} chars, voice={voice}", 
+            context=context
+        )
+        logger.debug(
+            f"Text preview: {truncate_text(text, 100)}",
+            context=context
+        )
+        logger.start_timer("whisper_tts")
+    
+    # Check for TTS model
+    if not hasattr(vera_instance, 'tts_model'):
+        if logger:
+            logger.error(
+                "TTS model not available",
+                context=LogContext(extra={**context.extra, 'reason': 'tts_model_not_found'})
+            )
+        return {"error": "TTS model not available"}
+    
+    try:
+        # Generate output path if not provided
+        if output_path is None:
+            import tempfile
+            import os
+            output_dir = tempfile.gettempdir()
+            timestamp = int(time.time())
+            output_path = os.path.join(output_dir, f"tts_output_{timestamp}.wav")
+        
+        if logger:
+            logger.debug(
+                f"Generating audio to: {output_path}",
+                context=LogContext(extra={**context.extra, 'generating_to': output_path})
+            )
+        
+        # Generate audio using TTS model
+        # This depends on your actual TTS implementation
+        result = vera_instance.tts_model.generate(
+            text=text,
+            voice=voice,
+            output_path=output_path
+        )
+        
+        if logger:
+            duration = logger.stop_timer("whisper_tts", context=context)
+            
+            # Try to get audio file size
+            audio_size = 0
+            try:
+                import os
+                if os.path.exists(output_path):
+                    audio_size = os.path.getsize(output_path)
+            except Exception:
+                pass
+            
+            logger.success(
+                f"TTS generation complete | Output: {output_path} | Size: {audio_size} bytes",
+                context=LogContext(extra={
+                    **context.extra, 
+                    'duration': duration,
+                    'audio_size': audio_size,
+                    'output_path': output_path
+                })
+            )
+        
+        return {
+            "status": "success",
+            "audio_path": output_path,
+            "text_length": len(text),
+            "voice": voice,
+            "result": result
+        }
+        
+    except Exception as e:
+        if logger:
+            duration = logger.stop_timer("whisper_tts", context=context)
+            logger.error(
+                f"TTS generation failed: {type(e).__name__}: {str(e)}",
+                exc_info=True,
+                context=LogContext(extra={**context.extra, 'duration': duration, 'error': str(e)})
+            )
+        
+        return {"error": f"TTS generation failed: {str(e)}"}
+
+
+@task("tts.stream", task_type=TaskType.WHISPER, priority=Priority.HIGH, 
+      estimated_duration=5.0, requires_gpu=True, memory_mb=2048)
+def tts_stream(vera_instance, text: str, voice: str = "default"):
+    """
+    Streaming Text-to-Speech generation
+    Generates and streams audio chunks in real-time as text is converted
+    
+    Args:
+        text: Text to convert to speech
+        voice: Voice model to use
+    
+    Yields:
+        Audio chunks as they're generated
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task', 
+        'task': 'tts.stream', 
+        'text_length': len(text),
+        'voice': voice
+    })
+    
+    if logger:
+        logger.info(
+            f"🔊 Streaming TTS starting: {len(text)} chars, voice={voice}", 
+            context=context
+        )
+        logger.start_timer("tts_stream")
+    
+    # Check for streaming TTS capability
+    if not hasattr(vera_instance, 'tts_model'):
+        if logger:
+            logger.error("TTS model not available", context=context)
+        yield {"error": "TTS model not available"}
+        return
+    
+    if not hasattr(vera_instance.tts_model, 'stream'):
+        if logger:
+            logger.warning(
+                "TTS model doesn't support streaming, falling back to batch",
+                context=context
+            )
+        # Fallback to non-streaming
+        result = whisper_tts(vera_instance, text, voice)
+        yield result
+        return
+    
+    try:
+        chunk_count = 0
+        total_bytes = 0
+        
+        if logger:
+            logger.debug(f"Starting streaming TTS generation", context=context)
+        
+        # Stream audio chunks
+        for chunk in vera_instance.tts_model.stream(text=text, voice=voice):
+            chunk_count += 1
+            
+            # Track chunk size if possible
+            try:
+                if isinstance(chunk, bytes):
+                    total_bytes += len(chunk)
+                elif hasattr(chunk, 'audio_data'):
+                    total_bytes += len(chunk.audio_data)
+            except Exception:
+                pass
+            
+            yield chunk
+        
+        if logger:
+            duration = logger.stop_timer("tts_stream", context=context)
+            logger.success(
+                f"Streaming TTS complete | {chunk_count} chunks | {total_bytes} bytes",
+                context=LogContext(extra={
+                    **context.extra,
+                    'chunk_count': chunk_count,
+                    'total_bytes': total_bytes,
+                    'duration': duration
+                })
+            )
+    
+    except Exception as e:
+        if logger:
+            duration = logger.stop_timer("tts_stream", context=context)
+            logger.error(
+                f"Streaming TTS failed: {type(e).__name__}: {str(e)}",
+                exc_info=True,
+                context=LogContext(extra={**context.extra, 'duration': duration, 'error': str(e)})
+            )
+        
+        yield {"error": f"Streaming TTS failed: {str(e)}"}
 
 # ============================================================================
 # MEMORY TASKS (Non-streaming)

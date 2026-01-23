@@ -53,12 +53,12 @@ from langchain.llms.base import LLM
 
 # --- Local Imports ---
 try:
-    from Vera.Agents.executive_0_9 import executive
+    from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
     from Vera.Memory.memory import *
     from Vera.Toolchain.toolchain import ToolChainPlanner
     from Vera.Toolchain.tools import ToolLoader
-    from Vera.Agents.reviewer import Reviewer
-    from Vera.Agents.planning import Planner
+    from Vera.Ollama.Agents.experimental.reviewer import Reviewer
+    from Vera.Ollama.Agents.experimental.Planning.planning import Planner
     from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
     from Vera.Ollama.manager import *
     from Vera.Orchestration.vera_tasks import *
@@ -73,7 +73,7 @@ try:
         LogContext,
         LogLevel
     )
-    from Vera.Agents.integration import integrate_agent_system
+    from Vera.Ollama.Agents.integration import integrate_agent_system
     # Import new components
     from Vera.ProactiveFocus.manager import (
         ResourceMonitor, ResourceLimits, ResourcePriority,
@@ -92,15 +92,16 @@ try:
     from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
 
     from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
+    from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
 
 except ImportError as e:
     print(f"Import error: {e}")
-    from Agents.executive_0_9 import executive
+    from Ollama.Agents.Scheduling.executive_0_9 import executive
     from Memory.memory import *
     from Toolchain.toolchain import ToolChainPlanner
     from Toolchain.tools import ToolLoader
-    from Agents.reviewer import Reviewer
-    from Agents.planning import Planner
+    from Ollama.Agents.reviewer import Reviewer
+    from Ollama.Agents.Planning.planning import Planner
     from ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
     from Ollama.manager import *
     from Orchestration.vera_tasks import *
@@ -528,20 +529,74 @@ class Vera:
         # --- Initialize Executive and Tools ---
         self.logger.info("Loading tools...")
         self.executive_instance = executive(vera_instance=self)
+        
         self.toolkit = ToolLoader(self)
         self.tools = self.toolkit + self.playwright_tools
 
-        [(tool.name, tool.description) for tool in self.tools]
-        # Write the tool list to a file
-        tool_list_path = os.path.join(os.path.dirname(__file__), "Agents", "agents", "tool-agent", "includes", "tool_list.txt")
+        # Log loaded tools with input schemas to agent tool list file
+        tool_list_path = os.path.join(os.path.dirname(__file__), "Ollama","Agents", "agents", "tool-agent", "includes", "tool_list.txt")
         os.makedirs(os.path.dirname(tool_list_path), exist_ok=True)
 
         with open(tool_list_path, "w") as tool_file:
-            for tool in self.tools:
-                tool_file.write(f"{tool.name}: {tool.description}\n")
+            tool_file.write("=" * 80 + "\n")
+            tool_file.write("VERA TOOLCHAIN - AVAILABLE TOOLS\n")
+            tool_file.write("=" * 80 + "\n\n")
+            
+            for idx, tool in enumerate(self.tools, 1):
+                # Write tool header
+                tool_file.write(f"\n[{idx}] {tool.name}\n")
+                tool_file.write("-" * 80 + "\n")
+                tool_file.write(f"DESCRIPTION:\n  {tool.description}\n\n")
+                
+                # Write input schema
+                if hasattr(tool, 'args_schema') and tool.args_schema:
+                    try:
+                        # Get the Pydantic schema
+                        schema = tool.args_schema.schema()
+                        
+                        tool_file.write("INPUT PARAMETERS:\n")
+                        
+                        # Extract properties
+                        properties = schema.get('properties', {})
+                        required_fields = schema.get('required', [])
+                        
+                        if properties:
+                            for param_name, param_info in properties.items():
+                                # Get parameter details
+                                param_type = param_info.get('type', 'string')
+                                param_desc = param_info.get('description', 'No description')
+                                is_required = param_name in required_fields
+                                
+                                # Format parameter line
+                                required_marker = " [REQUIRED]" if is_required else " [OPTIONAL]"
+                                tool_file.write(f"  • {param_name}{required_marker}\n")
+                                tool_file.write(f"    Type: {param_type}\n")
+                                tool_file.write(f"    Description: {param_desc}\n")
+                                
+                                # Include default value if present
+                                if 'default' in param_info:
+                                    tool_file.write(f"    Default: {param_info['default']}\n")
+                                
+                                # Include enum values if present
+                                if 'enum' in param_info:
+                                    tool_file.write(f"    Allowed values: {', '.join(map(str, param_info['enum']))}\n")
+                                
+                                tool_file.write("\n")
+                        else:
+                            tool_file.write("  (No parameters required)\n\n")
+                        
+                        # Optionally include full JSON schema for reference
+                        # tool_file.write("FULL JSON SCHEMA:\n")
+                        # tool_file.write("  " + json.dumps(schema, indent=2).replace("\n", "\n  ") + "\n")
+                        
+                    except Exception as e:
+                        tool_file.write(f"INPUT SCHEMA: Error extracting schema - {str(e)}\n")
+                else:
+                    tool_file.write("INPUT SCHEMA: No schema defined\n")
+                
+                tool_file.write("\n" + "=" * 80 + "\n")
 
-        self.logger.info(f"Tool list written to {tool_list_path}")
-
+        self.logger.info(f"Tool list with schemas written to {tool_list_path}")
         self.logger.success(f"Loaded {len(self.tools)} total tools")
         
         # --- Initialize Agents ---
@@ -563,6 +618,8 @@ class Vera:
         )
         
         self.toolchain = ToolChainPlanner(self, self.tools)
+        
+        # integrate_hybrid_planner(self, enable_n8n=True) 
 
         if self.focus_manager:
             def handle_proactive(thought):
@@ -980,6 +1037,8 @@ class Vera:
                 full_triage += chunk
                 yield extract_chunk_text(chunk)
         
+        yield "\n"  # Ensure newline after triage output
+
         triage_duration = self.logger.stop_timer("triage", context=query_context)
         
         if hasattr(self, 'mem') and hasattr(self, 'sess'):
@@ -1010,7 +1069,7 @@ class Vera:
                 self.logger.success(f"Focus changed to: {self.focus_manager.focus}")
         
         # Proactive thinking
-        elif triage_lower.startswith("proactive"):
+        if triage_lower.startswith("proactive"):
             self.logger.info("Routing to: Proactive Thinking", context=route_context)
             
             if use_orchestrator:
@@ -1060,7 +1119,7 @@ class Vera:
                     self.sess.id,
                     total_response,
                     "Thought",
-                    {"topic": "response", "agent": "toolchain", "task_id": task_id if task_id else None, "duration": duration}
+                    {"topic": "response", "agent": "toolchain", "task_id": task_id if 'task_id' in locals() else None, "duration": triage_duration}
                 )
         
         # Toolchain
@@ -1246,6 +1305,69 @@ class Vera:
                     total_response,
                     "Response",
                     {"topic": "response", "agent": "fast"}
+                )
+        
+        # ====================================================================
+        # STEP 2.5: CONCLUSION (if not simple)
+        # ====================================================================
+        
+        if not triage_lower.startswith("simple") and total_response and total_response.strip():
+            self.logger.info("Generating conclusion summary", context=query_context)
+            self.logger.start_timer("conclusion_generation")
+            
+            conclusion_context = LogContext(
+                session_id=self.sess.id,
+                agent="conclusion",
+                model=self.selected_models.fast_llm
+            )
+            
+            conclusion_prompt = f"""Based on the following interaction, provide a brief, clear conclusion or summary.
+
+    Original Query: {query}
+
+    Response: {total_response[:2000]}{'...' if len(total_response) > 2000 else ''}
+
+    Provide a concise conclusion (2-3 sentences) that captures the key takeaway or result.
+    Do not include any preamble like "Here's a conclusion" - just provide the conclusion directly."""
+            
+            conclusion_text = ""
+            yield "\n\n--- Conclusion ---\n"
+            
+            if use_orchestrator:
+                try:
+                    task_id = self.orchestrator.submit_task(
+                        "llm.generate",
+                        vera_instance=self,
+                        llm_type="fast",
+                        prompt=conclusion_prompt
+                    )
+                    
+                    for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
+                        conclusion_text += chunk
+                        yield extract_chunk_text(chunk)
+                
+                except Exception as e:
+                    self.logger.error(f"Conclusion generation failed: {e}, using direct fallback")
+                    for chunk in self.stream_llm(self.fast_llm, conclusion_prompt):
+                        conclusion_text += chunk
+                        yield extract_chunk_text(chunk)
+            else:
+                for chunk in self.stream_llm(self.fast_llm, conclusion_prompt):
+                    conclusion_text += chunk
+                    yield extract_chunk_text(chunk)
+            
+            duration = self.logger.stop_timer("conclusion_generation", context=conclusion_context)
+            
+            # Add conclusion to total response
+            total_response += f"\n\n--- Conclusion ---\n{conclusion_text}"
+            
+            # Save conclusion to memory
+            if hasattr(self, 'mem') and hasattr(self, 'sess'):
+                self.mem.add_session_memory(
+                    self.sess.id,
+                    conclusion_text,
+                    "Conclusion",
+                    {"topic": "conclusion", "duration": duration}
                 )
         
         # ====================================================================

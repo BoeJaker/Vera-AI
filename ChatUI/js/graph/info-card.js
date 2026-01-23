@@ -897,6 +897,7 @@
             html += '</div>';
             
             // Actions section with integrated context menu
+            // In the Actions section, replace with this:
             html += `
                 <div style="border-top: 1px solid var(--border); padding-top: 16px;">
                     <div style="color: var(--text-secondary); font-size: 12px; font-weight: 600; margin-bottom: 12px;">Actions</div>
@@ -912,6 +913,28 @@
                                 window.GraphContextMenu.handleAskVera('${nodeId}', '${this.escapeHtml(displayName).replace(/'/g, "\\'")}', ${JSON.stringify(nodeData).replace(/'/g, "\\'")});
                             }
                         `, 'var(--accent)')}
+                    </div>
+                    
+                    <!-- Graph Controls -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="color: var(--text-secondary); font-size: 10px; font-weight: 600; margin-bottom: 6px; text-transform: uppercase;">Graph Controls</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+                            ${this.renderSmallActionButton('🎨 Style', `
+                                if(window.GraphStyleControl) {
+                                    window.GraphStyleControl.showInCard('${nodeId}');
+                                }
+                            `)}
+                            ${this.renderSmallActionButton('🔬 Filters', `
+                                if(window.GraphAdvancedFilters) {
+                                    window.GraphAdvancedFilters.showInCard('${nodeId}');
+                                }
+                            `)}
+                            ${this.renderSmallActionButton('⚡ Query', `
+                                if(window.CypherQuery) {
+                                    window.CypherQuery.showInCard('${nodeId}');
+                                }
+                            `)}
+                        </div>
                     </div>
                     
                     <!-- AI Assistant Button -->

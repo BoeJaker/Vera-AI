@@ -2,6 +2,8 @@
 **client_secrets.json
 **service.json
 
+lib/
+
 **/chroma_store/**/
 **/chroma_db/
 **/archive/**/
@@ -31,5 +33,6 @@
 **/.temp/
 
 **/saved_html/**/
+
 # Snyk Security Extension - AI Rules (auto-generated)
 .github\instructions\snyk_rules.instructions.md

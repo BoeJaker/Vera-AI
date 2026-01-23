@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Import the user's scanner
 try:
-    from Vera.Memory.network_ingestor import (
+    from Vera.Memory.Ingestors.network_ingestor import (
         NetworkInfrastructureIngestor,
         NetworkScanner,
         NetworkNode,
@@ -36,7 +36,7 @@ try:
     SCANNER_AVAILABLE = True
 except ImportError:
     try:
-        from Memory.network_ingestor import (
+        from Memory.Ingestors.network_ingestor import (
             NetworkInfrastructureIngestor,
             NetworkScanner,
             NetworkNode,
