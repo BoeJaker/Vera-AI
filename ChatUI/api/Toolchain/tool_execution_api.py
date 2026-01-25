@@ -914,3 +914,96 @@ async def get_tools_info(session_id: str) -> Dict[str, Any]:
             "streaming_support": True
         }
     }
+    # Add to your tools.py API module
+
+from fastapi import APIRouter
+from sse_starlette.sse import EventSourceResponse
+import asyncio
+from datetime import datetime
+
+# Global event bus for graph updates
+graph_update_events = {}  # session_id -> asyncio.Queue
+
+@router.get("/{session_id}/updates/stream")
+async def stream_graph_updates(session_id: str):
+    """SSE endpoint for real-time graph update notifications"""
+    
+    # Create queue for this client
+    if session_id not in graph_update_events:
+        graph_update_events[session_id] = asyncio.Queue()
+    
+    queue = graph_update_events[session_id]
+    
+    async def event_generator():
+        try:
+            while True:
+                # Wait for update event
+                event_data = await queue.get()
+                yield {
+                    "event": "graph_update",
+                    "data": json.dumps(event_data)
+                }
+        except asyncio.CancelledError:
+            pass
+    
+    return EventSourceResponse(event_generator())
+
+
+def notify_graph_update(session_id: str, update_data: Dict[str, Any]):
+    """Notify all listeners of a graph update"""
+    if session_id in graph_update_events:
+        try:
+            graph_update_events[session_id].put_nowait(update_data)
+        except:
+            pass
+        
+@router.get("/{session_id}/execution/{execution_id}/created-nodes")
+async def get_execution_created_nodes(
+    session_id: str,
+    execution_id: str
+) -> Dict[str, Any]:
+    """Get all nodes created during a tool execution"""
+    
+    if session_id not in sessions:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    vera = get_or_create_vera(session_id)
+    
+    try:
+        created_nodes = vera.mem.get_execution_created_nodes(execution_id)
+        
+        # Get connected edges
+        node_ids = [n['id'] for n in created_nodes]
+        
+        edges = []
+        if node_ids:
+            with vera.mem.graph._driver.session() as sess:
+                result = sess.run("""
+                    MATCH (n)-[r]-(m)
+                    WHERE n.id IN $node_ids OR m.id IN $node_ids
+                    RETURN DISTINCT
+                        n.id as from_id,
+                        m.id as to_id,
+                        type(r) as rel_type,
+                        properties(r) as props
+                """, {"node_ids": node_ids})
+                
+                for record in result:
+                    edges.append({
+                        'from': record['from_id'],
+                        'to': record['to_id'],
+                        'label': record['rel_type'],
+                        'properties': dict(record['props']) if record['props'] else {}
+                    })
+        
+        return {
+            "execution_id": execution_id,
+            "nodes": created_nodes,
+            "edges": edges,
+            "total_nodes": len(created_nodes),
+            "total_edges": len(edges)
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get created nodes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -212,10 +212,12 @@ class Vera:
         self.thought_queue = queue.Queue()
         self.stream_thoughts_inline = self.config.logging.stream_thoughts_inline
         
-        self.ollama_manager = OllamaConnectionManager(
-            config=self.config.ollama, 
+        from Vera.Ollama.multi_instance_manager import MultiInstanceOllamaManager
+
+        self.ollama_manager = MultiInstanceOllamaManager(
+            config=self.config.ollama,
             thought_callback=self._on_thought_captured,
-            logger=self.logger  # Pass logger to manager
+            logger=self.logger
         )
         
         # --- Model Selection ---

@@ -1420,6 +1420,17 @@
                             
                             <!-- Navigation -->
                             <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
+                                <!-- Add to ollama-tab.html navigation section -->
+                                <button class="ollama-nav-btn" data-panel="routing" onclick="app.switchOllamaPanel('routing')">
+                                    Routing
+                                </button>
+                                <button class="ollama-nav-btn" data-panel="instances" onclick="app.switchOllamaPanel('instances')">
+                                    Instances
+                                </button>
+
+                                <button class="ollama-nav-btn" data-panel="sync" onclick="app.switchOllamaPanel('sync')">
+                                    Sync
+                                </button>
                                 <button class="ollama-nav-btn active" data-panel="models" 
                                         onclick="app.switchOllamaPanel('models')"
                                         style="padding: 12px 24px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
@@ -1442,7 +1453,23 @@
                                 </button>
                                 
                             </div>
-                            
+                            <!-- Routing Control Panel -->
+                            <div id="ollama-panel-routing" class="ollama-panel" style="display: none;">
+                                <div id="ollama-routing-content">
+                                    <p style="color: var(--text-muted); text-align: center; padding: 48px;">Loading routing configuration...</p>
+                                </div>
+                            </div>
+                            <!-- Instances Panel -->
+                            <div id="ollama-panel-instances" class="ollama-panel" style="display: none;">
+                                <h2>Ollama Instances</h2>
+                                <div id="ollama-instances-list"></div>
+                            </div>
+
+                            <!-- Sync Panel -->
+                            <div id="ollama-panel-sync" class="ollama-panel" style="display: none;">
+                                <h2>Model Synchronization</h2>
+                                <div id="ollama-sync-comparison"></div>
+                            </div>
                             <!-- Models Panel -->
                             <div id="ollama-panel-models" class="ollama-panel">
                                 <div style="background: var(--bg-darker); padding: 20px; border-radius: 12px; margin-bottom: 20px;">

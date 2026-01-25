@@ -1,5 +1,5 @@
 """
-Toolchain API Module
+Toolchain API Module - FIXED FOR MULTI-PARAMETER TOOLS
 
 This module provides a set of APIs for managing and monitoring toolchain executions
 within the Vera ChatUI application. It includes endpoints for executing tools, 
@@ -11,6 +11,7 @@ Key Features:
 - WebSocket support for live updates on toolchain progress.
 - RESTful endpoints for managing toolchain sessions, tools, and executions.
 - Analytics and statistics for toolchain usage and performance.
+- FIXED: Proper handling of multi-parameter tools (dict inputs)
 
 """
 import asyncio
@@ -229,6 +230,138 @@ def complete_toolchain_execution(session_id: str, execution_id: str,
             del active_toolchains[session_id]
 
 
+# ============================================================
+# HELPER: Parse and resolve tool inputs (FIXED)
+# ============================================================
+
+def parse_tool_input(raw_input: Any) -> Any:
+    """
+    Parse tool input - handles both string and dict inputs.
+    Converts JSON strings to dicts where appropriate.
+    
+    Args:
+        raw_input: Raw input from plan (string or dict)
+    
+    Returns:
+        Parsed input (string or dict)
+    """
+    # If already a dict, return as-is
+    if isinstance(raw_input, dict):
+        return raw_input
+    
+    # If not a string, convert to string
+    if not isinstance(raw_input, str):
+        return str(raw_input)
+    
+    # Try to parse as JSON if it looks like JSON
+    stripped = raw_input.strip()
+    if (stripped.startswith('{') and stripped.endswith('}')) or \
+       (stripped.startswith('[') and stripped.endswith(']')):
+        try:
+            parsed = json.loads(stripped)
+            # Only use parsed version if it's a dict (not a list or other JSON)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            # Try Python literal eval as fallback (handles single quotes)
+            try:
+                import ast
+                parsed = ast.literal_eval(stripped)
+                if isinstance(parsed, dict):
+                    return parsed
+            except (ValueError, SyntaxError):
+                pass
+    
+    # Return as string if not parseable
+    return raw_input
+
+
+def resolve_placeholders(value: Any, step_num: int, tool_outputs: Dict[str, str]) -> Any:
+    """
+    Resolve {prev} and {step_N} placeholders in any value.
+    Works recursively on dicts and strings.
+    
+    Args:
+        value: Value to resolve (string, dict, or other)
+        step_num: Current step number
+        tool_outputs: Dict of previous step outputs
+    
+    Returns:
+        Value with placeholders resolved
+    """
+    # Handle dict recursively
+    if isinstance(value, dict):
+        return {k: resolve_placeholders(v, step_num, tool_outputs) for k, v in value.items()}
+    
+    # Handle list recursively
+    if isinstance(value, list):
+        return [resolve_placeholders(item, step_num, tool_outputs) for item in value]
+    
+    # Handle strings with placeholders
+    if isinstance(value, str):
+        # Replace {prev} with previous step output
+        if "{prev}" in value:
+            prev_output = str(tool_outputs.get(f"step_{step_num-1}", ""))
+            value = value.replace("{prev}", prev_output)
+        
+        # Replace {step_N} with that step's output
+        for i in range(1, step_num):
+            placeholder = f"{{step_{i}}}"
+            if placeholder in value:
+                step_output = str(tool_outputs.get(f"step_{i}", ""))
+                value = value.replace(placeholder, step_output)
+        
+        return value
+    
+    # Return other types as-is
+    return value
+
+
+def execute_tool_with_input(tool, tool_name: str, tool_input: Any) -> Any:
+    """
+    Execute a tool with proper argument handling.
+    Matches original ToolChainPlanner pattern but with dict input support.
+    
+    Args:
+        tool: Tool instance
+        tool_name: Tool name (for logging)
+        tool_input: Parsed and resolved input (dict or string)
+    
+    Returns:
+        Tool execution result (may be generator or direct value)
+    """
+    logger.debug(f"Executing {tool_name} with input type: {type(tool_input)}")
+    logger.debug(f"Input value: {tool_input}")
+    
+    # Get the callable - matching original pattern from Document 3
+    if hasattr(tool, 'run') and callable(tool.run):
+        func = tool.run
+    elif hasattr(tool, 'invoke') and callable(tool.invoke):
+        func = tool.invoke
+    elif hasattr(tool, 'func') and callable(tool.func):
+        func = tool.func
+    elif callable(tool):
+        func = tool
+    else:
+        raise ValueError(f"Tool '{tool_name}' is not callable")
+    
+    # Execute - BaseTool.run() and similar methods accept tool_input as single arg (can be dict)
+    # Only unpack dicts for raw functions (.func or callable tools)
+    if hasattr(tool, 'run') or hasattr(tool, 'invoke'):
+        # LangChain tool methods - pass tool_input as-is (they handle dicts internally)
+        return func(tool_input)
+    else:
+        # Raw functions - unpack dicts as kwargs
+        if isinstance(tool_input, dict):
+            return func(**tool_input)
+        else:
+            return func(tool_input)
+
+
+# ============================================================
+# MonitoredToolChainPlanner (FIXED)
+# ============================================================
+
 class MonitoredToolChainPlanner:
     """Wrapper around Vera's ToolChainPlanner that captures execution data."""
     
@@ -238,7 +371,7 @@ class MonitoredToolChainPlanner:
         self.execution_id = None
     
     def execute_tool_chain(self, query: str, plan=None):
-        """Monitored version of execute_tool_chain with thread-safe broadcasting."""
+        """Monitored version of execute_tool_chain with thread-safe broadcasting and FIXED multi-param support."""
         # Create execution record
         self.execution_id = create_toolchain_execution(self.session_id, query)
         
@@ -289,15 +422,31 @@ class MonitoredToolChainPlanner:
                 {"status": "executing"}
             )
             
+            # Track outputs for placeholder resolution
+            tool_outputs = {}
             step_num = 0
+            
             for step in plan:
                 step_num += 1
                 tool_name = step.get("tool")
-                tool_input = str(step.get("input", ""))
+                raw_input = step.get("input", "")
+                
+                logger.debug(f"[Step {step_num}] Raw input type: {type(raw_input)}, value: {raw_input}")
+                
+                # FIXED: Parse input (handles JSON strings -> dicts)
+                parsed_input = parse_tool_input(raw_input)
+                logger.debug(f"[Step {step_num}] Parsed input type: {type(parsed_input)}, value: {parsed_input}")
+                
+                # FIXED: Resolve placeholders (works on both strings and dicts)
+                tool_input = resolve_placeholders(parsed_input, step_num, tool_outputs)
+                logger.debug(f"[Step {step_num}] Resolved input type: {type(tool_input)}, value: {tool_input}")
+                
+                # Store input as string for monitoring
+                input_display = json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input)
                 
                 # Add step to monitoring
                 add_toolchain_step(self.session_id, self.execution_id, step_num, 
-                                  tool_name, tool_input)
+                                  tool_name, input_display)
                 
                 schedule_broadcast(
                     self.session_id,
@@ -305,7 +454,7 @@ class MonitoredToolChainPlanner:
                     {
                         "step_number": step_num,
                         "tool_name": tool_name,
-                        "tool_input": tool_input,
+                        "tool_input": input_display,
                         "execution_id": self.execution_id
                     }
                 )
@@ -325,61 +474,58 @@ class MonitoredToolChainPlanner:
                     yield error_msg
                     continue
                 
-                # Resolve placeholders in tool_input
-                if "{prev}" in tool_input and step_num > 1:
-                    prev_step = toolchain_executions[self.session_id][self.execution_id]["steps"][step_num-2]
-                    tool_input = tool_input.replace("{prev}", str(prev_step.get("tool_output", "")))
-                
-                for i in range(1, step_num):
-                    prev_step = toolchain_executions[self.session_id][self.execution_id]["steps"][i-1]
-                    tool_input = tool_input.replace(f"{{step_{i}}}", str(prev_step.get("tool_output", "")))
-                
-                # Execute tool
+                # FIXED: Execute tool with proper argument handling
                 try:
-                    if hasattr(tool, "run") and callable(tool.run):
-                        func = tool.run
-                    elif hasattr(tool, "func") and callable(tool.func):
-                        func = tool.func
-                    elif callable(tool):
-                        func = tool
-                    else:
-                        raise ValueError(f"Tool is not callable")
+                    result = execute_tool_with_input(tool, tool_name, tool_input)
                     
+                    # Handle streaming vs non-streaming results
                     collected = []
-                    result = ""
+                    result_str = ""
+                    
                     try:
-                        for r in func(tool_input):
-                            collected.append(r)
-                            # Broadcast each chunk (now works from worker threads!)
+                        # Try to iterate (streaming)
+                        for chunk in result:
+                            chunk_str = str(chunk)
+                            collected.append(chunk_str)
+                            
+                            # Broadcast each chunk
                             schedule_broadcast(
                                 self.session_id,
                                 "step_output",
-                                {"step_number": step_num, "chunk": str(r)}
+                                {"step_number": step_num, "chunk": chunk_str}
                             )
-                            yield r
+                            yield chunk
                     except TypeError:
-                        result = func(tool_input)
+                        # Not iterable (non-streaming)
+                        result_str = str(result)
                         schedule_broadcast(
                             self.session_id,
                             "step_output",
-                            {"step_number": step_num, "chunk": str(result)}
+                            {"step_number": step_num, "chunk": result_str}
                         )
                         yield result
                     else:
-                        result = "".join(str(c) for c in collected)
+                        # Combine collected chunks
+                        result_str = "".join(collected)
+                    
+                    # Store result for future placeholder resolution
+                    tool_outputs[f"step_{step_num}"] = result_str
+                    tool_outputs[tool_name] = result_str
                     
                     # Update step as completed
                     update_toolchain_step(self.session_id, self.execution_id, step_num,
-                                        output=result, status="completed")
+                                        output=result_str, status="completed")
                     
                     schedule_broadcast(
                         self.session_id,
                         "step_completed",
-                        {"step_number": step_num, "output": result[:500]}  # Truncate long outputs
+                        {"step_number": step_num, "output": result_str[:500]}  # Truncate long outputs
                     )
                     
                 except Exception as e:
                     error_msg = f"Error executing {tool_name}: {str(e)}"
+                    logger.error(error_msg, exc_info=True)
+                    
                     update_toolchain_step(self.session_id, self.execution_id, step_num,
                                         error=error_msg, status="failed")
                     schedule_broadcast(
@@ -390,9 +536,7 @@ class MonitoredToolChainPlanner:
                     yield error_msg
             
             # Get final result
-            final_result = ""
-            if toolchain_executions[self.session_id][self.execution_id]["steps"]:
-                final_result = toolchain_executions[self.session_id][self.execution_id]["steps"][-1].get("tool_output", "")
+            final_result = tool_outputs.get(f"step_{step_num}", "")
             
             complete_toolchain_execution(self.session_id, self.execution_id, 
                                        final_result, "completed")
@@ -437,45 +581,19 @@ async def execute_single_tool(session_id: str, tool_name: str, tool_input: str):
         
         start_time = datetime.utcnow()
         
-        # Parse tool_input as JSON if it looks like JSON
-        try:
-            input_data = json.loads(tool_input)
-        except (json.JSONDecodeError, TypeError):
-            input_data = tool_input
+        # Parse tool_input
+        parsed_input = parse_tool_input(tool_input)
         
-        # Execute using LangChain's tool.run() method
+        # Execute tool
+        result = execute_tool_with_input(tool, tool_name, parsed_input)
+        
+        # Handle streaming vs non-streaming
         output = ""
-        try:
-            if isinstance(input_data, dict):
-                result = tool.run(input_data)
-            else:
-                result = tool.run(input_data)
-            
-            # Handle generator vs direct return
-            if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
-                for chunk in result:
-                    output += str(chunk)
-            else:
-                output = str(result)
-                
-        except Exception as e:
-            logger.warning(f"tool.run() failed, trying direct function call: {e}")
-            
-            if hasattr(tool, "func") and callable(tool.func):
-                func = tool.func
-                
-                if isinstance(input_data, dict):
-                    result = func(**input_data)
-                else:
-                    result = func(input_data)
-                
-                if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
-                    for chunk in result:
-                        output += str(chunk)
-                else:
-                    output = str(result)
-            else:
-                raise
+        if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
+            for chunk in result:
+                output += str(chunk)
+        else:
+            output = str(result)
         
         end_time = datetime.utcnow()
         duration = (end_time - start_time).total_seconds() * 1000
@@ -518,16 +636,23 @@ async def execute_toolchain(request: ToolchainRequest):
                     plan_json += str(chunk)
                 
                 # Execute the plan
+                tool_outputs = {}
                 step_num = 0
                 final_result = ""
                 
                 for step in toolchain_executions[request.session_id][execution_id]["plan"]:
                     step_num += 1
                     tool_name = step.get("tool")
-                    tool_input = step.get("input", "")
+                    raw_input = step.get("input", "")
+                    
+                    # Parse and resolve input
+                    parsed_input = parse_tool_input(raw_input)
+                    tool_input = resolve_placeholders(parsed_input, step_num, tool_outputs)
+                    
+                    input_display = json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input)
                     
                     add_toolchain_step(request.session_id, execution_id, step_num, 
-                                      tool_name, tool_input)
+                                      tool_name, input_display)
                     
                     tool = next((t for t in vera.tools if t.name == tool_name), None)
                     
@@ -538,25 +663,21 @@ async def execute_toolchain(request: ToolchainRequest):
                         continue
                     
                     try:
-                        if hasattr(tool, "run") and callable(tool.run):
-                            func = tool.run
-                        elif hasattr(tool, "func") and callable(tool.func):
-                            func = tool.func
-                        elif callable(tool):
-                            func = tool
-                        else:
-                            raise ValueError(f"Tool is not callable")
+                        result = execute_tool_with_input(tool, tool_name, tool_input)
                         
-                        result = ""
+                        result_str = ""
                         try:
-                            for chunk in func(tool_input):
-                                result += str(chunk)
+                            for chunk in result:
+                                result_str += str(chunk)
                         except TypeError:
-                            result = str(func(tool_input))
+                            result_str = str(result)
+                        
+                        tool_outputs[f"step_{step_num}"] = result_str
+                        tool_outputs[tool_name] = result_str
                         
                         update_toolchain_step(request.session_id, execution_id, step_num,
-                                            output=result, status="completed")
-                        final_result = result
+                                            output=result_str, status="completed")
+                        final_result = result_str
                         
                     except Exception as e:
                         update_toolchain_step(request.session_id, execution_id, step_num,

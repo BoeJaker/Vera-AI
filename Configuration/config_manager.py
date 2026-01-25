@@ -18,7 +18,7 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import logging
 from dataclasses import dataclass, asdict, field
-
+from typing import List, Union
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -47,34 +47,6 @@ class AgentSystemConfig:
     check_interval: int = 60
     validate_on_load: bool = True
     strict_validation: bool = False
-
-@dataclass
-class OllamaConfig:
-    """Ollama API configuration"""
-    api_url: str = "http://localhost:11434"
-    timeout: int = 2400
-    use_local_fallback: bool = True
-    connection_retry_attempts: int = 3
-    connection_retry_delay: float = 1.0
-
-
-@dataclass
-class ModelConfig:
-    """Model selection configuration"""
-    embedding_model: str = "mistral:7b"
-    fast_llm: str = "gemma2"
-    intermediate_llm: str = "gemma3:12b"
-    deep_llm: str = "gemma3:27b"
-    reasoning_llm: str = "gpt-oss:20b"
-    tool_llm: str = "gemma2"
-    
-    # Temperature settings per model
-    fast_temperature: float = 0.6
-    intermediate_temperature: float = 0.4
-    deep_temperature: float = 0.6
-    reasoning_temperature: float = 0.7
-    tool_temperature: float = 0.1
-
 
 @dataclass
 class MemoryConfig:
@@ -210,6 +182,110 @@ class LoggingConfig:
     stream_thoughts_inline: bool = True
 
 
+
+@dataclass
+class OllamaInstanceConfig:
+    """Configuration for a single Ollama instance"""
+    name: str
+    api_url: str
+    priority: int = 1
+    max_concurrent: int = 2
+    enabled: bool = True
+    timeout: int = 2400
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'OllamaInstanceConfig':
+        """Create from dictionary"""
+        return cls(
+            name=data.get('name', 'unknown'),
+            api_url=data.get('api_url', 'http://localhost:11434'),
+            priority=data.get('priority', 1),
+            max_concurrent=data.get('max_concurrent', 2),
+            enabled=data.get('enabled', True),
+            timeout=data.get('timeout', 2400)
+        )
+
+
+@dataclass
+class OllamaConfig:
+    """Ollama API configuration with multi-instance support"""
+    # Primary instance (backward compatible)
+    api_url: str = "http://192.168.0.250:11435"
+    timeout: int = 2400
+    use_local_fallback: bool = False  # DISABLE local fallback
+    connection_retry_attempts: int = 3
+    connection_retry_delay: float = 1.0
+    
+    # Multi-instance configuration
+    instances: List[OllamaInstanceConfig] = field(default_factory=list)
+    
+    # Load balancing settings (with defaults)
+    load_balance_strategy: str = "least_loaded"
+    enable_request_queue: bool = True
+    max_queue_size: int = 100
+    
+    # Legacy fields for backward compatibility
+    enable_thought_capture: bool = True
+    temperature: float = 0.7
+    top_k: int = 40
+    top_p: float = 0.9
+    num_predict: int = -1
+    repeat_penalty: float = 1.1
+    cache_model_metadata: bool = True
+    metadata_cache_ttl: int = 3600
+    
+    def __post_init__(self):
+        """Convert dict instances to OllamaInstanceConfig objects and set defaults"""
+        if self.instances:
+            converted_instances = []
+            for instance in self.instances:
+                if isinstance(instance, dict):
+                    converted_instances.append(OllamaInstanceConfig.from_dict(instance))
+                elif isinstance(instance, OllamaInstanceConfig):
+                    converted_instances.append(instance)
+                else:
+                    raise TypeError(f"Invalid instance type: {type(instance)}")
+            self.instances = converted_instances
+        else:
+            # Default instances if none provided
+            self.instances = [
+                OllamaInstanceConfig(
+                    name="remote",
+                    api_url="http://192.168.0.250:11435",
+                    priority=2,
+                    max_concurrent=2
+                ),
+                OllamaInstanceConfig(
+                    name="local",
+                    api_url="http://localhost:11434",
+                    priority=1,
+                    max_concurrent=2
+                )
+            ]
+
+
+@dataclass
+class ModelConfig:
+    """Model selection configuration"""
+    embedding_model: str = "mistral:7b"
+    fast_llm: str = "gemma2"
+    intermediate_llm: str = "gemma3:12b"
+    deep_llm: str = "gpt-oss:20b"
+    reasoning_llm: str = "gpt-oss:20b"
+    tool_llm: str = "gemma2"
+    
+    # Temperature settings per model
+    fast_temperature: float = 0.6
+    intermediate_temperature: float = 0.4
+    deep_temperature: float = 0.6
+    reasoning_temperature: float = 0.7
+    tool_temperature: float = 0.1
+    
+    # REMOVED: fast_top_k, fast_top_p, etc. - these should be set at runtime
+    # If you need these, add them as separate fields:
+    # fast_top_k: int = 40
+    # fast_top_p: float = 0.9
+
 @dataclass
 class VeraConfig:
     """Main Vera configuration"""
@@ -226,6 +302,7 @@ class VeraConfig:
     # General settings
     enable_hot_reload: bool = True
     config_file: str = "./Vera/Configuration/vera_config.yaml"
+
 
 class ConfigFileHandler(FileSystemEventHandler):
     """Watch for config file changes"""
@@ -390,11 +467,28 @@ class ConfigManager:
                 logger.debug(f"Applied env override: {env_var} -> {section}.{key}")
         
         return data
-        
+            
     def _dict_to_config(self, data: Dict) -> VeraConfig:
         """Convert dictionary to VeraConfig object"""
+        
+        # Handle Ollama config specially
+        ollama_data = data.get('ollama', {})
+        
+        # Convert instances list if present
+        if 'instances' in ollama_data:
+            instances_data = ollama_data.pop('instances')
+            ollama_config = OllamaConfig(**ollama_data)
+            
+            # Manually set instances (will trigger __post_init__)
+            ollama_config.instances = [
+                OllamaInstanceConfig.from_dict(inst) if isinstance(inst, dict) else inst
+                for inst in instances_data
+            ]
+        else:
+            ollama_config = OllamaConfig(**ollama_data)
+        
         config_dict = {
-            'ollama': OllamaConfig(**data.get('ollama', {})),
+            'ollama': ollama_config,
             'models': ModelConfig(**data.get('models', {})),
             'memory': MemoryConfig(**data.get('memory', {})),
             'orchestrator': OrchestratorConfig(**data.get('orchestrator', {})),
@@ -407,11 +501,21 @@ class ConfigManager:
             'config_file': data.get('config_file', str(self.config_path)),
         }
         return VeraConfig(**config_dict)
-        
+
     def _config_to_dict(self, config: VeraConfig) -> Dict:
         """Convert VeraConfig object to dictionary"""
+        
+        ollama_dict = asdict(config.ollama)
+        
+        # Convert instances to dicts properly
+        if 'instances' in ollama_dict:
+            ollama_dict['instances'] = [
+                asdict(inst) if not isinstance(inst, dict) else inst
+                for inst in ollama_dict['instances']
+            ]
+        
         return {
-            'ollama': asdict(config.ollama),
+            'ollama': ollama_dict,
             'models': asdict(config.models),
             'memory': asdict(config.memory),
             'orchestrator': asdict(config.orchestrator),

@@ -1,0 +1,30 @@
+name: "tool-triage"
+description: "Agent that interprets queries and dispatches tool agents."
+
+base_model: "gemma2"
+# quantization: "Q5_K_M"
+num_ctx: 65536
+# gpu_layers: 99
+
+parameters:
+  temperature: 0.4
+  top_p: 0.9
+  repeat_penalty: 1.05
+
+memory:
+  use_vector: true
+  use_neo4j: true
+  vector_top_k: 8
+  neo4j_limit: 16
+
+includes:
+  - includes/agent_list.txt
+  - includes/capabilities.md
+  - includes/safety.md
+
+system_prompt:
+  template: "prompt_template.j2"
+  variables:
+    agent_name: "Tool Triage"
+    version: "1.0.0"
+    enable_advanced_reasoning: false

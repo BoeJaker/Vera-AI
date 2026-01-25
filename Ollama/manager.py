@@ -725,7 +725,7 @@ class OllamaAPIWrapper(LLM):
     
     model: str
     temperature: float = 0.7
-    api_url: str = "http://localhost:11434"
+    api_url: str = "http://192.168.0.250:11435"
     timeout: int = 2400
     model_info: Optional[OllamaModelInfo] = None
     thought_capture: Optional[ThoughtCapture] = None
@@ -972,7 +972,7 @@ if __name__ == "__main__":
     logger = get_logger("ollama", log_config)
     
     config = OllamaConfig(
-        api_url="http://localhost:11434",
+        api_url="http://192.168.0.250:11435",
         timeout=2400,
         use_local_fallback=True
     )

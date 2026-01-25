@@ -2,61 +2,72 @@
 # This file supports hot-reloading - changes will be automatically detected
 # Environment variables can override these settings (see VERA_* prefixes)
 
-# Ollama API Configuration
-ollama:
-  api_url: "http://localhost:11434"
-  timeout: 2400
-  use_local_fallback: true
-  connection_retry_attempts: 3
-  connection_retry_delay: 1.0
-  
-  # Thought capture (for models like DeepSeek, GPT-OSS, etc.)
-  enable_thought_capture: true
-  thought_display_format: "inline"  # inline, separate, minimal
-  
-  # Default inference parameters
-  temperature: 0.7
-  top_k: 40
-  top_p: 0.9
-  num_predict: -1  # -1 = unlimited tokens
-  repeat_penalty: 1.1
-  
-  # Model metadata
-  cache_model_metadata: true
-  metadata_cache_ttl: 3600  # seconds
+# Vera/Configuration/vera_config.yaml
 
-# Model Selection and Parameters
 models:
-  # Model names (must be available in Ollama)
   embedding_model: "mistral:7b"
   fast_llm: "gemma2"
   intermediate_llm: "gemma3:12b"
-  deep_llm: "gemma3:27b"
+  deep_llm: "gpt-oss:20b"
   reasoning_llm: "gpt-oss:20b"
-  tool_llm: "gemma3:12b"
+  tool_llm: "gemma2"
   
-  # Temperature settings for each model type
+  # Temperature settings
   fast_temperature: 0.6
   intermediate_temperature: 0.4
   deep_temperature: 0.6
   reasoning_temperature: 0.7
   tool_temperature: 0.1
   
-  # Advanced parameters per model type
-  fast_top_k: 40
-  fast_top_p: 0.9
-  intermediate_top_k: 40
-  intermediate_top_p: 0.85
-  deep_top_k: 50
-  deep_top_p: 0.95
-  reasoning_top_k: 40
-  reasoning_top_p: 0.9
-  tool_top_k: 20
-  tool_top_p: 0.8
+  # REMOVE these if present - they're invalid:
+  # fast_top_k: 40
+  # fast_top_p: 0.9
+
+ollama:
+  api_url: "http://192.168.0.250:11435"
+  timeout: 2400
+  use_local_fallback: false
+  connection_retry_attempts: 3
+  connection_retry_delay: 1.0
   
-  # Context management
-  max_context_tokens: 4096
-  context_overflow_strategy: "truncate"  # truncate, summarize, error
+  # Multi-instance settings
+  load_balance_strategy: "least_loaded"
+  enable_request_queue: true
+  max_queue_size: 100
+  
+  # Legacy settings
+  enable_thought_capture: true
+  temperature: 0.7
+  top_k: 40
+  top_p: 0.9
+  num_predict: -1
+  
+  instances:
+    - name: "remote"
+      api_url: "http://192.168.0.250:11435"
+      priority: 4
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+    - name: "remote-b"
+      api_url: "http://192.168.0.249:11435"
+      priority: 3
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+    - name: "remote-c"
+      api_url: "http://192.168.0.248:11435"
+      priority: 2
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+    
+    - name: "local"
+      api_url: "http://localhost:11434"
+      priority: 1
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
 
 # Memory System Configuration
 memory:

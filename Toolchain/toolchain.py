@@ -12,7 +12,10 @@ class ToolChainPlanner:
         self.history = self.agent.buffer_memory.load_memory_variables({})['chat_history']
 
     def plan_tool_chain(self, query: str, history_context: str = "") -> List[Dict[str, str]]:
-        """Generate a plan from the LLM."""
+        """
+        Generate a plan from the LLM.
+        Superseded by toolchain task method in orchestrator.
+        """
         planning_prompt = f"""
 You are a rigorous, disciplined system planner. You generate ONLY a JSON array describing tool invocations. No commentary, no markdown, no prose.
 
@@ -150,6 +153,32 @@ The user query is:
             if "llm" in tool_name and isinstance(tool_input, str):
                 context = self.agent.buffer_memory.load_memory_variables({})['chat_history']
                 tool_input = f"Context: {context}\n{tool_input}"
+            
+            # ============================================================
+            # PARSE STRING INPUTS THAT MIGHT BE JSON/DICT
+            # ============================================================
+            if isinstance(tool_input, str):
+                # Try to parse as JSON if it looks like a dict or array
+                stripped = tool_input.strip()
+                if (stripped.startswith('{') and stripped.endswith('}')) or \
+                (stripped.startswith('[') and stripped.endswith(']')):
+                    try:
+                        parsed = json.loads(stripped)
+                        # Only use parsed version if it's a dict (not a list or other JSON)
+                        if isinstance(parsed, dict):
+                            tool_input = parsed
+                            print(f"[ Toolchain Agent ] Parsed string input as JSON dict")
+                    except json.JSONDecodeError:
+                        # Try Python literal eval as fallback (handles single quotes)
+                        try:
+                            import ast
+                            parsed = ast.literal_eval(stripped)
+                            if isinstance(parsed, dict):
+                                tool_input = parsed
+                                print(f"[ Toolchain Agent ] Parsed string input as Python dict")
+                        except (ValueError, SyntaxError):
+                            # Not parseable - keep as string
+                            pass
 
             print(f"[ Toolchain Agent ] Step {step_num} - Executing Tool: {tool_name}")
             print(f"[ Toolchain Agent ] Raw input type: {type(raw_input)}")
@@ -157,7 +186,7 @@ The user query is:
             print(f"[ Toolchain Agent ] Processed input type: {type(tool_input)}")
             print(f"[ Toolchain Agent ] Processed input: {json.dumps(tool_input, indent=2) if isinstance(tool_input, dict) else tool_input}")
             yield f"[ Toolchain Agent ] Step {step_num} - Executing Tool: {tool_name}\n"
-            
+                        
             # Find the tool
             tool = next((t for t in self.tools if t.name == tool_name), None)
 
@@ -167,72 +196,60 @@ The user query is:
                 yield result
             else:
                 try:
-                    # ============================================================
-                    # CRITICAL FIX: For StructuredTool with dict inputs
-                    # ============================================================
                     collected = []
                     result = ""
                     
-                    # Check if it's a StructuredTool (has invoke method)
-                    if hasattr(tool, 'invoke'):
-                        print(f"[ Toolchain Agent ] Using tool.invoke()")
-                        
-                        try:
-                            # Use run() instead of invoke() for StructuredTool
-                            if hasattr(tool, 'run'):
-                                if isinstance(tool_input, dict):
-                                    # StructuredTool.run() with dict should work correctly
-                                    result = tool.run(tool_input)
-                                else:
-                                    result = tool.run(tool_input)
-                            else:
-                                # Fallback to invoke
-                                result = tool.invoke(tool_input)
-                            
-                            yield result
-                            
-                        except Exception as e:
-                            print(f"[ Toolchain Agent ] Tool execution failed: {e}")
-                            print(f"[ Toolchain Agent ] Traceback: {traceback.format_exc()}")
-                            raise
+                    # ============================================================
+                    # EXECUTE TOOL - Handle both streaming and non-streaming
+                    # ============================================================
                     
-                    # Fallback for non-StructuredTool (should rarely happen)
+                    # Get the actual function to call
+                    if hasattr(tool, 'run') and callable(tool.run):
+                        func = tool.run
+                    elif hasattr(tool, 'invoke') and callable(tool.invoke):
+                        func = tool.invoke
+                    elif hasattr(tool, 'func') and callable(tool.func):
+                        func = tool.func
+                    elif callable(tool):
+                        func = tool
                     else:
-                        print(f"[ Toolchain Agent ] Using direct function call")
-                        
-                        # Get the callable
-                        if hasattr(tool, "run") and callable(tool.run):
-                            func = tool.run
-                        elif hasattr(tool, "func") and callable(tool.func):
-                            func = tool.func
-                        elif callable(tool):
-                            func = tool
+                        raise ValueError(f"Tool '{tool_name}' is not callable")
+                    
+                    print(f"[ Toolchain Agent ] Calling function: {func.__name__ if hasattr(func, '__name__') else type(func)}")
+                    print(f"[ Toolchain Agent ] Input type: {type(tool_input)}")
+                    print(f"[ Toolchain Agent ] Input value: {tool_input}")
+                    
+                    # Execute with proper argument unpacking
+                    try:
+                        # Try to execute (might be streaming or not)
+                        if isinstance(tool_input, dict):
+                            # Unpack dict as keyword arguments
+                            exec_result = func(**tool_input)
                         else:
-                            raise ValueError(f"Tool is not callable")
+                            # Pass as single positional argument
+                            exec_result = func(tool_input)
                         
-                        try:
-                            # Try streaming execution
-                            if isinstance(tool_input, dict):
-                                # UNPACK dict as keyword arguments
-                                for r in func(**tool_input):
-                                    yield r
-                                    collected.append(r)
-                            else:
-                                # Pass string directly
-                                for r in func(tool_input):
-                                    yield r
-                                    collected.append(r)
-                            
-                            result = "".join(str(c) for c in collected)
-                            
-                        except TypeError:
-                            # Not iterable - try non-streaming
-                            if isinstance(tool_input, dict):
-                                result = func(**tool_input)
-                            else:
-                                result = func(tool_input)
-                            
+                        # Check if result is a generator/iterator (streaming)
+                        if hasattr(exec_result, '__iter__') and not isinstance(exec_result, (str, bytes, dict)):
+                            # Streaming result
+                            for chunk in exec_result:
+                                chunk_str = str(chunk)
+                                yield chunk_str
+                                collected.append(chunk_str)
+                            result = "".join(collected)
+                        else:
+                            # Non-streaming result
+                            result = str(exec_result)
                             yield result
+                            
+                    except TypeError as te:
+                        # Argument mismatch - provide detailed error
+                        import inspect
+                        sig = inspect.signature(func)
+                        print(f"[ Toolchain Agent ] TypeError: {te}")
+                        print(f"[ Toolchain Agent ] Function signature: {sig}")
+                        print(f"[ Toolchain Agent ] Provided input: {tool_input}")
+                        raise
                     
                     # Store result
                     tool_outputs[f"step_{step_num}"] = result
@@ -256,7 +273,6 @@ The user query is:
                     errors_detected = True
                     tool_outputs[f"step_{step_num}"] = result
                     yield result
-
             print(f"Step {step_num} result: {result[:200]}{'...' if len(result) > 200 else ''}")
             self.agent.save_to_memory(f"Step {step_num} - {tool_name}", result)
 
