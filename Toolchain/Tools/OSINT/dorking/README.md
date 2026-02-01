@@ -355,7 +355,7 @@ Each `WebResource` node includes:
 5. **Captcha Detection**: Automatic captcha detection and graceful degradation
 6. **Result Deduplication**: Prevents re-fetching same URLs
 
-## 📊 Usage Examples
+## Usage Examples
 
 ### Example 1: Simple Keyword Search
 ```python

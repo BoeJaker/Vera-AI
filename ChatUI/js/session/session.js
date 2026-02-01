@@ -395,19 +395,19 @@
                             <div style="display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap;">
                                 <button class="ml-nav-btn active" data-panel="models" onclick="app.switchMLPanel('models')"
                                         style="padding: 12px 24px; background: var(--accent); border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                                    📊 Models
+                                    Models
                                 </button>
                                 <button class="ml-nav-btn" data-panel="tictactoe" onclick="app.switchMLPanel('tictactoe')"
                                         style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                                    🎮 Tic-Tac-Toe AI
+                                    Tic-Tac-Toe AI
                                 </button>
                                 <button class="ml-nav-btn" data-panel="crypto" onclick="app.switchMLPanel('crypto')"
                                         style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                                    📈 Crypto Predictor
+                                    Crypto Predictor
                                 </button>
                                 <button class="ml-nav-btn" data-panel="training" onclick="app.switchMLPanel('training')"
                                         style="padding: 12px 24px; background: var(--bg-darker); border: none; border-radius: 8px; color: var(--text); cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s;">
-                                    🎯 Training
+                                    Training
                                 </button>
                             </div>
                             
@@ -417,7 +417,7 @@
                                     <!-- Tic-Tac-Toe Card -->
                                     <div style="background: var(--bg); padding: 24px; border-radius: 12px; border-left: 4px solid #4CAF50;">
                                         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                                            <div style="font-size: 48px;">🎮</div>
+                                            <div style="font-size: 48px;"></div>
                                             <div>
                                                 <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600;">Tic-Tac-Toe AI</h3>
                                                 <div style="font-size: 12px; color: var(--text-muted);">Policy Gradient Network</div>
@@ -448,7 +448,7 @@
                                     <!-- Crypto Predictor Card -->
                                     <div style="background: var(--bg); padding: 24px; border-radius: 12px; border-left: 4px solid #2196F3;">
                                         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
-                                            <div style="font-size: 48px;">📈</div>
+                                            <div style="font-size: 48px;"></div>
                                             <div>
                                                 <h3 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 600;">Crypto Predictor</h3>
                                                 <div style="font-size: 12px; color: var(--text-muted);">Vanilla RNN</div>
@@ -2161,7 +2161,7 @@
                     </style>
                     `;
                 case 'analytics':
-                    return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📈 Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;
+                    return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;"> Analytics</h2><p style="color: #94a3b8;">Analytics coming soon...</p></div>`;
                     
                 case 'files':
                     return `<div style="padding: 20px;"><h2 style="margin-bottom: 16px;">📁 Files</h2><p style="color: #94a3b8;">File management coming soon...</p></div>`;

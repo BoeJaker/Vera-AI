@@ -623,7 +623,7 @@ def llm_reasoning(vera_instance, prompt: str):
 # ============================================================================
 
 @task("toolchain.execute", task_type=TaskType.TOOL, priority=Priority.HIGH, estimated_duration=30.0)
-def toolchain_execute(vera_instance, query: str):
+def toolchain_execute(vera_instance, query: str, expert:bool=False):
     """
     Execute tool chain with streaming output.
     Streams each tool's output as it executes.
@@ -673,7 +673,7 @@ def toolchain_execute(vera_instance, query: str):
                 
                 chunk_count = 0
                 tool_calls = []
-                for chunk in vera_instance.toolchain.execute_tool_chain(query):
+                for chunk in (vera_instance.toolchain_expert.execute_tool_chain(query) if expert else vera_instance.toolchain.execute_tool_chain(query)):  
                     chunk_text = extract_chunk_text(chunk)
                     chunk_count += 1
                     

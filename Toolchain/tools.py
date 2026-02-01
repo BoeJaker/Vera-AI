@@ -160,7 +160,6 @@ class LLMTools:
     # ------------------------------------------------------------------------
     # LLM INTERACTION TOOLS
     # ------------------------------------------------------------------------
-    
     def fast_llm_query(self, query: str) -> str:
         """
         Query a fast LLM for quick tasks like summarization, simple analysis.
@@ -169,15 +168,40 @@ class LLMTools:
         """
         try:
             result = ""
-            for chunk in self.agent.stream_llm_with_memory(
-                self.agent.fast_llm, query, long_term=False, short_term=True
-            ):
-                text = chunk if isinstance(chunk, str) else str(chunk)
-                result += text
+            use_orchestrator = hasattr(self.agent, 'orchestrator') and self.agent.orchestrator and self.agent.orchestrator.running
             
+            if use_orchestrator:
+                try:
+                    # Use orchestrator for task execution
+                    task_id = self.agent.orchestrator.submit_task(
+                        "llm.fast",
+                        vera_instance=self.agent,
+                        prompt=query
+                    )
+                    
+                    for chunk in self.agent.orchestrator.stream_result(task_id, timeout=30.0):
+                        chunk_text = chunk if isinstance(chunk, str) else str(chunk)
+                        result += chunk_text
+                
+                except Exception as e:
+                    # Fallback to direct LLM call
+                    for chunk in self.agent.stream_llm_with_memory(
+                        self.agent.fast_llm, query, long_term=False, short_term=True
+                    ):
+                        text = chunk if isinstance(chunk, str) else str(chunk)
+                        result += text
+            else:
+                # No orchestrator - direct call
+                for chunk in self.agent.stream_llm_with_memory(
+                    self.agent.fast_llm, query, long_term=False, short_term=True
+                ):
+                    text = chunk if isinstance(chunk, str) else str(chunk)
+                    result += text
+            
+            # Store in memory
             self.agent.mem.add_session_memory(
                 self.agent.sess.id, result, "Answer", 
-                {"topic": "fast_llm", "agent": self.agent.selected_models["fast_llm"]}
+                {"topic": "fast_llm", "agent": self.agent.selected_models.fast_llm}  # Changed to attribute access
             )
             return result
         except Exception as e:
@@ -191,20 +215,44 @@ class LLMTools:
         """
         try:
             result = ""
-            for chunk in self.agent.stream_llm_with_memory(
-                self.agent.deep_llm, query, long_term=True, short_term=True
-            ):
-                text = chunk if isinstance(chunk, str) else str(chunk)
-                result += text
+            use_orchestrator = hasattr(self.agent, 'orchestrator') and self.agent.orchestrator and self.agent.orchestrator.running
             
+            if use_orchestrator:
+                try:
+                    # Use orchestrator for task execution
+                    task_id = self.agent.orchestrator.submit_task(
+                        "llm.deep",
+                        vera_instance=self.agent,
+                        prompt=query
+                    )
+                    
+                    for chunk in self.agent.orchestrator.stream_result(task_id, timeout=60.0):
+                        chunk_text = chunk if isinstance(chunk, str) else str(chunk)
+                        result += chunk_text
+                
+                except Exception as e:
+                    # Fallback to direct LLM call
+                    for chunk in self.agent.stream_llm_with_memory(
+                        self.agent.deep_llm, query, long_term=True, short_term=True
+                    ):
+                        text = chunk if isinstance(chunk, str) else str(chunk)
+                        result += text
+            else:
+                # No orchestrator - direct call
+                for chunk in self.agent.stream_llm_with_memory(
+                    self.agent.deep_llm, query, long_term=True, short_term=True
+                ):
+                    text = chunk if isinstance(chunk, str) else str(chunk)
+                    result += text
+            
+            # Store in memory
             self.agent.mem.add_session_memory(
                 self.agent.sess.id, result, "Answer",
-                {"topic": "deep_llm", "agent": self.agent.selected_models["deep_llm"]}
+                {"topic": "deep_llm", "agent": self.agent.selected_models.deep_llm}  # Changed to attribute access
             )
             return result
         except Exception as e:
             return f"[Deep LLM Error] {str(e)}"
-    
     # ------------------------------------------------------------------------
     # FILE SYSTEM TOOLS
     # ------------------------------------------------------------------------

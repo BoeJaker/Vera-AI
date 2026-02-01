@@ -334,7 +334,7 @@ def display_node_details(node_data, vector_client):
     if not node_data:
         return
     
-    st.sidebar.success("🎯 Node Selected!")
+    st.sidebar.success("Node Selected!")
     st.sidebar.subheader("📍 Node Details")
     st.sidebar.write(f"**ID:** `{node_data['id']}`")
     st.sidebar.write(f"**Labels:** {', '.join(node_data['labels'])}")
@@ -352,7 +352,7 @@ def display_node_details(node_data, vector_client):
             st.sidebar.write(f"**Time Ago:** {format_time_ago(dt)}")
     
     # Properties
-    st.sidebar.subheader("📋 Properties")
+    st.sidebar.subheader("Properties")
     if node_data['properties']:
         st.sidebar.json(node_data['properties'])
     else:
@@ -1042,7 +1042,7 @@ def execute_query_and_display(driver, vector_client, cypher_query, color_scheme=
             "circular_time": "Circular Time Ordered",
             "force_time_weighted": "Force-Directed with Time Weights"
         }
-        st.info(f"📐 Layout: {layout_names.get(layout_type, layout_type)}")
+        st.info(f"Layout: {layout_names.get(layout_type, layout_type)}")
 
     # Display with custom HTML that includes click handling
     components.html(interactive_html, height=900)
@@ -1059,7 +1059,7 @@ def execute_query_and_display(driver, vector_client, cypher_query, color_scheme=
         st.markdown("💡 **Click nodes in the graph above to select them**, or use the sidebar controls")
 
     with col2:
-        if st.button("🔄 Refresh Graph"):
+        if st.button("Refresh Graph"):
             st.rerun()
 
     with col3:
@@ -1071,10 +1071,10 @@ def execute_query_and_display(driver, vector_client, cypher_query, color_scheme=
     # Display selection info
     if selected_node_id and selected_node_id in nodes_data:
         node_info = nodes_data[selected_node_id]
-        st.info(f"🎯 Selected: **{node_info['display_name']}** ({', '.join(node_info['labels'])})")
+        st.info(f"Selected: **{node_info['display_name']}** ({', '.join(node_info['labels'])})")
 
     # Create table view
-    st.subheader("📋 Data Table")
+    st.subheader("Data Table")
     create_data_table(all_rows, subgraph_data is not None)
 
 def create_data_table(all_data, has_subgraph=False):
@@ -1122,7 +1122,7 @@ def create_data_table(all_data, has_subgraph=False):
     df = pd.DataFrame(cleaned)
     
     if has_subgraph:
-        st.caption("📊 Table includes both original query results and expanded subgraph data")
+        st.caption("Table includes both original query results and expanded subgraph data")
     
     st.dataframe(df, use_container_width=True)
 
@@ -1142,7 +1142,7 @@ def show_time_distribution(rows):
                         timestamps.append(dt)
     
     if timestamps:
-        st.subheader("📊 Time Distribution")
+        st.subheader("Time Distribution")
         timestamps_df = pd.DataFrame({"timestamp": timestamps})
         timestamps_df["date"] = timestamps_df["timestamp"].dt.date
         
@@ -1470,7 +1470,7 @@ def main():
                     st.sidebar.info(f"📅 Filtering: {time_filter}")
 
             # Node selection in sidebar
-            st.sidebar.subheader("🎯 Node Selection")
+            st.sidebar.subheader("Node Selection")
             if st.session_state.get('nodes_data'):
                 node_options = ["None"] + list(st.session_state.nodes_data.keys())
                 current_selection = st.session_state.get('selected_node_id', "")

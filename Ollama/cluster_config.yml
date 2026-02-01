@@ -1,0 +1,68 @@
+# Example Cluster Configuration Section
+# Add this to your vera_config.yaml
+
+# ============================================================================
+# Cluster Optimization & Management
+# ============================================================================
+cluster:
+  # Models to keep loaded in memory across all instances
+  # These will be preloaded on cluster startup/configuration
+  preload_models:
+    - "llama3.2:3b"          # Fast model for quick tasks
+    - "gemma2:latest"        # General purpose
+    - "tool-agent"           # Custom tool execution agent
+    - "reasoning-agent"      # Deep thinking agent
+    - "triage-agent"         # Query classification
+  
+  # Keep-alive setting for all instances
+  # "-1" = keep models in memory indefinitely (recommended for production)
+  # "5m" = unload after 5 minutes of inactivity
+  # "30m", "1h", "2h" = other durations
+  keep_alive: "-1"
+  
+  # SSH configuration for remote instance management
+  # Required for remote configuration of keep-alive settings
+  ssh:
+    user: "root"             # SSH username
+    key_path: "~/.ssh/id_rsa"  # Path to SSH private key
+    # password: "secret"     # Alternative to key (not recommended)
+    port: 22                 # SSH port
+  
+  # Health monitoring
+  health_check:
+    enabled: true
+    interval: 300            # Seconds between health checks
+    alert_on_failure: true
+  
+  # Automatic preloading on model sync
+  preload_after_sync: true   # Preload models after syncing to cluster
+
+# ============================================================================
+# Usage Examples
+# ============================================================================
+#
+# Configure cluster for long-term serving:
+#   python ollama_cluster_manager.py \
+#     --vera-config vera_config.yaml \
+#     --keep-alive -1 \
+#     --preload-from-config
+#
+# Check cluster health:
+#   python ollama_cluster_manager.py \
+#     --vera-config vera_config.yaml \
+#     --health
+#
+# Preload specific models:
+#   python ollama_cluster_manager.py \
+#     --vera-config vera_config.yaml \
+#     --preload llama3.2:3b,tool-agent
+#
+# Configure with custom SSH:
+#   python ollama_cluster_manager.py \
+#     --vera-config vera_config.yaml \
+#     --keep-alive -1 \
+#     --preload-from-config \
+#     --ssh-user admin \
+#     --ssh-key ~/.ssh/cluster_key
+#
+# ============================================================================

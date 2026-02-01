@@ -151,9 +151,12 @@ class OllamaInstancePool:
                 if self.logger:
                     self.logger.warning(f"Instance {name} unhealthy: {e}")
     
-    def get_best_instance(self) -> Optional[str]:
+    def get_best_instance(self, allowed_instances: Optional[List[str]] = None) -> Optional[str]:
         """
         Select best instance based on load balancing strategy
+        
+        Args:
+            allowed_instances: If provided, only select from these instances
         """
         strategy = self.config.load_balance_strategy
         
@@ -163,9 +166,14 @@ class OllamaInstancePool:
             if stats.is_healthy
         ]
         
+        # Further filter by allowed instances if specified
+        if allowed_instances is not None:
+            healthy = [name for name in healthy if name in allowed_instances]
+        
         if not healthy:
             if self.logger:
-                self.logger.error("No healthy Ollama instances available!")
+                filter_msg = f" (filtered to: {allowed_instances})" if allowed_instances else ""
+                self.logger.error(f"No healthy Ollama instances available{filter_msg}!")
             return None
         
         if strategy == "round_robin":
@@ -217,15 +225,24 @@ class OllamaInstancePool:
         
         return max(available, key=lambda n: self.instances[n].priority)
     
-    def acquire_instance(self, timeout: float = 30.0) -> Optional[tuple]:
+    def acquire_instance(
+        self, 
+        timeout: float = 30.0,
+        allowed_instances: Optional[List[str]] = None
+    ) -> Optional[tuple]:
         """
         Acquire an instance for a request
+        
+        Args:
+            timeout: How long to wait for an available instance
+            allowed_instances: If provided, only acquire from these instances
+        
         Returns: (instance_name, instance_config, release_func) or None
         """
         start_time = time.time()
         
         while time.time() - start_time < timeout:
-            instance_name = self.get_best_instance()
+            instance_name = self.get_best_instance(allowed_instances)
             
             if not instance_name:
                 time.sleep(0.5)
@@ -263,7 +280,8 @@ class OllamaInstancePool:
         
         # Timeout
         if self.logger:
-            self.logger.warning(f"Failed to acquire instance within {timeout}s")
+            filter_msg = f" (filtered to: {allowed_instances})" if allowed_instances else ""
+            self.logger.warning(f"Failed to acquire instance within {timeout}s{filter_msg}")
         
         return None
     
@@ -288,6 +306,7 @@ class OllamaInstancePool:
         
         return result
 
+
 class MultiInstanceOllamaManager:
     """Ollama manager that uses multiple instances with load balancing"""
     
@@ -302,11 +321,125 @@ class MultiInstanceOllamaManager:
         # Model metadata cache
         self.model_metadata_cache: Dict[str, Any] = {}
         
+        # Model location cache (instance_name -> set of model names)
+        self._model_location_cache: Dict[str, set] = {}
+        self._model_location_cache_time: float = 0
+        self._model_location_cache_ttl: float = 300  # 5 minutes
+        
         # Connection tested flag
         self.connection_tested = False
         
         if self.logger:
             self.logger.success("Multi-instance Ollama manager initialized")
+    
+    def _refresh_model_location_cache(self):
+        """Refresh the cache of which models are on which instances"""
+        current_time = time.time()
+        
+        # Check if cache is still valid
+        if current_time - self._model_location_cache_time < self._model_location_cache_ttl:
+            return
+        
+        if self.logger:
+            self.logger.debug("Refreshing model location cache...")
+        
+        self._model_location_cache = {}
+        
+        for name, instance in self.pool.instances.items():
+            if not self.pool.stats[name].is_healthy:
+                continue
+            
+            try:
+                response = requests.get(
+                    f"{instance.api_url}/api/tags",
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get("models", [])
+                    
+                    # Store model names for this instance
+                    self._model_location_cache[name] = {
+                        m.get("name", m.get("model", ""))
+                        for m in models
+                    }
+            
+            except Exception as e:
+                if self.logger:
+                    self.logger.debug(f"Failed to cache models from {name}: {e}")
+                continue
+        
+        self._model_location_cache_time = current_time
+        
+        if self.logger:
+            total_models = sum(len(models) for models in self._model_location_cache.values())
+            self.logger.debug(f"Model location cache refreshed: {total_models} models across {len(self._model_location_cache)} instances")
+    
+    def find_instances_with_model(self, model: str, use_cache: bool = True) -> List[str]:
+        """
+        Find which instances have a specific model
+        Returns list of instance names, sorted by priority (highest first)
+        
+        Args:
+            model: Model name to find (automatically adds :latest if no tag specified)
+            use_cache: Use cached model locations (faster, may be stale)
+        """
+        # Normalize model name - add :latest if no tag specified
+        model_to_find = model if ':' in model else f"{model}:latest"
+        
+        if self.logger:
+            if model != model_to_find:
+                self.logger.debug(f"Model name normalized: '{model}' → '{model_to_find}'")
+        
+        if use_cache:
+            self._refresh_model_location_cache()
+            
+            instances_with_model = [
+                name for name, models in self._model_location_cache.items()
+                if model_to_find in models and self.pool.stats[name].is_healthy
+            ]
+        else:
+            # Direct check (slower but always current)
+            instances_with_model = []
+            
+            for name, instance in self.pool.instances.items():
+                if not self.pool.stats[name].is_healthy:
+                    continue
+                
+                try:
+                    response = requests.get(
+                        f"{instance.api_url}/api/tags",
+                        timeout=5
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        models = data.get("models", [])
+                        
+                        # Check if this instance has the model
+                        model_names = [
+                            m.get("name", m.get("model", ""))
+                            for m in models
+                        ]
+                        
+                        if model_to_find in model_names:
+                            instances_with_model.append(name)
+                            if self.logger:
+                                self.logger.debug(f"Instance {name} has model {model_to_find}")
+                
+                except Exception as e:
+                    if self.logger:
+                        self.logger.debug(f"Could not check {name} for model {model_to_find}: {e}")
+                    continue
+        
+        # Sort by priority (highest first)
+        instances_with_model.sort(
+            key=lambda name: self.pool.instances[name].priority,
+            reverse=True
+        )
+        
+        return instances_with_model
     
     def test_connection(self) -> bool:
         """Test connection to all instances"""
@@ -485,6 +618,10 @@ class MultiInstanceOllamaManager:
                 if response.status_code == 200:
                     if self.logger:
                         self.logger.success(f"Model pulled: {model_name}")
+                    
+                    # Invalidate model location cache
+                    self._model_location_cache_time = 0
+                    
                     return True
             
             except Exception as e:
@@ -495,17 +632,65 @@ class MultiInstanceOllamaManager:
         return False
 
     def create_llm(self, model: str, temperature: float = 0.7, **kwargs):
-        """Create LLM that uses the instance pool - API ONLY"""
+        """Create LLM that uses the instance pool - API ONLY with intelligent routing"""
+        # Normalize model name - add :latest if no tag specified
+        model_normalized = model if ':' in model else f"{model}:latest"
+        
         if self.logger:
-            self.logger.info(f"Creating LLM: {model} (temp={temperature})")
+            if model != model_normalized:
+                self.logger.debug(f"Model name normalized: '{model}' → '{model_normalized}'")
+            self.logger.info(f"Creating LLM: {model_normalized} (temp={temperature})")
+        
+        # Find instances that have this model
+        instances_with_model = self.find_instances_with_model(model_normalized, use_cache=True)
+        
+        if not instances_with_model:
+            # Model not found on any instance - try without cache to be sure
+            if self.logger:
+                self.logger.debug("Model not in cache, checking instances directly...")
+            
+            instances_with_model = self.find_instances_with_model(model_normalized, use_cache=False)
+            
+            if not instances_with_model:
+                # Model truly not found - try to suggest alternatives
+                all_models = self.list_models()
+                available_model_names = list(set(
+                    m.get("model", m.get("name", ""))
+                    for m in all_models
+                ))
+                
+                from difflib import get_close_matches
+                suggestions = get_close_matches(model_normalized, available_model_names, n=3, cutoff=0.6)
+                
+                error_msg = f"Model '{model_normalized}' not found on any healthy Ollama instance."
+                if suggestions:
+                    error_msg += f" Did you mean: {', '.join(suggestions)}?"
+                else:
+                    available_preview = sorted(available_model_names)[:10]
+                    if len(available_model_names) > 10:
+                        error_msg += f" Available models (showing {len(available_preview)} of {len(available_model_names)}): {', '.join(available_preview)}"
+                    else:
+                        error_msg += f" Available models: {', '.join(available_preview)}"
+                
+                if self.logger:
+                    self.logger.error(error_msg)
+                
+                raise ValueError(error_msg)
+        
+        # Log which instances have the model
+        if self.logger:
+            self.logger.success(
+                f"Model '{model_normalized}' available on {len(instances_with_model)} instance(s): "
+                f"{', '.join(instances_with_model)}"
+            )
         
         # Get model metadata if available
         metadata = {}
         try:
-            metadata = self.get_model_metadata(model)
+            metadata = self.get_model_metadata(model_normalized)
         except Exception as e:
             if self.logger:
-                self.logger.debug(f"Could not get metadata for {model}: {e}")
+                self.logger.debug(f"Could not get metadata for {model_normalized}: {e}")
         
         # Extract known parameters
         top_k = kwargs.pop('top_k', 40)
@@ -513,9 +698,9 @@ class MultiInstanceOllamaManager:
         num_predict = kwargs.pop('num_predict', -1)
         max_retries = kwargs.pop('max_retries', 2)
         
-        # Create pooled LLM with proper field assignment
+        # Create pooled LLM with proper field assignment (use NORMALIZED model name)
         llm = PooledOllamaLLM(
-            model=model,
+            model=model_normalized,
             temperature=temperature,
             top_k=top_k,
             top_p=top_p,
@@ -540,6 +725,14 @@ class MultiInstanceOllamaManager:
         llm.model_metadata = metadata
         llm.logger = self.logger
         llm.extra_kwargs = kwargs
+        
+        # IMPORTANT: Restrict this LLM to only use instances that have the model
+        llm.allowed_instances = instances_with_model
+        
+        if self.logger:
+            self.logger.info(
+                f"LLM will route to instances (by priority): {', '.join(instances_with_model)}"
+            )
         
         return llm
     
@@ -965,6 +1158,9 @@ class MultiInstanceOllamaManager:
             if self.logger:
                 self.logger.success(f"✓ Model '{model_name}' copied successfully")
             
+            # Invalidate model location cache
+            self._model_location_cache_time = 0
+            
             return {
                 "status": "success",
                 "message": f"Model '{model_name}' copied from {from_instance} to {to_instance}",
@@ -1165,65 +1361,6 @@ class MultiInstanceOllamaManager:
                 )
         
         return sync_plan
-    
-    def create_embeddings(self, model: str, **kwargs):
-        """Create embeddings using API ONLY"""
-        # Use highest priority healthy instance
-        best_instance = None
-        best_priority = -1
-        
-        for name, instance in self.pool.instances.items():
-            if self.pool.stats[name].is_healthy and instance.priority > best_priority:
-                best_instance = instance
-                best_priority = instance.priority
-        
-        if not best_instance:
-            raise RuntimeError("No healthy instances available for embeddings")
-        
-        from langchain_community.embeddings import OllamaEmbeddings
-        
-        if self.logger:
-            self.logger.info(
-                f"Creating embeddings with {model} via {best_instance.api_url}"
-            )
-        
-        return OllamaEmbeddings(
-            model=model,
-            base_url=best_instance.api_url,
-            **kwargs
-        )
-    
-    def get_pool_stats(self) -> Dict:
-        """Get statistics for all instances"""
-        return self.pool.get_stats()
-    
-    def print_model_info(self, model_name: str):
-        """Print model information via API"""
-        metadata = self.get_model_metadata(model_name)
-        
-        if not metadata:
-            if self.logger:
-                self.logger.error(f"No metadata available for {model_name}")
-            return
-        
-        if self.logger:
-            self.logger.info("=" * 60)
-            self.logger.info(f"Model: {model_name}")
-            self.logger.info("=" * 60)
-            
-            details = metadata.get('details', {})
-            if details:
-                self.logger.info(f"Family:       {details.get('family', 'Unknown')}")
-                self.logger.info(f"Parameters:   {details.get('parameter_size', 'Unknown')}")
-                self.logger.info(f"Quantization: {details.get('quantization_level', 'Unknown')}")
-            
-            model_info = metadata.get('model_info', {})
-            if model_info:
-                ctx_len = model_info.get('context_length') or model_info.get('n_ctx', 'Unknown')
-                self.logger.info(f"Context:      {ctx_len} tokens")
-            
-            self.logger.info("=" * 60)
-
   
     def set_manual_routing(self, instance_names: List[str]):
         """
@@ -1343,6 +1480,7 @@ class PooledOllamaLLM(LLM):
     model_metadata: Optional[Dict] = Field(default=None, exclude=True)
     logger: Any = Field(default=None, exclude=True, repr=False)
     extra_kwargs: Dict = Field(default_factory=dict, exclude=True)
+    allowed_instances: Optional[List[str]] = Field(default=None, exclude=True)  # NEW: restricts routing
     
     class Config:
         """Pydantic config"""
@@ -1362,7 +1500,8 @@ class PooledOllamaLLM(LLM):
             "temperature": self.temperature,
             "top_k": self.top_k,
             "top_p": self.top_p,
-            "pool_instances": len(self.pool.instances) if self.pool and hasattr(self.pool, 'instances') else 0
+            "pool_instances": len(self.pool.instances) if self.pool and hasattr(self.pool, 'instances') else 0,
+            "allowed_instances": self.allowed_instances
         }
     
     def _call(
@@ -1399,7 +1538,10 @@ class PooledOllamaLLM(LLM):
         """Internal method: Non-streaming generation with automatic failover"""
         last_error = None
         attempts = 0
-        max_attempts = min(self.max_retries, len(self.pool.instances) if self.pool else 1)
+        
+        # Use allowed_instances if set, otherwise try all
+        available_instances = self.allowed_instances if self.allowed_instances else list(self.pool.instances.keys())
+        max_attempts = min(self.max_retries, len(available_instances))
         
         # Reset thought capture if present
         if self.thought_capture:
@@ -1411,19 +1553,24 @@ class PooledOllamaLLM(LLM):
             if not self.pool:
                 raise RuntimeError("Pool not initialized")
             
-            acquisition = self.pool.acquire_instance(timeout=30.0)
+            # Acquire instance with routing restriction
+            acquisition = self.pool.acquire_instance(
+                timeout=30.0,
+                allowed_instances=self.allowed_instances
+            )
             
             if not acquisition:
                 if self.logger:
+                    filter_msg = f" (filtered to: {self.allowed_instances})" if self.allowed_instances else ""
                     self.logger.warning(
-                        f"Attempt {attempts}/{max_attempts}: No instances available"
+                        f"Attempt {attempts}/{max_attempts}: No instances available{filter_msg}"
                     )
                 
                 if attempts < max_attempts:
                     time.sleep(1.0)
                     continue
                 
-                raise RuntimeError("No Ollama instances available after retries")
+                raise RuntimeError(f"No Ollama instances available after retries (allowed: {self.allowed_instances})")
             
             instance_name, instance, release = acquisition
             
@@ -1491,9 +1638,12 @@ class PooledOllamaLLM(LLM):
                             f"✗ Instance {instance_name} failed: {error_msg}"
                         )
                     
-                    # Mark unhealthy
+                    # Mark unhealthy ONLY if it's a server error (5xx), not if model is missing (4xx)
+                    if response.status_code >= 500:
+                        if hasattr(self.pool, 'stats') and instance_name in self.pool.stats:
+                            self.pool.stats[instance_name].is_healthy = False
+                    
                     if hasattr(self.pool, 'stats') and instance_name in self.pool.stats:
-                        self.pool.stats[instance_name].is_healthy = False
                         self.pool.stats[instance_name].total_failures += 1
                     
                     last_error = RuntimeError(error_msg)
@@ -1540,7 +1690,10 @@ class PooledOllamaLLM(LLM):
         """Internal method: Streaming generation with automatic failover"""
         last_error = None
         attempts = 0
-        max_attempts = min(self.max_retries, len(self.pool.instances) if self.pool else 1)
+        
+        # Use allowed_instances if set, otherwise try all
+        available_instances = self.allowed_instances if self.allowed_instances else list(self.pool.instances.keys())
+        max_attempts = min(self.max_retries, len(available_instances))
         
         # Reset thought capture if present
         if self.thought_capture:
@@ -1552,13 +1705,17 @@ class PooledOllamaLLM(LLM):
             if not self.pool:
                 raise RuntimeError("Pool not initialized")
             
-            acquisition = self.pool.acquire_instance(timeout=30.0)
+            # Acquire instance with routing restriction
+            acquisition = self.pool.acquire_instance(
+                timeout=30.0,
+                allowed_instances=self.allowed_instances
+            )
             
             if not acquisition:
                 if attempts < max_attempts:
                     time.sleep(1.0)
                     continue
-                raise RuntimeError("No instances available")
+                raise RuntimeError(f"No instances available (allowed: {self.allowed_instances})")
             
             instance_name, instance, release = acquisition
             
@@ -1595,8 +1752,12 @@ class PooledOllamaLLM(LLM):
                     if self.logger:
                         self.logger.warning(f"✗ Stream failed on {instance_name}: {error_msg}")
                     
+                    # Mark unhealthy ONLY for server errors
+                    if response.status_code >= 500:
+                        if hasattr(self.pool, 'stats') and instance_name in self.pool.stats:
+                            self.pool.stats[instance_name].is_healthy = False
+                    
                     if hasattr(self.pool, 'stats') and instance_name in self.pool.stats:
-                        self.pool.stats[instance_name].is_healthy = False
                         self.pool.stats[instance_name].total_failures += 1
                     
                     last_error = RuntimeError(error_msg)

@@ -14,7 +14,7 @@ from enum import Enum
 
 # Import both toolchain systems
 from Vera.Toolchain.toolchain import ToolChainPlanner
-from Vera.Toolchain.toolchain_expert import (
+from Vera.Toolchain.chain_of_experts import (
     ExpertToolChainPlanner,
     Domain,
     DomainExpert,

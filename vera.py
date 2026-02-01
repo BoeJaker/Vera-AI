@@ -51,12 +51,14 @@ from langchain_community.tools.playwright.utils import (
 from langchain.tools import BaseTool
 from langchain.llms.base import LLM
 
+from Vera.vera_chat import VeraChat
 # --- Local Imports ---
 try:
     from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
     from Vera.Memory.memory import *
     from Vera.Toolchain.toolchain import ToolChainPlanner
     from Vera.Toolchain.tools import ToolLoader
+    from Vera.Toolchain.chain_of_experts_integration import integrate_hybrid_toolchain
     from Vera.Ollama.Agents.experimental.reviewer import Reviewer
     from Vera.Ollama.Agents.experimental.Planning.planning import Planner
     from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
@@ -597,7 +599,12 @@ class Vera:
                     tool_file.write("INPUT SCHEMA: No schema defined\n")
                 
                 tool_file.write("\n" + "=" * 80 + "\n")
-
+            # Warm up fast LLM task    
+            fast_task_id = self.orchestrator.submit_task(
+                "llm.fast",
+                vera_instance=self,
+                prompt="hello"
+            )
         self.logger.info(f"Tool list with schemas written to {tool_list_path}")
         self.logger.success(f"Loaded {len(self.tools)} total tools")
         
@@ -618,15 +625,33 @@ class Vera:
             memory=self.memory,
             verbose=True
         )
-        
+
+        # Original toolchain (preserved)
         self.toolchain = ToolChainPlanner(self, self.tools)
         
-        # integrate_hybrid_planner(self, enable_n8n=True) 
+        #from Vera.Toolchain.unified_toolchain import ToolChainPlanner
+        #self.toolchain = ToolChainPlanner(self, self.tools)  # Uses AUTO mode
+        # from Vera.Toolchain.unified_toolchain import UnifiedToolChainPlanner, ToolChainMode
+        # self.toolchain = UnifiedToolChainPlanner(
+        #                 self, 
+        #                 self.tools,
+        #                 mode=ToolChainMode.AUTO,
+        #                 enable_orchestrator=True
+        # )
+
+        #  chain of experts
+        #integrate_hybrid_toolchain(self)
+
+        #   enhanced toolchain planner
+        #integrate_hybrid_planner(self, enable_n8n=True) 
 
         if self.focus_manager:
             def handle_proactive(thought):
                 self.logger.thought(thought, context=LogContext(agent="proactive"))
             self.focus_manager.proactive_callback = handle_proactive
+        
+        # Initialize chat handler (AFTER all other components)
+        self.chat = VeraChat(self)
         
         self.logger.success("Vera initialization complete!")
         self.logger.info(f"Session ID: {self.sess.id}")
@@ -940,7 +965,7 @@ class Vera:
         full_prompt += f"\n\nTools available via the agent system:{[tool.name for tool in self.tools]}\n"
 
         output = []
-        for chunk in self.stream_llm(llm, full_prompt):
+        for chunk in self._stream_with_thought_polling(llm, full_prompt):
             output.append(chunk)
             yield chunk
 
@@ -973,455 +998,561 @@ class Vera:
                 "interaction_saved",
                 details={"query_len": len(query), "response_len": len(response)}
             )
+    
+    # def fast_start_stream(self, query):
+    #     prompt = f"""
+    #         Answer the user briefly and generically in 1–2 sentences.
+    #         Do NOT use tools.
+    #         Do NOT assume routing yet.
 
-    def async_run(self, query):
+    #         User: {query}
+    #         Assistant:
+    #         """
+    #     return self.stream_llm(self.fast_llm, prompt)
+    
+    def async_run(self, query: str, use_parallel: bool = True, ramp_config: Optional[Dict] = None):
         """
-        Fully orchestrated async_run with unified logging.
-        ALWAYS yields - guaranteed to be a generator.
+        Delegate to chat handler
+        
+        Args:
+            query: User query
+            use_parallel: Enable parallel triage+fast execution
+            ramp_config: Optional custom ramp configuration
+        
+        Yields:
+            str: Response chunks
         """
-        
-        query_context = LogContext(
-            session_id=self.sess.id,
-            agent="async_run",
-            extra={"query_length": len(query)}
-        )
-        
-        self.logger.info(f"Processing query: {query[:100]}{'...' if len(query) > 100 else ''}", context=query_context)
-        self.logger.start_timer("total_query_processing")
-        
-        # Log query to memory
-        if hasattr(self, 'mem') and hasattr(self, 'sess'):
-            self.mem.add_session_memory(self.sess.id, query, "Query", {"topic": "plan"}, promote=True)
-        
-        # ====================================================================
-        # STEP 1: TRIAGE (streaming through orchestrator)
-        # ====================================================================
-        
-        use_orchestrator = hasattr(self, 'orchestrator') and self.orchestrator and self.orchestrator.running
-        
-        self.logger.debug(f"Using orchestrator: {use_orchestrator}", context=query_context)
-        self.logger.start_timer("triage")
-        
-        full_triage = ""
-        
-        if use_orchestrator:
-            try:
-                triage_task_id = self.orchestrator.submit_task(
-                    "llm.triage",
-                    vera_instance=self,
-                    query=query
-                )
-                
-                self.logger.orchestrator_event(
-                    "task_submitted",
-                    task_id=triage_task_id,
-                    details={"type": "triage"}
-                )
-                
-                for chunk in self.orchestrator.stream_result(triage_task_id, timeout=10.0):
-                    full_triage += chunk
-                    yield extract_chunk_text(chunk)
-            
-            except TimeoutError:
-                self.logger.warning("Triage timeout, using direct fallback")
-                for chunk in self._triage_direct(query):
-                    full_triage += chunk
-                    yield extract_chunk_text(chunk)
-            
-            except Exception as e:
-                self.logger.error(f"Triage failed: {e}", exc_info=True)
-                for chunk in self._triage_direct(query):
-                    full_triage += chunk
-                    yield extract_chunk_text(chunk)
-        
-        else:
-            for chunk in self._triage_direct(query):
-                full_triage += chunk
-                yield extract_chunk_text(chunk)
-        
-        yield "\n"  # Ensure newline after triage output
+        return self.chat.async_run(query, use_parallel, ramp_config)
 
-        triage_duration = self.logger.stop_timer("triage", context=query_context)
-        
-        if hasattr(self, 'mem') and hasattr(self, 'sess'):
-            self.mem.add_session_memory(self.sess.id, full_triage, "Triage", {"topic": "triage","duration": triage_duration}, promote=True)
-        
-        # ====================================================================
-        # STEP 2: ROUTE based on triage
-        # ====================================================================
-        
-        triage_lower = full_triage.lower()
-        total_response = ""
-        
-        route_context = LogContext(
-            session_id=self.sess.id,
-            extra={"triage_result": triage_lower[:50]}
-        )
-        
-        # Focus change
-        if "focus" in triage_lower:
-            self.logger.info("Routing to: Proactive Focus Manager", context=route_context)
-            
-            if hasattr(self, 'focus_manager'):
-                new_focus = full_triage.lower().split("focus", 1)[-1].strip()
-                self.focus_manager.set_focus(new_focus)
-                message = f"\n✓ Focus changed to: {self.focus_manager.focus}\n"
-                yield extract_chunk_text(message)
-                total_response = message
-                self.logger.success(f"Focus changed to: {self.focus_manager.focus}")
-        
-        # Proactive thinking
-        if triage_lower.startswith("proactive"):
-            self.logger.info("Routing to: Proactive Thinking", context=route_context)
-            
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "proactive.generate_thought",
-                        vera_instance=self
-                    )
-                    message = "\n[Proactive thought generation started in background]\n"
-                    yield extract_chunk_text(message)
-                    total_response = message
-                    self.logger.success("Proactive task submitted")
-                
-                except Exception as e:
-                    self.logger.error(f"Failed to submit proactive task: {e}")
-                    if hasattr(self, 'focus_manager') and self.focus_manager.focus:
-                        self.focus_manager.iterative_workflow(
-                            max_iterations=None,
-                            iteration_interval=600,
-                            auto_execute=True
-                        )
-                        message = "\n[Proactive workflow started]\n"
-                        yield extract_chunk_text(message)
-                        total_response = message
-                    else:
-                        message = "\n[No active focus for proactive thinking]\n"
-                        yield extract_chunk_text(message)
-                        total_response = message
-            
-            else:
-                if hasattr(self, 'focus_manager') and self.focus_manager.focus:
-                    self.focus_manager.iterative_workflow(
-                        max_iterations=None,
-                        iteration_interval=600,
-                        auto_execute=True
-                    )
-                    message = "\n[Proactive workflow started]\n"
-                    yield extract_chunk_text(message)
-                    total_response = message
-                else:
-                    message = "\n[No active focus]\n"
-                    yield extract_chunk_text(message)
-                    total_response = message
 
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    total_response,
-                    "Thought",
-                    {"topic": "response", "agent": "toolchain", "task_id": task_id if 'task_id' in locals() else None, "duration": triage_duration}
-                )
+    # # ====================================================================
+    # # HELPER METHODS
+    # # ====================================================================
+
+    # def _execute_ramp_tier(self, tier_level, query, accumulated_response, use_orchestrator, context):
+    #     """Execute a single ramp tier and yield response"""
         
-        # Toolchain
-        elif triage_lower.startswith("toolchain") or "tool" in triage_lower:
-            self.logger.info("Routing to: Tool Chain Agent", context=route_context)
-            self.logger.start_timer("toolchain_execution")
+    #     TIER_NAMES = {1: "Intermediate", 2: "Deep", 3: "Reasoning", 4: "Toolchain"}
+        
+    #     tier_response = ""
+    #     prompt = self._build_ramp_prompt(tier_level, query, accumulated_response)
+        
+    #     if tier_level == 1:  # Intermediate
+    #         llm = self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm
             
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "toolchain.execute",
-                        vera_instance=self,
-                        query=query
-                    )
+    #         if use_orchestrator:
+    #             task_id = self.orchestrator.submit_task(
+    #                 "llm.generate",
+    #                 vera_instance=self,
+    #                 llm_type="intermediate",
+    #                 prompt=prompt
+    #             )
+                
+    #             for chunk in self.orchestrator.stream_result(task_id, timeout=45.0):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+    #         else:
+    #             for chunk in self.stream_llm(llm, prompt):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+        
+    #     elif tier_level == 2:  # Deep
+    #         if use_orchestrator:
+    #             task_id = self.orchestrator.submit_task(
+    #                 "llm.deep",
+    #                 vera_instance=self,
+    #                 prompt=prompt
+    #             )
+                
+    #             for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+    #         else:
+    #             for chunk in self.stream_llm(self.deep_llm, prompt):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+        
+    #     elif tier_level == 3:  # Reasoning
+    #         if use_orchestrator:
+    #             task_id = self.orchestrator.submit_task(
+    #                 "llm.reasoning",
+    #                 vera_instance=self,
+    #                 prompt=prompt
+    #             )
+                
+    #             for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=90.0):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+    #         else:
+    #             for chunk in self.stream_llm(self.reasoning_llm, prompt):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+        
+    #     elif tier_level == 4:  # Toolchain
+    #         if use_orchestrator:
+    #             task_id = self.orchestrator.submit_task(
+    #                 "toolchain.execute",
+    #                 vera_instance=self,
+    #                 query=prompt
+    #             )
+                
+    #             for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+    #         else:
+    #             for chunk in self.toolchain_expert.execute_tool_chain(prompt):
+    #                 chunk_text = extract_chunk_text(chunk)
+    #                 tier_response += chunk_text
+    #                 yield chunk_text
+        
+    #     return tier_response
+
+    # def _build_ramp_prompt(self, tier_level, base_query, previous_responses):
+    #     """Build progressive refinement prompt for a given tier"""
+        
+    #     if tier_level == 1:  # Intermediate
+    #         return f"""Quick answer provided:
+    # {previous_responses[:500]}...
+
+    # Expand on this with more detail and context for: {base_query}"""
+        
+    #     elif tier_level == 2:  # Deep
+    #         return f"""Previous analysis:
+    # {previous_responses[:800]}...
+
+    # Provide comprehensive, in-depth response for: {base_query}"""
+        
+    #     elif tier_level == 3:  # Reasoning
+    #         return f"""Building on previous work:
+    # {previous_responses[:1000]}...
+
+    # Apply deep reasoning, step-by-step analysis for: {base_query}"""
+        
+    #     elif tier_level == 4:  # Toolchain
+    #         return f"""Context from analysis:
+    # {previous_responses[:800]}...
+
+    # Execute appropriate tools/actions for: {base_query}"""
+        
+    #     else:
+    #         return base_query
+        
+    # def _execute_counsel_mode(self, query, context):
+    #     """
+    #     Counsel mode: Multiple models/instances deliberate on the same query
+        
+    #     Modes:
+    #         - race: Fastest response wins
+    #         - synthesis: Combine all responses into one
+    #         - vote: Most common/best response wins (uses fast model as judge)
+    #     """
+        
+    #     counsel_config = getattr(self.config, 'counsel', {
+    #         'mode': 'vote',
+    #         'models': ['fast', 'fast', 'fast'],
+    #         'instances': None  # If set, overrides models to use specific instances
+    #     })
+        
+    #     counsel_mode = counsel_config.get('mode', 'race')
+    #     counsel_models = counsel_config.get('models', ['fast', 'intermediate', 'reasoning'])
+    #     counsel_instances = counsel_config.get('instances', None)
+        
+    #     # Determine execution strategy
+    #     if counsel_instances:
+    #         # Use specific Ollama instances (can be same model on different instances)
+    #         strategy = "instances"
+    #         executors = counsel_instances
+    #         self.logger.info(
+    #             f"🏛️ Counsel mode: {counsel_mode} using instances: {executors}",
+    #             context=context
+    #         )
+    #     else:
+    #         # Use different model tiers
+    #         strategy = "models"
+    #         executors = counsel_models
+    #         self.logger.info(
+    #             f"🏛️ Counsel mode: {counsel_mode} using models: {executors}",
+    #             context=context
+    #         )
+        
+    #     import threading
+    #     import queue
+        
+    #     response_queue = queue.Queue()
+        
+    #     # ====================================================================
+    #     # INSTANCE-BASED EXECUTION
+    #     # ====================================================================
+        
+    #     if strategy == "instances":
+    #         # Map instance names to actual Ollama instances
+    #         instance_map = {}
+            
+    #         for instance_spec in executors:
+    #             # Format: "instance_name:model_name" or just "instance_name" (uses default model)
+    #             if ':' in instance_spec:
+    #                 instance_name, model_name = instance_spec.split(':', 1)
+    #             else:
+    #                 instance_name = instance_spec
+    #                 model_name = self.selected_models.fast_llm  # Default model
+                
+    #             instance_map[instance_spec] = {
+    #                 'instance': instance_name,
+    #                 'model': model_name
+    #             }
+            
+    #         def run_instance(spec, instance_info, label):
+    #             try:
+    #                 self.logger.debug(f"Counsel: Starting {label}", context=context)
+    #                 start_time = time.time()
                     
-                    for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
-                        total_response += str(chunk)
-                        yield extract_chunk_text(chunk)
-                
-                except Exception as e:
-                    self.logger.error(f"Toolchain failed: {e}, using direct fallback")
-                    for chunk in self.toolchain.execute_tool_chain(query):
-                        total_response += str(chunk)
-                        yield extract_chunk_text(chunk)
-            
-            else:
-                for chunk in self.toolchain.execute_tool_chain(query):
-                    total_response += str(chunk)
-                    yield extract_chunk_text(chunk)
-            
-            duration = self.logger.stop_timer("toolchain_execution", context=route_context)
-            
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    total_response,
-                    "Response",
-                    {"topic": "response", "agent": "toolchain", "duration":duration}
-                )
-        
-        # Reasoning
-        elif triage_lower.startswith("reasoning"):
-            self.logger.info("Routing to: Reasoning Agent", context=route_context)
-            self.logger.start_timer("reasoning_generation")
-            
-            # Use reasoning agent if available
-            if self.agents:
-                agent_name = self.get_agent_for_task('reasoning')
-                reasoning_llm = self.create_llm_for_agent(agent_name)
-                agent_context = LogContext(
-                    session_id=self.sess.id,
-                    agent=agent_name,
-                    model=agent_name
-                )
-
-            else:
-                reasoning_llm = self.reasoning_llm
-                agent_context = LogContext(
-                    session_id=self.sess.id,
-                    agent="reasoning",
-                    model=self.selected_models.reasoning_llm
-                )
-            
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "llm.generate",
-                        vera_instance=self,
-                        llm_type="reasoning",
-                        prompt=query
-                    )
+    #                 # Create LLM restricted to this specific instance
+    #                 llm = self.ollama_manager.create_llm_with_routing(
+    #                     model=instance_info['model'],
+    #                     routing_mode='manual',
+    #                     selected_instances=[instance_info['instance']],
+    #                     temperature=0.7
+    #                 )
                     
-                    for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-                
-                except Exception as e:
-                    self.logger.error(f"Reasoning failed: {e}, using direct fallback")
-                    for chunk in self.stream_llm(reasoning_llm, query):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-            
-            else:
-                for chunk in self.stream_llm(reasoning_llm, query):
-                    total_response += chunk
-                    yield extract_chunk_text(chunk)
-            
-            duration = self.logger.stop_timer("reasoning_generation", context=agent_context)
-        
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    total_response,
-                    "Response",
-                    {"topic": "response", "agent": "reasoning", "duration":duration}
-                )
-        
-        # Complex
-        elif triage_lower.startswith("complex"):
-            self.logger.info("Routing to: Deep Reasoning Agent", context=route_context)
-            self.logger.start_timer("deep_generation")
-            
-            agent_context = LogContext(
-                session_id=self.sess.id,
-                agent="deep",
-                model=self.selected_models.deep_llm
-            )
-            
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "llm.generate",
-                        vera_instance=self,
-                        llm_type="deep",
-                        prompt=query
-                    )
+    #                 response = ""
+    #                 for chunk in self.stream_llm(llm, query):
+    #                     response += extract_chunk_text(chunk)
                     
-                    for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-                
-                except Exception as e:
-                    self.logger.error(f"Complex generation failed: {e}, using direct fallback")
-                    for chunk in self.stream_llm(self.deep_llm, query):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-            
-            else:
-                for chunk in self.stream_llm(self.deep_llm, query):
-                    total_response += chunk
-                    yield extract_chunk_text(chunk)
-            
-            duration = self.logger.stop_timer("deep_generation", context=agent_context)
-            
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    total_response,
-                    "Response",
-                    {"topic": "response", "agent": "complex", "duration":duration}
-                )
-        
-        # Simple/Default - Fast LLM
-        else:
-            self.logger.info("Routing to: Fast Agent", context=route_context)
-            self.logger.start_timer("fast_generation")
-            
-            agent_context = LogContext(
-                session_id=self.sess.id,
-                agent="fast",
-                model=self.selected_models.fast_llm
-            )
-            
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "llm.generate",
-                        vera_instance=self,
-                        llm_type="fast",
-                        prompt=query
-                    )
+    #                 duration = time.time() - start_time
                     
-                    for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-                
-                except Exception as e:
-                    self.logger.error(f"Fast LLM failed: {e}, using direct fallback")
-                    for chunk in self.stream_llm(self.fast_llm, query):
-                        total_response += chunk
-                        yield extract_chunk_text(chunk)
-            
-            else:
-                for chunk in self.stream_llm(self.fast_llm, query):
-                    total_response += chunk
-                    yield extract_chunk_text(chunk)
-            
-            duration = self.logger.stop_timer("fast_generation", context=agent_context)
-            
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    total_response,
-                    "Response",
-                    {"topic": "response", "agent": "fast"}
-                )
-        
-        # ====================================================================
-        # STEP 2.5: CONCLUSION (if not simple)
-        # ====================================================================
-        
-        if not triage_lower.startswith("simple") and total_response and total_response.strip():
-            self.logger.info("Generating conclusion summary", context=query_context)
-            self.logger.start_timer("conclusion_generation")
-            
-            conclusion_context = LogContext(
-                session_id=self.sess.id,
-                agent="conclusion",
-                model=self.selected_models.fast_llm
-            )
-            
-            conclusion_prompt = f"""Based on the following interaction, provide a brief, clear conclusion or summary.
-
-    Original Query: {query}
-
-    Response: {total_response[:2000]}{'...' if len(total_response) > 2000 else ''}
-
-    Provide a concise conclusion (2-3 sentences) that captures the key takeaway or result.
-    Do not include any preamble like "Here's a conclusion" - just provide the conclusion directly."""
-            
-            conclusion_text = ""
-            yield "\n\n--- Conclusion ---\n"
-            
-            if use_orchestrator:
-                try:
-                    task_id = self.orchestrator.submit_task(
-                        "llm.generate",
-                        vera_instance=self,
-                        llm_type="fast",
-                        prompt=conclusion_prompt
-                    )
+    #                 response_queue.put((label, response, duration, time.time()))
                     
-                    for chunk in self.orchestrator.stream_result(task_id, timeout=30.0):
-                        conclusion_text += chunk
-                        yield extract_chunk_text(chunk)
+    #                 self.logger.success(
+    #                     f"Counsel: {label} completed in {duration:.2f}s",
+    #                     context=context
+    #                 )
                 
-                except Exception as e:
-                    self.logger.error(f"Conclusion generation failed: {e}, using direct fallback")
-                    for chunk in self.stream_llm(self.fast_llm, conclusion_prompt):
-                        conclusion_text += chunk
-                        yield extract_chunk_text(chunk)
-            else:
-                for chunk in self.stream_llm(self.fast_llm, conclusion_prompt):
-                    conclusion_text += chunk
-                    yield extract_chunk_text(chunk)
+    #             except Exception as e:
+    #                 self.logger.error(f"Counsel: {label} failed: {e}", context=context)
             
-            duration = self.logger.stop_timer("conclusion_generation", context=conclusion_context)
+    #         # Launch threads
+    #         threads = []
+    #         for idx, (spec, info) in enumerate(instance_map.items()):
+    #             label = f"{info['model']}@{info['instance']}"
+    #             thread = threading.Thread(
+    #                 target=run_instance,
+    #                 args=(spec, info, label),
+    #                 daemon=True
+    #             )
+    #             thread.start()
+    #             threads.append(thread)
+        
+    #     # ====================================================================
+    #     # MODEL-BASED EXECUTION
+    #     # ====================================================================
+        
+    #     else:
+    #         # Map model types to LLMs
+    #         model_map = {
+    #             'fast': self.fast_llm,
+    #             'intermediate': self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm,
+    #             'deep': self.deep_llm,
+    #             'reasoning': self.reasoning_llm
+    #         }
             
-            # Add conclusion to total response
-            total_response += f"\n\n--- Conclusion ---\n{conclusion_text}"
+    #         def run_model(model_type, model_llm, label):
+    #             try:
+    #                 self.logger.debug(f"Counsel: Starting {label}", context=context)
+    #                 start_time = time.time()
+                    
+    #                 response = ""
+    #                 for chunk in self.stream_llm(model_llm, query):
+    #                     response += extract_chunk_text(chunk)
+                    
+    #                 duration = time.time() - start_time
+                    
+    #                 response_queue.put((label, response, duration, time.time()))
+                    
+    #                 self.logger.success(
+    #                     f"Counsel: {label} completed in {duration:.2f}s",
+    #                     context=context
+    #                 )
+                
+    #             except Exception as e:
+    #                 self.logger.error(f"Counsel: {label} failed: {e}", context=context)
             
-            # Save conclusion to memory
-            if hasattr(self, 'mem') and hasattr(self, 'sess'):
-                self.mem.add_session_memory(
-                    self.sess.id,
-                    conclusion_text,
-                    "Conclusion",
-                    {"topic": "conclusion", "duration": duration}
-                )
+    #         # Launch threads
+    #         threads = []
+    #         for idx, model_type in enumerate(counsel_models):
+    #             if model_type in model_map:
+    #                 # Add index to label if same model appears multiple times
+    #                 count = counsel_models[:idx+1].count(model_type)
+    #                 label = f"{model_type.title()}" + (f" #{count}" if counsel_models.count(model_type) > 1 else "")
+                    
+    #                 thread = threading.Thread(
+    #                     target=run_model,
+    #                     args=(model_type, model_map[model_type], label),
+    #                     daemon=True
+    #                 )
+    #                 thread.start()
+    #                 threads.append(thread)
         
-        # ====================================================================
-        # STEP 3: SAVE TO MEMORY
-        # ====================================================================
+    #     # ====================================================================
+    #     # MODE: RACE (Fastest Wins)
+    #     # ====================================================================
         
-        if total_response:
-            self.save_to_memory(query, total_response)
+    #     if counsel_mode == 'race':
+    #         try:
+    #             winner_label, winner_response, duration, completion_time = response_queue.get(timeout=120.0)
+                
+    #             self.logger.success(
+    #                 f"🏆 Counsel winner: {winner_label} ({duration:.2f}s)",
+    #                 context=context
+    #             )
+                
+    #             yield f"\n\n--- Counsel Mode: Race Winner ---\n"
+    #             yield f"**{winner_label}** (completed in {duration:.2f}s)\n\n"
+    #             yield winner_response
+                
+    #             return winner_response
+            
+    #         except queue.Empty:
+    #             self.logger.error("Counsel: All models timed out", context=context)
+    #             yield "\n\n--- Counsel Mode: Error ---\nAll models timed out\n"
+    #             return "Error: All counsel models timed out"
         
-        total_duration = self.logger.stop_timer("total_query_processing", context=query_context)
-        self.logger.success(
-            f"Query complete: {len(total_response)} chars in {total_duration:.2f}s",
-            context=query_context
-        )
+    #     # ====================================================================
+    #     # MODE: SYNTHESIS (Combine All)
+    #     # ====================================================================
+        
+    #     elif counsel_mode == 'synthesis':
+    #         responses = []
+            
+    #         # Wait for all models (with timeout)
+    #         for _ in range(len(threads)):
+    #             try:
+    #                 label, response, duration, completion_time = response_queue.get(timeout=120.0)
+    #                 responses.append((label, response, duration))
+    #             except queue.Empty:
+    #                 break
+            
+    #         if not responses:
+    #             self.logger.error("Counsel: No models completed", context=context)
+    #             yield "\n\n--- Counsel Mode: Error ---\nNo models completed\n"
+    #             return "Error: No counsel models completed"
+            
+    #         self.logger.info(
+    #             f"Counsel: Collected {len(responses)} responses, synthesizing...",
+    #             context=context
+    #         )
+            
+    #         # Display individual responses
+    #         yield f"\n\n--- Counsel Mode: Synthesis ({len(responses)} perspectives) ---\n\n"
+            
+    #         for label, response, duration in responses:
+    #             yield f"**{label}** ({duration:.2f}s):\n{response[:300]}{'...' if len(response) > 300 else ''}\n\n"
+            
+    #         # Synthesize using fast model
+    #         synthesis_prompt = f"""Multiple AI perspectives on this query: {query}
 
-    def _triage_direct(self, query):
-        """Direct triage without orchestrator (fallback)"""
-        triage_context = LogContext(
-            session_id=self.sess.id,
-            agent="triage"
-        )
-        
-        # Use triage agent if available
-        if self.agents:
-            agent_name = self.get_agent_for_task('triage')
-            triage_llm = self.create_llm_for_agent(agent_name)
-            triage_context.agent = agent_name
-            triage_context.model = agent_name
-        else:
-            triage_llm = self.fast_llm
-            triage_context.model = self.selected_models.fast_llm
-        
-        self.logger.debug("Using triage agent", context=triage_context)
-        
-        triage_prompt = f"""
-        Classify this Query into one of the following categories:
-            - 'focus'      → Change the focus of background thought.
-            - 'proactive'  → Trigger proactive thinking.
-            - 'simple'     → Simple textual response.
-            - 'toolchain'  → Requires a series of tools or step-by-step planning.
-            - 'reasoning'  → Requires deep reasoning.
-            - 'complex'    → Complex written response with high-quality output.
+    # Perspectives:
+    # """
+            
+    #         for label, response, duration in responses:
+    #             synthesis_prompt += f"\n**{label}**:\n{response[:800]}{'...' if len(response) > 800 else ''}\n\n"
+            
+    #         synthesis_prompt += """
+    # Synthesize these perspectives into a single, coherent response that:
+    # 1. Captures the best insights from each perspective
+    # 2. Highlights areas of agreement
+    # 3. Notes any important differences or unique contributions
+    # 4. Provides a unified conclusion
 
-        Current focus: {self.focus_manager.focus if hasattr(self, 'focus_manager') else 'None'}
-
-        Query: {query}
-
-        Respond with a single classification term (e.g., 'simple', 'toolchain', 'complex') on the first line.
-        """
+    # Keep the synthesis concise and actionable."""
+            
+    #         yield "--- Synthesis ---\n"
+            
+    #         synthesis_response = ""
+    #         for chunk in self.stream_llm(self.fast_llm, synthesis_prompt):
+    #             chunk_text = extract_chunk_text(chunk)
+    #             synthesis_response += chunk_text
+    #             yield chunk_text
+            
+    #         return synthesis_response
         
-        for chunk in self.stream_llm(triage_llm, triage_prompt):
-            yield chunk
+    #     # ====================================================================
+    #     # MODE: VOTE (Judge Selects Best)
+    #     # ====================================================================
+        
+    #     elif counsel_mode == 'vote':
+    #         responses = []
+            
+    #         # Wait for all models (with timeout)
+    #         for _ in range(len(threads)):
+    #             try:
+    #                 label, response, duration, completion_time = response_queue.get(timeout=120.0)
+    #                 responses.append((label, response, duration))
+    #             except queue.Empty:
+    #                 break
+            
+    #         if not responses:
+    #             self.logger.error("Counsel: No models completed", context=context)
+    #             yield "\n\n--- Counsel Mode: Error ---\nNo models completed\n"
+    #             return "Error: No counsel models completed"
+            
+    #         if len(responses) == 1:
+    #             # Only one response, use it
+    #             label, response, duration = responses[0]
+                
+    #             self.logger.info(
+    #                 f"Counsel: Only one response from {label}, using it",
+    #                 context=context
+    #             )
+                
+    #             yield f"\n\n--- Counsel Mode: Vote (Only One Response) ---\n"
+    #             yield f"**{label}** ({duration:.2f}s)\n\n"
+    #             yield response
+                
+    #             return response
+            
+    #         self.logger.info(
+    #             f"Counsel: Collected {len(responses)} responses, voting...",
+    #             context=context
+    #         )
+            
+    #         # Display all responses
+    #         yield f"\n\n--- Counsel Mode: Vote ({len(responses)} candidates) ---\n\n"
+            
+    #         for idx, (label, response, duration) in enumerate(responses, 1):
+    #             yield f"**Candidate {idx}: {label}** ({duration:.2f}s)\n{response[:200]}{'...' if len(response) > 200 else ''}\n\n"
+            
+    #         # Judge using fast model (or configurable judge model)
+    #         judge_model = getattr(counsel_config, 'judge_model', 'fast')
+    #         judge_llm = {
+    #             'fast': self.fast_llm,
+    #             'intermediate': self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm,
+    #             'deep': self.deep_llm,
+    #             'reasoning': self.reasoning_llm
+    #         }.get(judge_model, self.fast_llm)
+            
+    #         vote_prompt = f"""You are judging multiple AI responses to select the BEST one.
+
+    # Original Query: {query}
+
+    # Candidates:
+    # """
+            
+    #         for idx, (label, response, duration) in enumerate(responses, 1):
+    #             vote_prompt += f"\n**Candidate {idx} ({label})**:\n{response}\n\n"
+            
+    #         vote_prompt += f"""
+    # Evaluate each candidate on:
+    # 1. Accuracy and correctness
+    # 2. Completeness and depth
+    # 3. Clarity and coherence
+    # 4. Relevance to the query
+    # 5. Practical value
+
+    # Respond with ONLY the candidate number (1-{len(responses)}) of the BEST response, followed by a brief 1-2 sentence explanation.
+    # Format: "Candidate X: [reason]"
+    # """
+            
+    #         yield "--- Voting ---\n"
+            
+    #         self.logger.info("Counsel: Judge evaluating responses...", context=context)
+            
+    #         vote_result = ""
+    #         for chunk in self.stream_llm(judge_llm, vote_prompt):
+    #             chunk_text = extract_chunk_text(chunk)
+    #             vote_result += chunk_text
+    #             yield chunk_text
+            
+    #         yield "\n\n"
+            
+    #         # Parse vote result to extract winner
+    #         import re
+    #         match = re.search(r'Candidate\s+(\d+)', vote_result, re.IGNORECASE)
+            
+    #         if match:
+    #             winner_idx = int(match.group(1)) - 1
+                
+    #             if 0 <= winner_idx < len(responses):
+    #                 winner_label, winner_response, winner_duration = responses[winner_idx]
+                    
+    #                 self.logger.success(
+    #                     f"🏆 Counsel vote winner: Candidate {winner_idx + 1} ({winner_label})",
+    #                     context=context
+    #                 )
+                    
+    #                 yield f"--- Selected Response ---\n"
+    #                 yield f"**{winner_label}** (selected by vote)\n\n"
+    #                 yield winner_response
+                    
+    #                 return winner_response
+    #             else:
+    #                 self.logger.warning(
+    #                     f"Invalid vote index {winner_idx + 1}, using first response",
+    #                     context=context
+    #                 )
+    #         else:
+    #             self.logger.warning(
+    #                 "Could not parse vote result, using first response",
+    #                 context=context
+    #             )
+            
+    #         # Fallback to first response
+    #         label, response, duration = responses[0]
+            
+    #         yield f"--- Selected Response (Fallback) ---\n"
+    #         yield f"**{label}**\n\n"
+    #         yield response
+            
+    #         return response
+        
+    #     else:
+    #         self.logger.error(f"Unknown counsel mode: {counsel_mode}", context=context)
+    #         yield f"\n\nError: Unknown counsel mode '{counsel_mode}'\n"
+    #         return f"Error: Unknown counsel mode '{counsel_mode}'"
+
+    # def _triage_direct(self, query):
+    #     """Direct triage without orchestrator (fallback)"""
+    #     triage_context = LogContext(
+    #         session_id=self.sess.id,
+    #         agent="triage"
+    #     )
+        
+    #     # Use triage agent if available
+    #     if self.agents:
+    #         agent_name = self.get_agent_for_task('triage')
+    #         triage_llm = self.create_llm_for_agent(agent_name)
+    #         triage_context.agent = agent_name
+    #         triage_context.model = agent_name
+    #     else:
+    #         triage_llm = self.fast_llm
+    #         triage_context.model = self.selected_models.fast_llm
+        
+    #     self.logger.debug("Using triage agent", context=triage_context)
+        
+    #     triage_prompt = f"""
+    #     Classify this Query into one of the following categories:
+    #         - 'focus'      → Change the focus of background thought.
+    #         - 'proactive'  → Trigger proactive thinking.
+    #         - 'simple'     → Simple textual response.
+    #         - 'toolchain'  → Requires a series of tools or step-by-step planning.
+    #         - 'reasoning'  → Requires deep reasoning.
+    #         - 'complex'    → Complex written response with high-quality output.
+
+    #     Current focus: {self.focus_manager.focus if hasattr(self, 'focus_manager') else 'None'}
+
+    #     Query: {query}
+
+    #     Respond with a single classification term (e.g., 'simple', 'toolchain', 'complex') on the first line.
+    #     """
+        
+    #     for chunk in self.stream_llm(triage_llm, triage_prompt):
+    #         yield chunk
 
     def print_llm_models(self):
         """Print the variable name and model name for each Ollama LLM."""

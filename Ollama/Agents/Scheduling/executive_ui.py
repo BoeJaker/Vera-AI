@@ -62,7 +62,7 @@ def initialize_agent():
         with st.spinner("Initializing agent..."):
             st.session_state.executive_agent = executive(vera_instance=None)
             st.session_state.initialized = True
-            st.success("✅ Agent initialized successfully!")
+            st.success("Agent initialized successfully!")
     except Exception as e:
         st.error(f"❌ Failed to initialize agent: {str(e)}")
         st.session_state.initialized = False
@@ -81,13 +81,13 @@ def format_event(event):
     return f"""
     <div class="event-card {source_color}">
         <strong>{source_icon} {event['title']}</strong><br>
-        📅 {start.strftime('%A, %B %d, %Y')}<br>
+        {start.strftime('%A, %B %d, %Y')}<br>
         🕐 {start.strftime('%H:%M')}{end_str}
     </div>
     """
 
 # Main UI
-st.markdown('<p class="main-header">📅 Executive Scheduling Agent</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header">Executive Scheduling Agent</p>', unsafe_allow_html=True)
 st.markdown("*Your intelligent assistant for calendar and project management*")
 
 # Sidebar
@@ -95,18 +95,18 @@ with st.sidebar:
     st.header("⚙️ Settings")
     
     if not st.session_state.initialized:
-        if st.button("🚀 Initialize Agent", use_container_width=True):
+        if st.button("Initialize Agent", use_container_width=True):
             initialize_agent()
     else:
-        st.success("✅ Agent Active")
-        if st.button("🔄 Restart Agent", use_container_width=True):
+        st.success("Agent Active")
+        if st.button("Restart Agent", use_container_width=True):
             st.session_state.executive_agent = None
             st.session_state.initialized = False
             st.rerun()
     
     st.divider()
     
-    st.header("📊 Quick Stats")
+    st.header("Quick Stats")
     if st.session_state.initialized:
         try:
             google_events = st.session_state.executive_agent.get_events_google(7)
@@ -130,7 +130,7 @@ with st.sidebar:
                 st.error(f"Error: {str(e)}")
 
 # Main content tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["💬 Chat", "📅 Calendar", "➕ Add Event", "📁 Projects", "📊 Dashboard"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["💬 Chat", "Calendar", "➕ Add Event", "📁 Projects", "Dashboard"])
 
 # Tab 1: Chat Interface
 with tab1:
@@ -201,7 +201,7 @@ with tab2:
                 all_events.sort(key=lambda x: x['start'])
                 
                 if all_events:
-                    st.subheader(f"📅 Upcoming Events ({len(all_events)})")
+                    st.subheader(f"Upcoming Events ({len(all_events)})")
                     for event in all_events:
                         st.markdown(format_event(event), unsafe_allow_html=True)
                 else:
@@ -339,11 +339,11 @@ with tab5:
             with col2:
                 st.metric("💾 Local Events", len(local_events))
             with col3:
-                st.metric("📊 Total Events", len(google_events) + len(local_events))
+                st.metric("Total Events", len(google_events) + len(local_events))
             with col4:
                 today_events = [e for e in google_events + local_events 
                                if datetime.datetime.fromisoformat(e['start']).date() == datetime.date.today()]
-                st.metric("📅 Today", len(today_events))
+                st.metric("Today", len(today_events))
             
             st.divider()
             
@@ -363,7 +363,7 @@ with tab5:
                     days_dict[event_date].append(event)
                 
                 for date, day_events in sorted(days_dict.items()):
-                    with st.expander(f"📅 {date.strftime('%A, %B %d')} ({len(day_events)} events)"):
+                    with st.expander(f"{date.strftime('%A, %B %d')} ({len(day_events)} events)"):
                         for event in day_events:
                             st.markdown(format_event(event), unsafe_allow_html=True)
             else:

@@ -35,6 +35,8 @@ Node Type:      Node category Entity, Extracted_Entity, Inference, Generated,
 Type:           Fixed data category, IP, 
 Label:          User amendable labels
 Caller:         Function that created tthe node
+Intermediate:   A node that symbolizes an internal or hidden process i.e. "tool execution" - can be "collapsed"
+Live:           This node can be live updated
 
 Created at:     Datetime
 Updated at:     Datetime

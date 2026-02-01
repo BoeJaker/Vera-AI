@@ -1253,7 +1253,7 @@
             const data = await response.json();
             this.currentFocus = data.focus;
             this.updateFocusUI();
-            this.addSystemMessage(`🎯 Focus set to: ${focus}`);
+            // this.addSystemMessage(`🎯 Focus set to: ${focus}`);
         } catch (error) {
             console.error('Failed to set focus:', error);
             this.addSystemMessage(`Error setting focus: ${error.message}`);
@@ -1866,7 +1866,7 @@
                 if (data.status === 'loaded') {
                     this.focusBoard = this.normalizeFocusBoard(data.focus_state.focus_board);
                     this.updateFocusUI();
-                    this.addSystemMessage(`✓ Loaded existing focus: ${focusText}`);
+                    // this.addSystemMessage(`✓ Loaded existing focus: ${focusText}`);
                 }
             }
             

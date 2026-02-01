@@ -809,7 +809,7 @@
                 return;
             }
             
-            console.log(`📊 Messages in array: ${self.messages.length}`);
+            console.log(` Messages in array: ${self.messages.length}`);
             
             timestamps.forEach(el => {
                 const messageEl = el.closest('.message');
@@ -2476,7 +2476,7 @@ VeraChat.prototype.containsSignificantMarkdown = function(content) {
                 case 'diagram':
                     const mermaidEditor = document.querySelector('#mermaid-editor');
                     if (mermaidEditor) {
-                        console.log('📊 Loading into diagram editor');
+                        console.log(' Loading into diagram editor');
                         mermaidEditor.value = code;
                         // Auto-render
                         const renderBtn = document.querySelector('#renderDiagram');
@@ -2518,7 +2518,7 @@ VeraChat.prototype.containsSignificantMarkdown = function(content) {
                 case 'table':
                     const tableData = document.querySelector('#table-data');
                     if (tableData) {
-                        console.log('📊 Loading into table viewer');
+                        console.log(' Loading into table viewer');
                         tableData.value = code;
                         const parseTableBtn = document.querySelector('#parseTable');
                         if (parseTableBtn) parseTableBtn.click();

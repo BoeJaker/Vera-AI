@@ -248,18 +248,43 @@ class OllamaConfig:
             self.instances = converted_instances
         else:
             # Default instances if none provided
+            # TODO # FIX THIS TO REFLECT ACTUAL CONFIG
             self.instances = [
                 OllamaInstanceConfig(
-                    name="remote",
+                    name="remote-a",
                     api_url="http://192.168.0.250:11435",
+                    priority=6,
+                    max_concurrent=1
+                ),
+                OllamaInstanceConfig(
+                    name="remote-b",
+                    api_url="http://192.168.0.249:11435",
+                    priority=5,
+                    max_concurrent=1
+                ),
+                OllamaInstanceConfig(
+                    name="remote-c",
+                    api_url="http://192.168.0.248:11435",
+                    priority=4,
+                    max_concurrent=1
+                ),
+                OllamaInstanceConfig(
+                    name="remote-d",
+                    api_url="http://192.168.0.247:11435",
+                    priority=3,
+                    max_concurrent=1
+                ),
+                OllamaInstanceConfig(
+                    name="remote-e",
+                    api_url="http://192.168.0.246:11435",
                     priority=2,
-                    max_concurrent=2
+                    max_concurrent=1
                 ),
                 OllamaInstanceConfig(
                     name="local",
                     api_url="http://localhost:11434",
                     priority=1,
-                    max_concurrent=2
+                    max_concurrent=1
                 )
             ]
 

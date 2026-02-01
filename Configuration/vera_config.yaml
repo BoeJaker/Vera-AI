@@ -6,11 +6,11 @@
 
 models:
   embedding_model: "mistral:7b"
-  fast_llm: "gemma2"
+  fast_llm: "gemma2:latest"
   intermediate_llm: "gemma3:12b"
   deep_llm: "gpt-oss:20b"
   reasoning_llm: "gpt-oss:20b"
-  tool_llm: "gemma2"
+  tool_llm: "gemma2:latest"
   
   # Temperature settings
   fast_temperature: 0.6
@@ -42,32 +42,32 @@ ollama:
   top_p: 0.9
   num_predict: -1
   
-  instances:
-    - name: "remote"
-      api_url: "http://192.168.0.250:11435"
-      priority: 4
-      max_concurrent: 1
-      enabled: true
-      timeout: 2400
-    - name: "remote-b"
-      api_url: "http://192.168.0.249:11435"
-      priority: 3
-      max_concurrent: 1
-      enabled: true
-      timeout: 2400
-    - name: "remote-c"
-      api_url: "http://192.168.0.248:11435"
-      priority: 2
-      max_concurrent: 1
-      enabled: true
-      timeout: 2400
-    
-    - name: "local"
-      api_url: "http://localhost:11434"
-      priority: 1
-      max_concurrent: 1
-      enabled: true
-      timeout: 2400
+instances:
+  - name: "remote"
+    api_url: "http://192.168.0.250:11435"
+    priority: 4
+    max_concurrent: 1
+    enabled: true
+    timeout: 2400
+  - name: "remote-b"
+    api_url: "http://192.168.0.249:11435"
+    priority: 3
+    max_concurrent: 1
+    enabled: true
+    timeout: 2400
+  - name: "remote-c"
+    api_url: "http://192.168.0.248:11435"
+    priority: 2
+    max_concurrent: 1
+    enabled: true
+    timeout: 2400
+  
+  # - name: "local"
+  #   api_url: "http://localhost:11434"
+  #   priority: 1
+  #   max_concurrent: 1
+  #   enabled: true
+  #   timeout: 2400
 
 # Memory System Configuration
 memory:
@@ -95,13 +95,16 @@ orchestrator:
   cpu_threshold: 75.0
   
   # Worker pool sizes per task type
-  llm_workers: 3
+  llm_workers: 4
   whisper_workers: 1
   tool_workers: 4
   ml_model_workers: 1
   background_workers: 2
   general_workers: 2
   
+  neo4j_workers: 1
+  postgres_workers: 1
+
   # Operation timeouts (seconds)
   triage_timeout: 10.0
   toolchain_timeout: 120.0
@@ -146,6 +149,25 @@ playwright:
   browser_type: "chromium"  # chromium, firefox, or webkit
   timeout: 30000  # milliseconds
 
+# Progressive refinement ramp configuration
+ramp:
+  simple: []                    # No ramp
+  intermediate: [1]             # Fast → Intermediate
+  complex: [1]                  # Fast → Intermediate (keep it simple)
+  reasoning: [1, 3]             # Fast → Intermediate → Reasoning
+  toolchain: [4]                # Fast → Toolchain
+  counsel: []                   # Handled separately
+  focus: []                     # Handled separately
+  proactive: []                 # Handled separately
+
+counsel:
+  mode: "race"
+  instances:
+    - "local:llama3.2:3b"
+    - "gpu1:llama3.2:3b"
+    - "gpu2:llama3.2:3b"
+  judge_model: "reasoning"  # 'fast', 'intermediate', 'deep', or 'reasoning'
+
 # ============================================================================
 # Agent Configuration System
 # ============================================================================
@@ -170,7 +192,7 @@ agents:
     triage: "triage-agent"           # Fast query classification
     tool_execution: "tool-agent"     # Precise tool execution
     reasoning: "reasoning-agent"     # Deep thinking
-    conversation: "gemma2"           # General chat
+    conversation: "gemma2:latest"           # General chat
   
   # Agent-specific overrides (optional)
   agent_configs:

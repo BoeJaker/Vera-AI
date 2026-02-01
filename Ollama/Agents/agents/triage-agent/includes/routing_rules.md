@@ -1,7 +1,7 @@
   Below is an explanation of each of the agents
 
-  - focus
-    focus is used to change the systems overall background thought focus - only use if expressly asked for
+  - counsel
+    asks multiple models the same question at once - only use if expressly asked for
 
   - proactive
     proactive starts proactive thinking about the current focus - only use if expressly asked for

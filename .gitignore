@@ -26,6 +26,8 @@ lib/
 **/*.jsonl
 **/*.sqlite3
 
+**/.env
+**/secret/
 **/.security_cache/
 **/.obsidian/
 **/.vscode/

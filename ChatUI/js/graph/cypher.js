@@ -111,17 +111,17 @@
                         Query Builder
                     </div>
                     <div class="cypher-header-btns">
-                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">🔄</button>
-                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">📊</button>
+                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">Load Schema</button>
+                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">Stats</button>
                         <button id="cypher-btn-close" class="hdr-btn" title="Close">✕</button>
                     </div>
                 </div>
                 
                 <!-- Tabs -->
                 <div class="cypher-tabs">
-                    <button class="cypher-tab-btn active" data-cypher-tab="builder">🔧 Build</button>
-                    <button class="cypher-tab-btn" data-cypher-tab="layout">📐 Layout</button>
-                    <button class="cypher-tab-btn" data-cypher-tab="editor">✏️ Raw</button>
+                    <button class="cypher-tab-btn active" data-cypher-tab="builder" Build</button>
+                    <button class="cypher-tab-btn" data-cypher-tab="layout">Layout</button>
+                    <button class="cypher-tab-btn" data-cypher-tab="editor">Raw</button>
                 </div>
                 
                 <div class="cypher-body">
@@ -170,15 +170,15 @@
                     
                     <!-- Collapsibles -->
                     <details class="detail-section">
-                        <summary>📁 Templates</summary>
+                        <summary>Templates</summary>
                         <div id="cypher-templates-container"></div>
                     </details>
                     <details class="detail-section">
-                        <summary>🕐 History</summary>
+                        <summary>History</summary>
                         <div id="cypher-history-container"></div>
                     </details>
                     <details class="detail-section">
-                        <summary>⭐ Saved</summary>
+                        <summary>Saved</summary>
                         <div id="cypher-saved-container"></div>
                     </details>
                 </div>
@@ -205,7 +205,7 @@
             return `
                 <!-- Node Selection -->
                 <div class="section-box">
-                    <div class="section-title">🔵 Source Nodes</div>
+                    <div class="section-title">Source Nodes</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Label</label>
@@ -230,7 +230,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-date-enabled">
-                            <span>📅 Date Range</span>
+                            <span Date Range</span>
                         </label>
                     </div>
                     <div id="cypher-date-content" class="section-body collapsed">
@@ -279,7 +279,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-rels-enabled">
-                            <span>🔗 Relationships</span>
+                            <span>Relationships</span>
                         </label>
                     </div>
                     <div id="cypher-rels-content" class="section-body collapsed">
@@ -322,7 +322,7 @@
                 
                 <!-- Return Options -->
                 <div class="section-box">
-                    <div class="section-title">📤 Return</div>
+                    <div class="section-title">Return</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Return</label>
@@ -371,7 +371,7 @@
         renderLayoutTab: function() {
             return `
                 <div class="section-box">
-                    <div class="section-title">📐 Layout Mode</div>
+                    <div class="section-title">Layout Mode</div>
                     <div class="section-body">
                         <div class="layout-modes">
                             <button class="layout-btn active" data-layout="force" title="Force-directed">
@@ -400,7 +400,7 @@
                 
                 <!-- Timeline Options -->
                 <div id="cypher-timeline-options" class="section-box" style="display:none">
-                    <div class="section-title">📅 Timeline Settings</div>
+                    <div class="section-title">Timeline Settings</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Time Property</label>
@@ -422,7 +422,7 @@
                 
                 <!-- Grouped Options -->
                 <div id="cypher-grouped-options" class="section-box" style="display:none">
-                    <div class="section-title">📦 Grouping Settings</div>
+                    <div class="section-title">Grouping Settings</div>
                     <div class="section-body">
                         <div class="field">
                             <label>Group By</label>
@@ -443,7 +443,7 @@
                 
                 <!-- Physics Settings -->
                 <div class="section-box">
-                    <div class="section-title">⚙️ Physics & Performance</div>
+                    <div class="section-title">Physics & Performance</div>
                     <div class="section-body">
                         <div class="field">
                             <label>
@@ -464,16 +464,16 @@
                             <input type="range" id="cypher-damping-slider" min="0.1" max="1" step="0.05" value="0.9">
                         </div>
                         <div class="physics-actions">
-                            <button id="cypher-btn-stabilize" class="action-btn">⚡ Quick Stabilize</button>
-                            <button id="cypher-btn-freeze" class="action-btn">❄️ Freeze</button>
-                            <button id="cypher-btn-unfreeze" class="action-btn">🔥 Unfreeze</button>
+                            <button id="cypher-btn-stabilize" class="action-btn">Quick Stabilize</button>
+                            <button id="cypher-btn-freeze" class="action-btn">Freeze</button>
+                            <button id="cypher-btn-unfreeze" class="action-btn">Unfreeze</button>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Layout Actions -->
                 <div class="section-box">
-                    <div class="section-title">🎬 Actions</div>
+                    <div class="section-title">Actions</div>
                     <div class="section-body">
                         <div class="layout-actions">
                             <button id="cypher-btn-apply-layout" class="action-btn primary">Apply Layout</button>
@@ -2560,14 +2560,14 @@ applyCircularLayout: function(nodes) {
                         }
                     </style>
                     <div class="cypher-inline-header">
-                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">🔄</button>
-                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">📊</button>
+                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">Refresh Schema</button>
+                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">Stats</button>
                     </div>
                     <!-- Tabs -->
                     <div class="cypher-tabs">
-                        <button class="cypher-tab-btn active" data-cypher-tab="builder">🔧 Build</button>
-                        <button class="cypher-tab-btn" data-cypher-tab="layout">📐 Layout</button>
-                        <button class="cypher-tab-btn" data-cypher-tab="editor">✏️ Raw</button>
+                        <button class="cypher-tab-btn active" data-cypher-tab="builder">Build</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="layout">Layout</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="editor">Raw Query</button>
                     </div>
                     
                     <!-- Builder Tab -->
@@ -2633,7 +2633,7 @@ applyCircularLayout: function(nodes) {
             const html = this.getQueryPanelHTML();
             
             window.GraphInfoCard.showInlineContent(
-                '⚡ Query Builder',
+                'Graph Query Builder',
                 html,
                 nodeId ? `window.GraphInfoCard.expandNodeInfo('${nodeId}')` : null
             );

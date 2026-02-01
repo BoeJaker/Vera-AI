@@ -626,7 +626,7 @@ class Neo4jGraphAuditor:
         print("Checking relationship distribution...")
         rel_dist = self.analyze_relationship_distribution()
         if rel_dist:
-            print("📊 Relationship Distribution:")
+            print("Relationship Distribution:")
             for rel in rel_dist[:5]:
                 print(f"   {rel['relationship_type']}: {rel['count']}")
         print()

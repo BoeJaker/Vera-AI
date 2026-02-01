@@ -226,7 +226,7 @@ make status
 
   
 
-## 📊 Service Details
+## Service Details
 
   
 

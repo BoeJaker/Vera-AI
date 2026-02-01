@@ -1906,7 +1906,7 @@ Context:
             self._clear_stage()
             return 0
         
-        self._stream_output(f"📋 Found {len(actions)} total actions in focus board", "info")
+        self._stream_output(f"Found {len(actions)} total actions in focus board", "info")
         self._update_progress()
         
         executed_count = 0
@@ -1924,27 +1924,27 @@ Context:
                 if priority_filter and priority_filter.lower() != 'all' and priority != priority_filter:
                     continue
                 
-                self._stream_output(f"\n▶️ Executing action {executed_count + 1}/{max_executions}:", "info")
+                self._stream_output(f"\nExecuting action {executed_count + 1}/{max_executions}:", "info")
                 self._stream_output(f"   {description[:150]}{'...' if len(description) > 150 else ''}", "info")
                 
                 result = self.handoff_to_toolchain(action_dict)
                 
                 if result:
-                    self._stream_output(f"✅ Action completed", "success")
+                    self._stream_output(f"Action completed", "success")
                     result_preview = str(result)[:200]
                     self._stream_output(f"   Result: {result_preview}{'...' if len(str(result)) > 200 else ''}", "info")
                 else:
-                    self._stream_output(f"⚠️ Action completed with no result", "warning")
+                    self._stream_output(f"Action completed with no result", "warning")
                 
                 executed_count += 1
                 self._update_progress()
                 
             except Exception as e:
-                self._stream_output(f"❌ Execution failed: {str(e)}", "error")
+                self._stream_output(f"Execution failed: {str(e)}", "error")
                 import traceback
                 traceback.print_exc()
         
-        self._stream_output(f"\n📊 Execution Summary: {executed_count}/{max_executions} actions completed", "success")
+        self._stream_output(f"\nExecution Summary: {executed_count}/{max_executions} actions completed", "success")
         self._clear_stage()
         
         return executed_count
@@ -2336,75 +2336,3 @@ Context:
             return chunk.get('content', chunk.get('text', str(chunk)))
         else:
             return str(chunk)
-
-def get_active_ollama_threads():
-    """Return active Ollama threads with non-zero CPU usage."""
-    active_threads = []
-    total_cpu = 0.0
-
-    for proc in psutil.process_iter(attrs=["pid", "name", "cmdline"]):
-        try:
-            if "ollama" in (proc.info["name"] or "").lower() or any("ollama" in (part or "").lower() for part in proc.info["cmdline"] or []):
-                for thread in proc.threads():
-                    thread_cpu = proc.cpu_percent(interval=0.1) / proc.num_threads() if proc.num_threads() else 0
-                    if thread_cpu > 0:
-                        active_threads.append({
-                            "pid": proc.pid,
-                            "tid": thread.id,
-                            "cpu": thread_cpu
-                        })
-                        total_cpu += thread_cpu
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-
-    print("Active Ollama Threads")
-    print("---------------------")
-    for t in active_threads:
-        print(f"PID: {t['pid']}, TID: {t['tid']}, CPU: {t['cpu']:.2f}%")
-    print("---------------------")
-    print(f"Total active threads: {len(active_threads)} | Total active CPU: {total_cpu:.2f}%")
-
-    return active_threads
-
-
-def get_ollama_cpu_load_and_count():
-    """Calculate total CPU load and count of threads for all Ollama models."""
-    total_cpu = 0.0
-    total_threads = 0
-    model_processes = {}
-
-    for proc in psutil.process_iter(attrs=["pid", "name", "cmdline", "cpu_percent", "num_threads"]):
-        try:
-            name = proc.info["name"] or ""
-            cmdline = proc.info["cmdline"] or []
-            cpu = proc.info["cpu_percent"]
-            threads = proc.info["num_threads"]
-
-            if "ollama" in name.lower() or any("ollama" in part.lower() for part in cmdline):
-                total_cpu += cpu
-                total_threads += threads
-
-                model_name = None
-                for part in cmdline:
-                    if re.match(r"^[a-zA-Z0-9_\-:]+$", part) and ":" in part:
-                        model_name = part
-                        break
-
-                if not model_name:
-                    model_name = "unknown"
-
-                model_processes.setdefault(model_name, {"cpu": 0.0, "threads": 0})
-                model_processes[model_name]["cpu"] += cpu
-                model_processes[model_name]["threads"] += threads
-
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-
-    print("Ollama CPU Load Report")
-    print("----------------------")
-    for model, stats in model_processes.items():
-        print(f"{model} -> CPU: {stats['cpu']:.2f}%, Threads: {stats['threads']}")
-    print("----------------------")
-    print(f"TOTAL -> CPU: {total_cpu:.2f}%, Threads: {total_threads}")
-
-    return total_cpu, total_threads, model_processes
