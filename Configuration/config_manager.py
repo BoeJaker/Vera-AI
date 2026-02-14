@@ -37,7 +37,9 @@ class AgentSystemConfig:
         'triage': 'triage-agent',
         'tool_execution': 'tool-agent',
         'reasoning': 'reasoning-agent',
-        'conversation': 'gemma2'
+        'conversation': 'gemma2:latest',
+        'coding': 'codestral:latest'
+
     })
     
     # Agent-specific config overrides
@@ -183,6 +185,28 @@ class LoggingConfig:
 
 
 
+# @dataclass
+# class OllamaInstanceConfig:
+#     """Configuration for a single Ollama instance"""
+#     name: str
+#     api_url: str
+#     priority: int = 1
+#     max_concurrent: int = 2
+#     enabled: bool = True
+#     timeout: int = 2400
+    
+#     @classmethod
+#     def from_dict(cls, data: dict) -> 'OllamaInstanceConfig':
+#         """Create from dictionary"""
+#         return cls(
+#             name=data.get('name', 'unknown'),
+#             api_url=data.get('api_url', 'http://localhost:11434'),
+#             priority=data.get('priority', 1),
+#             max_concurrent=data.get('max_concurrent', 2),
+#             enabled=data.get('enabled', True),
+#             timeout=data.get('timeout', 2400)
+#         )
+
 @dataclass
 class OllamaInstanceConfig:
     """Configuration for a single Ollama instance"""
@@ -193,6 +217,11 @@ class OllamaInstanceConfig:
     enabled: bool = True
     timeout: int = 2400
     
+    # NEW: GPU awareness
+    has_gpu: bool = False
+    gpu_memory_gb: Optional[int] = None  # GPU memory in GB
+    cpu_only: bool = False  # Mark as CPU-only instance
+    
     @classmethod
     def from_dict(cls, data: dict) -> 'OllamaInstanceConfig':
         """Create from dictionary"""
@@ -202,10 +231,12 @@ class OllamaInstanceConfig:
             priority=data.get('priority', 1),
             max_concurrent=data.get('max_concurrent', 2),
             enabled=data.get('enabled', True),
-            timeout=data.get('timeout', 2400)
+            timeout=data.get('timeout', 2400),
+            has_gpu=data.get('has_gpu', False),
+            gpu_memory_gb=data.get('gpu_memory_gb'),
+            cpu_only=data.get('cpu_only', False)
         )
-
-
+    
 @dataclass
 class OllamaConfig:
     """Ollama API configuration with multi-instance support"""
@@ -223,7 +254,22 @@ class OllamaConfig:
     load_balance_strategy: str = "least_loaded"
     enable_request_queue: bool = True
     max_queue_size: int = 100
+
+     # NEW: GPU-aware routing configuration
+    prefer_gpu: bool = True  # Prefer GPU instances when available
+    gpu_only_models: List[str] = field(default_factory=lambda: [
+        "llama3:70b", "mixtral:8x7b", "qwen:72b", "gpt-oss:20b"
+    ])  # Models that should only run on GPU
+    gpu_preferred_models: List[str] = field(default_factory=lambda: [
+        "gemma3:12b", "llama3.2:11b", "mistral:7b"
+    ])  # Models that prefer GPU but can fall back to CPU
     
+    exclude_instances: List[str] = field(default_factory=list)  # Instances to never use
+    
+    # Model size thresholds (in billions of parameters)
+    small_model_threshold: float = 5.0  # Models ≤5B can run on CPU
+    large_model_threshold: float = 7.0  # Models ≥7B need GPU
+
     # Legacy fields for backward compatibility
     enable_thought_capture: bool = True
     temperature: float = 0.7
@@ -251,35 +297,41 @@ class OllamaConfig:
             # TODO # FIX THIS TO REFLECT ACTUAL CONFIG
             self.instances = [
                 OllamaInstanceConfig(
-                    name="remote-a",
+                    name="remote",
                     api_url="http://192.168.0.250:11435",
                     priority=6,
-                    max_concurrent=1
+                    max_concurrent=1,
+                    has_gpu=True,
+                    gpu_memory_gb=12
                 ),
                 OllamaInstanceConfig(
                     name="remote-b",
-                    api_url="http://192.168.0.249:11435",
+                    api_url="http://192.168.0.246:11435",
                     priority=5,
                     max_concurrent=1
                 ),
                 OllamaInstanceConfig(
                     name="remote-c",
-                    api_url="http://192.168.0.248:11435",
+                    api_url="http://192.168.0.247:11435",
                     priority=4,
                     max_concurrent=1
                 ),
-                OllamaInstanceConfig(
-                    name="remote-d",
-                    api_url="http://192.168.0.247:11435",
-                    priority=3,
-                    max_concurrent=1
-                ),
-                OllamaInstanceConfig(
-                    name="remote-e",
-                    api_url="http://192.168.0.246:11435",
-                    priority=2,
-                    max_concurrent=1
-                ),
+                # OllamaInstanceConfig(
+                #     name="remote-d",
+                #     api_url="http://192.168.0.248:11435",
+                #     priority=3,
+                #     max_concurrent=1
+                    # has_gpu=True,
+                    # gpu_memory_gb=12
+                # ),
+                # OllamaInstanceConfig(
+                #     name="remote-e",
+                #     api_url="http://192.168.0.249:11435",
+                #     priority=2,
+                #     max_concurrent=1
+                    # has_gpu=True,
+                    # gpu_memory_gb=12
+                # ),
                 OllamaInstanceConfig(
                     name="local",
                     api_url="http://localhost:11434",
@@ -298,6 +350,7 @@ class ModelConfig:
     deep_llm: str = "gpt-oss:20b"
     reasoning_llm: str = "gpt-oss:20b"
     tool_llm: str = "gemma2"
+    coding_llm: str = "codestral:latest"
     
     # Temperature settings per model
     fast_temperature: float = 0.6
@@ -305,6 +358,7 @@ class ModelConfig:
     deep_temperature: float = 0.6
     reasoning_temperature: float = 0.7
     tool_temperature: float = 0.1
+    coding_temperature: float = 0.9
     
     # REMOVED: fast_top_k, fast_top_p, etc. - these should be set at runtime
     # If you need these, add them as separate fields:

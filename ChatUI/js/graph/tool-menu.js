@@ -920,7 +920,7 @@
             
             const result = await response.json();
             const duration = Date.now() - startTime;
-            
+
             // Store in execution history
             this.executionHistory.push({
                 nodeId,
@@ -930,8 +930,13 @@
                 output: result.output,
                 timestamp: new Date().toISOString(),
                 duration,
-                graphContext: result.graph_context  // NEW: Store graph linking info
+                graphContext: result.graph_context
             });
+            
+            // Refresh the graph to show new results/links
+            if (typeof app !== 'undefined' && typeof app.loadGraph === 'function') {
+                app.loadGraph();
+            }
             
             // Show result with graph context
             this.showItemResult(nodeId, itemName, itemType, itemInput, result.output, 

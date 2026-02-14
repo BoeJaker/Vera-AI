@@ -15,7 +15,7 @@ lib/
 **/deprecated/
 **/lib/
 **/plugins/
-
+**/Notes/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
@@ -26,6 +26,7 @@ lib/
 **/*.jsonl
 **/*.sqlite3
 
+**.env
 **/.env
 **/secret/
 **/.security_cache/

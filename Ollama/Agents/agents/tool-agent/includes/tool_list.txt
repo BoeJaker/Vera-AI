@@ -116,71 +116,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[9] web_search
---------------------------------------------------------------------------------
-DESCRIPTION:
-  Advanced web search using Playwright for robustness.Supports multiple search engines with automatic fallback.
-
-INPUT PARAMETERS:
-  • query [REQUIRED]
-    Type: string
-    Description: Search query
-
-  • max_results [OPTIONAL]
-    Type: integer
-    Description: Maximum number of results to return
-    Default: 10
-
-  • search_engine [OPTIONAL]
-    Type: string
-    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
-    Default: duckduckgo
-
-
-================================================================================
-
-[10] news_search
---------------------------------------------------------------------------------
-DESCRIPTION:
-  Search recent news using DuckDuckGo News. Best for current events.
-
-INPUT PARAMETERS:
-  • query [REQUIRED]
-    Type: string
-    Description: Search query
-
-  • max_results [OPTIONAL]
-    Type: integer
-    Description: Maximum number of results to return
-    Default: 10
-
-  • search_engine [OPTIONAL]
-    Type: string
-    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
-    Default: duckduckgo
-
-
-================================================================================
-
-[11] web_search_deep
---------------------------------------------------------------------------------
-DESCRIPTION:
-  Comprehensive web search with full page scraping. Use for in-depth information.
-
-INPUT PARAMETERS:
-  • input_data [REQUIRED]
-    Type: string
-    Description: Search query or existing search results text
-
-  • max_results [OPTIONAL]
-    Type: integer
-    Description: Maximum number of pages to scrape
-    Default: 5
-
-
-================================================================================
-
-[12] http_request
+[9] http_request
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Make HTTP requests to APIs. Supports GET, POST, PUT, DELETE methods.
@@ -208,7 +144,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[13] sqlite_query
+[10] sqlite_query
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute SQLite queries. Supports SELECT, INSERT, UPDATE, DELETE.
@@ -225,7 +161,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[14] git
+[11] git
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute git commands: status, log, diff, branch, add, commit, push, pull.
@@ -248,7 +184,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[15] get_time
+[12] get_time
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get current date and time in specified timezone.
@@ -262,7 +198,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[16] time_delta
+[13] time_delta
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Calculate time difference between two dates or from date to now.
@@ -280,7 +216,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[17] count_tokens
+[14] count_tokens
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Estimate token count for text. Useful for managing context windows.
@@ -298,7 +234,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[18] regex_search
+[15] regex_search
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search text using regular expressions with optional flags.
@@ -320,7 +256,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[19] text_stats
+[16] text_stats
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Generate comprehensive statistics about text (word count, sentences, etc).
@@ -333,7 +269,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[20] csv_to_json
+[17] csv_to_json
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Convert CSV file to JSON format.
@@ -346,7 +282,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[21] hash_text
+[18] hash_text
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Generate cryptographic hash (md5, sha1, sha256, sha512) of text.
@@ -364,7 +300,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[22] system_info
+[19] system_info
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get system information including OS, Python version, etc.
@@ -375,7 +311,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[23] get_env
+[20] get_env
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get environment variable value.
@@ -388,7 +324,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[24] list_env
+[21] list_env
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all environment variables (sanitized).
@@ -399,7 +335,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[25] search_memory
+[22] search_memory
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search agent's long-term memory for relevant past information.
@@ -427,7 +363,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[26] list_modules
+[23] list_modules
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all currently loaded Python modules in the runtime.
@@ -438,7 +374,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[27] discover_tools
+[24] discover_tools
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Discover and list available custom tools in the tools directory. Shows functions and their parameters. Tools with 🔧 are auto-loaded via @tool decorator.
@@ -452,7 +388,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[28] call_custom_tool
+[25] call_custom_tool
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Call a function from a custom tool file. Provide tool name, function name, and arguments. Use for tools not auto-loaded or for dynamic execution.
@@ -473,7 +409,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[29] list_tool_functions
+[26] list_tool_functions
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all functions in a specific custom tool file with their parameters. Shows docstrings and whether functions are auto-loadable.
@@ -486,7 +422,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[30] reload_tools
+[27] reload_tools
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Reload all custom tool modules. Use after editing tool files to pick up changes without restarting.
@@ -497,7 +433,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[31] ssh_connect
+[28] ssh_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to SSH server. Returns connection ID for other SSH operations.
@@ -529,7 +465,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[32] ssh_execute
+[29] ssh_execute
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute command on remote SSH server. Returns command output.
@@ -546,7 +482,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[33] ssh_ls
+[30] ssh_ls
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List contents of remote directory via SFTP.
@@ -568,7 +504,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[34] ssh_read
+[31] ssh_read
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Read contents of remote file via SFTP.
@@ -590,7 +526,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[35] ssh_download
+[32] ssh_download
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Download file from remote server via SFTP.
@@ -612,7 +548,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[36] ssh_upload
+[33] ssh_upload
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Upload file to remote server via SFTP.
@@ -634,7 +570,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[37] ssh_disconnect
+[34] ssh_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close SSH connection and clean up resources.
@@ -647,7 +583,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[38] postgres_connect
+[35] postgres_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to PostgreSQL database. Returns connection ID for queries.
@@ -677,7 +613,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[39] postgres_query
+[36] postgres_query
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute SQL query on PostgreSQL. Supports SELECT, INSERT, UPDATE, DELETE with parameterized queries.
@@ -699,7 +635,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[40] postgres_tables
+[37] postgres_tables
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all tables in a PostgreSQL schema with sizes.
@@ -721,7 +657,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[41] postgres_describe
+[38] postgres_describe
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get detailed table structure including columns, types, constraints.
@@ -743,7 +679,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[42] postgres_schemas
+[39] postgres_schemas
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all schemas in PostgreSQL database.
@@ -756,7 +692,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[43] postgres_disconnect
+[40] postgres_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close PostgreSQL connection.
@@ -769,7 +705,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[44] neo4j_connect
+[41] neo4j_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to Neo4j graph database. Returns connection ID for queries.
@@ -795,7 +731,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[45] neo4j_query
+[42] neo4j_query
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute Cypher query on Neo4j. Supports all Cypher operations with parameterized queries.
@@ -817,7 +753,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[46] neo4j_create_node
+[43] neo4j_create_node
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Create a node in Neo4j with label and properties.
@@ -839,7 +775,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[47] neo4j_create_rel
+[44] neo4j_create_rel
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Create relationship between two nodes in Neo4j.
@@ -861,7 +797,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[48] neo4j_find
+[45] neo4j_find
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for nodes in Neo4j by label and optional property.
@@ -883,7 +819,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[49] neo4j_schema
+[46] neo4j_schema
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get Neo4j database schema including labels, relationships, and properties.
@@ -896,7 +832,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[50] neo4j_stats
+[47] neo4j_stats
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get Neo4j database statistics including counts and distributions.
@@ -909,7 +845,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[51] neo4j_disconnect
+[48] neo4j_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close Neo4j connection.
@@ -922,13 +858,77 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[52] check_docker_status
+[49] check_docker_status
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Check if Docker is installed and running. Provides diagnostics and troubleshooting steps if Docker is unavailable.
 
 INPUT PARAMETERS:
   (No parameters required)
+
+
+================================================================================
+
+[50] web_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Advanced web search using Playwright for robustness. Supports multiple search engines with automatic fallback.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Search query
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of results to return
+    Default: 10
+
+  • search_engine [OPTIONAL]
+    Type: string
+    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
+    Default: duckduckgo
+
+
+================================================================================
+
+[51] news_search
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Search recent news using DuckDuckGo News. Best for current events.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Search query
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of results to return
+    Default: 10
+
+  • search_engine [OPTIONAL]
+    Type: string
+    Description: Search engine to use: duckduckgo, google, bing, brave, perplexity
+    Default: duckduckgo
+
+
+================================================================================
+
+[52] web_search_deep
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Comprehensive web search with full page scraping. Use for in-depth information.
+
+INPUT PARAMETERS:
+  • input_data [REQUIRED]
+    Type: string
+    Description: Search query or existing search results text
+
+  • max_results [OPTIONAL]
+    Type: integer
+    Description: Maximum number of pages to scrape
+    Default: 5
 
 
 ================================================================================

@@ -487,6 +487,70 @@ def llm_fast(vera_instance, prompt: str):
             context=LogContext(extra={**context.extra, 'chunk_count': chunk_count, 'duration': duration, 'fallback': True})
         )
 
+@task("llm.coding", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=5.0)
+def llm_coding(vera_instance, prompt: str):
+    """Fast LLM (streaming WITH real-time thoughts)"""
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={'component': 'task', 'task': 'llm.coding', 'prompt_length': len(prompt)})
+    print(f"{context}")
+    if logger:
+        logger.info(f"⚡ Coding LLM task starting", context=context)
+        logger.start_timer("llm_coding")
+    
+    router = _get_router(vera_instance)
+    
+    if router:
+        try:
+            agent_name = router.get_agent_for_task('coding')
+            log_agent_selection(logger, 'coding', agent_name, context)
+            
+            llm = router.create_llm_for_agent(agent_name)
+            
+            log_prompt(logger, prompt, LogContext(agent=agent_name, extra=context.extra), "Coding LLM prompt")
+            
+            chunk_count = 0
+            response_preview = ""
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                chunk_count += 1
+                
+                try:
+                    if len(response_preview) < 100 and chunk_text:
+                        response_preview += str(chunk_text)
+                except Exception:
+                    pass
+                
+                yield chunk_text
+            
+            if logger:
+                duration = logger.stop_timer("llm_coding", context=LogContext(agent=agent_name, extra=context.extra))
+                logger.success(
+                    f"Coding LLM complete via agent: {agent_name} | {chunk_count} chunks",
+                    context=LogContext(agent=agent_name, extra={**context.extra, 'chunk_count': chunk_count, 'duration': duration})
+                )
+            return
+            
+        except Exception as e:
+            log_fallback(logger, "Agent Coding LLM failed", e, context)
+    
+    if logger:
+        logger.info("Using fallback Coding LLM", context=context)
+    
+    log_prompt(logger, prompt, context, "Fallback Coding LLM prompt")
+    
+    chunk_count = 0
+    for chunk in vera_instance._stream_with_thought_polling(vera_instance.fast_llm, prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+        chunk_count += 1
+        yield chunk_text
+    
+    if logger:
+        duration = logger.stop_timer("llm_coding", context=context)
+        logger.success(
+            f"Coding LLM complete via fallback | {chunk_count} chunks",
+            context=LogContext(extra={**context.extra, 'chunk_count': chunk_count, 'duration': duration, 'fallback': True})
+        )
+
 
 @task("llm.deep", task_type=TaskType.LLM, priority=Priority.NORMAL, estimated_duration=15.0)
 def llm_deep(vera_instance, prompt: str):
@@ -502,8 +566,8 @@ def llm_deep(vera_instance, prompt: str):
     
     if router:
         try:
-            agent_name = router.get_agent_for_task('review')
-            log_agent_selection(logger, 'review', agent_name, context)
+            agent_name = router.get_agent_for_task('deep')
+            log_agent_selection(logger, 'deep', agent_name, context)
             
             llm = router.create_llm_for_agent(agent_name)
             

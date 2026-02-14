@@ -11,6 +11,7 @@ models:
   deep_llm: "gpt-oss:20b"
   reasoning_llm: "gpt-oss:20b"
   tool_llm: "gemma2:latest"
+  coding_llm: "codestral:latest"  # New coding-specific model
   
   # Temperature settings
   fast_temperature: 0.6
@@ -18,6 +19,7 @@ models:
   deep_temperature: 0.6
   reasoning_temperature: 0.7
   tool_temperature: 0.1
+  coding_temperature: 0.1
   
   # REMOVE these if present - they're invalid:
   # fast_top_k: 40
@@ -29,6 +31,30 @@ ollama:
   use_local_fallback: false
   connection_retry_attempts: 3
   connection_retry_delay: 1.0
+  
+  # GPU-aware routing
+  prefer_gpu: true
+  
+  # Models that MUST run on GPU (will fail if no GPU available)
+  gpu_only_models:
+    - "llama3:70b"
+    - "mixtral:8x7b"
+    - "qwen:72b"
+    - "gpt-oss:20b"
+  
+  # Models that PREFER GPU but can fall back to CPU
+  gpu_preferred_models:
+    - "gemma3:12b"
+    - "mistral:7b"
+    - "llama3.2:11b"
+  
+  # Model size thresholds (in billions of parameters)
+  small_model_threshold: 5.0   # ≤5B can run on CPU
+  large_model_threshold: 10.0  # ≥10B need GPU
+  
+  # Instances to exclude from all routing
+  exclude_instances:
+    - "local"  # Exclude the slow local instance
   
   # Multi-instance settings
   load_balance_strategy: "least_loaded"
@@ -42,32 +68,55 @@ ollama:
   top_p: 0.9
   num_predict: -1
   
-instances:
-  - name: "remote"
-    api_url: "http://192.168.0.250:11435"
-    priority: 4
-    max_concurrent: 1
-    enabled: true
-    timeout: 2400
-  - name: "remote-b"
-    api_url: "http://192.168.0.249:11435"
-    priority: 3
-    max_concurrent: 1
-    enabled: true
-    timeout: 2400
-  - name: "remote-c"
-    api_url: "http://192.168.0.248:11435"
-    priority: 2
-    max_concurrent: 1
-    enabled: true
-    timeout: 2400
-  
-  # - name: "local"
-  #   api_url: "http://localhost:11434"
-  #   priority: 1
-  #   max_concurrent: 1
-  #   enabled: true
-  #   timeout: 2400
+  instances:
+    - name: "remote"
+      api_url: "http://192.168.0.250:11435"
+      priority: 6
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: true
+      gpu_memory_gb: 12
+    - name: "remote-b"
+      api_url: "http://192.168.0.246:11435"
+      priority: 5
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: false
+      gpu_memory_gb: 12
+    - name: "remote-c"
+      api_url: "http://192.168.0.247:11435"
+      priority: 4
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: false
+      gpu_memory_gb: 12
+    - name: "remote-d"
+      api_url: "http://192.168.0.248:11435"
+      priority: 3
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: false
+      cpu_only: true  # Mark as CPU-only
+    - name: "remote-e"
+      api_url: "http://192.168.0.249:11435"
+      priority: 2
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: true
+      cpu_only: true  # Mark as CPU-only
+    - name: "local"
+      api_url: "http://localhost:11434"
+      priority: 1
+      max_concurrent: 1
+      enabled: true
+      timeout: 2400
+      has_gpu: true
+      cpu_only: true  # Mark as CPU-only
 
 # Memory System Configuration
 memory:
@@ -163,10 +212,11 @@ ramp:
 counsel:
   mode: "race"
   instances:
-    - "local:llama3.2:3b"
-    - "gpu1:llama3.2:3b"
-    - "gpu2:llama3.2:3b"
-  judge_model: "reasoning"  # 'fast', 'intermediate', 'deep', or 'reasoning'
+    - "local:qwen2.5:7b"
+    - "remote:qwen2.5:7b"
+    - "remote-b:qwen2.5:7b"
+    - "remote-c:qwen2.5:7b"
+  judge_model: "deep"  # 'fast', 'intermediate', 'deep', or 'reasoning'
 
 # ============================================================================
 # Agent Configuration System
@@ -193,9 +243,15 @@ agents:
     tool_execution: "tool-agent"     # Precise tool execution
     reasoning: "reasoning-agent"     # Deep thinking
     conversation: "gemma2:latest"           # General chat
+    coding: "codestral:latest"           # General chat
   
   # Agent-specific overrides (optional)
   agent_configs:
+    coding:
+      temperature: 0.05              # Even lower for production
+      memory:
+        vector_top_k: 10
+
     tool-agent:
       temperature: 0.05              # Even lower for production
       memory:

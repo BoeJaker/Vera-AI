@@ -7,8 +7,9 @@ num_ctx: 16384
 # gpu_layers: 0
 
 parameters:
-  temperature: 0.0
-  top_p: 0.0
+  temperature: 0.1  # Small but non-zero
+  top_p: 0.95      # Valid probability threshold
+  top_k: 10        # Limit choices for consistency
 
 includes:
   - includes/routing_rules.md

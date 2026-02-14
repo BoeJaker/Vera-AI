@@ -329,8 +329,105 @@ class MultiInstanceOllamaManager:
         # Connection tested flag
         self.connection_tested = False
         
+        # ── Model Routing Policy ──────────────────────────────────────
+        # GPU instance names (set via config or manually after init)
+        self.gpu_instances: List[str] = getattr(config, 'gpu_instances', [])
+        
+        # Light models: MUST NOT be routed to GPU (keep GPUs free for heavy work)
+        # Matched as case-insensitive substrings against the normalized model name
+        self.light_model_patterns: List[str] = getattr(
+            config, 'light_model_patterns',
+            ["fast.llm", "gemma2:latest"]
+        )
+        
+        # Heavy models: PREFER GPU, wait longer for GPU availability
+        # Matched as case-insensitive substrings against the normalized model name
+        self.heavy_model_patterns: List[str] = getattr(
+            config, 'heavy_model_patterns',
+            ["mistral7b:latest", "codestral", "gpt-oss:latest"]
+        )
+        
+        # How long heavy models will wait for a GPU instance before falling back to CPU (seconds)
+        self.gpu_prefer_timeout: float = getattr(config, 'gpu_prefer_timeout', 45.0)
+        
+        # Default acquire timeout for non-heavy models
+        self.default_acquire_timeout: float = getattr(config, 'default_acquire_timeout', 30.0)
+        
         if self.logger:
             self.logger.success("Multi-instance Ollama manager initialized")
+            if self.gpu_instances:
+                self.logger.info(f"GPU instances: {self.gpu_instances}")
+                self.logger.info(f"Light model patterns (CPU-only): {self.light_model_patterns}")
+                self.logger.info(f"Heavy model patterns (GPU-preferred): {self.heavy_model_patterns}")
+    
+    def _get_model_routing(self, model: str, instances_with_model: List[str]) -> Dict[str, Any]:
+        """
+        Determine routing policy for a model based on its classification.
+        
+        Returns:
+            Dict with:
+                - allowed_instances: List[str] — instances this model may use
+                - acquire_timeout: float — how long to wait for an instance
+                - gpu_preferred_instances: Optional[List[str]] — GPU subset to try first (heavy only)
+                - classification: str — 'light', 'heavy', or 'normal'
+        """
+        model_lower = model.lower()
+        
+        gpu_set = set(self.gpu_instances)
+        cpu_instances = [i for i in instances_with_model if i not in gpu_set]
+        gpu_instances = [i for i in instances_with_model if i in gpu_set]
+        
+        # ── Light models: CPU only, never GPU ──
+        if any(pattern.lower() in model_lower for pattern in self.light_model_patterns):
+            allowed = cpu_instances if cpu_instances else instances_with_model
+            
+            if cpu_instances and gpu_instances:
+                if self.logger:
+                    self.logger.info(
+                        f"[routing] '{model}' classified as LIGHT → CPU-only "
+                        f"(excluded GPU: {gpu_instances})"
+                    )
+            elif not cpu_instances:
+                # Model only exists on GPU — allow it but warn
+                if self.logger:
+                    self.logger.warning(
+                        f"[routing] '{model}' is LIGHT but only available on GPU instances — "
+                        f"allowing GPU as fallback"
+                    )
+            
+            return {
+                "allowed_instances": allowed,
+                "acquire_timeout": self.default_acquire_timeout,
+                "gpu_preferred_instances": None,
+                "classification": "light",
+            }
+        
+        # ── Heavy models: prefer GPU, wait longer, fall back to CPU ──
+        if any(pattern.lower() in model_lower for pattern in self.heavy_model_patterns):
+            if self.logger:
+                self.logger.info(
+                    f"[routing] '{model}' classified as HEAVY → GPU-preferred "
+                    f"(GPU: {gpu_instances or 'none'}, CPU fallback: {cpu_instances or 'none'}, "
+                    f"GPU timeout: {self.gpu_prefer_timeout}s)"
+                )
+            
+            return {
+                "allowed_instances": instances_with_model,  # can use all, but prefers GPU
+                "acquire_timeout": self.gpu_prefer_timeout,
+                "gpu_preferred_instances": gpu_instances if gpu_instances else None,
+                "classification": "heavy",
+            }
+        
+        # ── Normal models: no special treatment ──
+        if self.logger:
+            self.logger.debug(f"[routing] '{model}' classified as NORMAL → default routing")
+        
+        return {
+            "allowed_instances": instances_with_model,
+            "acquire_timeout": self.default_acquire_timeout,
+            "gpu_preferred_instances": None,
+            "classification": "normal",
+        }
     
     def _refresh_model_location_cache(self):
         """Refresh the cache of which models are on which instances"""
@@ -684,6 +781,19 @@ class MultiInstanceOllamaManager:
                 f"{', '.join(instances_with_model)}"
             )
         
+        # ── Apply model routing policy ────────────────────────────────
+        routing = self._get_model_routing(model_normalized, instances_with_model)
+        routed_instances = routing["allowed_instances"]
+        acquire_timeout = routing["acquire_timeout"]
+        gpu_preferred = routing["gpu_preferred_instances"]
+        classification = routing["classification"]
+        
+        if self.logger and routed_instances != instances_with_model:
+            self.logger.info(
+                f"[routing] Effective instances after policy: {routed_instances} "
+                f"(was: {instances_with_model})"
+            )
+        
         # Get model metadata if available
         metadata = {}
         try:
@@ -726,12 +836,17 @@ class MultiInstanceOllamaManager:
         llm.logger = self.logger
         llm.extra_kwargs = kwargs
         
-        # IMPORTANT: Restrict this LLM to only use instances that have the model
-        llm.allowed_instances = instances_with_model
+        # IMPORTANT: Apply routing policy to this LLM
+        llm.allowed_instances = routed_instances
+        llm.acquire_timeout = acquire_timeout
+        llm.gpu_preferred_instances = gpu_preferred
+        llm.model_classification = classification
         
         if self.logger:
             self.logger.info(
-                f"LLM will route to instances (by priority): {', '.join(instances_with_model)}"
+                f"LLM [{classification.upper()}] will route to: {', '.join(routed_instances)} "
+                f"(acquire timeout: {acquire_timeout}s"
+                f"{f', GPU-preferred: {gpu_preferred}' if gpu_preferred else ''})"
             )
         
         return llm
@@ -1480,7 +1595,12 @@ class PooledOllamaLLM(LLM):
     model_metadata: Optional[Dict] = Field(default=None, exclude=True)
     logger: Any = Field(default=None, exclude=True, repr=False)
     extra_kwargs: Dict = Field(default_factory=dict, exclude=True)
-    allowed_instances: Optional[List[str]] = Field(default=None, exclude=True)  # NEW: restricts routing
+    allowed_instances: Optional[List[str]] = Field(default=None, exclude=True)
+    
+    # ── Routing policy fields (set by create_llm) ────────────────
+    acquire_timeout: float = Field(default=30.0, exclude=True)
+    gpu_preferred_instances: Optional[List[str]] = Field(default=None, exclude=True)
+    model_classification: str = Field(default="normal", exclude=True)
     
     class Config:
         """Pydantic config"""
@@ -1501,8 +1621,69 @@ class PooledOllamaLLM(LLM):
             "top_k": self.top_k,
             "top_p": self.top_p,
             "pool_instances": len(self.pool.instances) if self.pool and hasattr(self.pool, 'instances') else 0,
-            "allowed_instances": self.allowed_instances
+            "allowed_instances": self.allowed_instances,
+            "model_classification": self.model_classification,
+            "gpu_preferred_instances": self.gpu_preferred_instances,
         }
+    
+    def _acquire_with_gpu_preference(self, timeout: float) -> Optional[tuple]:
+        """
+        Acquire an instance, trying GPU-preferred instances first for heavy models.
+        
+        For heavy models:
+          1. Try GPU instances first with ~60% of the timeout
+          2. If GPU busy, fall back to any allowed instance with remaining time
+        
+        For all other models:
+          - Standard acquire with the given timeout
+        """
+        if not self.gpu_preferred_instances or self.model_classification != "heavy":
+            # Normal path — no GPU preference
+            return self.pool.acquire_instance(
+                timeout=timeout,
+                allowed_instances=self.allowed_instances
+            )
+        
+        # ── Heavy model: try GPU first, then fall back ──
+        gpu_timeout = timeout * 0.6  # 60% of budget trying GPU
+        cpu_timeout = timeout * 0.4  # 40% for CPU fallback
+        
+        if self.logger:
+            self.logger.debug(
+                f"[heavy] Trying GPU instances first ({gpu_timeout:.1f}s): "
+                f"{self.gpu_preferred_instances}"
+            )
+        
+        # Phase 1: Try GPU-preferred instances
+        acquisition = self.pool.acquire_instance(
+            timeout=gpu_timeout,
+            allowed_instances=self.gpu_preferred_instances
+        )
+        
+        if acquisition:
+            instance_name = acquisition[0]
+            if self.logger:
+                self.logger.success(f"[heavy] Acquired GPU instance: {instance_name}")
+            return acquisition
+        
+        # Phase 2: GPU busy — fall back to any allowed instance (CPU)
+        if self.logger:
+            self.logger.info(
+                f"[heavy] GPU instances busy, falling back to CPU "
+                f"({cpu_timeout:.1f}s remaining)"
+            )
+        
+        acquisition = self.pool.acquire_instance(
+            timeout=cpu_timeout,
+            allowed_instances=self.allowed_instances
+        )
+        
+        if acquisition:
+            instance_name = acquisition[0]
+            if self.logger:
+                self.logger.info(f"[heavy] Fell back to CPU instance: {instance_name}")
+        
+        return acquisition
     
     def _call(
         self,
@@ -1553,11 +1734,8 @@ class PooledOllamaLLM(LLM):
             if not self.pool:
                 raise RuntimeError("Pool not initialized")
             
-            # Acquire instance with routing restriction
-            acquisition = self.pool.acquire_instance(
-                timeout=30.0,
-                allowed_instances=self.allowed_instances
-            )
+            # Acquire instance with GPU-aware routing
+            acquisition = self._acquire_with_gpu_preference(timeout=self.acquire_timeout)
             
             if not acquisition:
                 if self.logger:
@@ -1685,7 +1863,7 @@ class PooledOllamaLLM(LLM):
             self.logger.error(f"All {attempts} attempts failed")
         
         raise last_error or RuntimeError(f"Generation failed after {attempts} attempts")
-    
+
     def _stream_with_retry(self, prompt: str, stop: Optional[List[str]] = None, **kwargs) -> Iterator[str]:
         """Internal method: Streaming generation with automatic failover"""
         last_error = None
@@ -1699,25 +1877,57 @@ class PooledOllamaLLM(LLM):
         if self.thought_capture:
             self.thought_capture.reset()
         
+        # Track which instances we've tried to avoid immediate retry on same instance
+        tried_instances = set()
+        
         while attempts < max_attempts:
             attempts += 1
             
             if not self.pool:
                 raise RuntimeError("Pool not initialized")
             
-            # Acquire instance with routing restriction
-            acquisition = self.pool.acquire_instance(
-                timeout=30.0,
-                allowed_instances=self.allowed_instances
-            )
+            # Get instances we haven't tried yet, sorted by priority
+            untried_instances = [
+                inst for inst in available_instances 
+                if inst not in tried_instances and self.pool.stats[inst].is_healthy
+            ]
+            
+            # If all instances tried, reset and try again (they may have recovered)
+            if not untried_instances and attempts < max_attempts:
+                tried_instances.clear()
+                untried_instances = [
+                    inst for inst in available_instances
+                    if self.pool.stats[inst].is_healthy
+                ]
+            
+            # Acquire instance with GPU-aware routing
+            # For first attempt on heavy models, prefer GPU from untried set
+            if (
+                attempts == 1
+                and self.model_classification == "heavy"
+                and self.gpu_preferred_instances
+            ):
+                # First try: use the full GPU-preference logic
+                acquisition = self._acquire_with_gpu_preference(timeout=self.acquire_timeout)
+            else:
+                # Subsequent tries or non-heavy: standard acquire from untried
+                acquisition = self.pool.acquire_instance(
+                    timeout=self.acquire_timeout,
+                    allowed_instances=untried_instances if untried_instances else self.allowed_instances
+                )
             
             if not acquisition:
+                if self.logger:
+                    self.logger.warning(f"Attempt {attempts}/{max_attempts}: No instances available")
+                
                 if attempts < max_attempts:
                     time.sleep(1.0)
                     continue
-                raise RuntimeError(f"No instances available (allowed: {self.allowed_instances})")
+                
+                raise RuntimeError(f"No Ollama instances available after {max_attempts} attempts")
             
             instance_name, instance, release = acquisition
+            tried_instances.add(instance_name)
             
             try:
                 if self.logger:
@@ -1761,38 +1971,58 @@ class PooledOllamaLLM(LLM):
                         self.pool.stats[instance_name].total_failures += 1
                     
                     last_error = RuntimeError(error_msg)
+                    release()  # Release before retry
                     
+                    # IMPORTANT: Continue to next attempt, don't raise yet
                     if attempts < max_attempts:
+                        if self.logger:
+                            self.logger.info(f"Retrying with different instance ({attempts + 1}/{max_attempts})...")
                         continue
                     else:
                         raise last_error
                 
                 # SUCCESS - stream chunks with THOUGHT PROCESSING
                 chunk_count = 0
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            
-                            # PROCESS THOUGHTS using ThoughtCapture
-                            if self.thought_capture:
-                                modified_chunk = self.thought_capture.process_chunk(data)
-                                chunk_text = modified_chunk
-                            else:
-                                chunk_text = data.get('response', '')
-                            
-                            # Only yield if we have actual response text (thoughts go to callback)
-                            if chunk_text:
-                                chunk_count += 1
-                                yield chunk_text
-                        
-                        except json.JSONDecodeError:
-                            continue
+                stream_success = False
                 
-                if self.logger:
-                    self.logger.success(f"✓ Stream completed: {chunk_count} chunks")
+                try:
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                
+                                # PROCESS THOUGHTS using ThoughtCapture
+                                if self.thought_capture:
+                                    modified_chunk = self.thought_capture.process_chunk(data)
+                                    chunk_text = modified_chunk
+                                else:
+                                    chunk_text = data.get('response', '')
+                                
+                                # Only yield if we have actual response text
+                                if chunk_text:
+                                    chunk_count += 1
+                                    yield chunk_text
+                            
+                            except json.JSONDecodeError:
+                                continue
+                    
+                    stream_success = True
+                    
+                    if self.logger:
+                        self.logger.success(f"✓ Stream completed: {chunk_count} chunks from {instance_name}")
+                    
+                    return  # Success - exit
                 
-                return  # Success - exit
+                except Exception as stream_error:
+                    if self.logger:
+                        self.logger.warning(f"✗ Stream interrupted on {instance_name}: {stream_error}")
+                    
+                    last_error = stream_error
+                    
+                    if attempts < max_attempts:
+                        if self.logger:
+                            self.logger.info(f"Retrying with different instance ({attempts + 1}/{max_attempts})...")
+                        continue
             
             except Exception as e:
                 if self.logger:
@@ -1802,11 +2032,17 @@ class PooledOllamaLLM(LLM):
                     self.pool.stats[instance_name].total_failures += 1
                 
                 last_error = e
+                
                 if attempts < max_attempts:
+                    if self.logger:
+                        self.logger.info(f"Retrying with different instance ({attempts + 1}/{max_attempts})...")
                     continue
             
             finally:
                 release()
         
         # All attempts failed
-        raise last_error or RuntimeError("Stream failed after retries")
+        if self.logger:
+            self.logger.error(f"All {attempts} attempts failed across instances: {tried_instances}")
+        
+        raise last_error or RuntimeError(f"Stream failed after {attempts} attempts")

@@ -119,53 +119,78 @@ class IterationManager:
         analysis["summary"] = "; ".join(summary_parts) if summary_parts else "Board initialized"
         
         return analysis
-    
+        
     def _select_stages(self, analysis: Dict[str, Any]) -> list:
         """
         Intelligently select which stages to execute based on board state.
         
-        Priority logic:
-        1. If executable actions exist -> prioritize execution
-        2. If actions but no next_steps -> generate next_steps
-        3. If next_steps but few ideas -> generate ideas
-        4. If stuck (few of everything) -> generate ideas + next_steps
-        5. Otherwise -> balanced approach
+        FIX: Check if actions are actually executable (not stale/already executed).
+        FIX: Don't select "execution" if all actions are stale or already run.
+        FIX: Generate new actions if existing ones are all consumed.
         """
         stages = []
         stats = analysis["stats"]
         
-        # PRIORITY 1: Execute if we have actions
-        if stats.get("actions", 0) > 0:
+        # FIX: Count truly executable actions (not stale, not already executed)
+        executable_actions = self._count_executable_actions()
+        
+        # PRIORITY 1: Execute if we have genuinely executable actions
+        if executable_actions > 0:
             stages.append("execution")
             
             # Also generate next steps if running low
             if stats.get("next_steps", 0) < 2:
                 stages.append("next_steps")
         
-        # PRIORITY 2: Generate next steps if we have ideas but no steps
+        # PRIORITY 2: All actions consumed — generate new ones
+        elif stats.get("actions", 0) > 0 and executable_actions == 0:
+            # We have actions but they're all stale/executed
+            # Clean them out and generate fresh ones
+            stages.append("next_steps")
+            stages.append("actions")
+        
+        # PRIORITY 3: Generate next steps if we have ideas but no steps
         elif stats.get("ideas", 0) > 0 and stats.get("next_steps", 0) == 0:
             stages.append("next_steps")
             stages.append("actions")
         
-        # PRIORITY 3: Generate ideas if running low on everything
+        # PRIORITY 4: Generate ideas if running low on everything
         elif analysis["ideation_needed"]:
             stages.append("ideas")
             stages.append("next_steps")
         
-        # PRIORITY 4: Balanced execution (next_steps -> actions)
+        # PRIORITY 5: Balanced execution (next_steps -> actions)
         else:
             if stats.get("next_steps", 0) < 5:
                 stages.append("next_steps")
             stages.append("actions")
         
-        # Always check for review stage periodically
+        # Review periodically (every 3rd iteration)
         if self.fm.iteration_count % 3 == 0:
             stages.insert(0, "review")
         
         return stages
+
+
+    def _count_executable_actions(self) -> int:
+        """Count actions that haven't been executed or marked stale."""
+        actions = self.fm.board.get_category("actions")
+        count = 0
+        for action in actions:
+            if isinstance(action, dict):
+                metadata = action.get("metadata", {})
+                if not metadata.get("executed") and not metadata.get("stale") and not metadata.get("failed"):
+                    count += 1
+            else:
+                count += 1  # Non-dict items are assumed executable
+        return count
     
     def _execute_stage(self, stage: str, context: str) -> Any:
-        """Execute a specific stage."""
+        """Execute a specific stage.
+        
+        FIX: Pass priority_filter='all' to execution stage so it doesn't
+        skip medium/low priority actions.
+        """
         if stage == "ideas":
             return self.fm.stage_executor.execute_ideas_stage(context)
         elif stage == "next_steps":
@@ -173,27 +198,38 @@ class IterationManager:
         elif stage == "actions":
             return self.fm.stage_executor.execute_actions_stage(context)
         elif stage == "execution":
-            return self.fm.stage_executor.execute_execution_stage(max_executions=2)
+            # FIX: priority_filter="all" — don't skip actions by priority
+            return self.fm.stage_executor.execute_execution_stage(
+                max_executions=2,
+                priority_filter="all"
+            )
         elif stage == "review":
             return self.fm.stage_executor.execute_review_stage(context)
         else:
             self.fm._stream_output(f"⚠️ Unknown stage: {stage}", "warning")
             return None
-    
+        
+
     def _process_completed_actions(self):
-        """Move completed actions from actions list to progress/issues."""
+        """Move completed/stale actions from actions list to progress/issues.
+        
+        FIX: Also handle stale actions that couldn't be executed.
+        """
         actions = self.fm.board.get_category("actions")
         
         for idx in reversed(range(len(actions))):
             action = actions[idx]
-            note = action.get("note", "") if isinstance(action, dict) else str(action)
-            
-            # Check if action has execution metadata indicating completion
             metadata = action.get("metadata", {}) if isinstance(action, dict) else {}
             
             if metadata.get("executed") or metadata.get("completed"):
-                # Move to progress if successful
                 if metadata.get("success", True):
                     self.fm.board.move_to_category("actions", idx, "progress")
                 else:
                     self.fm.board.move_to_category("actions", idx, "issues")
+            
+            # FIX: Move stale actions to issues so they don't block new ones
+            elif metadata.get("stale"):
+                note = action.get("note", str(action)) if isinstance(action, dict) else str(action)
+                reason = metadata.get("stale_reason", "could not execute")
+                self.fm.add_to_focus_board("issues", f"Stale action: {note[:100]} ({reason})")
+                actions.pop(idx)

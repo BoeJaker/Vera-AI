@@ -1076,7 +1076,7 @@ async def start_proactive_thought(session_id: str):
     # Remove the invalid stream_output parameter
     vera.focus_manager.start_workflow_thread(
         max_iterations=None, 
-        iteration_interval=600,
+        iteration_interval=0,
         auto_execute=True
     )
     

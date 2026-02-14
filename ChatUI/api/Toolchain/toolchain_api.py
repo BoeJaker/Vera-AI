@@ -171,12 +171,20 @@ def create_toolchain_execution(session_id: str, query: str) -> str:
 
 
 def update_toolchain_plan(session_id: str, execution_id: str, plan: List[Dict[str, str]]):
-    """Update the plan for a toolchain execution."""
     if session_id in toolchain_executions and execution_id in toolchain_executions[session_id]:
-        toolchain_executions[session_id][execution_id]["plan"] = plan
+        # Serialize dict inputs for UI display
+        serialized = []
+        for step in plan:
+            s = dict(step)
+            if isinstance(s.get("input"), dict):
+                s["input_display"] = json.dumps(s["input"], indent=2)
+            else:
+                s["input_display"] = s.get("input", "")
+            serialized.append(s)
+        
+        toolchain_executions[session_id][execution_id]["plan"] = serialized
         toolchain_executions[session_id][execution_id]["total_steps"] = len(plan)
         toolchain_executions[session_id][execution_id]["status"] = "executing"
-
 
 def add_toolchain_step(session_id: str, execution_id: str, step_number: int, 
                        tool_name: str, tool_input: str):
@@ -405,12 +413,21 @@ class MonitoredToolChainPlanner:
                     elif isinstance(chunk, list):
                         # Final plan
                         update_toolchain_plan(self.session_id, self.execution_id, chunk)
+                        
+                        # Serialize any dict inputs for UI display
+                        serialized_plan = []
+                        for s in chunk:
+                            s_copy = dict(s)
+                            if isinstance(s_copy.get("input"), dict):
+                                s_copy["input"] = json.dumps(s_copy["input"], indent=2)
+                            serialized_plan.append(s_copy)
+                        
                         schedule_broadcast(
                             self.session_id,
                             "plan",
-                            {"plan": chunk, "total_steps": len(chunk)}
+                            {"plan": serialized_plan, "total_steps": len(chunk)}
                         )
-                        plan = chunk
+                        plan = chunk  # Keep original (with dicts) for execution
                         yield chunk
             else:
                 update_toolchain_plan(self.session_id, self.execution_id, plan)

@@ -4,6 +4,9 @@ source ../bin/activate
 # Start the Vera API
 python3 -m Vera.ChatUI.api.vera_api
 
+# Start the ollama management terminal interface
+python3 -m Vera.Ollama.cluster_manager
+
 # Build an agent
 python3 -m Vera.Ollama.Agents.agent_manager build --agent tool-agent
 
@@ -17,3 +20,4 @@ python3 /home/boejaker/langchain/app/Vera/Ollama/Agents/sync_agents.py --sync-al
 curl -X POST http://192.168.0.250:11435/api/pull   -H "Content-Type: application/json"   -d '{
     "name": "mistral:7b"
 }'
+

@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
-# telegram_bot.py - Telegram Integration Runner
+# telegram_bot.py - Telegram Integration with Proactive Messaging
 
 """
 Telegram Bot for Vera
-Connects Vera to Telegram.
+Connects Vera to Telegram with security hardening and proactive messaging.
 
-SETUP:
-1. Talk to @BotFather on Telegram
-2. Create new bot with /newbot
-3. Get bot token
-4. Set TELEGRAM_BOT_TOKEN environment variable
+FEATURES:
+- Secure owner/admin authentication
+- Proactive messaging to owners
+- Background notification support
+- Chat ID registry for user tracking
 """
 
 import asyncio
 import os
-from typing import Optional
+import time
+import re
+from collections import defaultdict
+from typing import Optional, Set, Dict
+import json
 
 from telegram import Update, BotCommand
 from telegram.ext import (
@@ -27,11 +31,73 @@ from telegram.ext import (
 
 from Vera.vera import Vera
 from Vera.Logging.logging import LogContext
-from vera_messaging import VeraMessaging, Message, Platform
+from Vera.ChatBots.vera_messaging import VeraMessaging, Message, Platform
+
+
+# ====================================================================
+# SECURITY CONFIGURATION
+# ====================================================================
+
+class SecurityConfig:
+    """
+    Security settings for Telegram bot.
+    
+    IMPORTANT: Replace the user IDs below with your own.
+    Message @userinfobot on Telegram to get your numeric ID.
+    """
+    
+    # User authorization
+    OWNERS = {123456789}   # ← REQUIRED: Put your Telegram user ID here
+    ADMINS = {123456789}   # ← Optional: Additional admin user IDs
+    ALLOWED_CHATS = set()  # ← Optional: Specific chat IDs (e.g., {-10012345678})
+    
+    # Rate limiting
+    RATE_LIMIT_SECONDS = 2  # Minimum seconds between messages per user
+    
+    # Message constraints
+    MAX_MESSAGE_LENGTH = 4000  # Maximum message length to process
+    
+    # Proactive messaging
+    CHAT_ID_REGISTRY_FILE = ".telegram_chat_ids.json"  # Store user chat IDs
+
+
+# ====================================================================
+# TEXT PROCESSING FOR TELEGRAM
+# ====================================================================
+
+def clean_text_for_telegram(text: str) -> str:
+    """
+    Clean text for Telegram HTML parsing.
+    
+    - Converts <thought> tags to formatted blocks
+    - Strips other unsupported tags
+    - Escapes special characters
+    """
+    # Convert thought blocks to italic code blocks
+    text = re.sub(
+        r'<thought>(.*?)</thought>',
+        lambda m: f"\n\n💭 <i>Thinking...</i>\n<code>{m.group(1).strip()[:200]}</code>\n",
+        text,
+        flags=re.DOTALL
+    )
+    
+    # Remove any remaining unsupported tags
+    supported_tags = {'b', 'i', 'code', 'pre', 'a', 'strong', 'em', 's', 'u'}
+    
+    def filter_tag(match):
+        tag = match.group(1).lower().split()[0]
+        if tag in supported_tags or tag.startswith('/'):
+            return match.group(0)
+        else:
+            return ''
+    
+    text = re.sub(r'<(/?\w+[^>]*)>', filter_tag, text)
+    
+    return text
 
 
 class TelegramBot:
-    """Telegram bot for Vera"""
+    """Telegram bot for Vera with security hardening and proactive messaging"""
     
     def __init__(self, vera_instance: Vera, config: dict):
         """
@@ -53,6 +119,227 @@ class TelegramBot:
         
         # Bot info
         self.bot_username = None
+        self.bot_user_id = None
+        
+        # Runtime security state
+        self._last_message_time = defaultdict(float)
+        
+        # Chat ID registry for proactive messaging
+        self.user_chat_ids: Dict[int, int] = {}  # user_id -> chat_id
+        self._load_chat_registry()
+        
+        # Message queue for proactive messages
+        self.message_queue = asyncio.Queue()
+        self._message_sender_task = None
+    
+    # ====================================================================
+    # CHAT ID REGISTRY
+    # ====================================================================
+    
+    def _load_chat_registry(self):
+        """Load chat ID registry from file"""
+        registry_file = SecurityConfig.CHAT_ID_REGISTRY_FILE
+        
+        if os.path.exists(registry_file):
+            try:
+                with open(registry_file, 'r') as f:
+                    data = json.load(f)
+                    # Convert string keys back to ints
+                    self.user_chat_ids = {int(k): int(v) for k, v in data.items()}
+                self.logger.debug(f"Loaded {len(self.user_chat_ids)} chat IDs from registry")
+            except Exception as e:
+                self.logger.warning(f"Failed to load chat registry: {e}")
+                self.user_chat_ids = {}
+        else:
+            self.user_chat_ids = {}
+    
+    def _save_chat_registry(self):
+        """Save chat ID registry to file"""
+        registry_file = SecurityConfig.CHAT_ID_REGISTRY_FILE
+        
+        try:
+            with open(registry_file, 'w') as f:
+                # Convert to string keys for JSON
+                data = {str(k): v for k, v in self.user_chat_ids.items()}
+                json.dump(data, f, indent=2)
+            self.logger.debug(f"Saved {len(self.user_chat_ids)} chat IDs to registry")
+        except Exception as e:
+            self.logger.error(f"Failed to save chat registry: {e}")
+    
+    def _register_user_chat(self, user_id: int, chat_id: int):
+        """Register a user's chat ID for proactive messaging"""
+        if user_id not in self.user_chat_ids or self.user_chat_ids[user_id] != chat_id:
+            self.user_chat_ids[user_id] = chat_id
+            self._save_chat_registry()
+            self.logger.debug(f"Registered chat_id {chat_id} for user {user_id}")
+    
+    # ====================================================================
+    # PROACTIVE MESSAGING
+    # ====================================================================
+    
+    async def send_to_user(self, user_id: int, message: str, parse_mode: str = 'HTML') -> bool:
+        """
+        Send a message to a specific user proactively.
+        
+        Args:
+            user_id: Telegram user ID
+            message: Message text
+            parse_mode: 'HTML' or 'Markdown'
+            
+        Returns:
+            bool: True if sent successfully, False otherwise
+        """
+        # Check if we have a chat ID for this user
+        if user_id not in self.user_chat_ids:
+            self.logger.warning(f"No chat_id found for user {user_id}. User must start conversation first.")
+            return False
+        
+        chat_id = self.user_chat_ids[user_id]
+        
+        try:
+            # Clean text if using HTML
+            if parse_mode == 'HTML':
+                message = clean_text_for_telegram(message)
+            
+            # Send message
+            await self.app.bot.send_message(
+                chat_id=chat_id,
+                text=message,
+                parse_mode=parse_mode
+            )
+            
+            self.logger.success(f"Sent proactive message to user {user_id}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Failed to send proactive message to user {user_id}: {e}")
+            return False
+    
+    async def send_to_owners(self, message: str, parse_mode: str = 'HTML') -> int:
+        """
+        Send a message to all owners.
+        
+        Args:
+            message: Message text
+            parse_mode: 'HTML' or 'Markdown'
+            
+        Returns:
+            int: Number of owners successfully messaged
+        """
+        success_count = 0
+        
+        for owner_id in SecurityConfig.OWNERS:
+            if await self.send_to_user(owner_id, message, parse_mode):
+                success_count += 1
+        
+        self.logger.info(f"Sent proactive message to {success_count}/{len(SecurityConfig.OWNERS)} owners")
+        return success_count
+    
+    async def send_to_admins(self, message: str, parse_mode: str = 'HTML') -> int:
+        """
+        Send a message to all admins.
+        
+        Args:
+            message: Message text
+            parse_mode: 'HTML' or 'Markdown'
+            
+        Returns:
+            int: Number of admins successfully messaged
+        """
+        success_count = 0
+        
+        for admin_id in SecurityConfig.ADMINS:
+            if await self.send_to_user(admin_id, message, parse_mode):
+                success_count += 1
+        
+        self.logger.info(f"Sent proactive message to {success_count}/{len(SecurityConfig.ADMINS)} admins")
+        return success_count
+    
+    async def queue_message(self, user_id: int, message: str, parse_mode: str = 'HTML'):
+        """
+        Queue a message to be sent asynchronously.
+        
+        Useful for non-blocking proactive notifications.
+        """
+        await self.message_queue.put({
+            'user_id': user_id,
+            'message': message,
+            'parse_mode': parse_mode
+        })
+    
+    async def _message_sender_worker(self):
+        """Background worker to send queued messages"""
+        while True:
+            try:
+                msg_data = await self.message_queue.get()
+                
+                if msg_data is None:  # Shutdown signal
+                    break
+                
+                await self.send_to_user(
+                    msg_data['user_id'],
+                    msg_data['message'],
+                    msg_data['parse_mode']
+                )
+                
+                # Rate limit between messages
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                self.logger.error(f"Message sender worker error: {e}")
+    
+    # ====================================================================
+    # SECURITY HELPERS
+    # ====================================================================
+    
+    def _is_owner(self, user_id: int) -> bool:
+        """Check if user is an owner"""
+        return user_id in SecurityConfig.OWNERS
+    
+    def _is_admin(self, user_id: int) -> bool:
+        """Check if user is an admin (includes owners)"""
+        return user_id in SecurityConfig.ADMINS or self._is_owner(user_id)
+    
+    def _is_user_allowed(self, user_id: int, chat_id: int) -> bool:
+        """Check if user is allowed to use the bot"""
+        if SecurityConfig.ALLOWED_CHATS:
+            if chat_id not in SecurityConfig.ALLOWED_CHATS:
+                return False
+        return self._is_admin(user_id)
+    
+    def _rate_limited(self, user_id: int) -> bool:
+        """Check if user is rate limited"""
+        now = time.time()
+        last = self._last_message_time[user_id]
+        if now - last < SecurityConfig.RATE_LIMIT_SECONDS:
+            return True
+        self._last_message_time[user_id] = now
+        return False
+    
+    async def _reject(self, update: Update, reason: str = "Not authorized"):
+        """Send rejection message to user"""
+        if update.message:
+            await update.message.reply_text(f"⛔ {reason}")
+    
+    async def _secure_command(self, update: Update, handler, admin_only: bool = False):
+        """Wrapper for secured command execution"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        
+        if not self._is_user_allowed(user_id, chat_id):
+            self.logger.warning(f"Unauthorized command attempt from user {user_id}")
+            await self._reject(update)
+            return
+        
+        if admin_only and not self._is_admin(user_id):
+            await self._reject(update, "Admin only command")
+            return
+        
+        await handler(update, None)
+    
+    # ====================================================================
+    # STARTUP / SHUTDOWN
+    # ====================================================================
     
     async def start(self):
         """Start the Telegram bot"""
@@ -63,6 +350,7 @@ class TelegramBot:
             # Get bot info
             bot_info = await self.app.bot.get_me()
             self.bot_username = bot_info.username
+            self.bot_user_id = bot_info.id
             
             self.logger.success(f"✓ Telegram bot connected as @{self.bot_username}")
             
@@ -77,7 +365,16 @@ class TelegramBot:
             await self.app.start()
             await self.app.updater.start_polling()
             
+            # Start message sender worker
+            self._message_sender_task = asyncio.create_task(self._message_sender_worker())
+            
             self.logger.info("🚀 Telegram bot is running")
+            self.logger.info(f"📋 Registered chat IDs: {len(self.user_chat_ids)}")
+            
+            # Send startup notification to owners
+            if SecurityConfig.OWNERS != {123456789}:  # Only if configured
+                startup_msg = "🤖 <b>Vera Bot Started</b>\n\nI'm now online and ready to assist!"
+                await self.send_to_owners(startup_msg)
             
             # Keep running
             while True:
@@ -92,22 +389,50 @@ class TelegramBot:
     
     async def shutdown(self):
         """Shutdown Telegram bot"""
+        # Send shutdown notification to owners
+        if SecurityConfig.OWNERS != {123456789}:
+            shutdown_msg = "🛑 <b>Vera Bot Shutting Down</b>\n\nI'll be back soon!"
+            await self.send_to_owners(shutdown_msg)
+        
+        # Stop message sender
+        if self._message_sender_task:
+            await self.message_queue.put(None)  # Shutdown signal
+            await self._message_sender_task
+        
         await self.messaging.shutdown()
         await self.app.updater.stop()
         await self.app.stop()
         await self.app.shutdown()
         self.logger.info("Telegram bot stopped")
     
+    # ====================================================================
+    # HANDLERS SETUP
+    # ====================================================================
+    
     def _setup_handlers(self):
-        """Setup message and command handlers"""
-        # Commands
-        self.app.add_handler(CommandHandler("start", self._start_command))
-        self.app.add_handler(CommandHandler("help", self._help_command))
-        self.app.add_handler(CommandHandler("status", self._status_command))
-        self.app.add_handler(CommandHandler("models", self._models_command))
-        self.app.add_handler(CommandHandler("clear", self._clear_command))
+        """Setup message and command handlers with security wrappers"""
+        self.app.add_handler(
+            CommandHandler("start", lambda u, c: self._secure_command(u, self._start_command))
+        )
+        self.app.add_handler(
+            CommandHandler("help", lambda u, c: self._secure_command(u, self._help_command))
+        )
+        self.app.add_handler(
+            CommandHandler("status", lambda u, c: self._secure_command(u, self._status_command))
+        )
+        self.app.add_handler(
+            CommandHandler("models", lambda u, c: self._secure_command(u, self._models_command))
+        )
+        self.app.add_handler(
+            CommandHandler("clear", lambda u, c: self._secure_command(u, self._clear_command))
+        )
+        self.app.add_handler(
+            CommandHandler("notify", lambda u, c: self._secure_command(u, self._notify_command, admin_only=True))
+        )
+        self.app.add_handler(
+            CommandHandler("chatid", lambda u, c: self._secure_command(u, self._chatid_command))
+        )
         
-        # Messages (non-command text)
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
         )
@@ -119,7 +444,9 @@ class TelegramBot:
             BotCommand("help", "Show help message"),
             BotCommand("status", "Check bot status"),
             BotCommand("models", "List available models"),
-            BotCommand("clear", "Clear conversation history")
+            BotCommand("clear", "Clear conversation history"),
+            BotCommand("chatid", "Show your chat ID"),
+            BotCommand("notify", "Test proactive notification (admin)")
         ]
         
         await self.app.bot.set_my_commands(commands)
@@ -130,21 +457,25 @@ class TelegramBot:
     
     async def _start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command"""
+        # Register user's chat ID
+        self._register_user_chat(update.effective_user.id, update.effective_chat.id)
+        
         welcome_msg = """
 👋 <b>Welcome to Vera AI!</b>
 
 I'm Vera, an advanced AI assistant powered by multiple language models.
 
 <b>How to use:</b>
-• Just send me a message and I'll respond
-• Use /help to see available commands
-• Use /models to see which AI models I use
+- Just send me a message and I'll respond
+- Use /help to see available commands
+- Use /models to see which AI models I use
 
 <b>What I can do:</b>
-• Answer questions and provide information
-• Help with coding and technical tasks
-• Analyze and reason through complex problems
-• Execute tools and commands (when configured)
+- Answer questions and provide information
+- Help with coding and technical tasks
+- Analyze and reason through complex problems
+- Execute tools and commands (when configured)
+- Send you proactive notifications and insights
 
 Let's get started! What can I help you with?
 """
@@ -164,14 +495,19 @@ Let's get started! What can I help you with?
 <b>Information:</b>
 /status - Check bot status
 /models - List available AI models
+/chatid - Show your chat ID
+
+<b>Admin:</b>
+/notify - Test proactive notification
 
 <b>💬 Chat:</b>
 Just send me a message to chat!
 
 <b>Tips:</b>
-• Be specific in your questions
-• I maintain conversation context
-• Use /clear to start fresh
+- Be specific in your questions
+- I maintain conversation context
+- Use /clear to start fresh
+- I can send you proactive notifications!
 """
         
         await update.message.reply_html(help_msg)
@@ -180,24 +516,22 @@ Just send me a message to chat!
         """Handle /status command"""
         status_msg = "<b>🤖 Bot Status</b>\n\n"
         
-        # Models
         if hasattr(self.vera, 'selected_models'):
             models = self.vera.selected_models
             status_msg += f"<b>Models:</b>\n"
             status_msg += f"⚡ Fast: <code>{models.fast_llm}</code>\n"
             status_msg += f"🧠 Deep: <code>{models.deep_llm}</code>\n"
         
-        # Orchestrator
         if hasattr(self.vera, 'orchestrator') and self.vera.orchestrator.running:
             status_msg += f"\n⚙️ Orchestrator: ✓ Running\n"
         else:
             status_msg += f"\n⚙️ Orchestrator: ✗ Offline\n"
         
-        # Toolchain
         if hasattr(self.vera, 'toolchain'):
             status_msg += f"🛠️ Toolchain: ✓ Available\n"
-        else:
-            status_msg += f"🛠️ Toolchain: ✗ Not loaded\n"
+        
+        status_msg += f"\n📋 Registered Users: {len(self.user_chat_ids)}\n"
+        status_msg += f"📬 Queued Messages: {self.message_queue.qsize()}\n"
         
         await update.message.reply_html(status_msg)
     
@@ -231,7 +565,6 @@ Just send me a message to chat!
     async def _clear_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /clear command"""
         chat_id = str(update.effective_chat.id)
-        user_id = str(update.effective_user.id)
         
         session_key = f"telegram:{chat_id}"
         
@@ -241,18 +574,69 @@ Just send me a message to chat!
         else:
             await update.message.reply_text("No active conversation to clear.")
     
+    async def _chatid_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /chatid command - show user their chat ID"""
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        
+        msg = f"<b>Your Chat Info</b>\n\n"
+        msg += f"User ID: <code>{user_id}</code>\n"
+        msg += f"Chat ID: <code>{chat_id}</code>\n"
+        
+        if self._is_owner(user_id):
+            msg += f"\n✅ You are an <b>OWNER</b>"
+        elif self._is_admin(user_id):
+            msg += f"\n✅ You are an <b>ADMIN</b>"
+        
+        await update.message.reply_html(msg)
+    
+    async def _notify_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /notify command - test proactive notification"""
+        test_msg = "🔔 <b>Test Notification</b>\n\nThis is a proactive message from Vera!"
+        
+        success = await self.send_to_user(update.effective_user.id, test_msg)
+        
+        if success:
+            # The message was already sent above, just acknowledge in chat
+            pass
+        else:
+            await update.message.reply_text("❌ Failed to send notification")
+    
     # ====================================================================
-    # MESSAGE HANDLER
+    # SECURED MESSAGE HANDLER
     # ====================================================================
     
     async def _handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle incoming text messages"""
+        """Handle incoming text messages with security checks"""
         if not update.message or not update.message.text:
             return
         
-        # Get user info
         user = update.effective_user
-        username = user.username or user.first_name or str(user.id)
+        user_id = user.id
+        chat_id = update.effective_chat.id
+        username = user.username or user.first_name or str(user_id)
+        text = update.message.text
+        
+        # Register user's chat ID
+        self._register_user_chat(user_id, chat_id)
+        
+        # Authorization check
+        if not self._is_user_allowed(user_id, chat_id):
+            self.logger.warning(f"Unauthorized message attempt from user {user_id}")
+            await self._reject(update)
+            return
+        
+        # Rate limiting
+        if self._rate_limited(user_id):
+            return
+        
+        # Message size validation
+        if len(text) > SecurityConfig.MAX_MESSAGE_LENGTH:
+            await self._reject(update, "Message too long")
+            return
+        
+        # Audit logging
+        self.logger.info(f"Telegram message from {user_id} ({username}): {text[:120]}")
         
         # Check if this is a group chat
         is_group = update.effective_chat.type in ['group', 'supergroup']
@@ -260,52 +644,61 @@ Just send me a message to chat!
         # In groups, only respond if mentioned
         if is_group:
             bot_username = f"@{self.bot_username}"
-            if bot_username not in update.message.text:
+            if bot_username not in text:
                 return
-            # Remove mention from text
-            text = update.message.text.replace(bot_username, '').strip()
-        else:
-            text = update.message.text
+            text = text.replace(bot_username, '').strip()
         
         # Create message object
         vera_message = Message(
             platform=Platform.TELEGRAM,
-            user_id=str(user.id),
+            user_id=str(user_id),
             username=username,
             text=text,
-            channel_id=str(update.effective_chat.id),
+            channel_id=str(chat_id),
             thread_id=None,
             timestamp=str(update.message.date.timestamp())
         )
         
         # Process with messaging integration
-        await self.messaging.process_message(vera_message)
+        try:
+            await self.messaging.process_message(vera_message)
+        except Exception as e:
+            self.logger.error(f"Vera processing error: {e}")
+            await update.message.reply_text("⚠️ Internal error occurred while processing your message")
 
+
+# ====================================================================
+# ENTRYPOINT
+# ====================================================================
 
 async def main():
     """Main entry point"""
-    # Load configuration
     config = {
         'bot_token': os.getenv('TELEGRAM_BOT_TOKEN'),
         'enabled': True
     }
     
-    # Validate configuration
     if not config['bot_token']:
         print("❌ Error: TELEGRAM_BOT_TOKEN must be set")
         print("\nSetup instructions:")
         print("1. Open Telegram and talk to @BotFather")
         print("2. Send /newbot and follow instructions")
         print("3. Copy the bot token you receive")
+        print("4. Message @userinfobot to get your numeric user ID")
+        print("5. Update SecurityConfig.OWNERS with your user ID")
         print("\nSet environment variable:")
         print("  export TELEGRAM_BOT_TOKEN=your_token_here")
         return
     
-    # Initialize Vera
+    if 123456789 in SecurityConfig.OWNERS:
+        print("⚠️  WARNING: Default user ID detected in SecurityConfig.OWNERS")
+        print("   Please update with your actual Telegram user ID!")
+        print("   Message @userinfobot on Telegram to get your ID")
+        print()
+    
     print("Initializing Vera...")
     vera = Vera()
     
-    # Start Telegram bot
     bot = TelegramBot(vera, config)
     await bot.start()
 

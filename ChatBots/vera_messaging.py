@@ -399,7 +399,6 @@ class DiscordAdapter(PlatformAdapter):
         except Exception as e:
             self.logger.error(f"Failed to upload file to Discord: {e}")
 
-
 class TelegramAdapter(PlatformAdapter):
     """Telegram platform adapter using python-telegram-bot"""
     
@@ -410,6 +409,113 @@ class TelegramAdapter(PlatformAdapter):
     def _get_formatter(self) -> MessageFormatter:
         return TelegramFormatter()
     
+    def _clean_for_telegram(self, text: str) -> str:
+        """
+        Robustly clean text for Telegram HTML parsing.
+        
+        Strategy:
+        1. Extract and preserve thought blocks
+        2. Strip ALL HTML tags (clean slate)
+        3. Re-add only safe Telegram formatting
+        4. Escape remaining special chars
+        """
+        import re
+        from html import escape
+        
+        # Step 1: Extract thought blocks and replace with placeholder
+        thoughts = []
+        
+        def extract_thought(match):
+            thought_content = match.group(1).strip()
+            # Truncate long thoughts
+            if len(thought_content) > 300:
+                thought_content = thought_content[:297] + "..."
+            thoughts.append(thought_content)
+            return f"__THOUGHT_{len(thoughts)-1}__"
+        
+        text = re.sub(
+            r'<thought>(.*?)</thought>',
+            extract_thought,
+            text,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        
+        # Step 2: Strip ALL HTML tags completely
+        # This prevents any malformed HTML from causing issues
+        text = re.sub(r'<[^>]+>', '', text)
+        
+        # Step 3: Escape HTML special characters
+        # Do this AFTER removing tags so we don't escape our own tags
+        text = escape(text, quote=False)
+        
+        # Step 4: Add safe Telegram formatting
+        # Bold: **text** or __text__
+        text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
+        text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
+        
+        # Italic: *text* or _text_
+        text = re.sub(r'(?<!\*)\*(?!\*)(.+?)\*(?!\*)', r'<i>\1</i>', text)
+        text = re.sub(r'(?<!_)_(?!_)(.+?)_(?!_)', r'<i>\1</i>', text)
+        
+        # Code: `text`
+        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        
+        # Code blocks: ```text```
+        text = re.sub(
+            r'```(?:\w+\n)?(.*?)```',
+            lambda m: f'<pre>{escape(m.group(1))}</pre>',
+            text,
+            flags=re.DOTALL
+        )
+        
+        # Step 5: Restore thought blocks with safe formatting
+        for idx, thought in enumerate(thoughts):
+            placeholder = f"__THOUGHT_{idx}__"
+            # Escape the thought content
+            safe_thought = escape(thought, quote=False)
+            # Format as italic code
+            thought_block = f"\n\n💭 <i>Thinking...</i>\n<code>{safe_thought}</code>\n\n"
+            text = text.replace(placeholder, thought_block)
+        
+        return text
+    
+    def _validate_html(self, text: str) -> tuple[bool, str]:
+        """
+        Validate HTML is balanced and safe for Telegram.
+        
+        Returns:
+            (is_valid, error_message)
+        """
+        import re
+        
+        # Check for balanced tags
+        allowed_tags = ['b', 'strong', 'i', 'em', 'code', 'pre', 's', 'u', 'a']
+        
+        tag_stack = []
+        
+        # Find all tags
+        for match in re.finditer(r'<(/?)(\w+)(?:\s[^>]*)?>', text):
+            is_closing = match.group(1) == '/'
+            tag_name = match.group(2).lower()
+            
+            # Ignore unknown tags (shouldn't happen after cleaning)
+            if tag_name not in allowed_tags:
+                return False, f"Unknown tag: {tag_name}"
+            
+            if is_closing:
+                # Check if we have matching opening tag
+                if not tag_stack or tag_stack[-1] != tag_name:
+                    return False, f"Unmatched closing tag: {tag_name}"
+                tag_stack.pop()
+            else:
+                tag_stack.append(tag_name)
+        
+        # Check if any tags remain unclosed
+        if tag_stack:
+            return False, f"Unclosed tags: {tag_stack}"
+        
+        return True, ""
+    
     async def start(self):
         """Start Telegram connection"""
         try:
@@ -417,7 +523,6 @@ class TelegramAdapter(PlatformAdapter):
             
             self.app = Application.builder().token(self.config['bot_token']).build()
             
-            # Initialize
             await self.app.initialize()
             await self.app.start()
             
@@ -441,48 +546,132 @@ class TelegramAdapter(PlatformAdapter):
                           thread_id: Optional[str] = None) -> Optional[str]:
         """Send message to Telegram"""
         try:
-            formatted = self.formatter.format_response(text)
+            # Clean text for Telegram
+            cleaned = self._clean_for_telegram(text)
+            
+            # Validate HTML (optional safety check)
+            is_valid, error = self._validate_html(cleaned)
+            if not is_valid:
+                self.logger.warning(f"HTML validation failed: {error}")
+                # Fallback: send as plain text
+                cleaned = re.sub(r'<[^>]+>', '', cleaned)
+                parse_mode = None
+            else:
+                parse_mode = 'HTML'
             
             # Split if too long (Telegram limit: 4096 chars)
-            if len(formatted) > 4096:
-                chunks = [formatted[i:i+4000] for i in range(0, len(formatted), 4000)]
+            if len(cleaned) > 4096:
+                chunks = self._smart_split(cleaned, 4000)
                 last_msg = None
                 for chunk in chunks:
                     last_msg = await self.app.bot.send_message(
                         chat_id=channel_id,
                         text=chunk,
-                        parse_mode='HTML'
+                        parse_mode=parse_mode
                     )
+                    await asyncio.sleep(0.3)  # Rate limit between chunks
                 return str(last_msg.message_id) if last_msg else None
             else:
                 msg = await self.app.bot.send_message(
                     chat_id=channel_id,
-                    text=formatted,
-                    parse_mode='HTML'
+                    text=cleaned,
+                    parse_mode=parse_mode
                 )
                 return str(msg.message_id)
                 
         except Exception as e:
             self.logger.error(f"Failed to send Telegram message: {e}")
-            return None
+            # Try one more time with plain text
+            try:
+                plain_text = re.sub(r'<[^>]+>', '', text)
+                msg = await self.app.bot.send_message(
+                    chat_id=channel_id,
+                    text=plain_text[:4096]
+                )
+                return str(msg.message_id)
+            except:
+                return None
     
     async def update_message(self, channel_id: str, message_id: str, text: str):
         """Update Telegram message"""
         try:
-            formatted = self.formatter.format_response(text)
+            # Clean text for Telegram
+            cleaned = self._clean_for_telegram(text)
             
-            if len(formatted) > 4096:
-                formatted = formatted[:4093] + "..."
+            # Validate HTML
+            is_valid, error = self._validate_html(cleaned)
+            if not is_valid:
+                self.logger.warning(f"HTML validation failed for update: {error}")
+                # Fallback: send as plain text
+                cleaned = re.sub(r'<[^>]+>', '', cleaned)
+                parse_mode = None
+            else:
+                parse_mode = 'HTML'
+            
+            # Truncate if too long
+            if len(cleaned) > 4096:
+                cleaned = cleaned[:4093] + "..."
             
             await self.app.bot.edit_message_text(
                 chat_id=channel_id,
                 message_id=int(message_id),
-                text=formatted,
-                parse_mode='HTML'
+                text=cleaned,
+                parse_mode=parse_mode
             )
             
         except Exception as e:
             self.logger.error(f"Failed to update Telegram message: {e}")
+            # Try with plain text as fallback
+            try:
+                plain_text = re.sub(r'<[^>]+>', '', text)
+                await self.app.bot.edit_message_text(
+                    chat_id=channel_id,
+                    message_id=int(message_id),
+                    text=plain_text[:4096],
+                    parse_mode=None
+                )
+            except Exception as e2:
+                self.logger.error(f"Fallback update also failed: {e2}")
+    
+    def _smart_split(self, text: str, max_length: int = 4000) -> list:
+        """
+        Split text intelligently at paragraph or sentence boundaries.
+        """
+        if len(text) <= max_length:
+            return [text]
+        
+        chunks = []
+        current = ""
+        
+        # Split by paragraphs first
+        paragraphs = text.split('\n\n')
+        
+        for para in paragraphs:
+            if len(current) + len(para) + 2 <= max_length:
+                current += para + '\n\n'
+            else:
+                # Current chunk is full, save it
+                if current:
+                    chunks.append(current.strip())
+                    current = ""
+                
+                # If single paragraph is too long, split by sentences
+                if len(para) > max_length:
+                    sentences = para.split('. ')
+                    for sent in sentences:
+                        if len(current) + len(sent) + 2 <= max_length:
+                            current += sent + '. '
+                        else:
+                            if current:
+                                chunks.append(current.strip())
+                            current = sent + '. '
+                else:
+                    current = para + '\n\n'
+        
+        if current:
+            chunks.append(current.strip())
+        
+        return chunks
     
     async def upload_file(self, channel_id: str, file_path: str, 
                          comment: Optional[str] = None):
@@ -497,7 +686,6 @@ class TelegramAdapter(PlatformAdapter):
                 
         except Exception as e:
             self.logger.error(f"Failed to upload file to Telegram: {e}")
-
 
 class VeraMessaging:
     """

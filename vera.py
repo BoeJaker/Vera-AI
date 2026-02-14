@@ -51,73 +51,59 @@ from langchain_community.tools.playwright.utils import (
 from langchain.tools import BaseTool
 from langchain.llms.base import LLM
 
-from Vera.vera_chat import VeraChat
+
 # --- Local Imports ---
-try:
-    from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
-    from Vera.Memory.memory import *
-    from Vera.Toolchain.toolchain import ToolChainPlanner
-    from Vera.Toolchain.tools import ToolLoader
-    from Vera.Toolchain.chain_of_experts_integration import integrate_hybrid_toolchain
-    from Vera.Ollama.Agents.experimental.reviewer import Reviewer
-    from Vera.Ollama.Agents.experimental.Planning.planning import Planner
-    from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
-    from Vera.Ollama.manager import *
-    from Vera.Orchestration.vera_tasks import *
-    from Vera.Configuration.config_manager import (
-        ConfigManager, 
-        VeraConfig, 
-        validate_config
-    )
-    from Vera.Logging.logging import (
-        get_logger,
-        LoggingConfig as VeraLoggingConfig,
-        LogContext,
-        LogLevel
-    )
-    from Vera.Ollama.Agents.integration import integrate_agent_system
-    # Import new components
-    from Vera.ProactiveFocus.manager import (
-        ResourceMonitor, ResourceLimits, ResourcePriority,
-        PauseController, AdaptiveScheduler, ResourceGuard
-    )
 
-    from Vera.ProactiveFocus.resources import (
-        ExternalResourceManager, ResourceType, NotebookResource
-    )
 
-    from Vera.ProactiveFocus.stages import (
-        StageOrchestrator, ResearchStage, EvaluationStage,
-        OptimizationStage, SteeringStage, IntrospectionStage
-    )
+from Vera.vera_chat import VeraChat
+from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
+from Vera.Memory.memory import *
+from Vera.Toolchain.toolchain import ToolChainPlanner
+from Vera.Toolchain.tools import ToolLoader
+from Vera.Toolchain.chain_of_experts_integration import integrate_hybrid_toolchain
+from Vera.Ollama.Agents.experimental.reviewer import Reviewer
+from Vera.Ollama.Agents.experimental.Planning.planning import Planner
+from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
+from Vera.Ollama.manager import *
+from Vera.Orchestration.vera_tasks import *
+from Vera.Configuration.config_manager import (
+    ConfigManager, 
+    VeraConfig, 
+    validate_config
+)
+from Vera.Logging.logging import (
+    get_logger,
+    LoggingConfig as VeraLoggingConfig,
+    LogContext,
+    LogLevel
+)
+from Vera.Ollama.Agents.integration import integrate_agent_system
+# Import new components
+from Vera.ProactiveFocus.manager import (
+    ResourceMonitor, ResourceLimits, ResourcePriority,
+    PauseController, AdaptiveScheduler, ResourceGuard
+)
 
-    from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
+from Vera.ProactiveFocus.resources import (
+    ExternalResourceManager, ResourceType, NotebookResource
+)
 
-    from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
-    from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
+from Vera.ProactiveFocus.stages import (
+    StageOrchestrator, ResearchStage, EvaluationStage,
+    OptimizationStage, SteeringStage, IntrospectionStage
+)
 
-except ImportError as e:
-    print(f"Import error: {e}")
-    from Ollama.Agents.Scheduling.executive_0_9 import executive
-    from Memory.memory import *
-    from Toolchain.toolchain import ToolChainPlanner
-    from Toolchain.tools import ToolLoader
-    from Ollama.Agents.reviewer import Reviewer
-    from Ollama.Agents.Planning.planning import Planner
-    from ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
-    from Ollama.manager import *
-    from Orchestration.vera_tasks import *
-    from Configuration.config_manager import (
-        ConfigManager, 
-        VeraConfig, 
-        validate_config
-    )
-    from Logging.logging import (
-        get_logger,
-        LoggingConfig as VeraLoggingConfig,
-        LogContext,
-        LogLevel
-    )
+from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
+from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
+
+from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
+from Vera.Orchestration.toolchain_tasks import (
+    toolchain_execute_stepbystep,
+    toolchain_execute_parallel, 
+    toolchain_execute_adaptive,
+    toolchain_plan_parallel
+)
+
 
 #---- Constants ---
 MODEL_CONFIG_FILE = "Configuration/vera_models.json"
@@ -250,6 +236,11 @@ class Vera:
         self.deep_llm = self.ollama_manager.create_llm(
             model=self.selected_models.deep_llm, 
             temperature=self.selected_models.deep_temperature
+        )
+    
+        self.coding_llm_llm = self.ollama_manager.create_llm(
+            model=self.selected_models.coding_llm, 
+            temperature=self.selected_models.coding_temperature
         )
         
         self.reasoning_llm = self.ollama_manager.create_llm(
@@ -530,17 +521,86 @@ class Vera:
             print(f"[Warning] Could not initialize plugin manager: {e}")
             self.plugin_manager = None
 
-        # --- Initialize Executive and Tools ---
+        # --- Initialize Scheduling Executive and Tools ---
         self.logger.info("Loading tools...")
         self.executive_instance = executive(vera_instance=self)
         
         self.toolkit = ToolLoader(self)
         self.tools = self.toolkit + self.playwright_tools
 
+        from Vera.Toolchain.multiparam import wrap_tools_multiarg
+        self.tools = wrap_tools_multiarg(self.tools)
+
         # Log loaded tools with input schemas to agent tool list file
         tool_list_path = os.path.join(os.path.dirname(__file__), "Ollama","Agents", "agents", "tool-agent", "includes", "tool_list.txt")
         os.makedirs(os.path.dirname(tool_list_path), exist_ok=True)
 
+        self.save_tool_list_with_schemas(tool_list_path)
+        self.logger.info(f"Tool list with schemas written to {tool_list_path}")
+        self.logger.success(f"Loaded {len(self.tools)} total tools")
+
+        # Warm up fast LLM task    
+        fast_task_id = self.orchestrator.submit_task(
+            "llm.fast",
+            vera_instance=self,
+            prompt="hello"
+        )
+
+        # --- Initialize Agents ---
+        self.logger.debug("Initializing agents...")
+        self.light_agent = initialize_agent(
+            self.tools,
+            self.tool_llm,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            memory=self.memory,
+            verbose=True
+        )
+        
+        self.deep_agent = initialize_agent(
+            self.tools,
+            self.deep_llm,
+            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+            memory=self.memory,
+            verbose=True
+        )
+
+
+        # Original toolchain (preserved)
+        self.toolchain = ToolChainPlanner(self, self.tools)
+
+        # NEW: Enhanced toolchain planner with multiple execution modes
+        from Vera.Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner
+        self._enhanced_toolchain = EnhancedToolChainPlanner(self, self.tools)
+
+        #from Vera.Toolchain.unified_toolchain import ToolChainPlanner
+        #self.toolchain = ToolChainPlanner(self, self.tools)  # Uses AUTO mode
+        # from Vera.Toolchain.unified_toolchain import UnifiedToolChainPlanner, ToolChainMode
+        # self.toolchain = UnifiedToolChainPlanner(
+        #                 self, 
+        #                 self.tools,
+        #                 mode=ToolChainMode.AUTO,
+        #                 enable_orchestrator=True
+        # )
+
+        #  chain of experts
+        #integrate_hybrid_toolchain(self)
+
+        #   enhanced toolchain planner
+        #integrate_hybrid_planner(self, enable_n8n=True) 
+
+        if self.focus_manager:
+            def handle_proactive(thought):
+                self.logger.thought(thought, context=LogContext(agent="proactive"))
+            self.focus_manager.proactive_callback = handle_proactive
+        
+        # Initialize chat handler (AFTER all other components)
+        self.chat = VeraChat(self)
+        
+        self.logger.success("Vera initialization complete!")
+        self.logger.info(f"Session ID: {self.sess.id}")
+    
+    def save_tool_list_with_schemas(self, tool_list_path: str):
+        
         with open(tool_list_path, "w") as tool_file:
             tool_file.write("=" * 80 + "\n")
             tool_file.write("VERA TOOLCHAIN - AVAILABLE TOOLS\n")
@@ -598,64 +658,8 @@ class Vera:
                 else:
                     tool_file.write("INPUT SCHEMA: No schema defined\n")
                 
-                tool_file.write("\n" + "=" * 80 + "\n")
-            # Warm up fast LLM task    
-            fast_task_id = self.orchestrator.submit_task(
-                "llm.fast",
-                vera_instance=self,
-                prompt="hello"
-            )
-        self.logger.info(f"Tool list with schemas written to {tool_list_path}")
-        self.logger.success(f"Loaded {len(self.tools)} total tools")
-        
-        # --- Initialize Agents ---
-        self.logger.debug("Initializing agents...")
-        self.light_agent = initialize_agent(
-            self.tools,
-            self.tool_llm,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True
-        )
-        
-        self.deep_agent = initialize_agent(
-            self.tools,
-            self.deep_llm,
-            agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-            memory=self.memory,
-            verbose=True
-        )
+                tool_file.write("\n" + "=" * 80 + "\n") 
 
-        # Original toolchain (preserved)
-        self.toolchain = ToolChainPlanner(self, self.tools)
-        
-        #from Vera.Toolchain.unified_toolchain import ToolChainPlanner
-        #self.toolchain = ToolChainPlanner(self, self.tools)  # Uses AUTO mode
-        # from Vera.Toolchain.unified_toolchain import UnifiedToolChainPlanner, ToolChainMode
-        # self.toolchain = UnifiedToolChainPlanner(
-        #                 self, 
-        #                 self.tools,
-        #                 mode=ToolChainMode.AUTO,
-        #                 enable_orchestrator=True
-        # )
-
-        #  chain of experts
-        #integrate_hybrid_toolchain(self)
-
-        #   enhanced toolchain planner
-        #integrate_hybrid_planner(self, enable_n8n=True) 
-
-        if self.focus_manager:
-            def handle_proactive(thought):
-                self.logger.thought(thought, context=LogContext(agent="proactive"))
-            self.focus_manager.proactive_callback = handle_proactive
-        
-        # Initialize chat handler (AFTER all other components)
-        self.chat = VeraChat(self)
-        
-        self.logger.success("Vera initialization complete!")
-        self.logger.info(f"Session ID: {self.sess.id}")
-    
     def _setup_unified_logging(self):
         """Setup unified logging system from config"""
         # Convert Vera config to logging config
@@ -999,17 +1003,7 @@ class Vera:
                 details={"query_len": len(query), "response_len": len(response)}
             )
     
-    # def fast_start_stream(self, query):
-    #     prompt = f"""
-    #         Answer the user briefly and generically in 1–2 sentences.
-    #         Do NOT use tools.
-    #         Do NOT assume routing yet.
-
-    #         User: {query}
-    #         Assistant:
-    #         """
-    #     return self.stream_llm(self.fast_llm, prompt)
-    
+  
     def async_run(self, query: str, use_parallel: bool = True, ramp_config: Optional[Dict] = None):
         """
         Delegate to chat handler
@@ -1024,535 +1018,6 @@ class Vera:
         """
         return self.chat.async_run(query, use_parallel, ramp_config)
 
-
-    # # ====================================================================
-    # # HELPER METHODS
-    # # ====================================================================
-
-    # def _execute_ramp_tier(self, tier_level, query, accumulated_response, use_orchestrator, context):
-    #     """Execute a single ramp tier and yield response"""
-        
-    #     TIER_NAMES = {1: "Intermediate", 2: "Deep", 3: "Reasoning", 4: "Toolchain"}
-        
-    #     tier_response = ""
-    #     prompt = self._build_ramp_prompt(tier_level, query, accumulated_response)
-        
-    #     if tier_level == 1:  # Intermediate
-    #         llm = self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm
-            
-    #         if use_orchestrator:
-    #             task_id = self.orchestrator.submit_task(
-    #                 "llm.generate",
-    #                 vera_instance=self,
-    #                 llm_type="intermediate",
-    #                 prompt=prompt
-    #             )
-                
-    #             for chunk in self.orchestrator.stream_result(task_id, timeout=45.0):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-    #         else:
-    #             for chunk in self.stream_llm(llm, prompt):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-        
-    #     elif tier_level == 2:  # Deep
-    #         if use_orchestrator:
-    #             task_id = self.orchestrator.submit_task(
-    #                 "llm.deep",
-    #                 vera_instance=self,
-    #                 prompt=prompt
-    #             )
-                
-    #             for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=60.0):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-    #         else:
-    #             for chunk in self.stream_llm(self.deep_llm, prompt):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-        
-    #     elif tier_level == 3:  # Reasoning
-    #         if use_orchestrator:
-    #             task_id = self.orchestrator.submit_task(
-    #                 "llm.reasoning",
-    #                 vera_instance=self,
-    #                 prompt=prompt
-    #             )
-                
-    #             for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=90.0):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-    #         else:
-    #             for chunk in self.stream_llm(self.reasoning_llm, prompt):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-        
-    #     elif tier_level == 4:  # Toolchain
-    #         if use_orchestrator:
-    #             task_id = self.orchestrator.submit_task(
-    #                 "toolchain.execute",
-    #                 vera_instance=self,
-    #                 query=prompt
-    #             )
-                
-    #             for chunk in self.orchestrator.stream_result(task_id, timeout=120.0):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-    #         else:
-    #             for chunk in self.toolchain_expert.execute_tool_chain(prompt):
-    #                 chunk_text = extract_chunk_text(chunk)
-    #                 tier_response += chunk_text
-    #                 yield chunk_text
-        
-    #     return tier_response
-
-    # def _build_ramp_prompt(self, tier_level, base_query, previous_responses):
-    #     """Build progressive refinement prompt for a given tier"""
-        
-    #     if tier_level == 1:  # Intermediate
-    #         return f"""Quick answer provided:
-    # {previous_responses[:500]}...
-
-    # Expand on this with more detail and context for: {base_query}"""
-        
-    #     elif tier_level == 2:  # Deep
-    #         return f"""Previous analysis:
-    # {previous_responses[:800]}...
-
-    # Provide comprehensive, in-depth response for: {base_query}"""
-        
-    #     elif tier_level == 3:  # Reasoning
-    #         return f"""Building on previous work:
-    # {previous_responses[:1000]}...
-
-    # Apply deep reasoning, step-by-step analysis for: {base_query}"""
-        
-    #     elif tier_level == 4:  # Toolchain
-    #         return f"""Context from analysis:
-    # {previous_responses[:800]}...
-
-    # Execute appropriate tools/actions for: {base_query}"""
-        
-    #     else:
-    #         return base_query
-        
-    # def _execute_counsel_mode(self, query, context):
-    #     """
-    #     Counsel mode: Multiple models/instances deliberate on the same query
-        
-    #     Modes:
-    #         - race: Fastest response wins
-    #         - synthesis: Combine all responses into one
-    #         - vote: Most common/best response wins (uses fast model as judge)
-    #     """
-        
-    #     counsel_config = getattr(self.config, 'counsel', {
-    #         'mode': 'vote',
-    #         'models': ['fast', 'fast', 'fast'],
-    #         'instances': None  # If set, overrides models to use specific instances
-    #     })
-        
-    #     counsel_mode = counsel_config.get('mode', 'race')
-    #     counsel_models = counsel_config.get('models', ['fast', 'intermediate', 'reasoning'])
-    #     counsel_instances = counsel_config.get('instances', None)
-        
-    #     # Determine execution strategy
-    #     if counsel_instances:
-    #         # Use specific Ollama instances (can be same model on different instances)
-    #         strategy = "instances"
-    #         executors = counsel_instances
-    #         self.logger.info(
-    #             f"🏛️ Counsel mode: {counsel_mode} using instances: {executors}",
-    #             context=context
-    #         )
-    #     else:
-    #         # Use different model tiers
-    #         strategy = "models"
-    #         executors = counsel_models
-    #         self.logger.info(
-    #             f"🏛️ Counsel mode: {counsel_mode} using models: {executors}",
-    #             context=context
-    #         )
-        
-    #     import threading
-    #     import queue
-        
-    #     response_queue = queue.Queue()
-        
-    #     # ====================================================================
-    #     # INSTANCE-BASED EXECUTION
-    #     # ====================================================================
-        
-    #     if strategy == "instances":
-    #         # Map instance names to actual Ollama instances
-    #         instance_map = {}
-            
-    #         for instance_spec in executors:
-    #             # Format: "instance_name:model_name" or just "instance_name" (uses default model)
-    #             if ':' in instance_spec:
-    #                 instance_name, model_name = instance_spec.split(':', 1)
-    #             else:
-    #                 instance_name = instance_spec
-    #                 model_name = self.selected_models.fast_llm  # Default model
-                
-    #             instance_map[instance_spec] = {
-    #                 'instance': instance_name,
-    #                 'model': model_name
-    #             }
-            
-    #         def run_instance(spec, instance_info, label):
-    #             try:
-    #                 self.logger.debug(f"Counsel: Starting {label}", context=context)
-    #                 start_time = time.time()
-                    
-    #                 # Create LLM restricted to this specific instance
-    #                 llm = self.ollama_manager.create_llm_with_routing(
-    #                     model=instance_info['model'],
-    #                     routing_mode='manual',
-    #                     selected_instances=[instance_info['instance']],
-    #                     temperature=0.7
-    #                 )
-                    
-    #                 response = ""
-    #                 for chunk in self.stream_llm(llm, query):
-    #                     response += extract_chunk_text(chunk)
-                    
-    #                 duration = time.time() - start_time
-                    
-    #                 response_queue.put((label, response, duration, time.time()))
-                    
-    #                 self.logger.success(
-    #                     f"Counsel: {label} completed in {duration:.2f}s",
-    #                     context=context
-    #                 )
-                
-    #             except Exception as e:
-    #                 self.logger.error(f"Counsel: {label} failed: {e}", context=context)
-            
-    #         # Launch threads
-    #         threads = []
-    #         for idx, (spec, info) in enumerate(instance_map.items()):
-    #             label = f"{info['model']}@{info['instance']}"
-    #             thread = threading.Thread(
-    #                 target=run_instance,
-    #                 args=(spec, info, label),
-    #                 daemon=True
-    #             )
-    #             thread.start()
-    #             threads.append(thread)
-        
-    #     # ====================================================================
-    #     # MODEL-BASED EXECUTION
-    #     # ====================================================================
-        
-    #     else:
-    #         # Map model types to LLMs
-    #         model_map = {
-    #             'fast': self.fast_llm,
-    #             'intermediate': self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm,
-    #             'deep': self.deep_llm,
-    #             'reasoning': self.reasoning_llm
-    #         }
-            
-    #         def run_model(model_type, model_llm, label):
-    #             try:
-    #                 self.logger.debug(f"Counsel: Starting {label}", context=context)
-    #                 start_time = time.time()
-                    
-    #                 response = ""
-    #                 for chunk in self.stream_llm(model_llm, query):
-    #                     response += extract_chunk_text(chunk)
-                    
-    #                 duration = time.time() - start_time
-                    
-    #                 response_queue.put((label, response, duration, time.time()))
-                    
-    #                 self.logger.success(
-    #                     f"Counsel: {label} completed in {duration:.2f}s",
-    #                     context=context
-    #                 )
-                
-    #             except Exception as e:
-    #                 self.logger.error(f"Counsel: {label} failed: {e}", context=context)
-            
-    #         # Launch threads
-    #         threads = []
-    #         for idx, model_type in enumerate(counsel_models):
-    #             if model_type in model_map:
-    #                 # Add index to label if same model appears multiple times
-    #                 count = counsel_models[:idx+1].count(model_type)
-    #                 label = f"{model_type.title()}" + (f" #{count}" if counsel_models.count(model_type) > 1 else "")
-                    
-    #                 thread = threading.Thread(
-    #                     target=run_model,
-    #                     args=(model_type, model_map[model_type], label),
-    #                     daemon=True
-    #                 )
-    #                 thread.start()
-    #                 threads.append(thread)
-        
-    #     # ====================================================================
-    #     # MODE: RACE (Fastest Wins)
-    #     # ====================================================================
-        
-    #     if counsel_mode == 'race':
-    #         try:
-    #             winner_label, winner_response, duration, completion_time = response_queue.get(timeout=120.0)
-                
-    #             self.logger.success(
-    #                 f"🏆 Counsel winner: {winner_label} ({duration:.2f}s)",
-    #                 context=context
-    #             )
-                
-    #             yield f"\n\n--- Counsel Mode: Race Winner ---\n"
-    #             yield f"**{winner_label}** (completed in {duration:.2f}s)\n\n"
-    #             yield winner_response
-                
-    #             return winner_response
-            
-    #         except queue.Empty:
-    #             self.logger.error("Counsel: All models timed out", context=context)
-    #             yield "\n\n--- Counsel Mode: Error ---\nAll models timed out\n"
-    #             return "Error: All counsel models timed out"
-        
-    #     # ====================================================================
-    #     # MODE: SYNTHESIS (Combine All)
-    #     # ====================================================================
-        
-    #     elif counsel_mode == 'synthesis':
-    #         responses = []
-            
-    #         # Wait for all models (with timeout)
-    #         for _ in range(len(threads)):
-    #             try:
-    #                 label, response, duration, completion_time = response_queue.get(timeout=120.0)
-    #                 responses.append((label, response, duration))
-    #             except queue.Empty:
-    #                 break
-            
-    #         if not responses:
-    #             self.logger.error("Counsel: No models completed", context=context)
-    #             yield "\n\n--- Counsel Mode: Error ---\nNo models completed\n"
-    #             return "Error: No counsel models completed"
-            
-    #         self.logger.info(
-    #             f"Counsel: Collected {len(responses)} responses, synthesizing...",
-    #             context=context
-    #         )
-            
-    #         # Display individual responses
-    #         yield f"\n\n--- Counsel Mode: Synthesis ({len(responses)} perspectives) ---\n\n"
-            
-    #         for label, response, duration in responses:
-    #             yield f"**{label}** ({duration:.2f}s):\n{response[:300]}{'...' if len(response) > 300 else ''}\n\n"
-            
-    #         # Synthesize using fast model
-    #         synthesis_prompt = f"""Multiple AI perspectives on this query: {query}
-
-    # Perspectives:
-    # """
-            
-    #         for label, response, duration in responses:
-    #             synthesis_prompt += f"\n**{label}**:\n{response[:800]}{'...' if len(response) > 800 else ''}\n\n"
-            
-    #         synthesis_prompt += """
-    # Synthesize these perspectives into a single, coherent response that:
-    # 1. Captures the best insights from each perspective
-    # 2. Highlights areas of agreement
-    # 3. Notes any important differences or unique contributions
-    # 4. Provides a unified conclusion
-
-    # Keep the synthesis concise and actionable."""
-            
-    #         yield "--- Synthesis ---\n"
-            
-    #         synthesis_response = ""
-    #         for chunk in self.stream_llm(self.fast_llm, synthesis_prompt):
-    #             chunk_text = extract_chunk_text(chunk)
-    #             synthesis_response += chunk_text
-    #             yield chunk_text
-            
-    #         return synthesis_response
-        
-    #     # ====================================================================
-    #     # MODE: VOTE (Judge Selects Best)
-    #     # ====================================================================
-        
-    #     elif counsel_mode == 'vote':
-    #         responses = []
-            
-    #         # Wait for all models (with timeout)
-    #         for _ in range(len(threads)):
-    #             try:
-    #                 label, response, duration, completion_time = response_queue.get(timeout=120.0)
-    #                 responses.append((label, response, duration))
-    #             except queue.Empty:
-    #                 break
-            
-    #         if not responses:
-    #             self.logger.error("Counsel: No models completed", context=context)
-    #             yield "\n\n--- Counsel Mode: Error ---\nNo models completed\n"
-    #             return "Error: No counsel models completed"
-            
-    #         if len(responses) == 1:
-    #             # Only one response, use it
-    #             label, response, duration = responses[0]
-                
-    #             self.logger.info(
-    #                 f"Counsel: Only one response from {label}, using it",
-    #                 context=context
-    #             )
-                
-    #             yield f"\n\n--- Counsel Mode: Vote (Only One Response) ---\n"
-    #             yield f"**{label}** ({duration:.2f}s)\n\n"
-    #             yield response
-                
-    #             return response
-            
-    #         self.logger.info(
-    #             f"Counsel: Collected {len(responses)} responses, voting...",
-    #             context=context
-    #         )
-            
-    #         # Display all responses
-    #         yield f"\n\n--- Counsel Mode: Vote ({len(responses)} candidates) ---\n\n"
-            
-    #         for idx, (label, response, duration) in enumerate(responses, 1):
-    #             yield f"**Candidate {idx}: {label}** ({duration:.2f}s)\n{response[:200]}{'...' if len(response) > 200 else ''}\n\n"
-            
-    #         # Judge using fast model (or configurable judge model)
-    #         judge_model = getattr(counsel_config, 'judge_model', 'fast')
-    #         judge_llm = {
-    #             'fast': self.fast_llm,
-    #             'intermediate': self.intermediate_llm if hasattr(self, 'intermediate_llm') else self.fast_llm,
-    #             'deep': self.deep_llm,
-    #             'reasoning': self.reasoning_llm
-    #         }.get(judge_model, self.fast_llm)
-            
-    #         vote_prompt = f"""You are judging multiple AI responses to select the BEST one.
-
-    # Original Query: {query}
-
-    # Candidates:
-    # """
-            
-    #         for idx, (label, response, duration) in enumerate(responses, 1):
-    #             vote_prompt += f"\n**Candidate {idx} ({label})**:\n{response}\n\n"
-            
-    #         vote_prompt += f"""
-    # Evaluate each candidate on:
-    # 1. Accuracy and correctness
-    # 2. Completeness and depth
-    # 3. Clarity and coherence
-    # 4. Relevance to the query
-    # 5. Practical value
-
-    # Respond with ONLY the candidate number (1-{len(responses)}) of the BEST response, followed by a brief 1-2 sentence explanation.
-    # Format: "Candidate X: [reason]"
-    # """
-            
-    #         yield "--- Voting ---\n"
-            
-    #         self.logger.info("Counsel: Judge evaluating responses...", context=context)
-            
-    #         vote_result = ""
-    #         for chunk in self.stream_llm(judge_llm, vote_prompt):
-    #             chunk_text = extract_chunk_text(chunk)
-    #             vote_result += chunk_text
-    #             yield chunk_text
-            
-    #         yield "\n\n"
-            
-    #         # Parse vote result to extract winner
-    #         import re
-    #         match = re.search(r'Candidate\s+(\d+)', vote_result, re.IGNORECASE)
-            
-    #         if match:
-    #             winner_idx = int(match.group(1)) - 1
-                
-    #             if 0 <= winner_idx < len(responses):
-    #                 winner_label, winner_response, winner_duration = responses[winner_idx]
-                    
-    #                 self.logger.success(
-    #                     f"🏆 Counsel vote winner: Candidate {winner_idx + 1} ({winner_label})",
-    #                     context=context
-    #                 )
-                    
-    #                 yield f"--- Selected Response ---\n"
-    #                 yield f"**{winner_label}** (selected by vote)\n\n"
-    #                 yield winner_response
-                    
-    #                 return winner_response
-    #             else:
-    #                 self.logger.warning(
-    #                     f"Invalid vote index {winner_idx + 1}, using first response",
-    #                     context=context
-    #                 )
-    #         else:
-    #             self.logger.warning(
-    #                 "Could not parse vote result, using first response",
-    #                 context=context
-    #             )
-            
-    #         # Fallback to first response
-    #         label, response, duration = responses[0]
-            
-    #         yield f"--- Selected Response (Fallback) ---\n"
-    #         yield f"**{label}**\n\n"
-    #         yield response
-            
-    #         return response
-        
-    #     else:
-    #         self.logger.error(f"Unknown counsel mode: {counsel_mode}", context=context)
-    #         yield f"\n\nError: Unknown counsel mode '{counsel_mode}'\n"
-    #         return f"Error: Unknown counsel mode '{counsel_mode}'"
-
-    # def _triage_direct(self, query):
-    #     """Direct triage without orchestrator (fallback)"""
-    #     triage_context = LogContext(
-    #         session_id=self.sess.id,
-    #         agent="triage"
-    #     )
-        
-    #     # Use triage agent if available
-    #     if self.agents:
-    #         agent_name = self.get_agent_for_task('triage')
-    #         triage_llm = self.create_llm_for_agent(agent_name)
-    #         triage_context.agent = agent_name
-    #         triage_context.model = agent_name
-    #     else:
-    #         triage_llm = self.fast_llm
-    #         triage_context.model = self.selected_models.fast_llm
-        
-    #     self.logger.debug("Using triage agent", context=triage_context)
-        
-    #     triage_prompt = f"""
-    #     Classify this Query into one of the following categories:
-    #         - 'focus'      → Change the focus of background thought.
-    #         - 'proactive'  → Trigger proactive thinking.
-    #         - 'simple'     → Simple textual response.
-    #         - 'toolchain'  → Requires a series of tools or step-by-step planning.
-    #         - 'reasoning'  → Requires deep reasoning.
-    #         - 'complex'    → Complex written response with high-quality output.
-
-    #     Current focus: {self.focus_manager.focus if hasattr(self, 'focus_manager') else 'None'}
-
-    #     Query: {query}
-
-    #     Respond with a single classification term (e.g., 'simple', 'toolchain', 'complex') on the first line.
-    #     """
-        
-    #     for chunk in self.stream_llm(triage_llm, triage_prompt):
-    #         yield chunk
 
     def print_llm_models(self):
         """Print the variable name and model name for each Ollama LLM."""
@@ -1704,6 +1169,169 @@ class Vera:
         # Close any open thought
         if in_thought:
             yield "</thought>\n"
+
+    def telegram_notify(self, message: str, user_id: Optional[int] = None) -> bool:
+        """
+        Send a Telegram notification (sync wrapper for async method).
+
+        Args:
+            message: Message to send
+            user_id: Specific user ID, or None to send to all owners
+            
+        Returns:
+            bool: True if sent successfully
+        """
+        if not hasattr(self, 'telegram_bot') or not self.telegram_bot:
+            self.logger.warning("Telegram bot not initialized")
+            return False
+
+        # Get event loop
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # Send message
+        if user_id:
+            coro = self.telegram_bot.send_to_user(user_id, message)
+        else:
+            coro = self.telegram_bot.send_to_owners(message)
+
+        # Run in existing loop or create new one
+        if loop.is_running():
+            # Schedule coroutine
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            return future.result(timeout=10)
+        else:
+            return loop.run_until_complete(coro)
+
+    def telegram_queue_message(self, message: str, user_id: Optional[int] = None):
+        """
+        Queue a Telegram message for async sending (non-blocking).
+
+        Args:
+            message: Message to send
+            user_id: Specific user ID, or None to send to all owners
+        """
+        if not hasattr(self, 'telegram_bot') or not self.telegram_bot:
+            self.logger.warning("Telegram bot not initialized")
+            return
+
+        # Queue for all owners if no user specified
+        if user_id is None:
+            from Vera.ChatBots.telegram_bot import SecurityConfig
+            for owner_id in SecurityConfig.OWNERS:
+                asyncio.create_task(
+                    self.telegram_bot.queue_message(owner_id, message)
+                )
+        else:
+            asyncio.create_task(
+                self.telegram_bot.queue_message(user_id, message)
+            )
+
+    def start_bots(self, platforms=None, config_file=None):
+        """
+        Start messaging bots using this Vera instance
+        
+        Args:
+            platforms: List of platforms to enable ['telegram', 'discord', 'slack']
+            config_file: Path to bot config file (optional)
+        """
+        from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
+        import asyncio
+        
+        self.logger.info("Starting messaging bots...")
+        
+        # Load configuration
+        if config_file:
+            print(f"Loading config from {config_file}...")
+            config = load_config_from_file(config_file)
+        else:
+            print("Loading config from environment variables...")
+            config = load_config_from_env()
+        
+        # Debug: Show what we loaded
+        print(f"Loaded config: {list(config.keys())}")
+        for platform, cfg in config.items():
+            print(f"  {platform}: enabled={cfg.get('enabled', False)}")
+        
+        # Override with platforms if specified
+        if platforms:
+            print(f"Overriding with platforms: {platforms}")
+            for platform in config:
+                config[platform]['enabled'] = platform in platforms
+        
+        # Validate at least one platform
+        enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
+        
+        if not enabled:
+            self.logger.error("❌ No platforms enabled!")
+            print("\nTo fix:")
+            print("  1. Set environment variables:")
+            print("     export TELEGRAM_BOT_TOKEN='your-token'")
+            return
+        
+        print(f"\n✓ Enabled platforms: {', '.join(enabled)}")
+            
+        # Create bot manager with THIS Vera instance
+        manager = BotManager(config, vera_instance=self)
+        
+        # Store reference to telegram bot if enabled
+        if 'telegram' in enabled:
+            # The bot will be created by manager - we need to access it
+            # For now, create a direct reference
+            if 'telegram' in config and config['telegram'].get('enabled'):
+                from Vera.ChatBots.telegram_bot import TelegramBot
+                self.telegram_bot = TelegramBot(self, config['telegram'])
+        
+        self.logger.info(f"Launching bots: {', '.join(enabled)}")
+        
+        # Check if event loop is already running
+        try:
+            loop = asyncio.get_running_loop()
+            print("⚠️  Event loop already running - using existing loop")
+            
+            # Create task in existing loop
+            async def run_manager():
+                await manager.run()
+            
+            # Schedule the coroutine and wait for it
+            import concurrent.futures
+            import threading
+            
+            # Run in a new thread with its own event loop
+            def run_in_thread():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    new_loop.run_until_complete(manager.run())
+                finally:
+                    new_loop.close()
+            
+            thread = threading.Thread(target=run_in_thread, daemon=False)
+            thread.start()
+            
+            print("✓ Bots running in background thread")
+            print("  Press Ctrl+C to stop")
+            
+            # Keep main thread alive
+            try:
+                thread.join()
+            except KeyboardInterrupt:
+                print("\n\n✓ Shutdown complete")
+                
+        except RuntimeError:
+            # No event loop running - safe to use asyncio.run()
+            print("Starting new event loop...")
+            
+            async def run_manager():
+                await manager.run()
+            
+            try:
+                asyncio.run(run_manager())
+            except KeyboardInterrupt:
+                print("\n\n✓ Shutdown complete")
             
 # --- Example usage ---
 if __name__ == "__main__":
@@ -1795,5 +1423,25 @@ if __name__ == "__main__":
             result += str(chunk)
         
         print()  # Newline after response
-
+      
 # ジョセフ
+
+"""
+# In your Vera code:
+
+# Send to all owners
+vera.telegram_notify("Proactive thought complete: Focus shifted to optimization")
+
+# Send to specific user
+vera.telegram_notify("Task completed!", user_id=123456789)
+
+# Queue message (non-blocking)
+vera.telegram_queue_message("New insight: Consider implementing caching")
+
+# From proactive focus system
+if self.focus_manager:
+    def proactive_callback(thought):
+        vera.telegram_notify(f"Proactive Thought:\n\n{thought}")
+    
+    self.focus_manager.proactive_callback = proactive_callback
+"""

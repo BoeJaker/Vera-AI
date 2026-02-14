@@ -21,28 +21,80 @@ from typing import Dict, Any, List, Optional
 
 from Vera.vera import Vera
 
-
 class BotManager:
     """Manages multiple messaging platform bots"""
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], vera_instance=None):
         """
         Initialize bot manager
         
         Args:
             config: Configuration for all platforms
+            vera_instance: Optional pre-initialized Vera instance
         """
         self.config = config
         self.bots = {}
-        self.vera = None
+        self.vera = vera_instance  # Accept existing Vera
         self.running = False
-        
+    
     async def initialize_vera(self):
-        """Initialize Vera instance"""
+        """Initialize Vera instance (only if not already provided)"""
+        if self.vera is not None:
+            print("✓ Using existing Vera instance\n")
+            return
+        
         print("🚀 Initializing Vera...")
         self.vera = Vera()
         print("✓ Vera initialized\n")
     
+        
+        # Now manually initialize async Playwright
+        if self.vera.config.playwright.enabled:
+            print("Initializing async Playwright...")
+            
+            try:
+                from playwright.async_api import async_playwright
+                from langchain_community.agent_toolkits import PlayWrightBrowserToolkit
+                
+                # Create async browser
+                playwright = await async_playwright().start()
+                self.vera.async_browser = await playwright.chromium.launch(headless=True)
+                page = await self.vera.async_browser.new_page()
+                
+                # Create toolkit with async browser
+                # Note: PlayWrightBrowserToolkit needs the page object
+                self.vera.playwright_page = page
+                
+                # Add basic browser tools manually
+                from langchain_community.tools.playwright import (
+                    ClickTool,
+                    NavigateTool,
+                    ExtractTextTool,
+                    ExtractHyperlinksTool,
+                    GetElementsTool,
+                    CurrentWebPageTool
+                )
+                
+                self.vera.playwright_tools = [
+                    NavigateTool(sync_browser=None, async_browser=self.vera.async_browser),
+                    ClickTool(sync_browser=None, async_browser=self.vera.async_browser),
+                    ExtractTextTool(sync_browser=None, async_browser=self.vera.async_browser),
+                    ExtractHyperlinksTool(sync_browser=None, async_browser=self.vera.async_browser),
+                    GetElementsTool(sync_browser=None, async_browser=self.vera.async_browser),
+                    CurrentWebPageTool(sync_browser=None, async_browser=self.vera.async_browser),
+                ]
+                
+                # Add to Vera's tools list
+                self.vera.tools.extend(self.vera.playwright_tools)
+                
+                print(f"✓ Loaded {len(self.vera.playwright_tools)} Playwright tools")
+                
+            except Exception as e:
+                print(f"Failed to initialize async Playwright: {e}")
+                self.vera.playwright_tools = []
+        
+        print("Vera initialized successfully")
+        
     async def start_slack(self):
         """Start Slack bot"""
         if 'slack' not in self.config or not self.config['slack'].get('enabled', False):
@@ -87,46 +139,88 @@ class BotManager:
             print("❌ discord.py not installed. Install with: pip install discord.py")
         except Exception as e:
             print(f"❌ Failed to start Discord bot: {e}\n")
-    
+        
     async def start_telegram(self):
         """Start Telegram bot"""
-        if 'telegram' not in self.config or not self.config['telegram'].get('enabled', False):
+        print("  [Telegram] Checking configuration...")
+        
+        if 'telegram' not in self.config:
+            print("  [Telegram] ❌ Not in config")
             return
         
-        print("Starting Telegram bot...")
+        if not self.config['telegram'].get('enabled', False):
+            print("  [Telegram] ❌ Not enabled")
+            return
+        
+        token = self.config['telegram'].get('bot_token')
+        if not token:
+            print("  [Telegram] ❌ No bot token")
+            return
+        
+        print(f"  [Telegram] ✓ Token found: {token[:10]}...")
+        print(f"  [Telegram] Importing TelegramBot...")
         
         try:
-            from telegram_bot import TelegramBot
+            from Vera.ChatBots.telegram_bot import TelegramBot
+            print(f"  [Telegram] ✓ Import successful")
             
+            print(f"  [Telegram] Creating bot instance...")
             bot = TelegramBot(self.vera, self.config['telegram'])
             self.bots['telegram'] = bot
             
-            # Run in background task
+            print(f"  [Telegram] Starting bot...")
             asyncio.create_task(bot.start())
-            print("✓ Telegram bot started\n")
             
-        except ImportError:
-            print("❌ python-telegram-bot not installed. Install with: pip install python-telegram-bot")
+            print("  [Telegram] ✓ Bot started\n")
+            
+        except ImportError as e:
+            print(f"  [Telegram] ❌ Import error: {e}")
+            print(f"  [Telegram] Install: pip install python-telegram-bot")
         except Exception as e:
-            print(f"❌ Failed to start Telegram bot: {e}\n")
-    
+            print(f"  [Telegram] ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
+            
     async def start_all(self):
         """Start all enabled bots"""
+        print("\n" + "=" * 60)
+        print("STARTING BOTS")
+        print("=" * 60)
+        
         await self.initialize_vera()
         
-        # Start each platform
-        await self.start_slack()
-        await self.start_discord()
-        await self.start_telegram()
+        # Start each platform with detailed logging
+        print("\nAttempting to start platforms...")
+        
+        if 'slack' in self.config and self.config['slack'].get('enabled'):
+            print("  → Starting Slack...")
+            await self.start_slack()
+        
+        if 'discord' in self.config and self.config['discord'].get('enabled'):
+            print("  → Starting Discord...")
+            await self.start_discord()
+        
+        if 'telegram' in self.config and self.config['telegram'].get('enabled'):
+            print("  → Starting Telegram...")
+            await self.start_telegram()
+        
+        print(f"\n📊 Status: {len(self.bots)} bot(s) started")
+        print(f"   Active bots: {list(self.bots.keys())}")
         
         if not self.bots:
-            print("❌ No bots were started. Check your configuration.")
+            print("\n❌ ERROR: No bots were started!")
+            print("\nDebugging info:")
+            print(f"  Config platforms: {list(self.config.keys())}")
+            for platform, cfg in self.config.items():
+                enabled = cfg.get('enabled', False)
+                has_token = 'bot_token' in cfg or 'app_token' in cfg
+                print(f"  {platform}: enabled={enabled}, has_token={has_token}")
             return False
         
         self.running = True
         
-        print(f"✓ Started {len(self.bots)} bot(s): {', '.join(self.bots.keys())}")
-        print("\nBots are running. Press Ctrl+C to stop.\n")
+        print(f"\n✓ Started {len(self.bots)} bot(s): {', '.join(self.bots.keys())}")
+        print("\n🤖 Bots are running. Press Ctrl+C to stop.\n")
         
         return True
     

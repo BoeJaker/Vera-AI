@@ -1,24 +1,34 @@
-# stage_executor.py
+# stage_executor.py — FIXED VERSION
 """Executes individual workflow stages."""
 
 import json
+import re
+import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 
 class StageExecutor:
-    """Executes individual workflow stages with graph integration."""
+    """Executes individual workflow stages with graph integration.
+    
+    All manager state (hybrid_memory, agent, focus, project_id, etc.)
+    is accessed via self.fm (the parent ProactiveFocusManager).
+    """
     
     def __init__(self, focus_manager):
         self.fm = focus_manager
     
-    def execute_ideas_stage(self, context: Optional[str] = None) -> List[str]:
+    # ============================================================
+    # IDEAS STAGE
+    # ============================================================
+    
+    def execute_ideas_stage(self, context=None):
         """Generate ideas with full graph integration."""
         stage_id = self._create_stage_node("Ideas Generation", "ideas")
         
         self.fm._set_stage("Ideas Generation", "Analyzing and generating creative ideas", 3)
-        self.fm._stream_output(f"🎯 Focus: {self.fm.focus}", "info")
-        self.fm._stream_output("💡 Generating ideas...", "info")
+        self.fm._stream_output(f"Focus: {self.fm.focus}", "info")
+        self.fm._stream_output("Generating ideas...", "info")
         
         prompt = f"""
         Project: {self.fm.focus}
@@ -39,36 +49,26 @@ class StageExecutor:
             response = ""
             for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
                 response += chunk
-            
             self.fm._update_progress()
-            self.fm._stream_output("✅ Ideas generated", "success")
-            
+            self.fm._stream_output("Ideas generated", "success")
         except Exception as e:
-            self.fm._stream_output(f"❌ Error: {str(e)}", "error")
+            self.fm._stream_output(f"Error: {str(e)}", "error")
             response = f"Error: {str(e)}"
         
         ideas = self._parse_json_response(response)
         
         self.fm._update_progress()
-        self.fm._stream_output(f"📊 Generated {len(ideas)} ideas", "success")
+        self.fm._stream_output(f"Generated {len(ideas)} ideas", "success")
         
-        # Create nodes and link
         for idx, idea in enumerate(ideas, 1):
             if self.fm.hybrid_memory:
                 idea_id = f"idea_{stage_id}_{idx}"
                 self.fm.hybrid_memory.upsert_entity(
-                    entity_id=idea_id,
-                    etype="idea",
+                    entity_id=idea_id, etype="idea",
                     labels=["Idea", "FocusBoardItem"],
-                    properties={
-                        "text": idea,
-                        "category": "ideas",
-                        "index": idx,
-                        "stage_id": stage_id,
-                        "project_id": self.fm.project_id,
-                        "created_at": datetime.utcnow().isoformat()
-                    }
-                )
+                    properties={"text": idea, "category": "ideas", "index": idx,
+                                "stage_id": stage_id, "project_id": self.fm.project_id,
+                                "created_at": datetime.utcnow().isoformat()})
                 self.fm.hybrid_memory.link(stage_id, idea_id, "GENERATED", {"index": idx})
             
             self.fm.add_to_focus_board("ideas", idea)
@@ -76,13 +76,15 @@ class StageExecutor:
         
         self._complete_stage_node(stage_id, response, len(ideas))
         self.fm._clear_stage()
-        
         return ideas
     
-    def execute_next_steps_stage(self, context: Optional[str] = None) -> List[str]:
+    # ============================================================
+    # NEXT STEPS STAGE
+    # ============================================================
+    
+    def execute_next_steps_stage(self, context=None):
         """Generate next steps."""
         stage_id = self._create_stage_node("Next Steps", "next_steps")
-        
         self.fm._set_stage("Next Steps", "Determining actionable next steps", 3)
         
         prompt = f"""
@@ -106,11 +108,9 @@ class StageExecutor:
             response = ""
             for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
                 response += chunk
-            
             self.fm._update_progress()
-            
         except Exception as e:
-            self.fm._stream_output(f"❌ Error: {str(e)}", "error")
+            self.fm._stream_output(f"Error: {str(e)}", "error")
             response = f"Error: {str(e)}"
         
         steps = self._parse_json_response(response)
@@ -119,18 +119,11 @@ class StageExecutor:
             if self.fm.hybrid_memory:
                 step_id = f"next_step_{stage_id}_{idx}"
                 self.fm.hybrid_memory.upsert_entity(
-                    entity_id=step_id,
-                    etype="next_step",
+                    entity_id=step_id, etype="next_step",
                     labels=["NextStep", "FocusBoardItem"],
-                    properties={
-                        "text": step,
-                        "category": "next_steps",
-                        "index": idx,
-                        "stage_id": stage_id,
-                        "project_id": self.fm.project_id,
-                        "created_at": datetime.utcnow().isoformat()
-                    }
-                )
+                    properties={"text": step, "category": "next_steps", "index": idx,
+                                "stage_id": stage_id, "project_id": self.fm.project_id,
+                                "created_at": datetime.utcnow().isoformat()})
                 self.fm.hybrid_memory.link(stage_id, step_id, "GENERATED", {"index": idx})
             
             self.fm.add_to_focus_board("next_steps", step)
@@ -138,13 +131,19 @@ class StageExecutor:
         
         self._complete_stage_node(stage_id, response, len(steps))
         self.fm._clear_stage()
-        
         return steps
     
-    def execute_actions_stage(self, context: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Generate executable actions."""
-        stage_id = self._create_stage_node("Action Planning", "actions")
+    # ============================================================
+    # ACTIONS STAGE
+    # ============================================================
+    
+    def execute_actions_stage(self, context=None):
+        """Generate executable actions/goals.
         
+        FIX: Uses _parse_json_actions() to properly handle ```json fences,
+        instead of raw json.loads() which fails and creates 1 blob action.
+        """
+        stage_id = self._create_stage_node("Action Planning", "actions")
         self.fm._set_stage("Action Planning", "Creating executable actions", 4)
         
         available_tools = [tool.name for tool in self.fm.agent.tools]
@@ -161,9 +160,10 @@ class StageExecutor:
         
         Generate 3-5 executable actions using available tools.
         Each action should include:
-        - description: What to do
-        - tools: Which tools to use
+        - description: What to do (or "goal" for goal-oriented actions)
         - priority: high, medium, or low
+        - success_criteria: What a successful result looks like
+        - context: Any additional context needed
         
         Respond with JSON array of action objects.
         """
@@ -174,39 +174,28 @@ class StageExecutor:
             response = ""
             for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
                 response += chunk
-            
             self.fm._update_progress()
-            
         except Exception as e:
             response = f"Error: {str(e)}"
         
-        try:
-            actions = json.loads(response)
-            if not isinstance(actions, list):
-                actions = [{"description": response, "tools": [], "priority": "medium"}]
-        except:
-            actions = [{"description": response, "tools": [], "priority": "medium"}]
+        # FIX: Use proper JSON parsing that handles ```json fences
+        actions = self._parse_json_actions(response)
         
         for idx, action in enumerate(actions, 1):
-            description = action.get("description", str(action))
+            description = action.get("description", action.get("goal", str(action)))
             priority = action.get("priority", "medium")
             
             if self.fm.hybrid_memory:
                 action_id = f"action_{stage_id}_{idx}"
                 self.fm.hybrid_memory.upsert_entity(
-                    entity_id=action_id,
-                    etype="action",
+                    entity_id=action_id, etype="action",
                     labels=["Action", "FocusBoardItem", priority.capitalize()],
-                    properties={
-                        "text": description,
-                        "priority": priority,
-                        "stage_id": stage_id,
-                        "project_id": self.fm.project_id,
-                        "created_at": datetime.utcnow().isoformat()
-                    }
-                )
+                    properties={"text": description, "priority": priority,
+                                "stage_id": stage_id, "project_id": self.fm.project_id,
+                                "created_at": datetime.utcnow().isoformat()})
                 self.fm.hybrid_memory.link(stage_id, action_id, "GENERATED", {"priority": priority})
             
+            # Store the full action dict as metadata so execution stage can use it
             self.fm.add_to_focus_board("actions", description, metadata=action)
             
             emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
@@ -214,60 +203,133 @@ class StageExecutor:
         
         self._complete_stage_node(stage_id, response, len(actions))
         self.fm._clear_stage()
-        
         return actions
     
-    def execute_execution_stage(self, max_executions: int = 2, priority_filter: str = "high") -> int:
-        """Execute actions from board."""
-        self.fm._set_stage("Execution", f"Executing {priority_filter} priority actions", max_executions + 1)
+    # ============================================================
+    # EXECUTION STAGE
+    # ============================================================
+    
+    def execute_execution_stage(self, max_executions=2, priority_filter="all"):
+        """Execute actions/goals from the focus board.
+        
+        FIX: Changed default priority_filter from "high" to "all".
+        FIX: Routes through handoff_to_toolchain (orchestrator-aware).
+        FIX: Uses _parse_goal_item to properly extract goal from board items.
+        FIX: Marks unexecutable actions as stale to prevent infinite loops.
+        """
+        self.fm._set_stage(
+            "Goal Execution",
+            f"Executing up to {max_executions} {priority_filter}-priority goals",
+            max_executions + 1
+        )
+        self.fm._stream_output("Starting goal execution pipeline...", "info")
         
         actions = self.fm.board.get_category("actions")
         
         if not actions:
-            self.fm._stream_output("⚠️ No actions to execute", "warning")
+            self.fm._stream_output("No actions to execute", "warning")
             self.fm._clear_stage()
             return 0
         
+        self.fm._stream_output(f"Found {len(actions)} total actions in focus board", "info")
+        self.fm._update_progress()
+        
         executed_count = 0
+        skipped_count = 0
         
         for idx, action in enumerate(actions):
             if executed_count >= max_executions:
+                remaining = len(actions) - idx
+                self.fm._stream_output(
+                    f"Reached max executions ({max_executions}), {remaining} remaining", "success")
                 break
             
-            action_dict = self._parse_action(action)
-            priority = action_dict.get('priority', 'medium')
+            # Parse into normalized goal dict
+            goal_dict = self._parse_goal_item(action)
+            priority = goal_dict.get('priority', 'medium')
+            goal_text = goal_dict.get('goal', goal_dict.get('description', ''))
             
-            if priority_filter != 'all' and priority != priority_filter:
+            # Skip already-executed or stale actions
+            metadata = action.get('metadata', {}) if isinstance(action, dict) else {}
+            if metadata.get('executed') or metadata.get('stale') or metadata.get('failed'):
                 continue
             
-            description = action_dict.get('description', '')
+            # Apply priority filter
+            if priority_filter != 'all' and priority != priority_filter:
+                skipped_count += 1
+                continue
             
-            self.fm._stream_output(f"\n▶️ Executing action {executed_count + 1}/{max_executions}:", "info")
-            self.fm._stream_output(f"   {description[:150]}", "info")
+            priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
             
-            # Create execution stage
-            exec_stage_id = self._create_stage_node(
-                "Action Execution",
-                "execution",
-                f"Executing: {description[:50]}"
-            )
+            self.fm._stream_output(f"\n{'='*50}", "info")
+            self.fm._stream_output(
+                f"{priority_emoji} Goal {executed_count + 1}/{max_executions}: "
+                f"{goal_text[:150]}{'...' if len(goal_text) > 150 else ''}", "info")
             
-            result = self._execute_via_toolchain(action_dict, exec_stage_id)
+            if goal_dict.get('success_criteria'):
+                self.fm._stream_output(
+                    f"   Success criteria: {goal_dict['success_criteria'][:100]}", "info")
             
-            # Mark action as executed
-            action_dict['metadata'] = action_dict.get('metadata', {})
-            action_dict['metadata']['executed'] = True
-            action_dict['metadata']['success'] = bool(result)
-            action_dict['metadata']['executed_at'] = datetime.utcnow().isoformat()
-            
-            executed_count += 1
-            self.fm._update_progress()
+            # FIX: Route through handoff_to_toolchain (orchestrator-aware)
+            try:
+                result = self.handoff_to_toolchain(goal_dict)
+                
+                if result:
+                    self.fm._stream_output("Goal completed", "success")
+                    self.fm._stream_output(f"   Result: {str(result)[:200]}", "info")
+                else:
+                    self.fm._stream_output("Goal completed with no result", "warning")
+                
+                # Mark action as executed
+                if isinstance(action, dict):
+                    if 'metadata' not in action:
+                        action['metadata'] = {}
+                    action['metadata']['executed'] = True
+                    action['metadata']['success'] = bool(result)
+                    action['metadata']['executed_at'] = datetime.utcnow().isoformat()
+                
+                executed_count += 1
+                self.fm._update_progress()
+                
+            except Exception as e:
+                self.fm._stream_output(f"Execution failed: {str(e)}", "error")
+                import traceback
+                traceback.print_exc()
+                
+                if isinstance(action, dict):
+                    if 'metadata' not in action:
+                        action['metadata'] = {}
+                    action['metadata']['failed'] = True
+                    action['metadata']['error'] = str(e)
         
+        # Mark remaining as stale if nothing executed
+        if executed_count == 0 and actions:
+            self.fm._stream_output("No actions could be executed — marking as stale", "warning")
+            for action in actions:
+                if isinstance(action, dict):
+                    meta = action.get('metadata', {})
+                    if not meta.get('executed') and not meta.get('stale') and not meta.get('failed'):
+                        if 'metadata' not in action:
+                            action['metadata'] = {}
+                        action['metadata']['stale'] = True
+                        action['metadata']['stale_reason'] = "execution_failed"
+        
+        self.fm._stream_output(f"\n{'='*50}", "info")
+        self.fm._stream_output(
+            f"Execution Summary: {executed_count}/{max_executions} completed, "
+            f"{skipped_count} skipped (filter: {priority_filter})", "success")
         self.fm._clear_stage()
         return executed_count
     
-    def execute_review_stage(self, context: Optional[str] = None) -> str:
-        """Review current project state and generate summary."""
+    # ============================================================
+    # REVIEW STAGE
+    # ============================================================
+    
+    def execute_review_stage(self, context=None):
+        """Review current project state and generate summary.
+        
+        FIX: Saves review to focus board AND to project documentation folder.
+        """
         self.fm._set_stage("Review", "Analyzing project state", 2)
         
         prompt = f"""
@@ -297,155 +359,513 @@ class StageExecutor:
             response = ""
             for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
                 response += chunk
-            
             self.fm._update_progress()
-            self.fm._stream_output("✅ Review complete", "success")
-            
+            self.fm._stream_output("Review complete", "success")
         except Exception as e:
             response = f"Error: {str(e)}"
+        
+        # FIX: Save review to focus board
+        if response and not response.startswith("Error:"):
+            review_summary = response[:300] + "..." if len(response) > 300 else response
+            self.fm.add_to_focus_board("progress", f"[Review] {review_summary}", metadata={
+                "type": "review", "full_review_length": len(response),
+                "timestamp": datetime.utcnow().isoformat()})
+        
+        # FIX: Save full review to project documentation folder
+        if response and not response.startswith("Error:"):
+            self._save_review_to_file(response)
         
         self.fm._clear_stage()
         return response
     
-    def _create_stage_node(self, stage_name: str, stage_type: str, activity: str = "") -> Optional[str]:
-        """Create stage node in graph."""
+    # ============================================================
+    # TOOLCHAIN HANDOFF (orchestrator-aware)
+    # ============================================================
+    
+    def handoff_to_toolchain(self, action):
+        """Hand off a goal to the toolchain via the orchestrator.
+        
+        FIX: All references use self.fm.* to access manager state.
+        Mirrors the working monolith's execution path.
+        """
+        goal = action.get('goal', action.get('description', str(action)))
+        priority = action.get('priority', 'medium')
+        success_criteria = action.get('success_criteria', '')
+        goal_context = action.get('context', '')
+        
+        stage_id = self.fm._create_stage_node(
+            "Goal Execution", "execution", f"Executing: {goal[:80]}...")
+        
+        self.fm._set_stage("Goal Execution", f"Executing: {goal[:80]}...", 3)
+        self.fm._stream_output("Starting goal execution via orchestrator", "info")
+        self.fm._stream_output(f"Goal: {goal}", "info")
+        
+        priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
+        self.fm._stream_output(f"   Priority: {priority_emoji} {priority}", "info")
+        
+        if success_criteria:
+            self.fm._stream_output(f"   Success criteria: {success_criteria}", "info")
+        
+        query = self._build_toolchain_query(goal, priority, success_criteria, goal_context)
+        
+        # Create execution tracking node
+        execution_id = None
+        if self.fm.hybrid_memory:
+            try:
+                execution_id = self.fm.hybrid_memory.create_tool_execution_node(
+                    node_id=stage_id, tool_name="toolchain_orchestrated",
+                    metadata={"executed_at": datetime.utcnow().isoformat(),
+                              "goal": goal[:500], "priority": priority,
+                              "success_criteria": success_criteria,
+                              "session_id": self.fm.agent.sess.id if hasattr(self.fm.agent, 'sess') else None,
+                              "iteration_id": self.fm.current_iteration_id,
+                              "project_id": self.fm.project_id})
+            except Exception as e:
+                print(f"[StageExecutor] Could not create execution node: {e}")
+        
+        result = ""
+        chunk_count = 0
+        start_time = time.time()
+        line_buffer = ""
+        
+        def flush_line_buffer():
+            nonlocal line_buffer
+            if line_buffer:
+                self.fm._stream_output(f"  {line_buffer}", "info")
+                line_buffer = ""
+        
+        try:
+            self.fm._stream_output("Submitting to orchestrator...", "info")
+            self.fm._update_progress()
+            
+            task_result = self._execute_goal_via_orchestrator(query)
+            
+            if task_result is None:
+                self.fm._stream_output("Orchestrator unavailable, using direct toolchain", "warning")
+                task_result = self._execute_goal_direct(query)
+            
+            try:
+                for chunk in task_result:
+                    chunk_str = str(chunk) if not isinstance(chunk, str) else chunk
+                    result += chunk_str
+                    chunk_count += 1
+                    for char in chunk_str:
+                        if char == '\n':
+                            flush_line_buffer()
+                        else:
+                            line_buffer += char
+                    if chunk_count % 100 == 0 and line_buffer:
+                        self.fm._stream_output(f"  {line_buffer}...", "info")
+            except TypeError:
+                result = str(task_result) if task_result else ""
+            
+            flush_line_buffer()
+            self.fm._update_progress()
+            
+            duration_ms = int((time.time() - start_time) * 1000)
+            self.fm._stream_output(f"Execution complete ({chunk_count} chunks, {duration_ms}ms)", "success")
+            
+            # Create result node
+            if self.fm.hybrid_memory and execution_id:
+                try:
+                    self.fm.hybrid_memory.create_tool_result_node(
+                        execution_id=execution_id, output=result,
+                        metadata={"tool_name": "toolchain_orchestrated",
+                                  "chunks_received": chunk_count, "duration_ms": duration_ms,
+                                  "goal": goal[:500]})
+                except Exception as e:
+                    print(f"[StageExecutor] Error creating result node: {e}")
+            
+            self.fm.add_to_focus_board("progress", f"Completed goal: {goal[:200]}")
+            if result and result.strip():
+                result_summary = result[:500] + "..." if len(result) > 500 else result
+                self.fm.add_to_focus_board("progress", f"Result: {result_summary}")
+            
+            if success_criteria and result:
+                self._evaluate_success(goal, success_criteria, result, stage_id)
+            
+            self.fm._complete_stage_node(output=result, output_count=1)
+            self.fm._update_progress()
+            self.fm._clear_stage()
+            return result
+            
+        except Exception as e:
+            flush_line_buffer()
+            error_msg = f"Goal execution failed: {e}"
+            self.fm._stream_output(f"{error_msg}", "error")
+            self.fm.add_to_focus_board("issues", f"Failed: {goal[:100]} - {e}")
+            self.fm._complete_stage_node(output=error_msg, output_count=0)
+            self.fm._clear_stage()
+            return None
+    
+    # ============================================================
+    # TOOLCHAIN ROUTING HELPERS
+    # ============================================================
+    
+    def _build_toolchain_query(self, goal, priority, success_criteria, goal_context):
+        """Build a structured query for the toolchain planner."""
+        recent_progress = self.fm.board.get_category('progress')[-3:]
+        recent_issues = self.fm.board.get_category('issues')[-3:]
+        
+        progress_notes = [p.get('note', '') if isinstance(p, dict) else str(p) for p in recent_progress]
+        issue_notes = [i.get('note', '') if isinstance(i, dict) else str(i) for i in recent_issues]
+        
+        return f"""Project: {self.fm.focus}
+
+GOAL: {goal}
+
+Priority: {priority}
+{f"Success Criteria: {success_criteria}" if success_criteria else ""}
+{f"Additional Context: {goal_context}" if goal_context else ""}
+
+Recent Progress:
+{json.dumps(progress_notes, indent=2)}
+
+Known Issues:
+{json.dumps(issue_notes, indent=2)}
+
+INSTRUCTIONS FOR PLANNER:
+- Decompose this goal into concrete tool steps
+- For tools requiring multiple parameters, provide input as a JSON object
+- Use {{prev}} to reference the previous step's output
+- Use {{step_N}} to reference step N's output
+- Each step should have "tool" (tool name) and "input" (string or JSON object)
+"""
+    
+    def _execute_goal_via_orchestrator(self, query):
+        """Execute via orchestrator. Returns iterable or None."""
+        if not hasattr(self.fm.agent, 'orchestrator') or not self.fm.agent.orchestrator:
+            return None
+        
+        orchestrator = self.fm.agent.orchestrator
+        
+        if hasattr(orchestrator, 'submit_task'):
+            try:
+                task_result = orchestrator.submit_task(
+                    "toolchain.execute", self.fm.agent, query, expert=False)
+                
+                if isinstance(task_result, str) and len(task_result) == 36 and '-' in task_result:
+                    self.fm._stream_output(f"Task submitted: {task_result}", "info")
+                    try:
+                        from Vera.ChatUI.api.session import toolchain_executions
+                    except ImportError:
+                        return [f"Task submitted: {task_result}"]
+                    
+                    max_wait, poll_interval, elapsed, results = 300, 0.5, 0, []
+                    while elapsed < max_wait:
+                        if task_result in toolchain_executions:
+                            execution = toolchain_executions[task_result]
+                            if hasattr(execution, 'chunks') and execution.chunks:
+                                results.extend(execution.chunks)
+                                if hasattr(execution, 'completed') and execution.completed:
+                                    return results
+                            if hasattr(execution, 'result'):
+                                if isinstance(execution.result, str):
+                                    results.append(execution.result)
+                                return results
+                        time.sleep(poll_interval)
+                        elapsed += poll_interval
+                    results.append(f"Task {task_result} timed out")
+                    return results
+                
+                elif hasattr(task_result, '__iter__') or hasattr(task_result, '__next__'):
+                    return task_result
+                elif hasattr(task_result, 'result'):
+                    r = task_result.result()
+                    return r if hasattr(r, '__iter__') else [str(r)]
+                else:
+                    return [str(task_result)]
+            except Exception as e:
+                self.fm._stream_output(f"Orchestrator submit failed: {e}", "warning")
+                return None
+        
+        elif hasattr(orchestrator, 'execute_task'):
+            try:
+                r = orchestrator.execute_task("toolchain.execute", self.fm.agent, query)
+                return r if hasattr(r, '__iter__') else [str(r)]
+            except Exception as e:
+                self.fm._stream_output(f"Orchestrator execute failed: {e}", "warning")
+                return None
+        
+        elif hasattr(orchestrator, 'run'):
+            try:
+                r = orchestrator.run("toolchain.execute", query=query)
+                return r if hasattr(r, '__iter__') else [str(r)]
+            except Exception as e:
+                self.fm._stream_output(f"Orchestrator run failed: {e}", "warning")
+                return None
+        
+        return None
+    
+    def _execute_goal_direct(self, query):
+        """Direct toolchain execution fallback."""
+        self.fm._stream_output("Direct toolchain execution...", "info")
+        
+        if self.fm.hybrid_memory:
+            execution_id = f"direct_exec_{int(time.time())}"
+            try:
+                execution_id = self.fm.hybrid_memory.create_tool_execution_node(
+                    node_id=execution_id, tool_name="toolchain_direct",
+                    metadata={"executed_at": datetime.utcnow().isoformat(),
+                              "session_id": self.fm.agent.sess.id if hasattr(self.fm.agent, 'sess') else None,
+                              "project_id": self.fm.project_id})
+                with self.fm.hybrid_memory.track_execution(execution_id):
+                    yield from self.fm.agent.toolchain.execute_tool_chain(query)
+                return
+            except Exception:
+                pass
+        
+        yield from self.fm.agent.toolchain.execute_tool_chain(query)
+    
+    def _evaluate_success(self, goal, success_criteria, result, stage_id):
+        """Evaluate whether execution result meets success criteria."""
+        try:
+            eval_prompt = f"""Evaluate this execution result against the success criteria.
+
+Goal: {goal[:300]}
+Success Criteria: {success_criteria[:200]}
+Result (truncated): {result[:1000]}
+
+Did the result meet the success criteria? Respond with:
+- "YES" if criteria are met
+- "PARTIAL" if partially met
+- "NO" if not met
+
+Follow with a brief (1-2 sentence) explanation.
+"""
+            evaluation = ""
+            for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.fast_llm, eval_prompt):
+                evaluation += chunk
+            
+            evaluation = evaluation.strip()
+            
+            if evaluation.upper().startswith("YES"):
+                self.fm._stream_output(f"Success criteria MET: {evaluation[:100]}", "success")
+                status = "met"
+            elif evaluation.upper().startswith("PARTIAL"):
+                self.fm._stream_output(f"Success criteria PARTIALLY met: {evaluation[:100]}", "warning")
+                status = "partial"
+            else:
+                self.fm._stream_output(f"Success criteria NOT met: {evaluation[:100]}", "warning")
+                self.fm.add_to_focus_board("issues", f"Goal incomplete: {goal[:100]} - {evaluation[:200]}")
+                status = "not_met"
+            
+            if self.fm.hybrid_memory and stage_id:
+                eval_id = f"eval_{stage_id}_{int(time.time())}"
+                self.fm.hybrid_memory.upsert_entity(
+                    entity_id=eval_id, etype="evaluation",
+                    labels=["Evaluation", "SuccessCheck"],
+                    properties={"goal": goal[:500], "success_criteria": success_criteria,
+                                "evaluation": evaluation[:500], "status": status,
+                                "stage_id": stage_id, "project_id": self.fm.project_id,
+                                "created_at": datetime.utcnow().isoformat()})
+                self.fm.hybrid_memory.link(stage_id, eval_id, "EVALUATED_BY", {})
+        except Exception as e:
+            self.fm._stream_output(f"Could not evaluate success criteria: {e}", "warning")
+    
+    # ============================================================
+    # GRAPH HELPERS
+    # ============================================================
+    
+    def _create_stage_node(self, stage_name, stage_type, activity=""):
         if not self.fm.hybrid_memory:
             return None
         
         stage_id = f"stage_{stage_type}_{self.fm.current_iteration_id}_{int(datetime.now().timestamp())}"
         
         self.fm.hybrid_memory.upsert_entity(
-            entity_id=stage_id,
-            etype="workflow_stage",
+            entity_id=stage_id, etype="workflow_stage",
             labels=["WorkflowStage", stage_type.capitalize()],
-            properties={
-                "stage_name": stage_name,
-                "stage_type": stage_type,
-                "activity": activity,
-                "iteration_id": self.fm.current_iteration_id,
-                "project_id": self.fm.project_id,
-                "started_at": datetime.utcnow().isoformat(),
-                "status": "in_progress"
-            }
-        )
+            properties={"stage_name": stage_name, "stage_type": stage_type,
+                        "activity": activity, "iteration_id": self.fm.current_iteration_id,
+                        "project_id": self.fm.project_id,
+                        "started_at": datetime.utcnow().isoformat(), "status": "in_progress"})
         
         if self.fm.current_iteration_id:
             self.fm.hybrid_memory.link(
-                self.fm.current_iteration_id,
-                stage_id,
-                "HAS_STAGE",
-                {"stage_type": stage_type}
-            )
+                self.fm.current_iteration_id, stage_id, "HAS_STAGE", {"stage_type": stage_type})
         
         self.fm.current_stage_id = stage_id
         return stage_id
     
-    def _complete_stage_node(self, stage_id: str, output: str, output_count: int):
-        """Mark stage as complete."""
+    def _complete_stage_node(self, stage_id, output, output_count):
         if not self.fm.hybrid_memory or not stage_id:
             return
-        
         with self.fm.hybrid_memory.graph._driver.session() as sess:
             sess.run("""
                 MATCH (s:WorkflowStage {id: $id})
-                SET s.completed_at = $completed_at,
-                    s.status = 'completed',
-                    s.output_count = $output_count
-            """, {
-                "id": stage_id,
-                "completed_at": datetime.utcnow().isoformat(),
-                "output_count": output_count
-            })
-        
+                SET s.completed_at = $completed_at, s.status = 'completed', s.output_count = $output_count
+            """, {"id": stage_id, "completed_at": datetime.utcnow().isoformat(), "output_count": output_count})
         self.fm.previous_stage_id = stage_id
         self.fm.current_stage_id = None
     
-    def _execute_via_toolchain(self, action: Dict[str, Any], stage_id: str) -> Optional[str]:
-        """Execute action via toolchain."""
-        description = action.get('description', str(action))
-        
-        query = f"""
-Project: {self.fm.focus}
-Action: {description}
-Suggested Tools: {action.get('tools', [])}
-Priority: {action.get('priority', 'medium')}
-"""
-        
-        result = ""
-        try:
-            if self.fm.hybrid_memory and stage_id:
-                execution_id = self.fm.hybrid_memory.create_tool_execution_node(
-                    node_id=stage_id,
-                    tool_name="toolchain",
-                    metadata={
-                        "executed_at": datetime.utcnow().isoformat(),
-                        "input": description[:500]
-                    }
-                )
-                
-                with self.fm.hybrid_memory.track_execution(execution_id):
-                    for chunk in self.fm.agent.toolchain.execute_tool_chain(query):
-                        result += str(chunk)
-                
-                if result:
-                    self.fm.hybrid_memory.create_tool_result_node(
-                        execution_id=execution_id,
-                        output=result,
-                        metadata={"tool_name": "toolchain"}
-                    )
-            else:
-                for chunk in self.fm.agent.toolchain.execute_tool_chain(query):
-                    result += str(chunk)
-            
-            self.fm.add_to_focus_board("progress", f"Completed: {description}")
-            return result
-            
-        except Exception as e:
-            self.fm._stream_output(f"❌ Execution failed: {e}", "error")
-            self.fm.add_to_focus_board("issues", f"Failed: {description} - {e}")
-            return None
+    # ============================================================
+    # PARSING HELPERS
+    # ============================================================
     
-    def _parse_action(self, action) -> Dict[str, Any]:
-        """Parse action item to dict."""
-        if isinstance(action, dict):
-            if 'description' in action:
-                return action
-            elif 'note' in action:
-                note = action['note']
-                try:
-                    parsed = json.loads(note)
-                    if isinstance(parsed, dict):
-                        return parsed
-                except:
-                    pass
-                return {
-                    'description': note,
-                    'priority': 'medium',
-                    'tools': [],
-                    'metadata': action.get('metadata', {})
-                }
-        
-        return {
-            'description': str(action),
-            'priority': 'medium',
-            'tools': [],
-            'metadata': {}
-        }
-    
-    def _parse_json_response(self, response: str) -> list:
-        """Parse JSON response."""
+    def _parse_json_response(self, response):
+        """Parse JSON response (for ideas/next_steps — string arrays)."""
         cleaned = response.strip()
         if cleaned.startswith('```'):
             lines = cleaned.split('\n')
-            if lines[0].startswith('```'):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == '```':
-                lines = lines[:-1]
+            if lines[0].startswith('```'): lines = lines[1:]
+            if lines and lines[-1].strip() == '```': lines = lines[:-1]
             cleaned = '\n'.join(lines)
-        
         try:
             parsed = json.loads(cleaned)
             return parsed if isinstance(parsed, list) else [parsed]
         except:
             lines = [line.strip() for line in cleaned.split('\n') if line.strip()]
             return lines if lines else [response]
+    
+    def _parse_json_actions(self, response):
+        """Parse JSON action objects from LLM response.
+        
+        FIX: Strips ```json fences before parsing, normalizes items into
+        proper action dicts with description/goal/tools/priority.
+        """
+        cleaned = response.strip()
+        if cleaned.startswith('```'):
+            lines = cleaned.split('\n')
+            if lines[0].startswith('```'): lines = lines[1:]
+            if lines and lines[-1].strip() == '```': lines = lines[:-1]
+            cleaned = '\n'.join(lines).strip()
+        
+        parsed = None
+        try:
+            parsed = json.loads(cleaned)
+            if not isinstance(parsed, list): parsed = [parsed]
+        except (json.JSONDecodeError, ValueError):
+            array_match = re.search(r'\[[\s\S]*\]', cleaned)
+            if array_match:
+                try:
+                    parsed = json.loads(array_match.group())
+                    if not isinstance(parsed, list): parsed = [parsed]
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        
+        if parsed is None:
+            lines = [l.strip() for l in cleaned.split('\n') if l.strip() and l.strip() not in '[]{}']
+            parsed = lines if lines else [response[:500]]
+        
+        actions = []
+        for item in parsed:
+            if isinstance(item, dict):
+                actions.append({
+                    "description": item.get("description", item.get("goal", item.get("action", item.get("text", str(item))))),
+                    "goal": item.get("goal", item.get("description", "")),
+                    "tools": item.get("tools", []),
+                    "priority": item.get("priority", "medium"),
+                    "success_criteria": item.get("success_criteria", ""),
+                    "context": item.get("context", "")
+                })
+            elif isinstance(item, str):
+                actions.append({"description": item, "goal": item, "tools": [],
+                                "priority": "medium", "success_criteria": "", "context": ""})
+            else:
+                actions.append({"description": str(item), "goal": str(item), "tools": [],
+                                "priority": "medium", "success_criteria": "", "context": ""})
+        
+        return actions if actions else [{"description": response[:500], "goal": response[:500],
+                                          "tools": [], "priority": "medium"}]
+    
+    def _parse_goal_item(self, item):
+        """Parse a focus board action item into a normalized goal dict."""
+        if isinstance(item, dict):
+            if 'goal' in item:
+                return {'goal': item['goal'], 'priority': item.get('priority', 'medium'),
+                        'success_criteria': item.get('success_criteria', ''), 'context': item.get('context', '')}
+            if 'description' in item:
+                return {'goal': item['description'], 'priority': item.get('priority', 'medium'),
+                        'success_criteria': item.get('success_criteria', ''), 'context': item.get('context', '')}
+            if 'note' in item:
+                note = item['note']
+                metadata = item.get('metadata', {})
+                if isinstance(metadata, dict):
+                    if metadata.get('goal'):
+                        return {'goal': metadata['goal'], 'priority': metadata.get('priority', 'medium'),
+                                'success_criteria': metadata.get('success_criteria', ''),
+                                'context': metadata.get('context', '')}
+                    if metadata.get('description'):
+                        return {'goal': metadata['description'], 'priority': metadata.get('priority', 'medium'),
+                                'success_criteria': metadata.get('success_criteria', ''),
+                                'context': metadata.get('context', '')}
+                if isinstance(note, str):
+                    try:
+                        parsed = json.loads(note.strip().strip('```json').strip('```').strip())
+                        if isinstance(parsed, dict):
+                            return {'goal': parsed.get('goal', parsed.get('description', note)),
+                                    'priority': parsed.get('priority', 'medium'),
+                                    'success_criteria': parsed.get('success_criteria', ''),
+                                    'context': parsed.get('context', '')}
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                return {'goal': str(note),
+                        'priority': metadata.get('priority', 'medium') if isinstance(metadata, dict) else 'medium',
+                        'success_criteria': metadata.get('success_criteria', '') if isinstance(metadata, dict) else '',
+                        'context': ''}
+            return {'goal': str(item), 'priority': item.get('priority', 'medium'),
+                    'success_criteria': '', 'context': ''}
+        
+        elif isinstance(item, str):
+            try:
+                parsed = json.loads(item.strip().strip('```json').strip('```').strip())
+                if isinstance(parsed, dict):
+                    return {'goal': parsed.get('goal', parsed.get('description', item)),
+                            'priority': parsed.get('priority', 'medium'),
+                            'success_criteria': parsed.get('success_criteria', ''),
+                            'context': parsed.get('context', '')}
+            except (json.JSONDecodeError, ValueError):
+                pass
+            return {'goal': item, 'priority': 'medium', 'success_criteria': '', 'context': ''}
+        
+        return {'goal': str(item), 'priority': 'medium', 'success_criteria': '', 'context': ''}
+    
+    # ============================================================
+    # REVIEW FILE HELPER
+    # ============================================================
+    
+    def _save_review_to_file(self, review_text):
+        """Save review to project documentation folder."""
+        import os
+        project_id = self.fm.project_id or "unknown_project"
+        
+        base_dir = os.path.join(os.path.dirname(self.fm.focus_boards_dir), project_id, "reviews")
+        alt_dir = os.path.join(self.fm.focus_boards_dir, "reviews")
+        
+        review_dir = base_dir
+        try:
+            os.makedirs(review_dir, exist_ok=True)
+        except OSError:
+            review_dir = alt_dir
+            try:
+                os.makedirs(review_dir, exist_ok=True)
+            except OSError as e:
+                print(f"[StageExecutor] Cannot create review directory: {e}")
+                return
+        
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filepath = os.path.join(review_dir, f"review_{timestamp}.md")
+        
+        md_content = f"""# Project Review — {self.fm.focus or 'Unknown Focus'}
+**Date:** {datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")}  
+**Project ID:** {project_id}  
+
+---
+
+{review_text}
+
+---
+
+## Board Snapshot
+
+**Statistics:** {json.dumps(self.fm.board.get_stats(), indent=2)}
+"""
+        
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                f.write(md_content)
+            print(f"[StageExecutor] Review saved to: {filepath}")
+            self.fm._stream_output(f"Review saved: {filepath}", "info")
+        except Exception as e:
+            print(f"[StageExecutor] Failed to save review: {e}")

@@ -1168,19 +1168,11 @@ class VeraLogger:
         if not self._should_log(LogLevel.INFO):
             return
         
-        context = self._enrich_context(context, capture_stack=False)
+        # context = self._enrich_context(context, capture_stack=False)
         self.stats['thoughts_captured'] += 1
-        
-        if self.config.box_thoughts:
-            self._print_boxed(
-                content, 
-                title="💭 Reasoning",
-                color=ColorCodes.CYAN,
-                context=context
-            )
-        else:
-            ctx_str = self._format_context(context)
-            print(f"\n{self._colorize('💭 Thought:', ColorCodes.CYAN)} {ctx_str}{content}\n")
+       
+        sys.stdout.write(content)
+        sys.stdout.flush()
     
     def response(self, content: str, context: Optional[LogContext] = None, stream: bool = False):
         """Log model response"""

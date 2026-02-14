@@ -28,7 +28,7 @@ from discord.ext import commands
 
 from Vera.vera import Vera
 from Vera.Logging.logging import LogContext
-from vera_messaging import VeraMessaging, Message, Platform
+from Vera.ChatBots.vera_messaging import VeraMessaging, Message, Platform
 
 
 class DiscordBot(commands.Bot):

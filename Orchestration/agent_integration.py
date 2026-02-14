@@ -33,7 +33,7 @@ class AgentTaskRouter:
                     f"Available agents: {', '.join(str(self.agents.list_loaded_agents()))}",
                     context=LogContext(extra={'component': 'agent_router'})
                 )
-    
+        
     def get_agent_for_task(self, task_type: str) -> str:
         """Get agent name for a task type"""
         context = LogContext(extra={'component': 'agent_router', 'task_type': task_type})
@@ -41,31 +41,42 @@ class AgentTaskRouter:
         if self.logger:
             self.logger.debug(f"Selecting agent for task type: {task_type}", context=context)
         
-        if not self.agents:
-            # Fallback to base models (with your fixes)
-            fallback_map = {
-                'triage': self.vera.selected_models.fast_llm,
-                'fast': self.vera.selected_models.fast_llm,
-                'tool_execution': self.vera.selected_models.tool_llm or self.vera.selected_models.fast_llm,
-                'reasoning': self.vera.selected_models.reasoning_llm or self.vera.selected_models.fast_llm,
-                'conversation': self.vera.selected_models.fast_llm,
-                'planning': self.vera.selected_models.intermediate_llm or self.vera.selected_models.fast_llm,
-                'review': self.vera.selected_models.deep_llm or self.vera.selected_models.fast_llm,
-            }
-            agent_name = fallback_map.get(task_type, self.vera.selected_models.fast_llm)
-        else:
-            # Get from agent configuration
-            agent_name = self.vera.config.agents.default_agents.get(
-                task_type,
-                self.vera.selected_models.fast_llm
-            )
+        # Define model-based fallback map (always available)
+        fallback_map = {
+            'triage': self.vera.selected_models.fast_llm,
+            'fast': self.vera.selected_models.fast_llm,
+            'tool_execution': self.vera.selected_models.tool_llm or self.vera.selected_models.fast_llm,
+            'reasoning': self.vera.selected_models.reasoning_llm or self.vera.selected_models.fast_llm,
+            'conversation': self.vera.selected_models.fast_llm,
+            'planning': self.vera.selected_models.intermediate_llm or self.vera.selected_models.fast_llm,
+            'review': self.vera.selected_models.deep_llm or self.vera.selected_models.fast_llm,
+            'deep': self.vera.selected_models.deep_llm or self.vera.selected_models.fast_llm,
+            'intermediate': self.vera.selected_models.intermediate_llm or self.vera.selected_models.fast_llm,
+            'coding': self.vera.selected_models.coding_llm or self.vera.selected_models.deep_llm,
+        }
         
-        # ✓ CRITICAL: Ensure agent_name is never None regardless of path
+        # Try to get from agent config first (if enabled)
+        if self.agents:
+            agent_name = self.vera.config.agents.default_agents.get(task_type)
+            
+            # If not found in agent config, fall back to model mapping
+            if agent_name is None:
+                agent_name = fallback_map.get(task_type)
+                if self.logger:
+                    self.logger.debug(
+                        f"Task '{task_type}' not in agent config, using model mapping: {agent_name}",
+                        context=context
+                    )
+        else:
+            # No agent system - use model mapping directly
+            agent_name = fallback_map.get(task_type)
+        
+        # Final safety: ultimate fallback
         if agent_name is None:
-            agent_name = "gemma2"  # Ultimate hardcoded fallback
+            agent_name = self.vera.selected_models.fast_llm or "gemma2"
             if self.logger:
                 self.logger.warning(
-                    f"Agent name was None for task_type '{task_type}', using hardcoded fallback: {agent_name}",
+                    f"No mapping found for '{task_type}', using ultimate fallback: {agent_name}",
                     context=context
                 )
         
@@ -73,17 +84,10 @@ class AgentTaskRouter:
             self.logger.info(f"Agent routing: {task_type} → {agent_name}", context=context)
         
         return agent_name
-        
+                
     def create_llm_for_agent(self, agent_name: str, override_params: Optional[Dict] = None):
         """
         Create LLM using agent configuration
-        
-        Args:
-            agent_name: Name of agent
-            override_params: Optional parameter overrides
-        
-        Returns:
-            Configured LLM instance
         """
         context = LogContext(
             agent=agent_name,
@@ -94,22 +98,24 @@ class AgentTaskRouter:
             self.logger.info(f"Creating LLM for agent: {agent_name}", context=context)
             self.logger.start_timer(f"create_llm_{agent_name}")
         
+        # ✅ FIX: Check if agent actually exists BEFORE trying to use it
         if self.agents:
-            try:
-                if self.logger:
-                    self.logger.debug("Attempting agent config LLM creation", context=context)
-                
-                llm = self.agents.create_llm_with_agent_config(
-                    agent_name,
-                    self.vera.ollama_manager
-                )
-                
-                if self.logger:
-                    duration = self.logger.stop_timer(f"create_llm_{agent_name}", context=context)
-                    duration = duration if duration is not None else 0.0
-                    # Get agent config for logging
-                    agent_config = self.agents.get_agent_config(agent_name)
-                    if agent_config:
+            agent_config = self.agents.get_agent_config(agent_name)
+            
+            if agent_config:  # ✅ Only try if config exists
+                try:
+                    if self.logger:
+                        self.logger.debug("Attempting agent config LLM creation", context=context)
+                    
+                    llm = self.agents.create_llm_with_agent_config(
+                        agent_name,
+                        self.vera.ollama_manager
+                    )
+                    
+                    if self.logger:
+                        duration = self.logger.stop_timer(f"create_llm_{agent_name}", context=context)
+                        duration = duration if duration is not None else 0.0
+                        
                         self.logger.success(
                             f"LLM created from agent config in {duration:.3f}s",
                             context=LogContext(
@@ -117,28 +123,33 @@ class AgentTaskRouter:
                                 model=agent_config.base_model,
                                 extra={
                                     'component': 'agent_router',
-                                    'temperature': agent_config.parameters.temperature,  # ← Fixed: nested access
-                                    'context_length': agent_config.num_ctx  # ← Fixed: correct attribute name
+                                    'temperature': agent_config.parameters.temperature,
+                                    'context_length': agent_config.num_ctx
                                 }
                             )
                         )
-                    else:
-                        self.logger.success(f"LLM created in {duration:.3f}s", context=context)
+                    
+                    return llm
                 
-                return llm
-            
-            except Exception as e:
+                except Exception as e:
+                    if self.logger:
+                        duration = self.logger.stop_timer(f"create_llm_{agent_name}", context=context)
+                        duration = duration if duration is not None else 0.0
+                        self.logger.warning(
+                            f"Failed to create LLM from agent config after {duration:.3f}s: {e}, using fallback",
+                            context=context
+                        )
+            else:
+                # ✅ Agent config doesn't exist - log and fall through to direct creation
                 if self.logger:
-                    duration = self.logger.stop_timer(f"create_llm_{agent_name}", context=context)
-                    duration = duration if duration is not None else 0.0
                     self.logger.warning(
-                        f"Failed to create LLM from agent config after {duration:.3f}s: {e}, using fallback",
+                        f"No agent config found for '{agent_name}', treating as direct model name",
                         context=context
                     )
         
-        # Fallback to standard model
+        # Fallback: create LLM directly using agent_name as model name
         if self.logger:
-            self.logger.info("Using fallback LLM creation", context=context)
+            self.logger.info("Using direct model creation (no agent config)", context=context)
         
         params = {'model': agent_name, 'temperature': 0.7}
         if override_params:
@@ -150,7 +161,7 @@ class AgentTaskRouter:
         
         if self.logger:
             duration = self.logger.stop_timer(f"create_llm_{agent_name}", context=context)
-            self.logger.success(f"Fallback LLM created in {duration:.3f}s", context=context)
+            self.logger.success(f"LLM created directly in {duration:.3f}s", context=context)
         
         return llm
     

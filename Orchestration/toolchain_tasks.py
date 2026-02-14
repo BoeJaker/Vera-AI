@@ -9,7 +9,7 @@ Adds support for:
 
 from Vera.Orchestration.orchestration import task, TaskType, Priority
 from Vera.Logging.logging import LogContext
-from toolchain_planner_enhanced import EnhancedToolChainPlanner, ExecutionMode
+from Vera.Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner, ExecutionMode
 
 # Import the extract_chunk_text utility from main task registrations
 try:
