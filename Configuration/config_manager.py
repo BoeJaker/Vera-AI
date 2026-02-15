@@ -300,7 +300,7 @@ class OllamaConfig:
                     name="remote",
                     api_url="http://192.168.0.250:11435",
                     priority=6,
-                    max_concurrent=1,
+                    max_concurrent=2,
                     has_gpu=True,
                     gpu_memory_gb=12
                 ),
@@ -366,6 +366,36 @@ class ModelConfig:
     # fast_top_p: float = 0.9
 
 @dataclass
+class PlatformConfig:
+    """Single platform configuration"""
+    enabled: bool = False
+    token: Optional[str] = None
+    allowed_users: List[int] = field(default_factory=list)
+    allowed_channels: List[str] = field(default_factory=list)
+
+@dataclass
+class PlatformsConfig:
+    """All platform configurations"""
+    telegram: PlatformConfig = field(default_factory=PlatformConfig)
+    discord: PlatformConfig = field(default_factory=PlatformConfig)
+    slack: PlatformConfig = field(default_factory=PlatformConfig)
+
+@dataclass 
+class BotSecurityConfig:
+    """Bot security settings"""
+    require_auth: bool = True
+    owner_ids: List[int] = field(default_factory=list)
+
+@dataclass
+class BotConfig:
+    """Messaging bot configuration"""
+    enabled: bool = False
+    auto_start: bool = False
+    background_thread: bool = True
+    platforms: PlatformsConfig = field(default_factory=PlatformsConfig)
+    security: BotSecurityConfig = field(default_factory=BotSecurityConfig)
+
+@dataclass
 class VeraConfig:
     """Main Vera configuration"""
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
@@ -377,6 +407,7 @@ class VeraConfig:
     playwright: PlaywrightConfig = field(default_factory=PlaywrightConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     agents: AgentSystemConfig = field(default_factory=AgentSystemConfig) 
+    bots: BotConfig = field(default_factory=BotConfig)
     
     # General settings
     enable_hot_reload: bool = True
@@ -565,8 +596,25 @@ class ConfigManager:
             ]
         else:
             ollama_config = OllamaConfig(**ollama_data)
-        
+
+        bots_data = data.get('bots', {})
+        platforms_data = bots_data.pop('platforms', {})
+        security_data = bots_data.pop('security', {})
+
+        platforms_config = PlatformsConfig(
+            telegram=PlatformConfig(**platforms_data.get('telegram', {})),
+            discord=PlatformConfig(**platforms_data.get('discord', {})),
+            slack=PlatformConfig(**platforms_data.get('slack', {})),
+        )
+
+        bot_config = BotConfig(
+            platforms=platforms_config,
+            security=BotSecurityConfig(**security_data),
+            **bots_data
+        )
+
         config_dict = {
+            'bots': bot_config,
             'ollama': ollama_config,
             'models': ModelConfig(**data.get('models', {})),
             'memory': MemoryConfig(**data.get('memory', {})),
@@ -594,6 +642,7 @@ class ConfigManager:
             ]
         
         return {
+            'bots': asdict(config.bots),
             'ollama': ollama_dict,
             'models': asdict(config.models),
             'memory': asdict(config.memory),

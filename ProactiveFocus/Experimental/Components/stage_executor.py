@@ -1,11 +1,25 @@
-# stage_executor.py — FIXED VERSION
-"""Executes individual workflow stages."""
+# stage_executor.py — CLEAN MODULAR VERSION
+"""
+Executes individual workflow stages using modular implementations.
+
+All stages (Ideas, Next Steps, Actions, Questions, Artifacts) are implemented
+as modular classes in Vera/ProactiveFocus/Experimental/Components/Stages/
+
+Only Execution and Review stages remain here due to complex orchestrator integration.
+"""
 
 import json
 import re
 import time
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+# Direct imports - no fallback, no conditionals
+from Vera.ProactiveFocus.Experimental.Components.Stages.ideas import IdeasStage
+from Vera.ProactiveFocus.Experimental.Components.Stages.questions import QuestionsStage
+from Vera.ProactiveFocus.Experimental.Components.Stages.next_steps import NextStepsStage
+from Vera.ProactiveFocus.Experimental.Components.Stages.actions import ActionsStage
+from Vera.ProactiveFocus.Experimental.Components.Stages.artifacts import ArtifactsStage
 
 
 class StageExecutor:
@@ -17,206 +31,49 @@ class StageExecutor:
     
     def __init__(self, focus_manager):
         self.fm = focus_manager
+        
+        # Initialize modular stage instances
+        self._ideas_stage = IdeasStage()
+        self._questions_stage = QuestionsStage()
+        self._next_steps_stage = NextStepsStage()
+        self._actions_stage = ActionsStage()
+        self._artifacts_stage = ArtifactsStage()
+        
+        print("[StageExecutor] Initialized with modular stages")
     
     # ============================================================
-    # IDEAS STAGE
+    # MODULAR STAGES (Direct delegation - no fallbacks)
     # ============================================================
     
     def execute_ideas_stage(self, context=None):
-        """Generate ideas with full graph integration."""
-        stage_id = self._create_stage_node("Ideas Generation", "ideas")
-        
-        self.fm._set_stage("Ideas Generation", "Analyzing and generating creative ideas", 3)
-        self.fm._stream_output(f"Focus: {self.fm.focus}", "info")
-        self.fm._stream_output("Generating ideas...", "info")
-        
-        prompt = f"""
-        Project: {self.fm.focus}
-        
-        Current State:
-        {json.dumps(self.fm.board.get_stats(), indent=2)}
-        
-        {f"Context: {context}" if context else ""}
-        
-        Generate 5 creative, actionable ideas to advance this project.
-        Focus on practical solutions and innovative approaches.
-        Respond with a JSON array of idea strings.
-        """
-        
-        self.fm._update_progress()
-        
-        try:
-            response = ""
-            for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
-                response += chunk
-            self.fm._update_progress()
-            self.fm._stream_output("Ideas generated", "success")
-        except Exception as e:
-            self.fm._stream_output(f"Error: {str(e)}", "error")
-            response = f"Error: {str(e)}"
-        
-        ideas = self._parse_json_response(response)
-        
-        self.fm._update_progress()
-        self.fm._stream_output(f"Generated {len(ideas)} ideas", "success")
-        
-        for idx, idea in enumerate(ideas, 1):
-            if self.fm.hybrid_memory:
-                idea_id = f"idea_{stage_id}_{idx}"
-                self.fm.hybrid_memory.upsert_entity(
-                    entity_id=idea_id, etype="idea",
-                    labels=["Idea", "FocusBoardItem"],
-                    properties={"text": idea, "category": "ideas", "index": idx,
-                                "stage_id": stage_id, "project_id": self.fm.project_id,
-                                "created_at": datetime.utcnow().isoformat()})
-                self.fm.hybrid_memory.link(stage_id, idea_id, "GENERATED", {"index": idx})
-            
-            self.fm.add_to_focus_board("ideas", idea)
-            self.fm._stream_output(f"  {idx}. {idea[:100]}{'...' if len(idea) > 100 else ''}", "info")
-        
-        self._complete_stage_node(stage_id, response, len(ideas))
-        self.fm._clear_stage()
-        return ideas
-    
-    # ============================================================
-    # NEXT STEPS STAGE
-    # ============================================================
+        """Generate ideas - delegates to IdeasStage."""
+        output = self._ideas_stage.execute(self.fm, context)
+        return output.ideas  # Return list for backward compatibility
     
     def execute_next_steps_stage(self, context=None):
-        """Generate next steps."""
-        stage_id = self._create_stage_node("Next Steps", "next_steps")
-        self.fm._set_stage("Next Steps", "Determining actionable next steps", 3)
-        
-        prompt = f"""
-        Project: {self.fm.focus}
-        
-        Current State:
-        - Progress: {json.dumps(self.fm.board.get_category('progress')[-5:], indent=2)}
-        - Issues: {json.dumps(self.fm.board.get_category('issues'), indent=2)}
-        - Ideas: {json.dumps(self.fm.board.get_category('ideas'), indent=2)}
-        
-        {f"Context: {context}" if context else ""}
-        
-        Generate 5 specific, actionable next steps.
-        Consider current progress and outstanding issues.
-        Respond with a JSON array of step strings.
-        """
-        
-        self.fm._update_progress()
-        
-        try:
-            response = ""
-            for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
-                response += chunk
-            self.fm._update_progress()
-        except Exception as e:
-            self.fm._stream_output(f"Error: {str(e)}", "error")
-            response = f"Error: {str(e)}"
-        
-        steps = self._parse_json_response(response)
-        
-        for idx, step in enumerate(steps, 1):
-            if self.fm.hybrid_memory:
-                step_id = f"next_step_{stage_id}_{idx}"
-                self.fm.hybrid_memory.upsert_entity(
-                    entity_id=step_id, etype="next_step",
-                    labels=["NextStep", "FocusBoardItem"],
-                    properties={"text": step, "category": "next_steps", "index": idx,
-                                "stage_id": stage_id, "project_id": self.fm.project_id,
-                                "created_at": datetime.utcnow().isoformat()})
-                self.fm.hybrid_memory.link(stage_id, step_id, "GENERATED", {"index": idx})
-            
-            self.fm.add_to_focus_board("next_steps", step)
-            self.fm._stream_output(f"  {idx}. {step[:100]}", "info")
-        
-        self._complete_stage_node(stage_id, response, len(steps))
-        self.fm._clear_stage()
-        return steps
-    
-    # ============================================================
-    # ACTIONS STAGE
-    # ============================================================
+        """Generate next steps - delegates to NextStepsStage."""
+        output = self._next_steps_stage.execute(self.fm, context)
+        return output.next_steps  # Return list for backward compatibility
     
     def execute_actions_stage(self, context=None):
-        """Generate executable actions/goals.
-        
-        FIX: Uses _parse_json_actions() to properly handle ```json fences,
-        instead of raw json.loads() which fails and creates 1 blob action.
-        """
-        stage_id = self._create_stage_node("Action Planning", "actions")
-        self.fm._set_stage("Action Planning", "Creating executable actions", 4)
-        
-        available_tools = [tool.name for tool in self.fm.agent.tools]
-        
-        prompt = f"""
-        Project: {self.fm.focus}
-        
-        Board State:
-        {json.dumps(self.fm.board.get_all(), indent=2)}
-        
-        Available Tools: {available_tools}
-        
-        {f"Context: {context}" if context else ""}
-        
-        Generate 3-5 executable actions using available tools.
-        Each action should include:
-        - description: What to do (or "goal" for goal-oriented actions)
-        - priority: high, medium, or low
-        - success_criteria: What a successful result looks like
-        - context: Any additional context needed
-        
-        Respond with JSON array of action objects.
-        """
-        
-        self.fm._update_progress()
-        
-        try:
-            response = ""
-            for chunk in self.fm._stream_llm_with_thought_broadcast(self.fm.agent.deep_llm, prompt):
-                response += chunk
-            self.fm._update_progress()
-        except Exception as e:
-            response = f"Error: {str(e)}"
-        
-        # FIX: Use proper JSON parsing that handles ```json fences
-        actions = self._parse_json_actions(response)
-        
-        for idx, action in enumerate(actions, 1):
-            description = action.get("description", action.get("goal", str(action)))
-            priority = action.get("priority", "medium")
-            
-            if self.fm.hybrid_memory:
-                action_id = f"action_{stage_id}_{idx}"
-                self.fm.hybrid_memory.upsert_entity(
-                    entity_id=action_id, etype="action",
-                    labels=["Action", "FocusBoardItem", priority.capitalize()],
-                    properties={"text": description, "priority": priority,
-                                "stage_id": stage_id, "project_id": self.fm.project_id,
-                                "created_at": datetime.utcnow().isoformat()})
-                self.fm.hybrid_memory.link(stage_id, action_id, "GENERATED", {"priority": priority})
-            
-            # Store the full action dict as metadata so execution stage can use it
-            self.fm.add_to_focus_board("actions", description, metadata=action)
-            
-            emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(priority, "⚪")
-            self.fm._stream_output(f"  {emoji} {idx}. {description[:100]}", "info")
-        
-        self._complete_stage_node(stage_id, response, len(actions))
-        self.fm._clear_stage()
-        return actions
+        """Generate actions - delegates to ActionsStage."""
+        output = self._actions_stage.execute(self.fm, context)
+        return output.actions  # Return list for backward compatibility
+    
+    def execute_questions_stage(self, context=None):
+        """Ask questions via Telegram - delegates to QuestionsStage."""
+        return self._questions_stage.execute(self.fm, context)
+    
+    def execute_artifacts_stage(self, context=None):
+        """Generate artifacts - delegates to ArtifactsStage."""
+        return self._artifacts_stage.execute(self.fm, context)
     
     # ============================================================
-    # EXECUTION STAGE
+    # EXECUTION STAGE (Complex orchestrator integration)
     # ============================================================
     
     def execute_execution_stage(self, max_executions=2, priority_filter="all"):
-        """Execute actions/goals from the focus board.
-        
-        FIX: Changed default priority_filter from "high" to "all".
-        FIX: Routes through handoff_to_toolchain (orchestrator-aware).
-        FIX: Uses _parse_goal_item to properly extract goal from board items.
-        FIX: Marks unexecutable actions as stale to prevent infinite loops.
-        """
+        """Execute actions/goals from the focus board."""
         self.fm._set_stage(
             "Goal Execution",
             f"Executing up to {max_executions} {priority_filter}-priority goals",
@@ -270,7 +127,7 @@ class StageExecutor:
                 self.fm._stream_output(
                     f"   Success criteria: {goal_dict['success_criteria'][:100]}", "info")
             
-            # FIX: Route through handoff_to_toolchain (orchestrator-aware)
+            # Route through handoff_to_toolchain
             try:
                 result = self.handoff_to_toolchain(goal_dict)
                 
@@ -322,14 +179,11 @@ class StageExecutor:
         return executed_count
     
     # ============================================================
-    # REVIEW STAGE
+    # REVIEW STAGE (File saving logic)
     # ============================================================
     
     def execute_review_stage(self, context=None):
-        """Review current project state and generate summary.
-        
-        FIX: Saves review to focus board AND to project documentation folder.
-        """
+        """Review current project state and generate summary."""
         self.fm._set_stage("Review", "Analyzing project state", 2)
         
         prompt = f"""
@@ -364,14 +218,14 @@ class StageExecutor:
         except Exception as e:
             response = f"Error: {str(e)}"
         
-        # FIX: Save review to focus board
+        # Save review to focus board
         if response and not response.startswith("Error:"):
             review_summary = response[:300] + "..." if len(response) > 300 else response
             self.fm.add_to_focus_board("progress", f"[Review] {review_summary}", metadata={
                 "type": "review", "full_review_length": len(response),
                 "timestamp": datetime.utcnow().isoformat()})
         
-        # FIX: Save full review to project documentation folder
+        # Save full review to project documentation folder
         if response and not response.startswith("Error:"):
             self._save_review_to_file(response)
         
@@ -379,15 +233,11 @@ class StageExecutor:
         return response
     
     # ============================================================
-    # TOOLCHAIN HANDOFF (orchestrator-aware)
+    # TOOLCHAIN HANDOFF
     # ============================================================
     
     def handoff_to_toolchain(self, action):
-        """Hand off a goal to the toolchain via the orchestrator.
-        
-        FIX: All references use self.fm.* to access manager state.
-        Mirrors the working monolith's execution path.
-        """
+        """Hand off a goal to the toolchain via the orchestrator."""
         goal = action.get('goal', action.get('description', str(action)))
         priority = action.get('priority', 'medium')
         success_criteria = action.get('success_criteria', '')
@@ -499,7 +349,7 @@ class StageExecutor:
             return None
     
     # ============================================================
-    # TOOLCHAIN ROUTING HELPERS
+    # HELPER METHODS
     # ============================================================
     
     def _build_toolchain_query(self, goal, priority, success_criteria, goal_context):
@@ -663,112 +513,6 @@ Follow with a brief (1-2 sentence) explanation.
         except Exception as e:
             self.fm._stream_output(f"Could not evaluate success criteria: {e}", "warning")
     
-    # ============================================================
-    # GRAPH HELPERS
-    # ============================================================
-    
-    def _create_stage_node(self, stage_name, stage_type, activity=""):
-        if not self.fm.hybrid_memory:
-            return None
-        
-        stage_id = f"stage_{stage_type}_{self.fm.current_iteration_id}_{int(datetime.now().timestamp())}"
-        
-        self.fm.hybrid_memory.upsert_entity(
-            entity_id=stage_id, etype="workflow_stage",
-            labels=["WorkflowStage", stage_type.capitalize()],
-            properties={"stage_name": stage_name, "stage_type": stage_type,
-                        "activity": activity, "iteration_id": self.fm.current_iteration_id,
-                        "project_id": self.fm.project_id,
-                        "started_at": datetime.utcnow().isoformat(), "status": "in_progress"})
-        
-        if self.fm.current_iteration_id:
-            self.fm.hybrid_memory.link(
-                self.fm.current_iteration_id, stage_id, "HAS_STAGE", {"stage_type": stage_type})
-        
-        self.fm.current_stage_id = stage_id
-        return stage_id
-    
-    def _complete_stage_node(self, stage_id, output, output_count):
-        if not self.fm.hybrid_memory or not stage_id:
-            return
-        with self.fm.hybrid_memory.graph._driver.session() as sess:
-            sess.run("""
-                MATCH (s:WorkflowStage {id: $id})
-                SET s.completed_at = $completed_at, s.status = 'completed', s.output_count = $output_count
-            """, {"id": stage_id, "completed_at": datetime.utcnow().isoformat(), "output_count": output_count})
-        self.fm.previous_stage_id = stage_id
-        self.fm.current_stage_id = None
-    
-    # ============================================================
-    # PARSING HELPERS
-    # ============================================================
-    
-    def _parse_json_response(self, response):
-        """Parse JSON response (for ideas/next_steps — string arrays)."""
-        cleaned = response.strip()
-        if cleaned.startswith('```'):
-            lines = cleaned.split('\n')
-            if lines[0].startswith('```'): lines = lines[1:]
-            if lines and lines[-1].strip() == '```': lines = lines[:-1]
-            cleaned = '\n'.join(lines)
-        try:
-            parsed = json.loads(cleaned)
-            return parsed if isinstance(parsed, list) else [parsed]
-        except:
-            lines = [line.strip() for line in cleaned.split('\n') if line.strip()]
-            return lines if lines else [response]
-    
-    def _parse_json_actions(self, response):
-        """Parse JSON action objects from LLM response.
-        
-        FIX: Strips ```json fences before parsing, normalizes items into
-        proper action dicts with description/goal/tools/priority.
-        """
-        cleaned = response.strip()
-        if cleaned.startswith('```'):
-            lines = cleaned.split('\n')
-            if lines[0].startswith('```'): lines = lines[1:]
-            if lines and lines[-1].strip() == '```': lines = lines[:-1]
-            cleaned = '\n'.join(lines).strip()
-        
-        parsed = None
-        try:
-            parsed = json.loads(cleaned)
-            if not isinstance(parsed, list): parsed = [parsed]
-        except (json.JSONDecodeError, ValueError):
-            array_match = re.search(r'\[[\s\S]*\]', cleaned)
-            if array_match:
-                try:
-                    parsed = json.loads(array_match.group())
-                    if not isinstance(parsed, list): parsed = [parsed]
-                except (json.JSONDecodeError, ValueError):
-                    pass
-        
-        if parsed is None:
-            lines = [l.strip() for l in cleaned.split('\n') if l.strip() and l.strip() not in '[]{}']
-            parsed = lines if lines else [response[:500]]
-        
-        actions = []
-        for item in parsed:
-            if isinstance(item, dict):
-                actions.append({
-                    "description": item.get("description", item.get("goal", item.get("action", item.get("text", str(item))))),
-                    "goal": item.get("goal", item.get("description", "")),
-                    "tools": item.get("tools", []),
-                    "priority": item.get("priority", "medium"),
-                    "success_criteria": item.get("success_criteria", ""),
-                    "context": item.get("context", "")
-                })
-            elif isinstance(item, str):
-                actions.append({"description": item, "goal": item, "tools": [],
-                                "priority": "medium", "success_criteria": "", "context": ""})
-            else:
-                actions.append({"description": str(item), "goal": str(item), "tools": [],
-                                "priority": "medium", "success_criteria": "", "context": ""})
-        
-        return actions if actions else [{"description": response[:500], "goal": response[:500],
-                                          "tools": [], "priority": "medium"}]
-    
     def _parse_goal_item(self, item):
         """Parse a focus board action item into a normalized goal dict."""
         if isinstance(item, dict):
@@ -820,10 +564,6 @@ Follow with a brief (1-2 sentence) explanation.
             return {'goal': item, 'priority': 'medium', 'success_criteria': '', 'context': ''}
         
         return {'goal': str(item), 'priority': 'medium', 'success_criteria': '', 'context': ''}
-    
-    # ============================================================
-    # REVIEW FILE HELPER
-    # ============================================================
     
     def _save_review_to_file(self, review_text):
         """Save review to project documentation folder."""

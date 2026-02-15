@@ -1,0 +1,33 @@
+# Add this section to your Configuration/vera_config.yaml file
+
+# Messaging Bots Configuration
+bots:
+  enabled: false  # Master switch - set to true to enable bots
+  
+  # Individual platform settings
+  platforms:
+    telegram:
+      enabled: false
+      token: null  # Set via TELEGRAM_BOT_TOKEN env var or here
+      allowed_users: []  # Empty list = all users allowed
+      
+    discord:
+      enabled: false
+      token: null  # Set via DISCORD_BOT_TOKEN env var
+      allowed_channels: []
+      
+    slack:
+      enabled: false
+      token: null  # Set via SLACK_BOT_TOKEN env var
+      allowed_channels: []
+  
+  # Auto-start bots when Vera initializes
+  auto_start: true
+  
+  # Run in background thread (true) or separate process (false)
+  background_thread: true
+  
+  # Security settings
+  security:
+    require_auth: true
+    owner_ids: []  # Telegram user IDs with full access

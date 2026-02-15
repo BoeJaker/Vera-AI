@@ -416,6 +416,7 @@ class HybridMemory:
         archive_jsonl: Optional[str] = None,
         enable_llm_enrichment: bool = False,
         ollama_endpoint: str = "http://localhost:11434",
+         orchestrator=None,
     ):
         self.graph = GraphClient(neo4j_uri, neo4j_user, neo4j_password)
         self.vec = VectorClient(chroma_dir)
@@ -435,8 +436,119 @@ class HybridMemory:
         self._execution_context = threading.local()
         self._execution_context.current_execution_id = None
         self._execution_context.tracked_nodes = set()
+
+        self.orchestrator = orchestrator
+        self.use_orchestrated_encoding = orchestrator is not None
+        
+        if self.use_orchestrated_encoding:
+            logger.info("[HybridMemory] Orchestrated encoding enabled (GPU-optimized)")
+        else:
+            logger.info("[HybridMemory] Direct encoding mode (no orchestrator)")
+    
         logger.debug("[HybridMemory] Execution context tracking initialized")
 
+    def _encode_text_for_vector_store(self, text: str, metadata: Optional[Dict[str, Any]] = None):
+        """
+        Encode text for vector storage.
+        Routes through orchestrator if available (GPU-optimized).
+        """
+        if self.use_orchestrated_encoding:
+            # Use orchestrator task (GPU-routed)
+            logger.debug(f"[HybridMemory] Encoding via orchestrator: {len(text)} chars")
+            
+            try:
+                # Submit encoding task
+                task_id = self.orchestrator.submit_task(
+                    'memory.encode_text',
+                    vera_instance=self._get_vera_instance(),
+                    text=text,
+                    metadata=metadata
+                )
+                
+                # Wait for result (with timeout)
+                result_obj = self.orchestrator.wait_for_result(task_id, timeout=30.0)
+                
+                if result_obj and result_obj.status == TaskStatus.COMPLETED:
+                    result = result_obj.result
+                    return result['embedding']
+                else:
+                    error_msg = result_obj.error if result_obj else "Task timed out"
+                    logger.warning(f"[HybridMemory] Orchestrated encoding failed: {error_msg}, falling back to direct")
+                    return self._encode_text_direct(text)
+            
+            except Exception as e:
+                logger.warning(f"[HybridMemory] Orchestrated encoding error: {e}, falling back to direct")
+                return self._encode_text_direct(text)
+        
+        else:
+            # Direct encoding
+            return self._encode_text_direct(text)
+    
+    def _encode_text_direct(self, text: str):
+        """Direct encoding without orchestrator (fallback)"""
+        # Your existing direct encoding logic
+        from langchain_community.embeddings import OllamaEmbeddings
+        
+        embeddings = OllamaEmbeddings(
+            model=self.embedding_llm,
+            base_url="http://localhost:11434"
+        )
+        
+        return embeddings.embed_query(text)
+    
+    def _get_vera_instance(self):
+        """
+        Get reference to Vera instance.
+        This needs to be set externally when HybridMemory is initialized.
+        """
+        if not hasattr(self, '_vera_ref'):
+            raise RuntimeError("Vera instance reference not set on HybridMemory")
+        return self._vera_ref
+    
+    def set_vera_instance(self, vera_instance):
+        """Set reference to Vera instance for orchestrated tasks"""
+        self._vera_ref = vera_instance
+        logger.debug("[HybridMemory] Vera instance reference set")
+    
+    def extract_and_link_orchestrated(
+        self,
+        session_id: str,
+        text: str,
+        source_node_id: Optional[str] = None,
+        auto_promote: bool = False
+    ):
+        """
+        Extract entities using orchestrator (GPU-accelerated).
+        Falls back to direct extraction if orchestrator unavailable.
+        """
+        if self.use_orchestrated_encoding:
+            logger.debug(f"[HybridMemory] Entity extraction via orchestrator: {len(text)} chars")
+            
+            try:
+                task_id = self.orchestrator.submit_task(
+                    'memory.extract_entities',
+                    vera_instance=self._get_vera_instance(),
+                    session_id=session_id,
+                    text=text,
+                    source_node_id=source_node_id,
+                    auto_promote=auto_promote
+                )
+                
+                result_obj = self.orchestrator.wait_for_result(task_id, timeout=60.0)
+                
+                if result_obj and result_obj.status == TaskStatus.COMPLETED:
+                    return result_obj.result
+                else:
+                    logger.warning("[HybridMemory] Orchestrated extraction failed, falling back")
+                    return self.extract_and_link(session_id, text, source_node_id, auto_promote)
+            
+            except Exception as e:
+                logger.warning(f"[HybridMemory] Orchestrated extraction error: {e}, falling back")
+                return self.extract_and_link(session_id, text, source_node_id, auto_promote)
+        
+        else:
+            return self.extract_and_link(session_id, text, source_node_id, auto_promote)
+        
     # -------- Sessions (Tier 2) --------
     def start_session(self, session_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Session:
         sid = session_id or f"sess_{int(time.time()*1000)}"

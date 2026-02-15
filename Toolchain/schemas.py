@@ -1,7 +1,14 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List, Union, Literal
+
+"""
+This module defines input schemas for Vera tools and components using Pydantic models.
+These schemas provide strong typing and clear documentation for tool inputs, enhancing LLM understanding and reducing errors
+when invoking tools. Each tool or component can have a corresponding input schema that specifies the expected parameters and their types.
+"""
+
 # ============================================================================
-# MISSING INPUT SCHEMAS
+# INPUT SCHEMAS
 # ============================================================================
 
 class SearchFilesInput(BaseModel):
@@ -72,10 +79,17 @@ class WriteFileInput(BaseModel):
     filepath: str = Field(..., description="Full path where file should be written")
     content: str = Field(..., description="Content to write to the file")
 
+class EditFileInput(BaseModel):
+    """Input schema for writing files."""
+    filepath: str = Field(..., description="Full path where file should be written")
+    content: str = Field(..., description="Content to write to the file")
+    line_numbers: Optional[List[int]] = Field(default=None, description="Specific line numbers to edit (1-based index). If not provided, the entire file will be replaced.")
+
 
 class CommandInput(BaseModel):
     """Input schema for shell commands."""
     command: str = Field(..., description="Shell command to execute")
+    working_dir: Optional[str] = Field(default=None, description="Working directory for the command")
 
 
 class PythonInput(BaseModel):

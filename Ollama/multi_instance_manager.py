@@ -331,20 +331,37 @@ class MultiInstanceOllamaManager:
         
         # ── Model Routing Policy ──────────────────────────────────────
         # GPU instance names (set via config or manually after init)
-        self.gpu_instances: List[str] = getattr(config, 'gpu_instances', [])
+        self.gpu_instances: List[str] = getattr(config, 'gpu_instances', ["remote"])
         
         # Light models: MUST NOT be routed to GPU (keep GPUs free for heavy work)
-        # Matched as case-insensitive substrings against the normalized model name
         self.light_model_patterns: List[str] = getattr(
             config, 'light_model_patterns',
-            ["fast.llm", "gemma2:latest"]
+            [
+                "fast.llm",
+                "triage-agent",
+                "triage-agent:latest",
+                "gemma2", 
+                "gemma2:latest", 
+                "nomic-embed", 
+                "llm.fast"]  # Add embedding models
         )
         
         # Heavy models: PREFER GPU, wait longer for GPU availability
-        # Matched as case-insensitive substrings against the normalized model name
         self.heavy_model_patterns: List[str] = getattr(
             config, 'heavy_model_patterns',
-            ["mistral7b:latest", "codestral", "gpt-oss:latest"]
+            [
+                "mistral:7b", 
+                "mistral:latest", 
+                "codestral", 
+                "codestral:latest", 
+                "gpt-oss:20b",
+                "gemma3"
+                "gpt-oss:latest",
+                "deepseek-r1",
+                "qwen",
+                "qwen2.5:7b",
+                "llama3"
+            ]
         )
         
         # How long heavy models will wait for a GPU instance before falling back to CPU (seconds)

@@ -23,6 +23,7 @@ from Vera.Orchestration.orchestration import task, proactive_task, TaskType, Pri
 from Vera.Logging.logging import LogContext
 import time
 import json
+from typing import Optional, Any, Dict, List
 
 def extract_chunk_text(chunk):
     """
@@ -268,6 +269,48 @@ def llm_triage(vera_instance, query: str):
             context=LogContext(extra={**context.extra, 'chunk_count': chunk_count, 'duration': duration, 'fallback': True})
         )
 
+# @task("llm.encode", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=5.0)
+# def llm_encode(vera_instance, llm_type: str, prompt: str, **kwargs):
+#     """Encode text to vector using LLM embeddings."""
+#     logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+#     with_memory = kwargs.get('with_memory', False)
+#     context = LogContext(extra={
+#         'component': 'task',
+#         'task': 'llm.generate',
+#         'llm_type': llm_type,
+#         'prompt_length': len(prompt),
+#         'with_memory': with_memory
+#     })
+#     if logger:
+#         logger.info(
+#             f"📝 Generate task starting: type={llm_type}, memory={with_memory}",
+#             context=context
+#         )
+#         logger.start_timer("llm_generate")
+    
+#     router = _get_router(vera_instance)
+    
+#     # Try agent routing
+#     if router:
+#         try:
+#             agent_type_map = {
+#                 'fast': 'conversation',
+#                 'intermediate': 'planning',
+#                 'deep': 'review',
+#                 'reasoning': 'reasoning'
+#             }
+            
+#             agent_type = agent_type_map.get(llm_type, 'conversation')
+#             agent_name = router.get_agent_for_task(agent_type)
+            
+#             log_agent_selection(
+#                 logger, agent_type, agent_name, context,
+#                 extra_info={'llm_type': llm_type, 'mapped_to': agent_type}
+#             )
+            
+#             llm = router.create_llm_for_agent(agent_name)
+#             memory_config = router.get_agent_memory_config(agent_name)
+    
 
 @task("llm.generate", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=10.0)
 def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
@@ -279,7 +322,7 @@ def llm_generate(vera_instance, llm_type: str, prompt: str, **kwargs):
     with_memory = kwargs.get('with_memory', False)
     context = LogContext(extra={
         'component': 'task',
-        'task': 'llm.generate',
+        'task': 'llm.encode',
         'llm_type': llm_type,
         'prompt_length': len(prompt),
         'with_memory': with_memory
@@ -1854,3 +1897,248 @@ if AGENTS_AVAILABLE:
             
             return {"error": f"Agent not found: {agent_name}"}
 
+
+# ============================================================================
+# MEMORY ENCODING TASKS (GPU-OPTIMIZED)
+# ============================================================================
+
+@task("memory.encode_text", task_type=TaskType.LLM, priority=Priority.HIGH, 
+      estimated_duration=2.0, requires_gpu=True, memory_mb=1024)
+def memory_encode_text(vera_instance, text: str, metadata: Optional[Dict[str, Any]] = None):
+    """
+    Encode text using embedding model for memory storage.
+    Routes to GPU instances for Mistral-based embeddings.
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'memory.encode_text',
+        'text_length': len(text),
+        'metadata': metadata
+    })
+    
+    if logger:
+        logger.info(f"🧠 Encoding text for memory: {len(text)} chars", context=context)
+        logger.start_timer("memory_encode")
+    
+    try:
+        # Get the embedding model (Mistral-based)
+        embedding_model = getattr(vera_instance, 'embedding_llm', 'mistral:7b')
+        
+        if logger:
+            logger.debug(f"Using embedding model: {embedding_model}", context=context)
+        
+        # Use Ollama manager to create embeddings with GPU routing
+        if hasattr(vera_instance, 'ollama_manager'):
+            # Get embeddings via Ollama manager (will route to GPU)
+            embeddings = vera_instance.ollama_manager.create_embeddings(
+                model=embedding_model
+            )
+            
+            # Generate embedding
+            embedding_vector = embeddings.embed_query(text)
+            
+            if logger:
+                duration = logger.stop_timer("memory_encode", context=context)
+                logger.success(
+                    f"Text encoded: {len(embedding_vector)} dimensions in {duration:.3f}s",
+                    context=LogContext(extra={
+                        **context.extra,
+                        'vector_dims': len(embedding_vector),
+                        'duration': duration
+                    })
+                )
+            
+            return {
+                'embedding': embedding_vector,
+                'text': text,
+                'metadata': metadata,
+                'model': embedding_model,
+                'dimensions': len(embedding_vector)
+            }
+        
+        else:
+            # Fallback to direct encoding if Ollama manager not available
+            if logger:
+                logger.warning("Ollama manager not available, using fallback encoding", context=context)
+            
+            # Use LangChain embeddings directly
+            from langchain_community.embeddings import OllamaEmbeddings
+            
+            embeddings = OllamaEmbeddings(
+                model=embedding_model,
+                base_url=getattr(vera_instance, 'ollama_base_url', 'http://localhost:11434')
+            )
+            
+            embedding_vector = embeddings.embed_query(text)
+            
+            if logger:
+                duration = logger.stop_timer("memory_encode", context=context)
+                logger.success(f"Text encoded (fallback): {len(embedding_vector)} dimensions", context=context)
+            
+            return {
+                'embedding': embedding_vector,
+                'text': text,
+                'metadata': metadata,
+                'model': embedding_model,
+                'dimensions': len(embedding_vector)
+            }
+    
+    except Exception as e:
+        if logger:
+            duration = logger.stop_timer("memory_encode", context=context)
+            logger.error(
+                f"Encoding failed: {type(e).__name__}: {str(e)}",
+                exc_info=True,
+                context=LogContext(extra={**context.extra, 'duration': duration, 'error': str(e)})
+            )
+        
+        raise
+
+
+@task("memory.encode_batch", task_type=TaskType.LLM, priority=Priority.NORMAL,
+      estimated_duration=5.0, requires_gpu=True, memory_mb=2048)
+def memory_encode_batch(vera_instance, texts: List[str], metadata: Optional[List[Dict[str, Any]]] = None):
+    """
+    Batch encode multiple texts for memory storage.
+    More efficient than encoding one-by-one.
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'memory.encode_batch',
+        'batch_size': len(texts),
+        'total_chars': sum(len(t) for t in texts)
+    })
+    
+    if logger:
+        logger.info(f"🧠 Batch encoding {len(texts)} texts for memory", context=context)
+        logger.start_timer("memory_encode_batch")
+    
+    try:
+        embedding_model = getattr(vera_instance, 'embedding_llm', 'mistral:7b')
+        
+        if hasattr(vera_instance, 'ollama_manager'):
+            embeddings = vera_instance.ollama_manager.create_embeddings(
+                model=embedding_model
+            )
+            
+            # Batch encoding
+            embedding_vectors = embeddings.embed_documents(texts)
+            
+            if logger:
+                duration = logger.stop_timer("memory_encode_batch", context=context)
+                avg_time_per_text = duration / len(texts)
+                logger.success(
+                    f"Batch encoded {len(texts)} texts in {duration:.3f}s ({avg_time_per_text:.3f}s/text)",
+                    context=LogContext(extra={
+                        **context.extra,
+                        'duration': duration,
+                        'avg_per_text': avg_time_per_text
+                    })
+                )
+            
+            results = []
+            for i, (text, embedding) in enumerate(zip(texts, embedding_vectors)):
+                results.append({
+                    'embedding': embedding,
+                    'text': text,
+                    'metadata': metadata[i] if metadata and i < len(metadata) else None,
+                    'model': embedding_model,
+                    'dimensions': len(embedding)
+                })
+            
+            return results
+        
+        else:
+            # Fallback
+            from langchain_community.embeddings import OllamaEmbeddings
+            
+            embeddings = OllamaEmbeddings(
+                model=embedding_model,
+                base_url=getattr(vera_instance, 'ollama_base_url', 'http://localhost:11434')
+            )
+            
+            embedding_vectors = embeddings.embed_documents(texts)
+            
+            if logger:
+                duration = logger.stop_timer("memory_encode_batch", context=context)
+                logger.success(f"Batch encoded (fallback): {len(texts)} texts", context=context)
+            
+            results = []
+            for i, (text, embedding) in enumerate(zip(texts, embedding_vectors)):
+                results.append({
+                    'embedding': embedding,
+                    'text': text,
+                    'metadata': metadata[i] if metadata and i < len(metadata) else None,
+                    'model': embedding_model,
+                    'dimensions': len(embedding)
+                })
+            
+            return results
+    
+    except Exception as e:
+        if logger:
+            duration = logger.stop_timer("memory_encode_batch", context=context)
+            logger.error(f"Batch encoding failed: {e}", exc_info=True, context=context)
+        
+        raise
+
+
+@task("memory.extract_entities", task_type=TaskType.LLM, priority=Priority.NORMAL,
+      estimated_duration=8.0, requires_gpu=True, memory_mb=2048)
+def memory_extract_entities(vera_instance, session_id: str, text: str, 
+                            source_node_id: Optional[str] = None,
+                            auto_promote: bool = False):
+    """
+    Extract entities and relationships from text for knowledge graph.
+    Uses GPU-accelerated NLP processing.
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'memory.extract_entities',
+        'session_id': session_id,
+        'text_length': len(text),
+        'auto_promote': auto_promote
+    })
+    
+    if logger:
+        logger.info(f"🔍 Extracting entities from {len(text)} chars", context=context)
+        logger.start_timer("memory_extract")
+    
+    try:
+        if not hasattr(vera_instance, 'mem'):
+            raise RuntimeError("HybridMemory not available on vera_instance")
+        
+        # Call extract_and_link (will use NLP extraction)
+        result = vera_instance.mem.extract_and_link(
+            session_id=session_id,
+            text=text,
+            source_node_id=source_node_id,
+            auto_promote=auto_promote
+        )
+        
+        if logger:
+            duration = logger.stop_timer("memory_extract", context=context)
+            entity_count = len(result.get('entities', []))
+            relation_count = len(result.get('relations', []))
+            
+            logger.success(
+                f"Extracted {entity_count} entities, {relation_count} relations in {duration:.3f}s",
+                context=LogContext(extra={
+                    **context.extra,
+                    'entity_count': entity_count,
+                    'relation_count': relation_count,
+                    'duration': duration
+                })
+            )
+        
+        return result
+    
+    except Exception as e:
+        if logger:
+            duration = logger.stop_timer("memory_extract", context=context)
+            logger.error(f"Entity extraction failed: {e}", exc_info=True, context=context)
+        
+        raise

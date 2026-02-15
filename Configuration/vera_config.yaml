@@ -72,7 +72,7 @@ ollama:
     - name: "remote"
       api_url: "http://192.168.0.250:11435"
       priority: 6
-      max_concurrent: 1
+      max_concurrent: 2
       enabled: true
       timeout: 2400
       has_gpu: true
@@ -384,6 +384,41 @@ logging:
 # General Settings
 enable_hot_reload: true
 config_file: "Configuration/vera_config.yaml"
+
+# -------------------------------------------------------------------------
+# Message Bots
+# -------------------------------------------------------------------------
+# Messaging Bots Configuration
+bots:
+  enabled: true  # Master switch - set to true to enable bots
+  
+  # Individual platform settings
+  platforms:
+    telegram:
+      enabled: true
+      token: null  # Set via TELEGRAM_BOT_TOKEN env var or here
+      allowed_users: []  # Empty list = all users allowed
+      
+    discord:
+      enabled: false
+      token: null  # Set via DISCORD_BOT_TOKEN env var
+      allowed_channels: []
+      
+    slack:
+      enabled: false
+      token: null  # Set via SLACK_BOT_TOKEN env var
+      allowed_channels: []
+  
+  # Auto-start bots when Vera initializes
+  auto_start: true
+  
+  # Run in background thread (true) or separate process (false)
+  background_thread: true
+  
+  # Security settings
+  security:
+    require_auth: true
+    owner_ids: []  # Telegram user IDs with full access
 
 # ============================================================================
 # LOGGING CONFIGURATION PRESETS

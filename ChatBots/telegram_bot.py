@@ -20,6 +20,7 @@ from collections import defaultdict
 from typing import Optional, Set, Dict
 import json
 
+from dotenv import load_dotenv
 from telegram import Update, BotCommand
 from telegram.ext import (
     Application,
@@ -33,6 +34,9 @@ from Vera.vera import Vera
 from Vera.Logging.logging import LogContext
 from Vera.ChatBots.vera_messaging import VeraMessaging, Message, Platform
 
+# Load environment variables from .env file
+load_dotenv()
+
 
 # ====================================================================
 # SECURITY CONFIGURATION
@@ -42,23 +46,40 @@ class SecurityConfig:
     """
     Security settings for Telegram bot.
     
-    IMPORTANT: Replace the user IDs below with your own.
-    Message @userinfobot on Telegram to get your numeric ID.
+    User IDs are loaded from .env file:
+    - TELEGRAM_OWNER_IDS: Comma-separated list of owner user IDs
+    - TELEGRAM_ADMIN_IDS: Comma-separated list of admin user IDs (optional)
+    - TELEGRAM_ALLOWED_CHATS: Comma-separated list of allowed chat IDs (optional)
+    
+    To get your Telegram user ID, message @userinfobot on Telegram.
     """
     
-    # User authorization
-    OWNERS = {123456789}   # ← REQUIRED: Put your Telegram user ID here
-    ADMINS = {123456789}   # ← Optional: Additional admin user IDs
-    ALLOWED_CHATS = set()  # ← Optional: Specific chat IDs (e.g., {-10012345678})
+    @staticmethod
+    def _parse_id_list(env_var: str) -> Set[int]:
+        """Parse comma-separated IDs from environment variable"""
+        value = os.getenv(env_var, '').strip()
+        if not value:
+            return set()
+        
+        try:
+            return {int(id.strip()) for id in value.split(',') if id.strip()}
+        except ValueError as e:
+            print(f"⚠️  Warning: Invalid ID format in {env_var}: {e}")
+            return set()
+    
+    # User authorization - loaded from .env
+    OWNERS = _parse_id_list.__func__('TELEGRAM_OWNER_IDS')
+    ADMINS = _parse_id_list.__func__('TELEGRAM_ADMIN_IDS')
+    ALLOWED_CHATS = _parse_id_list.__func__('TELEGRAM_ALLOWED_CHATS')
     
     # Rate limiting
-    RATE_LIMIT_SECONDS = 2  # Minimum seconds between messages per user
+    RATE_LIMIT_SECONDS = int(os.getenv('TELEGRAM_RATE_LIMIT_SECONDS', '2'))
     
     # Message constraints
-    MAX_MESSAGE_LENGTH = 4000  # Maximum message length to process
+    MAX_MESSAGE_LENGTH = int(os.getenv('TELEGRAM_MAX_MESSAGE_LENGTH', '4000'))
     
     # Proactive messaging
-    CHAT_ID_REGISTRY_FILE = ".telegram_chat_ids.json"  # Store user chat IDs
+    CHAT_ID_REGISTRY_FILE = os.getenv('TELEGRAM_CHAT_ID_REGISTRY', '.telegram_chat_ids.json')
 
 
 # ====================================================================
@@ -107,10 +128,26 @@ class TelegramBot:
             vera_instance: Vera instance
             config: Telegram configuration
         """
+
         self.vera = vera_instance
         self.logger = vera_instance.logger
         self.config = config
         
+        # Resolve token: try 'bot_token', then 'token', then env var
+        bot_token = (
+            config.get('bot_token') 
+            or config.get('token') 
+            or os.getenv('TELEGRAM_BOT_TOKEN')
+        )
+        
+        if not bot_token:
+            raise ValueError(
+                "No Telegram bot token found. Set it via:\n"
+                "  1. vera_config.yaml: bots.platforms.telegram.token\n"
+                "  2. Environment variable: TELEGRAM_BOT_TOKEN\n"
+                "  3. .env file: TELEGRAM_BOT_TOKEN=your_token"
+            )
+            
         # Build application
         self.app = Application.builder().token(config['bot_token']).build()
         
@@ -372,7 +409,7 @@ class TelegramBot:
             self.logger.info(f"📋 Registered chat IDs: {len(self.user_chat_ids)}")
             
             # Send startup notification to owners
-            if SecurityConfig.OWNERS != {123456789}:  # Only if configured
+            if SecurityConfig.OWNERS:  # Only if configured
                 startup_msg = "🤖 <b>Vera Bot Started</b>\n\nI'm now online and ready to assist!"
                 await self.send_to_owners(startup_msg)
             
@@ -390,7 +427,7 @@ class TelegramBot:
     async def shutdown(self):
         """Shutdown Telegram bot"""
         # Send shutdown notification to owners
-        if SecurityConfig.OWNERS != {123456789}:
+        if SecurityConfig.OWNERS:
             shutdown_msg = "🛑 <b>Vera Bot Shutting Down</b>\n\nI'll be back soon!"
             await self.send_to_owners(shutdown_msg)
         
@@ -685,15 +722,23 @@ async def main():
         print("2. Send /newbot and follow instructions")
         print("3. Copy the bot token you receive")
         print("4. Message @userinfobot to get your numeric user ID")
-        print("5. Update SecurityConfig.OWNERS with your user ID")
-        print("\nSet environment variable:")
-        print("  export TELEGRAM_BOT_TOKEN=your_token_here")
+        print("5. Add the following to your .env file:")
+        print("\n  TELEGRAM_BOT_TOKEN=your_token_here")
+        print("  TELEGRAM_OWNER_IDS=your_user_id_here")
+        print("\nOptional .env variables:")
+        print("  TELEGRAM_ADMIN_IDS=123456,789012  # Comma-separated")
+        print("  TELEGRAM_ALLOWED_CHATS=-10012345678  # For specific chats")
+        print("  TELEGRAM_RATE_LIMIT_SECONDS=2")
+        print("  TELEGRAM_MAX_MESSAGE_LENGTH=4000")
+        print("  TELEGRAM_CHAT_ID_REGISTRY=.telegram_chat_ids.json")
         return
     
-    if 123456789 in SecurityConfig.OWNERS:
-        print("⚠️  WARNING: Default user ID detected in SecurityConfig.OWNERS")
-        print("   Please update with your actual Telegram user ID!")
+    if not SecurityConfig.OWNERS:
+        print("⚠️  WARNING: No owner IDs configured!")
+        print("   Please add TELEGRAM_OWNER_IDS to your .env file")
         print("   Message @userinfobot on Telegram to get your ID")
+        print("\n   Example .env entry:")
+        print("   TELEGRAM_OWNER_IDS=123456789")
         print()
     
     print("Initializing Vera...")
@@ -705,3 +750,24 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+"""
+💡 Usage Examples
+
+Questions Stage
+# Now works automatically!
+def should_execute(self, focus_manager) -> bool:
+    vera = focus_manager.agent
+    return hasattr(vera, 'telegram_bot') and vera.telegram_bot is not None
+
+API Endpoints
+@app.post("/notify")
+async def notify(message: str, session_id: str):
+    vera = sessions[session_id]
+    if vera.telegram_bot:
+        await vera.telegram_bot.send_to_owners(message)
+
+Proactive Focus
+def on_insight(self, insight: str):
+    self.agent.telegram_notify(f"💡 {insight}")
+"""

@@ -54,7 +54,6 @@ from langchain.llms.base import LLM
 
 # --- Local Imports ---
 
-
 from Vera.vera_chat import VeraChat
 from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
 from Vera.Memory.memory import *
@@ -256,16 +255,189 @@ class Vera:
         duration = self.logger.stop_timer("model_initialization")
         self.logger.success(f"Models initialized in {duration:.2f}s")
         
+
+        # --- Initialize Orchestrator ---
+        self.logger.info("Initializing task orchestrator...")
+        self.enable_infrastructure = self.config.infrastructure.enable_infrastructure
+        
+        from Vera.Orchestration.orchestration import (
+            Orchestrator, 
+            ProactiveFocusOrchestrator,
+            TaskType
+        )
+        
+        orchestrator_config = {
+            TaskType.LLM: self.config.orchestrator.llm_workers,
+            TaskType.WHISPER: self.config.orchestrator.whisper_workers,
+            TaskType.TOOL: self.config.orchestrator.tool_workers,
+            TaskType.ML_MODEL: self.config.orchestrator.ml_model_workers,
+            TaskType.BACKGROUND: self.config.orchestrator.background_workers,
+            TaskType.GENERAL: self.config.orchestrator.general_workers
+        }
+
+        
+        # --- Proactive Focus Manager ---
+        if self.config.proactive_focus.enabled:
+            self.logger.info("Initializing proactive focus manager...")
+            self.focus_manager = ProactiveFocusManager(
+                agent=self,
+                hybrid_memory=self.mem if hasattr(self, 'mem') else None,
+                proactive_interval=3600,  # 60 minutes
+                cpu_threshold=70.0
+            )
+            if self.config.proactive_focus.default_focus:
+                self.focus_manager.set_focus(
+                    self.config.proactive_focus.default_focus
+                )
+                self.logger.info(f"Default focus set: {self.config.proactive_focus.default_focus}")
+        else:
+            self.focus_manager = None
+            self.logger.debug("Proactive focus manager disabled")
+        
+
+        # 3. Create resource manager
+        resource_limits = ResourceLimits(
+            max_cpu_percent=70.0,
+            max_memory_percent=80.0,
+            max_ollama_concurrent=1
+        )
+        
+        resource_monitor = ResourceMonitor(limits=resource_limits)
+        resource_monitor.start()
+        
+        # 4. Create external resource manager
+        resource_manager = ExternalResourceManager(
+            hybrid_memory=self.mem if hasattr(self, 'mem') else None
+        )
+        # 5. Create stage orchestrator
+        self.stage_orchestrator = StageOrchestrator()
+        
+        # 6. Create calendar scheduler
+        self.calendar_scheduler = CalendarScheduler()
+
+        # 7. Create background service
+        self.service_config = ServiceConfig(
+            max_cpu_percent=50.0,
+            check_interval=30.0,
+            min_idle_seconds=30.0,
+            use_calendar=True,
+            enabled_stages=["Introspection", "Research", "Evaluation", "Steering"]
+        )
+    
+        self.background_service = BackgroundService(
+            focus_manager=self.focus_manager,
+            config=self.service_config
+        )
+        
+        print("✓ All components initialized")
+        print(f"  Focus: {self.focus_manager.focus}")
+        print(f"  Resource monitor: Running")
+        print(f"  Stages: {len(self.stage_orchestrator.stages)}")
+        print(f"  Calendar: Enabled")
+        
+
+        # ===== NEW: AGENT CONFIGURATION SYSTEM =====
+        if self.config.agents.enabled:
+            self.logger.info("Initializing agent configuration system...")
+            try:
+                self.agents = integrate_agent_system(
+                    self,
+                    self.config_manager,
+                    self.logger
+                )
+                
+                num_agents = len(self.agents.loaded_agents)
+                self.logger.success(f"Agent system initialized with {num_agents} agents")
+                self.logger.info(f"Loaded agents: {list(self.agents.loaded_agents.keys())}")
+                self.logger.debug(f"Agent setup complete: {self.agents}")
+                self.logger.debug(f"Agent system directories: agents_dir={self.agents.agents_dir}, templates_dir={self.agents.templates_dir}, build_dir={self.agents.build_dir}")
+
+
+
+                # Log loaded agents
+                for agent_info in self.agents.list_loaded_agents():
+                    self.logger.debug(
+                        f"  • {agent_info['name']}: {agent_info['description']}"
+                    )
+            
+            except Exception as e:
+                self.logger.error(f"Failed to initialize agent system: {e}", exc_info=True)
+                self.agents = None
+        else:
+            self.agents = None
+            self.logger.info("Agent system disabled (set agents.enabled: true in config)")
+
+        if self.enable_infrastructure:
+            self.logger.info("Using Infrastructure Orchestrator")
+            from Vera.Orchestration.infrastructure_orchestration import (
+                InfrastructureOrchestrator
+            )
+            
+            proxmox_config = None
+            if self.config.infrastructure.enable_proxmox:
+                proxmox_config = {
+                    "host": self.config.infrastructure.proxmox_host,
+                    "user": self.config.infrastructure.proxmox_user,
+                    "password": self.config.infrastructure.proxmox_password,
+                    "verify_ssl": self.config.infrastructure.proxmox_verify_ssl,
+                    "node": self.config.infrastructure.proxmox_node
+                }
+                self.logger.debug(f"Proxmox configured: {self.config.infrastructure.proxmox_host}")
+            
+            self.orchestrator = InfrastructureOrchestrator(
+                config=orchestrator_config,
+                redis_url=self.config.orchestrator.redis_url,
+                cpu_threshold=self.config.orchestrator.cpu_threshold,
+                enable_docker=self.config.infrastructure.enable_docker,
+                enable_proxmox=self.config.infrastructure.enable_proxmox,
+                docker_url=self.config.infrastructure.docker_url,
+                proxmox_config=proxmox_config,
+                auto_scale=self.config.infrastructure.auto_scale,
+                max_resources=self.config.infrastructure.max_resources
+            )
+                # logger=self.logger  # Pass logger to orchestrator
+            # )
+        else:
+            self.logger.info("Using Standard Orchestrator")
+            self.orchestrator = Orchestrator(
+                config=orchestrator_config,
+                redis_url=self.config.orchestrator.redis_url,
+                cpu_threshold=self.config.orchestrator.cpu_threshold,
+            )
+                # logger=self.logger  # Pass logger to orchestrator
+            # )
+
+        self.orchestrator.start()
+        self.logger.success("Orchestrator started")
+
+        # Integrate with ProactiveFocusManager
+        if self.focus_manager:
+            self.proactive_orchestrator = ProactiveFocusOrchestrator(
+                self.orchestrator, 
+                self.focus_manager
+            )
+            self.logger.debug("Proactive orchestrator integrated")
+
         # --- Setup Memory from Config ---
         self.logger.info("Initializing memory systems...")
         self.logger.start_timer("memory_initialization")
         
+        # self.mem = HybridMemory(
+        #     neo4j_uri=self.config.memory.neo4j_uri,
+        #     neo4j_user=self.config.memory.neo4j_user,
+        #     neo4j_password=self.config.memory.neo4j_password,
+        #     chroma_dir=self.config.memory.chroma_dir,
+        #     archive_jsonl=self.config.memory.archive_path,
+        # )
+
+        # Initialize hybrid memory WITH orchestrator
         self.mem = HybridMemory(
             neo4j_uri=self.config.memory.neo4j_uri,
             neo4j_user=self.config.memory.neo4j_user,
             neo4j_password=self.config.memory.neo4j_password,
             chroma_dir=self.config.memory.chroma_dir,
             archive_jsonl=self.config.memory.archive_path,
+            orchestrator=self.orchestrator,  # Enable orchestrated encoding
         )
         
         self.sess = self.mem.start_session(metadata={"agent": "vera"})
@@ -329,170 +501,11 @@ class Vera:
         duration = duration if duration is not None else 0.0
         self.logger.success(f"Memory systems initialized in {duration:.2f}s")
         
-        # --- Proactive Focus Manager ---
-        if self.config.proactive_focus.enabled:
-            self.logger.info("Initializing proactive focus manager...")
-            self.focus_manager = ProactiveFocusManager(
-                agent=self,
-                hybrid_memory=self.mem if hasattr(self, 'mem') else None,
-                proactive_interval=3600,  # 60 minutes
-                cpu_threshold=70.0
-            )
-            if self.config.proactive_focus.default_focus:
-                self.focus_manager.set_focus(
-                    self.config.proactive_focus.default_focus
-                )
-                self.logger.info(f"Default focus set: {self.config.proactive_focus.default_focus}")
-        else:
-            self.focus_manager = None
-            self.logger.debug("Proactive focus manager disabled")
-        
-
-        # 3. Create resource manager
-        resource_limits = ResourceLimits(
-            max_cpu_percent=70.0,
-            max_memory_percent=80.0,
-            max_ollama_concurrent=1
-        )
-        
-        resource_monitor = ResourceMonitor(limits=resource_limits)
-        resource_monitor.start()
-        
-        # 4. Create external resource manager
-        resource_manager = ExternalResourceManager(
-            hybrid_memory=self.mem if hasattr(self, 'mem') else None
-        )
-        # 5. Create stage orchestrator
-        self.stage_orchestrator = StageOrchestrator()
-        
-        # 6. Create calendar scheduler
-        self.calendar_scheduler = CalendarScheduler()
-
-        # 7. Create background service
-        self.service_config = ServiceConfig(
-            max_cpu_percent=50.0,
-            check_interval=30.0,
-            min_idle_seconds=30.0,
-            use_calendar=True,
-            enabled_stages=["Introspection", "Research", "Evaluation", "Steering"]
-        )
-    
-        self.background_service = BackgroundService(
-            focus_manager=self.focus_manager,
-            config=self.service_config
-        )
-        
-        print("✓ All components initialized")
-        print(f"  Focus: {self.focus_manager.focus}")
-        print(f"  Resource monitor: Running")
-        print(f"  Stages: {len(self.stage_orchestrator.stages)}")
-        print(f"  Calendar: Enabled")
-        
         self.triage_memory = self.config.memory.enable_memory_triage
         self.memory = CombinedMemory(
             memories=[self.buffer_memory, self.vector_memory]
         )
         
-        # --- Initialize Orchestrator ---
-        self.logger.info("Initializing task orchestrator...")
-        self.enable_infrastructure = self.config.infrastructure.enable_infrastructure
-        
-        from Vera.Orchestration.orchestration import (
-            Orchestrator, 
-            ProactiveFocusOrchestrator,
-            TaskType
-        )
-        
-        orchestrator_config = {
-            TaskType.LLM: self.config.orchestrator.llm_workers,
-            TaskType.WHISPER: self.config.orchestrator.whisper_workers,
-            TaskType.TOOL: self.config.orchestrator.tool_workers,
-            TaskType.ML_MODEL: self.config.orchestrator.ml_model_workers,
-            TaskType.BACKGROUND: self.config.orchestrator.background_workers,
-            TaskType.GENERAL: self.config.orchestrator.general_workers
-        }
-        
-        if self.enable_infrastructure:
-            self.logger.info("Using Infrastructure Orchestrator")
-            from Vera.Orchestration.infrastructure_orchestration import (
-                InfrastructureOrchestrator
-            )
-            
-            proxmox_config = None
-            if self.config.infrastructure.enable_proxmox:
-                proxmox_config = {
-                    "host": self.config.infrastructure.proxmox_host,
-                    "user": self.config.infrastructure.proxmox_user,
-                    "password": self.config.infrastructure.proxmox_password,
-                    "verify_ssl": self.config.infrastructure.proxmox_verify_ssl,
-                    "node": self.config.infrastructure.proxmox_node
-                }
-                self.logger.debug(f"Proxmox configured: {self.config.infrastructure.proxmox_host}")
-            
-            self.orchestrator = InfrastructureOrchestrator(
-                config=orchestrator_config,
-                redis_url=self.config.orchestrator.redis_url,
-                cpu_threshold=self.config.orchestrator.cpu_threshold,
-                enable_docker=self.config.infrastructure.enable_docker,
-                enable_proxmox=self.config.infrastructure.enable_proxmox,
-                docker_url=self.config.infrastructure.docker_url,
-                proxmox_config=proxmox_config,
-                auto_scale=self.config.infrastructure.auto_scale,
-                max_resources=self.config.infrastructure.max_resources
-            )
-                # logger=self.logger  # Pass logger to orchestrator
-            # )
-        else:
-            self.logger.info("Using Standard Orchestrator")
-            self.orchestrator = Orchestrator(
-                config=orchestrator_config,
-                redis_url=self.config.orchestrator.redis_url,
-                cpu_threshold=self.config.orchestrator.cpu_threshold,
-            )
-                # logger=self.logger  # Pass logger to orchestrator
-            # )
-
-        self.orchestrator.start()
-        self.logger.success("Orchestrator started")
-
-        # Integrate with ProactiveFocusManager
-        if self.focus_manager:
-            self.proactive_orchestrator = ProactiveFocusOrchestrator(
-                self.orchestrator, 
-                self.focus_manager
-            )
-            self.logger.debug("Proactive orchestrator integrated")
-
-        # ===== NEW: AGENT CONFIGURATION SYSTEM =====
-        if self.config.agents.enabled:
-            self.logger.info("Initializing agent configuration system...")
-            try:
-                self.agents = integrate_agent_system(
-                    self,
-                    self.config_manager,
-                    self.logger
-                )
-                
-                num_agents = len(self.agents.loaded_agents)
-                self.logger.success(f"Agent system initialized with {num_agents} agents")
-                self.logger.info(f"Loaded agents: {list(self.agents.loaded_agents.keys())}")
-                self.logger.debug(f"Agent setup complete: {self.agents}")
-                self.logger.debug(f"Agent system directories: agents_dir={self.agents.agents_dir}, templates_dir={self.agents.templates_dir}, build_dir={self.agents.build_dir}")
-
-
-
-                # Log loaded agents
-                for agent_info in self.agents.list_loaded_agents():
-                    self.logger.debug(
-                        f"  • {agent_info['name']}: {agent_info['description']}"
-                    )
-            
-            except Exception as e:
-                self.logger.error(f"Failed to initialize agent system: {e}", exc_info=True)
-                self.agents = None
-        else:
-            self.agents = None
-            self.logger.info("Agent system disabled (set agents.enabled: true in config)")
 
         # --- Playwright Browser Setup ---
         if self.config.playwright.enabled:
@@ -564,7 +577,6 @@ class Vera:
             verbose=True
         )
 
-
         # Original toolchain (preserved)
         self.toolchain = ToolChainPlanner(self, self.tools)
 
@@ -595,10 +607,189 @@ class Vera:
         
         # Initialize chat handler (AFTER all other components)
         self.chat = VeraChat(self)
-        
+
+        # --- Initialize Messaging Bots (if enabled) ---
+        self.telegram_bot = None
+        self.bot_manager = None
+
+        if self.config.bots.enabled and self.config.bots.auto_start:
+            self.logger.info("Initializing messaging bots...")
+            self._initialize_bots()
+
         self.logger.success("Vera initialization complete!")
         self.logger.info(f"Session ID: {self.sess.id}")
-    
+        
+    def _initialize_bots(self):
+        """Initialize and start messaging bots in background"""
+        try:
+            from Vera.ChatBots.run_bots import BotManager
+            import threading
+            import asyncio
+            
+            # Build bot config from Vera config
+            bot_config = {}
+            
+            for platform in ['telegram', 'discord', 'slack']:
+                platform_cfg = getattr(self.config.bots.platforms, platform, None)
+                
+                if platform_cfg and platform_cfg.enabled:
+                    bot_config[platform] = {
+                        'enabled': True,
+                        'token': platform_cfg.token,
+                    }
+                    
+                    # Platform-specific settings
+                    if platform == 'telegram':
+                        bot_config[platform]['allowed_users'] = platform_cfg.allowed_users or []
+                        bot_config[platform]['owner_ids'] = self.config.bots.security.owner_ids or []
+                    elif platform in ['discord', 'slack']:
+                        bot_config[platform]['allowed_channels'] = platform_cfg.allowed_channels or []
+            
+            # Check if any platforms enabled
+            enabled_platforms = [p for p, cfg in bot_config.items() if cfg.get('enabled')]
+            
+            if not enabled_platforms:
+                self.logger.warning("Bots enabled but no platforms configured")
+                return
+            
+            self.logger.info(f"Starting bots for: {', '.join(enabled_platforms)}")
+            
+            # Create bot manager
+            self.bot_manager = BotManager(bot_config, vera_instance=self)
+            
+            # Store telegram bot reference if enabled
+            if 'telegram' in enabled_platforms:
+                from Vera.ChatBots.telegram_bot import TelegramBot
+                self.telegram_bot = TelegramBot(self, bot_config['telegram'])
+            
+            # Start in background thread if configured
+            if self.config.bots.background_thread:
+                def run_bots():
+                    """Run bots in background thread"""
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(self.bot_manager.run())
+                    finally:
+                        loop.close()
+                
+                bot_thread = threading.Thread(target=run_bots, daemon=True, name="BotManager")
+                bot_thread.start()
+                
+                self.logger.success(f"Bots running in background thread: {', '.join(enabled_platforms)}")
+            else:
+                # This would block, so warn user
+                self.logger.warning("background_thread=false - bots will run in main thread (blocking)")
+                # Don't actually start here - user should call start_bots() manually
+        
+        except ImportError as e:
+            self.logger.error(f"Failed to import bot components: {e}")
+            self.logger.info("Install bot dependencies: pip install python-telegram-bot discord.py slack-sdk")
+        
+        except Exception as e:
+            self.logger.error(f"Failed to initialize bots: {e}", exc_info=True)
+
+    def start_bots(self, platforms=None, config_file=None):
+        """
+        Start messaging bots using this Vera instance
+        
+        Args:
+            platforms: Override platforms to enable ['telegram', 'discord', 'slack']
+            config_file: Override config file (optional)
+        """
+        from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
+        import asyncio
+        
+        self.logger.info("Starting messaging bots...")
+        
+        # Load configuration
+        if config_file:
+            self.logger.info(f"Loading bot config from {config_file}")
+            config = load_config_from_file(config_file)
+        elif platforms:
+            # Build config from Vera config but override platforms
+            config = self._build_bot_config_from_vera_config()
+            for platform in config:
+                config[platform]['enabled'] = platform in platforms
+        else:
+            # Use Vera config
+            config = self._build_bot_config_from_vera_config()
+        
+        # Validate at least one platform
+        enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
+        
+        if not enabled:
+            self.logger.error("❌ No platforms enabled!")
+            self.logger.info("Configure in vera_config.yaml under bots.platforms")
+            return
+        
+        self.logger.info(f"Enabled platforms: {', '.join(enabled)}")
+            
+        # Create bot manager with THIS Vera instance
+        self.bot_manager = BotManager(config, vera_instance=self)
+        
+        # Store reference to telegram bot if enabled
+        if 'telegram' in enabled:
+            from Vera.ChatBots.telegram_bot import TelegramBot
+            self.telegram_bot = TelegramBot(self, config['telegram'])
+        
+        self.logger.info(f"Launching bots: {', '.join(enabled)}")
+        
+        # Check if event loop is already running
+        try:
+            loop = asyncio.get_running_loop()
+            self.logger.warning("Event loop already running - using background thread")
+            
+            # Run in background thread
+            def run_in_thread():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    new_loop.run_until_complete(self.bot_manager.run())
+                finally:
+                    new_loop.close()
+            
+            import threading
+            thread = threading.Thread(target=run_in_thread, daemon=True, name="BotManager")
+            thread.start()
+            
+            self.logger.success("✓ Bots running in background thread")
+            
+        except RuntimeError:
+            # No event loop running - safe to use asyncio.run()
+            self.logger.info("Starting new event loop...")
+            
+            try:
+                asyncio.run(self.bot_manager.run())
+            except KeyboardInterrupt:
+                self.logger.info("✓ Shutdown complete")
+
+
+    def _build_bot_config_from_vera_config(self) -> dict:
+        """Build bot config dict from Vera config"""
+        config = {}
+        
+        for platform in ['telegram', 'discord', 'slack']:
+            platform_cfg = getattr(self.config.bots.platforms, platform, None)
+            
+            if platform_cfg:
+                # Get token: config first, then env var fallback
+                token = platform_cfg.token or os.getenv(f'{platform.upper()}_BOT_TOKEN')
+                
+                config[platform] = {
+                    'enabled': platform_cfg.enabled,
+                    'token': token,
+                    'bot_token': token,  # TelegramBot expects 'bot_token'
+                }
+                
+                if platform == 'telegram':
+                    config[platform]['allowed_users'] = platform_cfg.allowed_users or []
+                    config[platform]['owner_ids'] = self.config.bots.security.owner_ids or []
+                elif platform in ['discord', 'slack']:
+                    config[platform]['allowed_channels'] = platform_cfg.allowed_channels or []
+        
+        return config
+
     def save_tool_list_with_schemas(self, tool_list_path: str):
         
         with open(tool_list_path, "w") as tool_file:
@@ -1230,108 +1421,108 @@ class Vera:
                 self.telegram_bot.queue_message(user_id, message)
             )
 
-    def start_bots(self, platforms=None, config_file=None):
-        """
-        Start messaging bots using this Vera instance
+    # def start_bots(self, platforms=None, config_file=None):
+    #     """
+    #     Start messaging bots using this Vera instance
         
-        Args:
-            platforms: List of platforms to enable ['telegram', 'discord', 'slack']
-            config_file: Path to bot config file (optional)
-        """
-        from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
-        import asyncio
+    #     Args:
+    #         platforms: List of platforms to enable ['telegram', 'discord', 'slack']
+    #         config_file: Path to bot config file (optional)
+    #     """
+    #     from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
+    #     import asyncio
         
-        self.logger.info("Starting messaging bots...")
+    #     self.logger.info("Starting messaging bots...")
         
-        # Load configuration
-        if config_file:
-            print(f"Loading config from {config_file}...")
-            config = load_config_from_file(config_file)
-        else:
-            print("Loading config from environment variables...")
-            config = load_config_from_env()
+    #     # Load configuration
+    #     if config_file:
+    #         print(f"Loading config from {config_file}...")
+    #         config = load_config_from_file(config_file)
+    #     else:
+    #         print("Loading config from environment variables...")
+    #         config = load_config_from_env()
         
-        # Debug: Show what we loaded
-        print(f"Loaded config: {list(config.keys())}")
-        for platform, cfg in config.items():
-            print(f"  {platform}: enabled={cfg.get('enabled', False)}")
+    #     # Debug: Show what we loaded
+    #     print(f"Loaded config: {list(config.keys())}")
+    #     for platform, cfg in config.items():
+    #         print(f"  {platform}: enabled={cfg.get('enabled', False)}")
         
-        # Override with platforms if specified
-        if platforms:
-            print(f"Overriding with platforms: {platforms}")
-            for platform in config:
-                config[platform]['enabled'] = platform in platforms
+    #     # Override with platforms if specified
+    #     if platforms:
+    #         print(f"Overriding with platforms: {platforms}")
+    #         for platform in config:
+    #             config[platform]['enabled'] = platform in platforms
         
-        # Validate at least one platform
-        enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
+    #     # Validate at least one platform
+    #     enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
         
-        if not enabled:
-            self.logger.error("❌ No platforms enabled!")
-            print("\nTo fix:")
-            print("  1. Set environment variables:")
-            print("     export TELEGRAM_BOT_TOKEN='your-token'")
-            return
+    #     if not enabled:
+    #         self.logger.error("❌ No platforms enabled!")
+    #         print("\nTo fix:")
+    #         print("  1. Set environment variables:")
+    #         print("     export TELEGRAM_BOT_TOKEN='your-token'")
+    #         return
         
-        print(f"\n✓ Enabled platforms: {', '.join(enabled)}")
+    #     print(f"\n✓ Enabled platforms: {', '.join(enabled)}")
             
-        # Create bot manager with THIS Vera instance
-        manager = BotManager(config, vera_instance=self)
+    #     # Create bot manager with THIS Vera instance
+    #     manager = BotManager(config, vera_instance=self)
         
-        # Store reference to telegram bot if enabled
-        if 'telegram' in enabled:
-            # The bot will be created by manager - we need to access it
-            # For now, create a direct reference
-            if 'telegram' in config and config['telegram'].get('enabled'):
-                from Vera.ChatBots.telegram_bot import TelegramBot
-                self.telegram_bot = TelegramBot(self, config['telegram'])
+    #     # Store reference to telegram bot if enabled
+    #     if 'telegram' in enabled:
+    #         # The bot will be created by manager - we need to access it
+    #         # For now, create a direct reference
+    #         if 'telegram' in config and config['telegram'].get('enabled'):
+    #             from Vera.ChatBots.telegram_bot import TelegramBot
+    #             self.telegram_bot = TelegramBot(self, config['telegram'])
         
-        self.logger.info(f"Launching bots: {', '.join(enabled)}")
+    #     self.logger.info(f"Launching bots: {', '.join(enabled)}")
         
-        # Check if event loop is already running
-        try:
-            loop = asyncio.get_running_loop()
-            print("⚠️  Event loop already running - using existing loop")
+    #     # Check if event loop is already running
+    #     try:
+    #         loop = asyncio.get_running_loop()
+    #         print("⚠️  Event loop already running - using existing loop")
             
-            # Create task in existing loop
-            async def run_manager():
-                await manager.run()
+    #         # Create task in existing loop
+    #         async def run_manager():
+    #             await manager.run()
             
-            # Schedule the coroutine and wait for it
-            import concurrent.futures
-            import threading
+    #         # Schedule the coroutine and wait for it
+    #         import concurrent.futures
+    #         import threading
             
-            # Run in a new thread with its own event loop
-            def run_in_thread():
-                new_loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(new_loop)
-                try:
-                    new_loop.run_until_complete(manager.run())
-                finally:
-                    new_loop.close()
+    #         # Run in a new thread with its own event loop
+    #         def run_in_thread():
+    #             new_loop = asyncio.new_event_loop()
+    #             asyncio.set_event_loop(new_loop)
+    #             try:
+    #                 new_loop.run_until_complete(manager.run())
+    #             finally:
+    #                 new_loop.close()
             
-            thread = threading.Thread(target=run_in_thread, daemon=False)
-            thread.start()
+    #         thread = threading.Thread(target=run_in_thread, daemon=False)
+    #         thread.start()
             
-            print("✓ Bots running in background thread")
-            print("  Press Ctrl+C to stop")
+    #         print("✓ Bots running in background thread")
+    #         print("  Press Ctrl+C to stop")
             
-            # Keep main thread alive
-            try:
-                thread.join()
-            except KeyboardInterrupt:
-                print("\n\n✓ Shutdown complete")
+    #         # Keep main thread alive
+    #         try:
+    #             thread.join()
+    #         except KeyboardInterrupt:
+    #             print("\n\n✓ Shutdown complete")
                 
-        except RuntimeError:
-            # No event loop running - safe to use asyncio.run()
-            print("Starting new event loop...")
+    #     except RuntimeError:
+    #         # No event loop running - safe to use asyncio.run()
+    #         print("Starting new event loop...")
             
-            async def run_manager():
-                await manager.run()
+    #         async def run_manager():
+    #             await manager.run()
             
-            try:
-                asyncio.run(run_manager())
-            except KeyboardInterrupt:
-                print("\n\n✓ Shutdown complete")
+    #         try:
+    #             asyncio.run(run_manager())
+    #         except KeyboardInterrupt:
+    #             print("\n\n✓ Shutdown complete")
             
 # --- Example usage ---
 if __name__ == "__main__":
