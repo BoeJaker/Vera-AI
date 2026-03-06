@@ -1,6 +1,6 @@
 (() => {
     // ============================================================
-    // STYLES
+    // STYLES  (all colors via --fb-* CSS custom properties)
     // ============================================================
     const style = document.createElement('style');
     style.textContent = `
@@ -18,12 +18,12 @@
         
         .focus-tab {
             padding: 10px 20px;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid #334155;
+            background: var(--fb-bg-surface-alt, rgba(15,23,42,0.5));
+            border: 1px solid var(--fb-border, #334155);
             border-bottom: none;
             border-radius: 8px 8px 0 0;
             cursor: pointer;
-            color: #94a3b8;
+            color: var(--fb-text-muted, #94a3b8);
             font-size: 13px;
             font-weight: 600;
             transition: all 0.2s;
@@ -33,21 +33,21 @@
         }
         
         .focus-tab:hover {
-            background: rgba(30, 41, 59, 0.7);
-            color: #cbd5e1;
+            background: var(--fb-tab-hover-bg, rgba(30,41,59,0.7));
+            color: var(--fb-text-secondary, #cbd5e1);
         }
         
         .focus-tab.active {
-            background: rgba(59, 130, 246, 0.2);
-            border-color: #3b82f6;
-            color: #e2e8f0;
+            background: var(--fb-tab-active-bg, rgba(59,130,246,0.2));
+            border-color: var(--fb-tab-active-border, #3b82f6);
+            color: var(--fb-tab-active-text, #e2e8f0);
         }
         
         .focus-tab-content {
             display: none;
             padding: 20px;
-            background: rgba(15, 23, 42, 0.3);
-            border: 1px solid #334155;
+            background: var(--fb-bg-dropzone, rgba(15,23,42,0.3));
+            border: 1px solid var(--fb-border, #334155);
             border-radius: 0 8px 8px 8px;
             min-height: 400px;
         }
@@ -58,10 +58,10 @@
         
         .focus-header-btn {
             padding: 8px 16px;
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid #334155;
+            background: var(--fb-bg-btn, rgba(30,41,59,0.8));
+            border: 1px solid var(--fb-border, #334155);
             border-radius: 6px;
-            color: #cbd5e1;
+            color: var(--fb-text-secondary, #cbd5e1);
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
@@ -70,14 +70,14 @@
         }
         
         .focus-header-btn:hover {
-            background: rgba(59, 130, 246, 0.2);
-            border-color: #3b82f6;
-            color: #e2e8f0;
+            background: var(--fb-bg-btn-hover, rgba(59,130,246,0.2));
+            border-color: var(--fb-border-focus, #3b82f6);
+            color: var(--fb-text, #e2e8f0);
         }
         
         .focus-header-btn.active {
-            background: #10b981;
-            border-color: #10b981;
+            background: var(--fb-accent-progress, #10b981);
+            border-color: var(--fb-status-running-border, #10b981);
             color: white;
         }
         
@@ -255,7 +255,7 @@
         if (!board1 && !board2) return true;
         if (!board1 || !board2) return false;
         
-        const keys = ['actions', 'progress', 'next_steps', 'issues', 'ideas', 'completed'];
+        const keys = ['actions', 'progress', 'next_steps', 'issues', 'ideas', 'completed', 'questions'];
         
         for (const key of keys) {
             const arr1 = board1[key] || [];
@@ -356,7 +356,6 @@
     // ============================================================
     // DATA NORMALIZATION & PARSING
     // ============================================================
-    
     VeraChat.prototype.normalizeFocusBoard = function(board) {
         if (!board) {
             return {
@@ -365,7 +364,8 @@
                 next_steps: [],
                 issues: [],
                 ideas: [],
-                completed: []
+                completed: [],
+                questions: []
             };
         }
         
@@ -376,7 +376,8 @@
                 next_steps: Array.isArray(board.next_steps) ? board.next_steps : [],
                 issues: Array.isArray(board.issues) ? board.issues : [],
                 ideas: Array.isArray(board.ideas) ? board.ideas : [],
-                completed: Array.isArray(board.completed) ? board.completed : []
+                completed: Array.isArray(board.completed) ? board.completed : [],
+                questions: Array.isArray(board.questions) ? board.questions : []
             };
         }
         
@@ -386,7 +387,8 @@
             next_steps: [],
             issues: [],
             ideas: [],
-            completed: []
+            completed: [],
+            questions: []
         };
     };
 
@@ -521,15 +523,21 @@
         
         this.focusBoard = this.normalizeFocusBoard(this.focusBoard);
         
-        // Preserve current tab selection
         if (!this.currentFocusTab) {
             this.currentFocusTab = 'ideas';
         }
 
+        const statusBg   = this.focusRunning
+            ? 'var(--fb-accent-progress, #10b981)'
+            : 'var(--fb-status-stopped, rgba(107,114,128,0.5))';
+        const statusBorder = this.focusRunning
+            ? 'var(--fb-status-running-border, #10b981)'
+            : 'var(--fb-status-stopped-border, #6b7280)';
+
         let html = `
         <div style="padding: 20px; overflow-y: auto; height: 100%;">
-            <!-- Modern Header -->
-            <div id="focusControlBar"style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 16px; background: rgba(15, 23, 42, 0.5); border-radius: 8px; border: 1px solid #334155;">
+            <!-- Control Bar -->
+            <div id="focusControlBar" style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 16px; background: var(--fb-bg-control-bar, rgba(15,23,42,0.5)); border-radius: 8px; border: 1px solid var(--fb-border, #334155);">
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
                     ${this.currentFocus ? `
                         <button class="focus-header-btn ${this.focusRunning ? 'active' : ''}" onclick="app.${this.focusRunning ? 'stopProactiveThinking' : 'startProactiveThinking'}()">
@@ -549,7 +557,7 @@
                         Save
                     </button>
                 </div>
-                <span class="focus-header-btn" style="pointer-events: none; background: ${this.focusRunning ? '#10b981' : 'rgba(107, 114, 128, 0.5)'}; border-color: ${this.focusRunning ? '#10b981' : '#6b7280'};">
+                <span class="focus-header-btn" style="pointer-events: none; background: ${statusBg}; border-color: ${statusBorder};">
                     ${this.focusRunning ? '● RUNNING' : '○ STOPPED'}
                 </span>
             </div>
@@ -559,12 +567,13 @@
         
         // Tab Navigation
         const categories = [
-            { key: 'ideas', label: 'Ideas', icon: '💡', color: '#8b5cf6' },
-            { key: 'next_steps', label: 'Next Steps', icon: '→', color: '#f59e0b' },
-            { key: 'actions', label: 'Actions', icon: '⚡', color: '#3b82f6' },
-            { key: 'progress', label: 'Progress', icon: '✓', color: '#10b981' },
-            { key: 'issues', label: 'Issues', icon: '⚠', color: '#ef4444' },
-            { key: 'completed', label: 'Completed', icon: '✔', color: '#6b7280' }
+            { key: 'ideas',      label: 'Ideas',      icon: '💡', color: 'var(--fb-accent-ideas, #8b5cf6)' },
+            { key: 'next_steps', label: 'Next Steps',  icon: '→',  color: 'var(--fb-accent-next-steps, #f59e0b)' },
+            { key: 'actions',    label: 'Actions',     icon: '⚡', color: 'var(--fb-accent-actions, #3b82f6)' },
+            { key: 'progress',   label: 'Progress',    icon: '✓',  color: 'var(--fb-accent-progress, #10b981)' },
+            { key: 'issues',     label: 'Issues',      icon: '⚠',  color: 'var(--fb-accent-issues, #ef4444)' },
+            { key: 'completed',  label: 'Completed',   icon: '✔',  color: 'var(--fb-accent-completed, #6b7280)' },
+            { key: 'questions',  label: 'Questions',   icon: '❓', color: 'var(--fb-accent-questions, #ec4899)' }
         ];
         
         html += `
@@ -585,7 +594,6 @@
             </div>
         `;
         
-        // Tab Contents
         categories.forEach(cat => {
             html += this.renderTabContent(cat);
         });
@@ -616,20 +624,20 @@
 
     VeraChat.prototype.renderFocusSection = function() {
         return `
-            <div class="focusContent" style="border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #8b5cf6; box-shadow: 0 4px 6px rgba(0,0,0,0.3); background: rgba(15, 23, 42, 0.5);">
+            <div class="focusContent" style="border-radius: 8px; padding: 16px; margin-bottom: 16px; border-left: 4px solid var(--fb-focus-border, #8b5cf6); box-shadow: 0 4px 6px rgba(0,0,0,0.3); background: var(--fb-bg-surface-alt, rgba(15,23,42,0.5));">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div style="font-weight: 600; color: #e2e8f0; font-size: 14px;">🎯 Current Focus</div>
+                    <div style="font-weight: 600; color: var(--fb-text, #e2e8f0); font-size: 14px;">🎯 Current Focus</div>
                     <div style="display: flex; gap: 8px;">
                         <button class="panel-btn" style="font-size: 11px; padding: 4px 8px;" onclick="app.showSetFocusDialog()">✏️ Set</button>
                         ${this.currentFocus ? `<button class="panel-btn" style="font-size: 11px; padding: 4px 8px;" onclick="app.clearFocus()">✕ Clear</button>` : ''}
                     </div>
                 </div>
                 ${this.currentFocus ? `
-                    <div style="background: rgba(139, 92, 246, 0.1); padding: 12px; border-radius: 6px; border: 1px solid rgba(139, 92, 246, 0.3);">
-                        <div style="color: #a78bfa; font-size: 18px; font-weight: 600;">${this.escapeHtml(this.currentFocus)}</div>
+                    <div style="background: var(--fb-focus-bg, rgba(139,92,246,0.1)); padding: 12px; border-radius: 6px; border: 1px solid var(--fb-focus-bg-border, rgba(139,92,246,0.3));">
+                        <div style="color: var(--fb-focus-text, #a78bfa); font-size: 18px; font-weight: 600;">${this.escapeHtml(this.currentFocus)}</div>
                     </div>
                 ` : `
-                    <div style="color: #94a3b8; font-size: 13px; font-style: italic; text-align: center; padding: 12px;">
+                    <div style="color: var(--fb-text-muted, #94a3b8); font-size: 13px; font-style: italic; text-align: center; padding: 12px;">
                         No focus set. Set a focus to enable proactive thinking.
                     </div>
                 `}
@@ -655,7 +663,7 @@
         let html = `
             <div class="focus-tab-content ${this.currentFocusTab === cat.key ? 'active' : ''}">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
-                    <div style="font-weight: 600; color: #e2e8f0; font-size: 16px;">
+                    <div style="font-weight: 600; color: var(--fb-text, #e2e8f0); font-size: 16px;">
                         ${cat.icon} ${cat.label}
                     </div>
                     <div style="display: flex; gap: 6px; flex-wrap: wrap;">
@@ -663,9 +671,9 @@
         
         if (hasStageControl && this.currentFocus) {
             const stageMap = {
-                'ideas': 'runIdeasStage',
+                'ideas':      'runIdeasStage',
                 'next_steps': 'runNextStepsStage',
-                'actions': 'runActionsStage'
+                'actions':    'runActionsStage'
             };
             
             if (stageMap[cat.key]) {
@@ -674,7 +682,7 @@
         }
         
         if (cat.key === 'actions' && this.currentFocus) {
-            html += `<button class="panel-btn" style="font-size: 11px; padding: 6px 12px; background: #34d399;" onclick="app.runExecuteStage()">🚀 Execute All</button>`;
+            html += `<button class="panel-btn" style="font-size: 11px; padding: 6px 12px; background: var(--fb-execute-all-bg, #34d399);" onclick="app.runExecuteStage()">🚀 Execute All</button>`;
         }
         
         html += `
@@ -683,17 +691,17 @@
                     </div>
                 </div>
                 
-                <div id="add-item-form-${cat.key}" style="display: none; margin-bottom: 16px; padding: 16px; background: rgba(15, 23, 42, 0.7); border-radius: 8px; border: 1px solid #334155;">
+                <div id="add-item-form-${cat.key}" style="display: none; margin-bottom: 16px; padding: 16px; background: var(--fb-bg-card-form, rgba(15,23,42,0.7)); border-radius: 8px; border: 1px solid var(--fb-border, #334155);">
                     ${cat.key === 'actions' ? this.renderActionForm(cat.key) : this.renderGenericForm(cat.key)}
                 </div>
                 
                 <div id="category-items-${cat.key}" class="drop-zone" data-category="${cat.key}" 
-                     style="display: flex; flex-direction: column; gap: 10px; min-height: 200px; padding: 16px; border-radius: 8px; border: 2px dashed transparent; background: rgba(15, 23, 42, 0.3);">
+                     style="display: flex; flex-direction: column; gap: 10px; min-height: 200px; padding: 16px; border-radius: 8px; border: 2px dashed transparent; background: var(--fb-bg-dropzone, rgba(15,23,42,0.3));">
         `;
         
         if (items.length === 0) {
             html += `
-                <div style="color: #64748b; font-size: 13px; font-style: italic; text-align: center; padding: 40px;">
+                <div style="color: var(--fb-text-dimmed, #64748b); font-size: 13px; font-style: italic; text-align: center; padding: 40px;">
                     No ${cat.label.toLowerCase()} yet. Click "+ Add" to create one.
                 </div>
             `;
@@ -721,9 +729,9 @@
         return `
             <div style="display: flex; flex-direction: column; gap: 10px;">
                 <input type="text" id="action-desc-${category}" placeholder="Action description..." 
-                       style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 10px; border-radius: 6px; font-size: 13px; width: 100%;">
+                       style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 10px; border-radius: 6px; font-size: 13px; width: 100%;">
                 <select id="action-priority-${category}" 
-                        style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 10px; border-radius: 6px; font-size: 13px;">
+                        style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 10px; border-radius: 6px; font-size: 13px;">
                     <option value="high">High Priority</option>
                     <option value="medium" selected>Medium Priority</option>
                     <option value="low">Low Priority</option>
@@ -742,7 +750,7 @@
         return `
             <div style="display: flex; flex-direction: column; gap: 10px;">
                 <textarea id="item-text-${category}" placeholder="Enter text..." rows="3"
-                          style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 10px; border-radius: 6px; font-size: 13px; width: 100%; resize: vertical;"></textarea>
+                          style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 10px; border-radius: 6px; font-size: 13px; width: 100%; resize: vertical;"></textarea>
                 <div style="display: flex; gap: 8px;">
                     <button class="panel-btn" onclick="app.submitGenericForm('${category}')" 
                             style="flex: 1; font-size: 13px; padding: 10px;">✓ Add Item</button>
@@ -756,9 +764,9 @@
     VeraChat.prototype.renderActionItem = function(item, idx, color, category) {
         const action = this.parseActionItem(item);
         const priorityColors = {
-            high: '#ef4444',
-            medium: '#f59e0b',
-            low: '#6b7280'
+            high:   'var(--fb-priority-high, #ef4444)',
+            medium: 'var(--fb-priority-medium, #f59e0b)',
+            low:    'var(--fb-priority-low, #6b7280)'
         };
         
         const itemId = `item-${category}-${idx}`;
@@ -768,9 +776,9 @@
                  data-category="${category}" data-index="${idx}"
                  ondragstart="app.handleDragStart(event)"
                  ondragend="app.handleDragEnd(event)"
-                 style="padding: 14px; border-radius: 8px; border-left: 4px solid ${color}; background: rgba(15, 23, 42, 0.6); cursor: move; transition: all 0.2s;">
+                 style="padding: 14px; border-radius: 8px; border-left: 4px solid ${color}; background: var(--fb-bg-card, rgba(15,23,42,0.6)); cursor: move; transition: all 0.2s;">
                 <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-                    <div style="color: #cbd5e1; font-size: 13px; flex: 1; word-wrap: break-word; white-space: pre-wrap;">${this.escapeHtml(action.description)}</div>
+                    <div style="color: var(--fb-text-secondary, #cbd5e1); font-size: 13px; flex: 1; word-wrap: break-word; white-space: pre-wrap;">${this.escapeHtml(action.description)}</div>
                     <span style="padding: 4px 8px; background: ${priorityColors[action.priority]}; color: white; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 12px; white-space: nowrap;">
                         ${action.priority.toUpperCase()}
                     </span>
@@ -778,7 +786,7 @@
                 ${action.tools.length > 0 ? `
                     <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
                         ${action.tools.map(tool => `
-                            <span style="padding: 4px 8px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border-radius: 4px; font-size: 11px; border: 1px solid rgba(59, 130, 246, 0.3);">
+                            <span style="padding: 4px 8px; background: var(--fb-tool-bg, rgba(59,130,246,0.2)); color: var(--fb-tool-text, #60a5fa); border-radius: 4px; font-size: 11px; border: 1px solid var(--fb-tool-border, rgba(59,130,246,0.3));">
                                 🔧 ${this.escapeHtml(tool)}
                             </span>
                         `).join('')}
@@ -804,16 +812,16 @@
                  ${isDraggable ? 'draggable="true"' : ''}
                  data-category="${category}" data-index="${idx}"
                  ${isDraggable ? 'ondragstart="app.handleDragStart(event)" ondragend="app.handleDragEnd(event)"' : ''}
-                 style="padding: 12px; border-radius: 8px; border-left: 4px solid ${color}; background: rgba(15, 23, 42, 0.6); ${isDraggable ? 'cursor: move;' : ''} transition: all 0.2s;">
+                 style="padding: 12px; border-radius: 8px; border-left: 4px solid ${color}; background: var(--fb-bg-card, rgba(15,23,42,0.6)); ${isDraggable ? 'cursor: move;' : ''} transition: all 0.2s;">
                 <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <div style="color: #cbd5e1; font-size: 13px; flex: 1; word-wrap: break-word; white-space: pre-wrap;">${this.escapeHtml(parsed.text)}</div>
+                    <div style="color: var(--fb-text-secondary, #cbd5e1); font-size: 13px; flex: 1; word-wrap: break-word; white-space: pre-wrap;">${this.escapeHtml(parsed.text)}</div>
                     <div style="display: flex; gap: 4px; margin-left: 12px; flex-shrink: 0;">
                         <button class="panel-btn" style="font-size: 11px; padding: 4px 8px;" onclick="app.editBoardItem('${category}', ${idx})">✏️</button>
                         <button class="panel-btn" style="font-size: 11px; padding: 4px 8px;" onclick="app.deleteBoardItem('${category}', ${idx})">🗑️</button>
                         ${category !== 'completed' ? `<button class="panel-btn" style="font-size: 11px; padding: 4px 8px;" onclick="app.moveToCompleted('${category}', ${idx})">✓</button>` : ''}
                     </div>
                 </div>
-                ${parsed.timestamp ? `<div style="color: #64748b; font-size: 10px; margin-top: 6px;">${new Date(parsed.timestamp).toLocaleString()}</div>` : ''}
+                ${parsed.timestamp ? `<div style="color: var(--fb-text-dimmed, #64748b); font-size: 10px; margin-top: 6px;">${new Date(parsed.timestamp).toLocaleString()}</div>` : ''}
             </div>
         `;
     };
@@ -931,28 +939,27 @@
                 const category = zone.dataset.category;
                 
                 if (category === 'completed') {
-                    zone.style.borderColor = '#10b981';
-                    zone.style.background = 'rgba(16, 185, 129, 0.1)';
+                    zone.style.borderColor = 'var(--fb-drop-highlight-border, #10b981)';
+                    zone.style.background   = 'var(--fb-drop-highlight-bg, rgba(16,185,129,0.1))';
                 }
             });
             
             zone.addEventListener('dragleave', (e) => {
                 e.preventDefault();
                 zone.style.borderColor = 'transparent';
-                zone.style.background = 'rgba(15, 23, 42, 0.3)';
+                zone.style.background  = 'var(--fb-bg-dropzone, rgba(15,23,42,0.3))';
             });
             
             zone.addEventListener('drop', (e) => {
                 e.preventDefault();
                 zone.style.borderColor = 'transparent';
-                zone.style.background = 'rgba(15, 23, 42, 0.3)';
+                zone.style.background  = 'var(--fb-bg-dropzone, rgba(15,23,42,0.3))';
                 
                 const targetCategory = zone.dataset.category;
-                
                 if (targetCategory !== 'completed') return;
                 
                 const sourceCategory = e.dataTransfer.getData('category');
-                const sourceIndex = parseInt(e.dataTransfer.getData('index'));
+                const sourceIndex    = parseInt(e.dataTransfer.getData('index'));
                 
                 if (sourceCategory === 'actions' || sourceCategory === 'next_steps') {
                     this.moveToCompleted(sourceCategory, sourceIndex);
@@ -975,7 +982,6 @@
     VeraChat.prototype.handleDragEnd = function(e) {
         const item = e.target.closest('.draggable-item');
         if (!item) return;
-        
         item.style.opacity = '1';
     };
 
@@ -993,31 +999,28 @@
         const itemElement = document.getElementById(`item-${category}-${index}`);
         if (!itemElement) return;
         
-        const currentText = isAction ? 
-            this.parseActionItem(item).description : 
-            this.parseGenericItem(item).text;
-        
+        const currentText     = isAction ? this.parseActionItem(item).description : this.parseGenericItem(item).text;
         const currentPriority = isAction ? this.parseActionItem(item).priority : null;
         
         let formHtml = `
-            <div style="padding: 12px; background: rgba(15, 23, 42, 0.8); border-radius: 6px;">
+            <div style="padding: 12px; background: var(--fb-bg-card-edit, rgba(15,23,42,0.8)); border-radius: 6px;">
         `;
         
         if (isAction) {
             formHtml += `
                 <input type="text" id="edit-text-${category}-${index}" value="${this.escapeHtml(currentText)}"
-                       style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 8px;">
+                       style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 8px;">
                 <select id="edit-priority-${category}-${index}" 
-                        style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 8px;">
-                    <option value="high" ${currentPriority === 'high' ? 'selected' : ''}>High Priority</option>
+                        style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; margin-bottom: 8px;">
+                    <option value="high"   ${currentPriority === 'high'   ? 'selected' : ''}>High Priority</option>
                     <option value="medium" ${currentPriority === 'medium' ? 'selected' : ''}>Medium Priority</option>
-                    <option value="low" ${currentPriority === 'low' ? 'selected' : ''}>Low Priority</option>
+                    <option value="low"    ${currentPriority === 'low'    ? 'selected' : ''}>Low Priority</option>
                 </select>
             `;
         } else {
             formHtml += `
                 <textarea id="edit-text-${category}-${index}" rows="3"
-                          style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; resize: vertical; margin-bottom: 8px;">${this.escapeHtml(currentText)}</textarea>
+                          style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 8px; border-radius: 4px; font-size: 13px; width: 100%; resize: vertical; margin-bottom: 8px;">${this.escapeHtml(currentText)}</textarea>
             `;
         }
         
@@ -1040,7 +1043,7 @@
     
     VeraChat.prototype.saveEdit = async function(category, index) {
         const textInput = document.getElementById(`edit-text-${category}-${index}`);
-        const newText = textInput ? textInput.value.trim() : '';
+        const newText   = textInput ? textInput.value.trim() : '';
         
         if (!newText) {
             this.addSystemMessage('Text cannot be empty');
@@ -1056,7 +1059,7 @@
             
             const action = this.parseActionItem(items[index]);
             action.description = newText;
-            action.priority = priority;
+            action.priority    = priority;
             
             items[index] = { 
                 note: JSON.stringify(action),
@@ -1156,8 +1159,8 @@
         
         const item = items[index];
         const completedItem = typeof item === 'object' ? {...item} : { note: item };
-        completedItem.completed_at = new Date().toISOString();
-        completedItem.original_category = category;
+        completedItem.completed_at       = new Date().toISOString();
+        completedItem.original_category  = category;
         
         try {
             await fetch(`http://llm.int:8888/api/focus/${this.sessionId}/board/add`, {
@@ -1170,7 +1173,6 @@
             });
             
             await this.deleteBoardItem(category, index);
-            
             this.addSystemMessage(`✓ Moved to completed`);
         } catch (error) {
             console.error('Failed to move to completed:', error);
@@ -1229,7 +1231,7 @@
             const data = await response.json();
             
             this.currentFocus = data.focus;
-            this.focusBoard = this.normalizeFocusBoard(data.focus_board);
+            this.focusBoard   = this.normalizeFocusBoard(data.focus_board);
             this.focusRunning = data.running;
             
             this.updateFocusUI();
@@ -1253,7 +1255,6 @@
             const data = await response.json();
             this.currentFocus = data.focus;
             this.updateFocusUI();
-            // this.addSystemMessage(`🎯 Focus set to: ${focus}`);
         } catch (error) {
             console.error('Failed to set focus:', error);
             this.addSystemMessage(`Error setting focus: ${error.message}`);
@@ -1371,11 +1372,9 @@
         modal.id = 'focusBoardModal';
         modal.style.cssText = `
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -1385,34 +1384,35 @@
         
         const modalContent = document.createElement('div');
         modalContent.style.cssText = `
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            background: var(--fb-bg-modal, linear-gradient(135deg,#1e293b 0%,#0f172a 100%));
             border-radius: 12px;
             padding: 24px;
             max-width: 700px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            border: 1px solid #334155;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 1px solid var(--fb-border, #334155);
         `;
         
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; color: #e2e8f0; font-size: 20px;">📂 Load Focus Board</h2>
+                <h2 style="margin: 0; color: var(--fb-text, #e2e8f0); font-size: 20px;">📂 Load Focus Board</h2>
                 <button onclick="document.getElementById('focusBoardModal').remove()" 
-                        style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;"
-                        onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#94a3b8'">
+                        style="background: transparent; border: none; color: var(--fb-text-muted, #94a3b8); font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;"
+                        onmouseover="this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--fb-text')" 
+                        onmouseout="this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--fb-text-muted')">
                     ×
                 </button>
             </div>
             
-            <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #334155; padding-bottom: 8px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid var(--fb-border, #334155); padding-bottom: 8px;">
                 <button id="tabFileBoards" class="focus-tab-btn active" onclick="app.switchFocusBoardTab('file')" 
-                        style="padding: 8px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                        style="padding: 8px 16px; background: var(--fb-file-tab-active, #3b82f6); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">
                     📁 Saved Files (${fileBoards.length})
                 </button>
                 <button id="tabHistoryBoards" class="focus-tab-btn" onclick="app.switchFocusBoardTab('history')" 
-                        style="padding: 8px 16px; background: #334155; color: #94a3b8; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">
+                        style="padding: 8px 16px; background: var(--fb-border, #334155); color: var(--fb-text-muted, #94a3b8); border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 13px;">
                     🕒 Session History (${historyBoards.length})
                 </button>
             </div>
@@ -1422,7 +1422,7 @@
         
         if (fileBoards.length === 0) {
             html += `
-                <div style="text-align: center; padding: 40px; color: #64748b;">
+                <div style="text-align: center; padding: 40px; color: var(--fb-text-dimmed, #64748b);">
                     <div style="font-size: 48px; margin-bottom: 16px;">📂</div>
                     <div style="font-size: 14px;">No saved focus boards found</div>
                 </div>
@@ -1431,32 +1431,30 @@
             html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
             
             fileBoards.forEach((board, idx) => {
-                const focusText = board.focus || 'Untitled';
+                const focusText  = board.focus || 'Untitled';
                 const createdDate = board.created_at ? new Date(board.created_at).toLocaleString() : 'Unknown date';
                 
                 html += `
-                    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; cursor: pointer; transition: all 0.2s;"
-                         onmouseover="this.style.borderColor='#3b82f6'; this.style.background='#1e293b';"
-                         onmouseout="this.style.borderColor='#334155'; this.style.background='#0f172a';"
+                    <div style="background: var(--fb-bg, #0f172a); border: 1px solid var(--fb-border, #334155); border-radius: 8px; padding: 16px; cursor: pointer; transition: all 0.2s;"
+                         onmouseover="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-file-tab-active'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg-surface');"
+                         onmouseout="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-border'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg');"
                          onclick="app.loadFocusBoardFromFile('${this.escapeHtml(board.filename)}')">
                         <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
                             <div style="flex: 1;">
-                                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                                <div style="color: var(--fb-text, #e2e8f0); font-weight: 600; font-size: 14px; margin-bottom: 4px;">
                                     🎯 ${this.escapeHtml(focusText)}
                                 </div>
-                                <div style="color: #64748b; font-size: 11px;">
+                                <div style="color: var(--fb-text-dimmed, #64748b); font-size: 11px;">
                                     📅 ${createdDate}
                                 </div>
                             </div>
                             <button onclick="event.stopPropagation(); app.deleteFocusBoardFile('${this.escapeHtml(board.filename)}', ${idx})"
-                                    style="background: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;"
-                                    onmouseover="this.style.background='#dc2626'"
-                                    onmouseout="this.style.background='#ef4444'">
+                                    style="background: var(--fb-priority-high, #ef4444); color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer;">
                                 🗑️ Delete
                             </button>
                         </div>
                         ${board.project_id ? `
-                            <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">
+                            <div style="color: var(--fb-text-muted, #94a3b8); font-size: 11px; margin-top: 4px;">
                                 🔗 Project: ${this.escapeHtml(board.project_id)}
                             </div>
                         ` : ''}
@@ -1471,7 +1469,7 @@
         
         if (historyBoards.length === 0) {
             html += `
-                <div style="text-align: center; padding: 40px; color: #64748b;">
+                <div style="text-align: center; padding: 40px; color: var(--fb-text-dimmed, #64748b);">
                     <div style="font-size: 48px; margin-bottom: 16px;">🕒</div>
                     <div style="font-size: 14px;">No session history found</div>
                 </div>
@@ -1480,24 +1478,24 @@
             html += `<div style="display: flex; flex-direction: column; gap: 12px;">`;
             
             historyBoards.forEach((board, idx) => {
-                const focusText = board.focus || 'Untitled';
-                const savedDate = board.saved_at ? new Date(board.saved_at).toLocaleString() : 'Unknown date';
-                const itemCount = board.board_items || 0;
+                const focusText  = board.focus || 'Untitled';
+                const savedDate  = board.saved_at ? new Date(board.saved_at).toLocaleString() : 'Unknown date';
+                const itemCount  = board.board_items || 0;
                 
                 html += `
-                    <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 16px; cursor: pointer; transition: all 0.2s;"
-                         onmouseover="this.style.borderColor='#8b5cf6'; this.style.background='#1e293b';"
-                         onmouseout="this.style.borderColor='#334155'; this.style.background='#0f172a';"
+                    <div style="background: var(--fb-bg, #0f172a); border: 1px solid var(--fb-border, #334155); border-radius: 8px; padding: 16px; cursor: pointer; transition: all 0.2s;"
+                         onmouseover="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-hist-tab-active'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg-surface');"
+                         onmouseout="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-border'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg');"
                          onclick="app.loadFocusBoardFromHistory('${this.escapeHtml(board.saved_at)}')">
                         <div style="display: flex; justify-content: space-between; align-items: start;">
                             <div style="flex: 1;">
-                                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                                <div style="color: var(--fb-text, #e2e8f0); font-weight: 600; font-size: 14px; margin-bottom: 4px;">
                                     🎯 ${this.escapeHtml(focusText)}
                                 </div>
-                                <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                                <div style="color: var(--fb-text-dimmed, #64748b); font-size: 11px; margin-bottom: 4px;">
                                     🕒 ${savedDate}
                                 </div>
-                                <div style="color: #94a3b8; font-size: 11px;">
+                                <div style="color: var(--fb-text-muted, #94a3b8); font-size: 11px;">
                                     📋 ${itemCount} items
                                 </div>
                             </div>
@@ -1516,32 +1514,28 @@
         document.body.appendChild(modal);
         
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
+            if (e.target === modal) modal.remove();
         });
     };
     
     VeraChat.prototype.switchFocusBoardTab = function(tab) {
-        const fileBtn = document.getElementById('tabFileBoards');
+        const fileBtn    = document.getElementById('tabFileBoards');
         const historyBtn = document.getElementById('tabHistoryBoards');
         
         if (tab === 'file') {
-            fileBtn.style.background = '#3b82f6';
-            fileBtn.style.color = 'white';
-            historyBtn.style.background = '#334155';
-            historyBtn.style.color = '#94a3b8';
-            
-            document.getElementById('fileBoardsTab').style.display = 'block';
+            fileBtn.style.background    = 'var(--fb-file-tab-active, #3b82f6)';
+            fileBtn.style.color         = 'white';
+            historyBtn.style.background = 'var(--fb-border, #334155)';
+            historyBtn.style.color      = 'var(--fb-text-muted, #94a3b8)';
+            document.getElementById('fileBoardsTab').style.display    = 'block';
             document.getElementById('historyBoardsTab').style.display = 'none';
         } else {
-            historyBtn.style.background = '#8b5cf6';
-            historyBtn.style.color = 'white';
-            fileBtn.style.background = '#334155';
-            fileBtn.style.color = '#94a3b8';
-            
+            historyBtn.style.background = 'var(--fb-hist-tab-active, #8b5cf6)';
+            historyBtn.style.color      = 'white';
+            fileBtn.style.background    = 'var(--fb-border, #334155)';
+            fileBtn.style.color         = 'var(--fb-text-muted, #94a3b8)';
             document.getElementById('historyBoardsTab').style.display = 'block';
-            document.getElementById('fileBoardsTab').style.display = 'none';
+            document.getElementById('fileBoardsTab').style.display    = 'none';
         }
     };
     
@@ -1559,7 +1553,7 @@
             
             if (data.status === 'success') {
                 this.currentFocus = data.focus;
-                this.focusBoard = this.normalizeFocusBoard(data.focus_board);
+                this.focusBoard   = this.normalizeFocusBoard(data.focus_board);
                 this.updateFocusUI();
                 
                 const modal = document.getElementById('focusBoardModal');
@@ -1584,7 +1578,7 @@
             
             if (data.status === 'loaded') {
                 this.currentFocus = data.focus_state.focus;
-                this.focusBoard = this.normalizeFocusBoard(data.focus_state.focus_board);
+                this.focusBoard   = this.normalizeFocusBoard(data.focus_state.focus_board);
                 this.updateFocusUI();
                 
                 const modal = document.getElementById('focusBoardModal');
@@ -1646,8 +1640,8 @@
             console.error('Failed to load similar focuses:', error);
         }
         
-        this._allSimilarFocuses = allSimilarFocuses;
-        this._currentFilteredFocuses = allSimilarFocuses;
+        this._allSimilarFocuses        = allSimilarFocuses;
+        this._currentFilteredFocuses   = allSimilarFocuses;
         
         this._renderSetFocusModal(allSimilarFocuses);
     };
@@ -1657,11 +1651,9 @@
         modal.id = 'setFocusModal';
         modal.style.cssText = `
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -1671,36 +1663,37 @@
         
         const modalContent = document.createElement('div');
         modalContent.style.cssText = `
-            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            background: var(--fb-bg-modal, linear-gradient(135deg,#1e293b 0%,#0f172a 100%));
             border-radius: 12px;
             padding: 24px;
             max-width: 600px;
             width: 90%;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            border: 1px solid #334155;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+            border: 1px solid var(--fb-border, #334155);
         `;
         
         let html = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="margin: 0; color: #e2e8f0; font-size: 20px;">🎯 Set Focus</h2>
+                <h2 style="margin: 0; color: var(--fb-text, #e2e8f0); font-size: 20px;">🎯 Set Focus</h2>
                 <button onclick="document.getElementById('setFocusModal').remove()" 
-                        style="background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;"
-                        onmouseover="this.style.color='#e2e8f0'" onmouseout="this.style.color='#94a3b8'">
+                        style="background: transparent; border: none; color: var(--fb-text-muted, #94a3b8); font-size: 24px; cursor: pointer; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;"
+                        onmouseover="this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--fb-text')"
+                        onmouseout="this.style.color=getComputedStyle(document.documentElement).getPropertyValue('--fb-text-muted')">
                     ×
                 </button>
             </div>
             
-            <div style="margin-bottom: 24px; padding: 16px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px;">
-                <label style="color: #cbd5e1; font-size: 13px; font-weight: 600; display: block; margin-bottom: 8px;">
+            <div style="margin-bottom: 24px; padding: 16px; background: var(--fb-new-focus-bg, rgba(59,130,246,0.1)); border: 1px solid var(--fb-new-focus-border, rgba(59,130,246,0.3)); border-radius: 8px;">
+                <label style="color: var(--fb-text-secondary, #cbd5e1); font-size: 13px; font-weight: 600; display: block; margin-bottom: 8px;">
                     ✨ Create New Focus
                 </label>
                 <input type="text" id="newFocusInput" placeholder="Enter your focus..." 
                     value="${this.escapeHtml(this.currentFocus || '')}"
-                    style="background: #1e293b; color: #e2e8f0; border: 1px solid #334155; padding: 10px; border-radius: 6px; font-size: 14px; width: 100%; margin-bottom: 12px;">
+                    style="background: var(--fb-bg-surface, #1e293b); color: var(--fb-text, #e2e8f0); border: 1px solid var(--fb-border, #334155); padding: 10px; border-radius: 6px; font-size: 14px; width: 100%; margin-bottom: 12px;">
                 <button onclick="app.createNewFocus()" class="panel-btn" 
-                        style="width: 100%; padding: 10px; background: #3b82f6; font-weight: 600;">
+                        style="width: 100%; padding: 10px; background: var(--fb-new-focus-btn, #3b82f6); font-weight: 600;">
                     ✓ Create New Focus
                 </button>
             </div>
@@ -1727,23 +1720,19 @@
             }, 100);
             
             input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    this.createNewFocus();
-                }
+                if (e.key === 'Enter') this.createNewFocus();
             });
         }
         
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
+            if (e.target === modal) modal.remove();
         });
     };
 
     VeraChat.prototype._renderSimilarFocusesList = function(similarFocuses) {
         if (similarFocuses.length === 0) {
             return `
-                <div style="text-align: center; padding: 20px; color: #64748b; font-size: 12px; border-top: 1px solid #334155;">
+                <div style="text-align: center; padding: 20px; color: var(--fb-text-dimmed, #64748b); font-size: 12px; border-top: 1px solid var(--fb-border, #334155);">
                     <div style="font-size: 32px; margin-bottom: 8px;">📋</div>
                     <div>No matching focuses found</div>
                 </div>
@@ -1751,8 +1740,8 @@
         }
         
         let html = `
-            <div style="border-top: 1px solid #334155; padding-top: 16px;">
-                <div style="color: #cbd5e1; font-size: 13px; font-weight: 600; margin-bottom: 12px;">
+            <div style="border-top: 1px solid var(--fb-border, #334155); padding-top: 16px;">
+                <div style="color: var(--fb-text-secondary, #cbd5e1); font-size: 13px; font-weight: 600; margin-bottom: 12px;">
                     📋 Similar Focuses (${similarFocuses.length})
                 </div>
                 <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -1760,27 +1749,27 @@
         
         similarFocuses.forEach((focus, idx) => {
             const focusText = focus.focus || 'Untitled';
-            const lastUsed = focus.last_used ? new Date(focus.last_used).toLocaleString() : 'Unknown';
+            const lastUsed  = focus.last_used ? new Date(focus.last_used).toLocaleString() : 'Unknown';
             const itemCount = focus.total_items || 0;
             
             html += `
-                <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s;"
-                    onmouseover="this.style.borderColor='#8b5cf6'; this.style.background='#1e293b';"
-                    onmouseout="this.style.borderColor='#334155'; this.style.background='#0f172a';"
+                <div style="background: var(--fb-bg, #0f172a); border: 1px solid var(--fb-border, #334155); border-radius: 8px; padding: 12px; cursor: pointer; transition: all 0.2s;"
+                    onmouseover="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-similar-border'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg-surface');"
+                    onmouseout="this.style.borderColor=getComputedStyle(document.documentElement).getPropertyValue('--fb-border'); this.style.background=getComputedStyle(document.documentElement).getPropertyValue('--fb-bg');"
                     onclick="app.loadSimilarFocus('${this.escapeHtml(focus.focus)}')">
                     <div style="display: flex; justify-content: space-between; align-items: start;">
                         <div style="flex: 1;">
-                            <div style="color: #e2e8f0; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+                            <div style="color: var(--fb-text, #e2e8f0); font-weight: 600; font-size: 13px; margin-bottom: 4px;">
                                 🎯 ${this.escapeHtml(focusText)}
                             </div>
-                            <div style="color: #64748b; font-size: 11px; margin-bottom: 4px;">
+                            <div style="color: var(--fb-text-dimmed, #64748b); font-size: 11px; margin-bottom: 4px;">
                                 🕒 Last used: ${lastUsed}
                             </div>
-                            <div style="color: #94a3b8; font-size: 11px;">
+                            <div style="color: var(--fb-text-muted, #94a3b8); font-size: 11px;">
                                 📋 ${itemCount} items
                             </div>
                         </div>
-                        <div style="padding: 4px 8px; background: #8b5cf6; color: white; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px;">
+                        <div style="padding: 4px 8px; background: var(--fb-similar-badge-bg, #8b5cf6); color: white; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 8px;">
                             Load
                         </div>
                     </div>
@@ -1840,7 +1829,7 @@
             
             const data = await response.json();
             this.currentFocus = data.focus;
-            this.focusBoard = this.normalizeFocusBoard(data.focus_board);
+            this.focusBoard   = this.normalizeFocusBoard(data.focus_board);
             this.updateFocusUI();
             this.addSystemMessage(`🎯 Created new focus: ${focus}`);
         } catch (error) {
@@ -1866,7 +1855,6 @@
                 if (data.status === 'loaded') {
                     this.focusBoard = this.normalizeFocusBoard(data.focus_state.focus_board);
                     this.updateFocusUI();
-                    // this.addSystemMessage(`✓ Loaded existing focus: ${focusText}`);
                 }
             }
             
@@ -1891,7 +1879,7 @@
         
         const container = document.getElementById('chatMessages');
         const messageEl = document.createElement('div');
-        messageEl.id = messageId;
+        messageEl.id        = messageId;
         messageEl.className = 'message system';
         messageEl.style.opacity = '0.7';
         
@@ -1899,14 +1887,14 @@
         content.className = 'message-content';
         content.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="color: #8b5cf6; font-weight: 600;">💭 Generating proactive thought...</div>
+                <div style="color: var(--fb-thought-label, #8b5cf6); font-weight: 600;">💭 Generating proactive thought...</div>
                 <div class="loading-dots" style="display: flex; gap: 4px;">
                     <span style="animation: pulse 1.5s infinite;">●</span>
                     <span style="animation: pulse 1.5s infinite 0.2s;">●</span>
                     <span style="animation: pulse 1.5s infinite 0.4s;">●</span>
                 </div>
             </div>
-            <div id="proactive-thought-content" style="margin-top: 8px; color: #cbd5e1;"></div>
+            <div id="proactive-thought-content" style="margin-top: 8px; color: var(--fb-text-secondary, #cbd5e1);"></div>
         `;
         
         messageEl.appendChild(content);
@@ -1934,8 +1922,8 @@
             const content = messageEl.querySelector('.message-content');
             if (content) {
                 content.innerHTML = `
-                    <div style="color: #8b5cf6; font-weight: 600; margin-bottom: 8px;">💭 Proactive Thought</div>
-                    <div style="color: #cbd5e1;">${this.escapeHtml(thought)}</div>
+                    <div style="color: var(--fb-thought-label, #8b5cf6); font-weight: 600; margin-bottom: 8px;">💭 Proactive Thought</div>
+                    <div style="color: var(--fb-text-secondary, #cbd5e1);">${this.escapeHtml(thought)}</div>
                 `;
             }
         }

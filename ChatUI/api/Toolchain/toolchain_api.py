@@ -29,6 +29,7 @@ from starlette.websockets import WebSocket
 # ============================================================
 # Global state references
 # ============================================================
+from Vera.ChatUI.api.Toolchain.toolchain_broadcast import init_broadcast_loop, schedule_broadcast
 from Vera.ChatUI.api.session import sessions, toolchain_executions, active_toolchains, websocket_connections, get_or_create_vera
 from Vera.ChatUI.api.schemas import ToolchainRequest
 
@@ -726,89 +727,95 @@ async def execute_toolchain(request: ToolchainRequest):
         raise HTTPException(status_code=500, detail=str(e))
     
 @wsrouter.websocket("/{session_id}")
+
 async def websocket_toolchain(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for monitoring toolchain executions."""
+    """
+    WebSocket endpoint for monitoring toolchain executions.
+    
+    Register on router with:
+        @wsrouter.websocket("/{session_id}")
+        async def _ws_toolchain(ws: WebSocket, session_id: str):
+            await websocket_toolchain(ws, session_id)
+    """
     await websocket.accept()
-    
-    # Capture main loop on first WebSocket connection
-    if _main_loop is None:
-        set_main_loop()
-    
+
+    # ── CRITICAL: capture the running loop as soon as we have a WS connection ──
+    # This is the first async context guaranteed to have a running loop.
+    init_broadcast_loop()
+
     if session_id not in sessions:
-        logger.warning(f"Session not found for toolchain WebSocket: {session_id}")
         await websocket.send_json({
             "type": "error",
             "error": "Session not found",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         })
         await websocket.close()
         return
-    
-    # Register this websocket for broadcasts
+
+    # Register for broadcasts
     websocket_connections[session_id].append(websocket)
-    logger.info(f"Toolchain WebSocket connected for session: {session_id}")
-    
+    logger.info(f"[toolchain WS] connected: {session_id}")
+
     try:
-        # Keep connection alive with heartbeat
         while True:
+            # ── Heartbeat: send ping, then wait up to 120s for any message ──
             try:
-                # Add ping/pong for keepalive
                 await websocket.send_json({
                     "type": "ping",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.utcnow().isoformat(),
                 })
-                
-                data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)  # Increased timeout
-                message_data = json.loads(data)
-                
-                # Handle pong from client
-                if message_data.get("type") == "pong":
-                    continue
-                
-                # Optional: Allow manual toolchain execution via websocket
-                if "query" in message_data:
-                    query = message_data["query"]
-                    vera = get_or_create_vera(session_id)
-                    
-                    execution_id = create_toolchain_execution(session_id, query)
-                    await websocket.send_json({
-                        "type": "execution_started",
-                        "execution_id": execution_id,
-                        "query": query
-                    })
-                    
-                    def run_toolchain():
-                        try:
-                            result = ""
-                            for chunk in vera.toolchain.execute_tool_chain(query):
-                                result += str(chunk)
-                            return result
-                        except Exception as e:
-                            logger.error(f"Toolchain error: {e}")
-                            return str(e)
-                    
-                    loop = asyncio.get_event_loop()
-                    with ThreadPoolExecutor() as executor:
-                        await loop.run_in_executor(executor, run_toolchain)
-                    
+            except Exception:
+                break  # client gone
+
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
             except asyncio.TimeoutError:
-                # Send periodic ping to keep connection alive
+                # No message in 120s — that's fine, just ping again
                 continue
+            except WebSocketDisconnect:
+                break
+
+            try:
+                msg = json.loads(raw)
             except json.JSONDecodeError:
                 await websocket.send_json({"type": "error", "error": "Invalid JSON"})
-    
-    except WebSocketDisconnect:
-        logger.info(f"Toolchain WebSocket disconnected: {session_id}")
-    except Exception as e:
-        logger.error(f"Toolchain WebSocket error: {str(e)}", exc_info=True)
-    finally:
-        # Clean up
-        try:
-            if session_id in websocket_connections and websocket in websocket_connections[session_id]:
-                websocket_connections[session_id].remove(websocket)
-        except Exception as e:
-            logger.debug(f"Cleanup warning: {e}")
+                continue
 
+            if msg.get("type") == "pong":
+                continue  # keepalive response — ignore
+
+            # Optional: allow manual toolchain execution via WS message
+            if "query" in msg:
+                vera = get_or_create_vera(session_id)
+                query = msg["query"]
+
+                def _run():
+                    try:
+                        result = ""
+                        for chunk in vera.toolchain.execute_tool_chain(query):
+                            result += str(chunk) if chunk else ""
+                        return result
+                    except Exception as e:
+                        logger.error(f"[toolchain WS] execution error: {e}", exc_info=True)
+                        return str(e)
+
+                loop = asyncio.get_event_loop()
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor() as ex:
+                    await loop.run_in_executor(ex, _run)
+
+    except WebSocketDisconnect:
+        logger.info(f"[toolchain WS] disconnected: {session_id}")
+    except Exception as e:
+        logger.error(f"[toolchain WS] error: {e}", exc_info=True)
+    finally:
+        conns = websocket_connections.get(session_id, [])
+        if websocket in conns:
+            try:
+                conns.remove(websocket)
+            except ValueError:
+                pass
+        logger.info(f"[toolchain WS] cleaned up: {session_id}")
 @router.get("/{session_id}/executions")
 async def get_toolchain_executions(session_id: str):
     """Get all toolchain executions for a session."""

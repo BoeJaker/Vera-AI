@@ -1,614 +1,826 @@
 """
-Enhanced MonitoredToolChainPlanner - FULLY FIXED FOR MULTI-PARAMETER TOOLS
-Executes plan step-by-step with reliable WebSocket broadcasting and proper dict input handling
+Toolchain Monitor Wrapper
+==========================
+Wraps the unified ToolChainPlanner with WebSocket broadcast monitoring.
+
+Supports:
+  - sequential:  plan upfront → execute in order → flowchart renders all steps at once
+  - adaptive:    plan one step at a time → flowchart renders each step as it appears
+  - parallel:    identify independent branches → flowchart renders branched paths
+  - expert/hybrid: like sequential with richer stage info
+
+WebSocket event catalogue
+--------------------------
+execution_started   { execution_id, query, mode, strategy }
+plan                { plan, total_steps }              ← full plan (sequential/expert)
+step_discovered     { step_number, tool_name, input, mode:"adaptive" }  ← adaptive live step
+step_started        { step_number, tool_name, execution_id }
+step_output         { step_number, chunk }
+step_completed      { step_number, output }
+step_failed         { step_number, error }
+execution_completed { execution_id }
+execution_failed    { error, execution_id }
+parallel_branches   { branches: [[step,...], ...] }    ← parallel branch layout
 """
+
+from __future__ import annotations
 
 import asyncio
 import json
-import uuid
 import logging
+import re
+import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-# Import these from your session module
 from Vera.ChatUI.api.session import (
-    sessions, 
-    toolchain_executions, 
-    active_toolchains, 
-    websocket_connections
+    active_toolchains,
+    sessions,
+    toolchain_executions,
+    websocket_connections,
 )
 
-# ============================================================
-# CRITICAL: Reference to main event loop
-# ============================================================
-_main_loop = None
+# ============================================================================
+# EVENT LOOP CAPTURE
+# ============================================================================
 
-def set_main_loop():
-    """Call this from your FastAPI startup to capture the main loop"""
+_main_loop: Optional[asyncio.AbstractEventLoop] = None
+
+
+def set_main_loop() -> None:
     global _main_loop
     try:
         _main_loop = asyncio.get_event_loop()
-        logger.info(f"Captured main event loop: {_main_loop}")
-    except RuntimeError:
-        logger.warning("Could not capture main event loop")
+        logger.info(f"[Monitor] Captured main event loop: {id(_main_loop)}")
+    except RuntimeError as exc:
+        logger.warning(f"[Monitor] Could not capture main event loop: {exc}")
 
 
-def schedule_broadcast(session_id: str, event_type: str, data: Dict[str, Any]):
-    """
-    Schedule a broadcast event on the main event loop.
-    Thread-safe - works from ANY thread including orchestrator workers.
-    """
-    global _main_loop
-    
-    async def _broadcast():
-        if session_id in websocket_connections:
-            disconnected = []
-            for websocket in websocket_connections[session_id]:
-                try:
-                    await websocket.send_json({
-                        "type": event_type,
-                        "data": data,
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to send to websocket: {e}")
-                    disconnected.append(websocket)
-            
-            # Clean up disconnected websockets
-            for ws in disconnected:
-                try:
-                    websocket_connections[session_id].remove(ws)
-                except ValueError:
-                    pass
-    
-    # Use the captured main loop - this works from ANY thread
-    if _main_loop and not _main_loop.is_closed():
-        try:
-            asyncio.run_coroutine_threadsafe(_broadcast(), _main_loop)
-        except Exception as e:
-            logger.error(f"Failed to schedule broadcast: {e}")
-    else:
-        logger.warning(f"Main loop not available for broadcast: {event_type}")
+def get_main_loop() -> Optional[asyncio.AbstractEventLoop]:
+    return _main_loop
 
 
-# ============================================================
-# HELPER FUNCTIONS (FIXED FOR MULTI-PARAM TOOLS)
-# ============================================================
+# ============================================================================
+# THREAD-SAFE BROADCAST
+# ============================================================================
 
-def parse_tool_input(raw_input: Any) -> Any:
-    """
-    Parse tool input - handles both string and dict inputs.
-    Converts JSON strings to dicts where appropriate.
-    
-    Args:
-        raw_input: Raw input from plan (string or dict)
-    
-    Returns:
-        Parsed input (string or dict)
-    """
-    # If already a dict, return as-is
-    if isinstance(raw_input, dict):
-        return raw_input
-    
-    # If not a string, convert to string
-    if not isinstance(raw_input, str):
-        return str(raw_input)
-    
-    # Try to parse as JSON if it looks like JSON
-    stripped = raw_input.strip()
-    if (stripped.startswith('{') and stripped.endswith('}')) or \
-       (stripped.startswith('[') and stripped.endswith(']')):
-        try:
-            parsed = json.loads(stripped)
-            # Only use parsed version if it's a dict (not a list or other JSON)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            # Try Python literal eval as fallback (handles single quotes)
+def schedule_broadcast(
+    session_id: str,
+    event_type: str,
+    data: Dict[str, Any],
+) -> None:
+    async def _broadcast() -> None:
+        connections = websocket_connections.get(session_id, [])
+        if not connections:
+            return
+        payload = {
+            "type":      event_type,
+            "data":      data,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        disconnected = []
+        for ws in connections:
             try:
-                import ast
-                parsed = ast.literal_eval(stripped)
-                if isinstance(parsed, dict):
-                    return parsed
-            except (ValueError, SyntaxError):
+                await ws.send_json(payload)
+            except Exception as exc:
+                logger.warning(f"[Monitor] WebSocket send failed: {exc}")
+                disconnected.append(ws)
+        for ws in disconnected:
+            try:
+                connections.remove(ws)
+            except ValueError:
                 pass
-    
-    # Return as string if not parseable
-    return raw_input
 
-
-def resolve_placeholders(value: Any, step_num: int, executed: Dict[str, str]) -> Any:
-    """
-    Resolve {prev} and {step_N} placeholders in any value.
-    Works recursively on dicts and strings.
-    
-    Args:
-        value: Value to resolve (string, dict, or other)
-        step_num: Current step number
-        executed: Dict of previous step outputs
-    
-    Returns:
-        Value with placeholders resolved
-    """
-    # Handle dict recursively
-    if isinstance(value, dict):
-        return {k: resolve_placeholders(v, step_num, executed) for k, v in value.items()}
-    
-    # Handle list recursively
-    if isinstance(value, list):
-        return [resolve_placeholders(item, step_num, executed) for item in value]
-    
-    # Handle strings with placeholders
-    if isinstance(value, str):
-        # Replace {prev} with previous step output
-        if "{prev}" in value:
-            prev_output = str(executed.get(f"step_{step_num-1}", ""))
-            value = value.replace("{prev}", prev_output)
-        
-        # Replace {step_N} with that step's output
-        for i in range(1, step_num):
-            placeholder = f"{{step_{i}}}"
-            if placeholder in value:
-                step_output = str(executed.get(f"step_{i}", ""))
-                value = value.replace(placeholder, step_output)
-        
-        return value
-    
-    # Return other types as-is
-    return value
-
-
-def execute_tool_with_input(tool, tool_name: str, tool_input: Any):
-    """
-    Execute a tool with proper argument handling.
-    Matches original ToolChainPlanner pattern but with dict input support.
-    
-    Args:
-        tool: Tool instance
-        tool_name: Tool name (for logging)
-        tool_input: Parsed and resolved input (dict or string)
-    
-    Yields/Returns:
-        Tool execution result (may be generator or direct value)
-    """
-    logger.debug(f"[execute_tool_with_input] Tool: {tool_name}")
-    logger.debug(f"[execute_tool_with_input] Input type: {type(tool_input)}")
-    logger.debug(f"[execute_tool_with_input] Input value: {tool_input}")
-    
-    # Get the callable - matching original pattern from Document 3
-    if hasattr(tool, 'run') and callable(tool.run):
-        func = tool.run
-    elif hasattr(tool, 'invoke') and callable(tool.invoke):
-        func = tool.invoke
-    elif hasattr(tool, 'func') and callable(tool.func):
-        func = tool.func
-    elif callable(tool):
-        func = tool
-    else:
-        raise ValueError(f"Tool '{tool_name}' is not callable")
-    
-    # Execute - BaseTool.run() and similar methods accept tool_input as single arg (can be dict)
-    # Only unpack dicts for raw functions (.func or callable tools)
-    if hasattr(tool, 'run') or hasattr(tool, 'invoke'):
-        # LangChain tool methods - pass tool_input as-is (they handle dicts internally)
-        logger.debug(f"[execute_tool_with_input] Calling LangChain method with tool_input")
-        return func(tool_input)
-    else:
-        # Raw functions - unpack dicts as kwargs
-        if isinstance(tool_input, dict):
-            logger.debug(f"[execute_tool_with_input] Calling raw function with **kwargs")
-            return func(**tool_input)
-        else:
-            logger.debug(f"[execute_tool_with_input] Calling raw function with single arg")
-            return func(tool_input)
-
-
-class EnhancedMonitoredToolChainPlanner:
-    """
-    Wrapper that adds WebSocket monitoring to any toolchain planner.
-    FIXED: Executes plan directly step-by-step with proper multi-parameter tool support.
-    """
-    
-    def __init__(self, original_planner, session_id: str):
-        self.original_planner = original_planner
-        self.session_id = session_id
-        self.execution_id = None
-        self.agent = original_planner.agent
-        self.tools = original_planner.tools
-    
-    def execute_tool_chain(self, query: str, plan=None, strategy: str = "static", 
-                          mode: str = "incremental", **kwargs):
-        """
-        Monitored version of execute_tool_chain.
-        FIXED: Executes plan directly with reliable step tracking and multi-param support.
-        """
-        # Create execution record
-        self.execution_id = self._create_toolchain_execution(query)
-        
+    loop = _main_loop
+    if loop and not loop.is_closed():
         try:
-            # Broadcast execution started
-            schedule_broadcast(
-                self.session_id,
-                "execution_started",
-                {"execution_id": self.execution_id, "query": query, "strategy": strategy, "mode": mode}
-            )
-            
-            # Generate plan if not provided
-            if plan is None:
-                schedule_broadcast(self.session_id, "status", {"status": "planning"})
-                
-                # Use planner to generate plan
-                if hasattr(self.original_planner, 'plan_tool_chain'):
-                    try:
-                        import inspect
-                        plan_sig = inspect.signature(self.original_planner.plan_tool_chain)
-                        if 'strategy' in plan_sig.parameters:
-                            gen = self.original_planner.plan_tool_chain(query, strategy=strategy)
-                        else:
-                            gen = self.original_planner.plan_tool_chain(query)
-                    except Exception as e:
-                        logger.warning(f"Error calling plan_tool_chain with strategy: {e}")
-                        gen = self.original_planner.plan_tool_chain(query)
-                    
-                    # Process planning chunks
-                    for chunk in gen:
-                        if isinstance(chunk, str):
-                            # Broadcast planning chunks
-                            schedule_broadcast(self.session_id, "plan_chunk", {"chunk": chunk})
-                            yield chunk
-                        elif isinstance(chunk, list):
-                            # Final plan
-                            plan = chunk
-                            self._update_toolchain_plan(plan)
-                            schedule_broadcast(
-                                self.session_id,
-                                "plan",
-                                {"plan": plan, "total_steps": len(plan)}
-                            )
-                            yield chunk
-                        elif isinstance(chunk, dict):
-                            # Handle structured plans
-                            if "primary_path" in chunk:
-                                plan = chunk["primary_path"]
-                            elif "alternatives" in chunk:
-                                plan = chunk["alternatives"][0]
-                            else:
-                                plan = [chunk]
-                            
-                            self._update_toolchain_plan(plan)
-                            schedule_broadcast(
-                                self.session_id,
-                                "plan",
-                                {"plan": plan, "total_steps": len(plan)}
-                            )
-                            yield chunk
-                else:
-                    # No plan_tool_chain method, use simple plan
-                    plan = [{"tool": "fast_llm", "input": query}]
-                    self._update_toolchain_plan(plan)
+            asyncio.run_coroutine_threadsafe(_broadcast(), loop)
+        except Exception as exc:
+            logger.error(f"[Monitor] Failed to schedule broadcast '{event_type}': {exc}")
+    else:
+        logger.warning(
+            f"[Monitor] Main loop not available for event '{event_type}' "
+            f"(session={session_id}). Call set_main_loop() at startup."
+        )
+
+
+# ============================================================================
+# STEP BOUNDARY PARSING
+# ============================================================================
+
+_STEP_RE = re.compile(
+    r"\[(?:ToolChain|Adaptive|Parallel|Expert)\]\s+Step\s+(\d+)\s*[→:]\s*([^\s({\n]+)",
+    re.IGNORECASE,
+)
+
+# Adaptive mode emits a planning line before each step execution.
+# e.g. "[Adaptive] Planning step 3: web_search"
+_ADAPTIVE_PLAN_RE = re.compile(
+    r"\[Adaptive\]\s+(?:Planning\s+)?[Ss]tep\s+(\d+)\s*[→:]\s*([^\s({\n]+)"
+    r"(?:\s+input:\s*(.+))?",
+    re.IGNORECASE,
+)
+
+# Parallel mode emits branch grouping information.
+# e.g. "[Parallel] Branch 1: steps 1,2,3"
+_PARALLEL_BRANCH_RE = re.compile(
+    r"\[Parallel\]\s+Branch\s+(\d+)\s*[:\s]+steps?\s+([\d,\s]+)",
+    re.IGNORECASE,
+)
+
+_ERROR_PREFIXES = (
+    "[ToolChain] ERROR",
+    "[Adaptive] Planning error",
+    "[ERROR]",
+    "ERROR: tool",
+)
+
+# Adaptive DONE signal
+_ADAPTIVE_DONE_RE = re.compile(r"\[Adaptive\]\s+DONE", re.IGNORECASE)
+
+
+def _parse_step_start(chunk: str) -> Optional[Tuple[int, str]]:
+    m = _STEP_RE.search(chunk)
+    if m:
+        return int(m.group(1)), m.group(2).strip()
+    return None
+
+
+def _parse_adaptive_plan_line(chunk: str) -> Optional[Tuple[int, str, str]]:
+    """Return (step_num, tool_name, raw_input) if this chunk announces an adaptive step."""
+    m = _ADAPTIVE_PLAN_RE.search(chunk)
+    if m:
+        step_num   = int(m.group(1))
+        tool_name  = m.group(2).strip()
+        raw_input  = (m.group(3) or "").strip()
+        return step_num, tool_name, raw_input
+    return None
+
+
+def _parse_parallel_branch(chunk: str) -> Optional[Tuple[int, List[int]]]:
+    """Return (branch_num, [step_ids]) if chunk declares a parallel branch."""
+    m = _PARALLEL_BRANCH_RE.search(chunk)
+    if m:
+        branch_num = int(m.group(1))
+        step_ids   = [int(s.strip()) for s in m.group(2).split(",") if s.strip()]
+        return branch_num, step_ids
+    return None
+
+
+def _is_step_error(chunk: str) -> bool:
+    return any(chunk.startswith(p) for p in _ERROR_PREFIXES)
+
+
+def _is_adaptive_done(chunk: str) -> bool:
+    return bool(_ADAPTIVE_DONE_RE.search(chunk))
+
+
+# ============================================================================
+# MONITORED WRAPPER
+# ============================================================================
+
+class MonitoredToolChainPlanner:
+    """
+    Transparent wrapper around the unified ToolChainPlanner.
+
+    Key additions over the previous version
+    ----------------------------------------
+    * **Adaptive mode** — instead of pre-planning the full graph we fire a
+      ``step_discovered`` event each time the adaptive planner decides on the
+      next tool.  The flowchart widget in the browser builds the graph
+      incrementally as these events arrive.
+
+    * **Parallel mode** — when the planner broadcasts branch groupings we relay
+      a ``parallel_branches`` event so the flowchart can render side-by-side
+      swim-lanes rather than a single vertical chain.
+
+    * **Mode tag on every event** — the ``mode`` field is now included in
+      ``execution_started`` and every step event so the JS widget can switch
+      rendering strategy without guessing.
+    """
+
+    def __init__(self, planner: Any, session_id: str) -> None:
+        self._planner   = planner
+        self.session_id = session_id
+        self.agent      = planner.agent
+        self.tools      = planner.tools
+        self.execution_id: Optional[str] = None
+
+    # ------------------------------------------------------------------
+    # plan_tool_chain  (unchanged behaviour, added mode tag)
+    # ------------------------------------------------------------------
+
+    def plan_tool_chain(self, query: str, history_context: str = "") -> Iterator[Any]:
+        schedule_broadcast(self.session_id, "status", {"status": "planning"})
+        for item in self._planner.plan_tool_chain(query, history_context):
+            if isinstance(item, list):
+                self._update_execution_plan(item)
+                schedule_broadcast(
+                    self.session_id, "plan",
+                    {"plan": item, "total_steps": len(item), "mode": "sequential"},
+                )
             else:
-                self._update_toolchain_plan(plan)
-            
-            if not plan or not isinstance(plan, list):
-                raise ValueError(f"Invalid plan: {plan}")
-            
-            # Execute plan step by step (FIXED: Direct execution with multi-param support)
-            schedule_broadcast(self.session_id, "status", {"status": "executing"})
-            
-            yield from self._execute_plan_directly(plan, query)
-            
-        except Exception as e:
-            logger.error(f"Toolchain execution error: {e}", exc_info=True)
-            self._complete_toolchain_execution(str(e), "failed")
+                schedule_broadcast(
+                    self.session_id, "plan_chunk",
+                    {"chunk": item if isinstance(item, str) else str(item)},
+                )
+            yield item
+
+    # ------------------------------------------------------------------
+    # execute_tool_chain  (main entry point)
+    # ------------------------------------------------------------------
+
+    def execute_tool_chain(
+        self,
+        query: str,
+        plan:     Optional[Any] = None,
+        mode:     str = "sequential",
+        strategy: str = "default",
+        expert:   bool = False,
+        **kwargs,
+    ) -> Iterator[str]:
+
+        self.execution_id = self._create_execution(query, mode)
+
+        schedule_broadcast(
+            self.session_id, "execution_started",
+            {
+                "execution_id": self.execution_id,
+                "query":        query,
+                "mode":         mode,
+                "strategy":     strategy,
+            },
+        )
+
+        # Resolve effective mode (mirrors ToolChainPlanner logic)
+        resolved_mode = mode
+        if expert:
+            resolved_mode = "expert"
+        elif mode == "sequential":
+            resolved_mode = self._planner._STRATEGY_TO_MODE.get(
+                strategy.lower(), "sequential"
+            )
+
+        # ------------------------------------------------------------------
+        # ADAPTIVE — no pre-planning; discover steps one at a time
+        # ------------------------------------------------------------------
+        if resolved_mode == "adaptive":
+            yield from self._run_adaptive(query, **kwargs)
+            return
+
+        # ------------------------------------------------------------------
+        # PARALLEL — pre-plan, detect branches, then execute
+        # ------------------------------------------------------------------
+        if resolved_mode == "parallel":
+            yield from self._run_parallel(query, plan=plan, **kwargs)
+            return
+
+        # ------------------------------------------------------------------
+        # SEQUENTIAL / EXPERT / HYBRID — pre-plan, then execute
+        # ------------------------------------------------------------------
+        yield from self._run_sequential(
+            query, plan=plan, mode=mode,
+            strategy=strategy, expert=expert, **kwargs,
+        )
+
+    # ------------------------------------------------------------------
+    # ADAPTIVE executor
+    # ------------------------------------------------------------------
+
+    def _run_adaptive(self, query: str, max_steps: int = 20, **kwargs) -> Iterator[str]:
+        """
+        Run the adaptive planner, firing ``step_discovered`` events
+        in real-time as each step is planned.
+        """
+        schedule_broadcast(self.session_id, "status", {"status": "executing"})
+
+        current_step: Optional[int] = None
+        current_tool: Optional[str] = None
+        step_chunks:  List[str]     = []
+        discovered_steps: set       = set()
+
+        try:
+            for chunk in self._planner.execute_tool_chain(
+                query, mode="adaptive", max_steps=max_steps, **kwargs
+            ):
+                # ── Detect adaptive planning announcement ──────────────────
+                adaptive_info = _parse_adaptive_plan_line(chunk)
+                if adaptive_info:
+                    step_num, tool_name, raw_input = adaptive_info
+                    if step_num not in discovered_steps:
+                        discovered_steps.add(step_num)
+                        self._add_step(step_num, tool_name, raw_input)
+                        # Fire step_discovered so the JS can append a new node
+                        schedule_broadcast(
+                            self.session_id, "step_discovered",
+                            {
+                                "step_number": step_num,
+                                "tool_name":   tool_name,
+                                "input":       raw_input,
+                                "mode":        "adaptive",
+                            },
+                        )
+                    yield chunk
+                    continue
+
+                # ── Detect execution start (step_started) ─────────────────
+                step_info = _parse_step_start(chunk)
+                if step_info:
+                    # Flush previous step
+                    if current_step is not None:
+                        output = "".join(step_chunks)
+                        self._complete_step(current_step, output)
+                        schedule_broadcast(
+                            self.session_id, "step_completed",
+                            {
+                                "step_number": current_step,
+                                "output":      output[:500],
+                                "mode":        "adaptive",
+                            },
+                        )
+                    current_step, current_tool = step_info
+                    step_chunks = []
+                    # Ensure step record exists (may already exist from step_discovered)
+                    if current_step not in discovered_steps:
+                        discovered_steps.add(current_step)
+                        self._add_step(current_step, current_tool, "")
+                        schedule_broadcast(
+                            self.session_id, "step_discovered",
+                            {
+                                "step_number": current_step,
+                                "tool_name":   current_tool,
+                                "input":       "",
+                                "mode":        "adaptive",
+                            },
+                        )
+                    schedule_broadcast(
+                        self.session_id, "step_started",
+                        {
+                            "step_number":  current_step,
+                            "tool_name":    current_tool,
+                            "execution_id": self.execution_id,
+                            "mode":         "adaptive",
+                        },
+                    )
+                    yield chunk
+                    continue
+
+                # ── Detect errors ─────────────────────────────────────────
+                if current_step is not None and _is_step_error(chunk):
+                    step_chunks.append(chunk)
+                    output = "".join(step_chunks)
+                    self._fail_step(current_step, output)
+                    schedule_broadcast(
+                        self.session_id, "step_failed",
+                        {
+                            "step_number": current_step,
+                            "error":       chunk.strip(),
+                            "mode":        "adaptive",
+                        },
+                    )
+                    current_step = None
+                    current_tool = None
+                    step_chunks  = []
+                    yield chunk
+                    continue
+
+                # ── DONE signal ───────────────────────────────────────────
+                if _is_adaptive_done(chunk):
+                    if current_step is not None and step_chunks:
+                        output = "".join(step_chunks)
+                        self._complete_step(current_step, output)
+                        schedule_broadcast(
+                            self.session_id, "step_completed",
+                            {
+                                "step_number": current_step,
+                                "output":      output[:500],
+                                "mode":        "adaptive",
+                            },
+                        )
+                    yield chunk
+                    continue
+
+                # ── Normal output chunk ───────────────────────────────────
+                if current_step is not None:
+                    step_chunks.append(chunk)
+                    schedule_broadcast(
+                        self.session_id, "step_output",
+                        {"step_number": current_step, "chunk": chunk, "mode": "adaptive"},
+                    )
+                yield chunk
+
+            # Flush final step
+            if current_step is not None and step_chunks:
+                output = "".join(step_chunks)
+                self._complete_step(current_step, output)
+                schedule_broadcast(
+                    self.session_id, "step_completed",
+                    {
+                        "step_number": current_step,
+                        "output":      output[:500],
+                        "mode":        "adaptive",
+                    },
+                )
+
+            self._finish_execution("completed")
             schedule_broadcast(
-                self.session_id,
-                "execution_failed",
-                {"error": str(e)}
+                self.session_id, "execution_completed",
+                {"execution_id": self.execution_id, "mode": "adaptive"},
+            )
+
+        except Exception as exc:
+            logger.error(f"[Monitor/adaptive] error: {exc}", exc_info=True)
+            self._finish_execution("failed", str(exc))
+            schedule_broadcast(
+                self.session_id, "execution_failed",
+                {"error": str(exc), "execution_id": self.execution_id},
             )
             raise
-    
-    def _execute_plan_directly(self, plan: List[Dict], query: str):
+
+    # ------------------------------------------------------------------
+    # PARALLEL executor
+    # ------------------------------------------------------------------
+
+    def _run_parallel(
+        self, query: str, plan: Optional[Any] = None, **kwargs
+    ) -> Iterator[str]:
         """
-        Execute plan directly, step by step, with reliable broadcasting.
-        FIXED: Properly handles multi-parameter tools with dict inputs.
+        Run the parallel planner.  Detects branch declarations and fires
+        ``parallel_branches`` so the flowchart can draw swim-lanes.
         """
-        executed = {}
-        step_num = 0
-        final_result = ""
-        
-        for step in plan:
-            step_num += 1
-            tool_name = step.get("tool")
-            raw_input = step.get("input", "")
-            
-            logger.info(f"\n{'='*60}")
-            logger.info(f"[Step {step_num}] Tool: {tool_name}")
-            logger.info(f"[Step {step_num}] Raw input type: {type(raw_input)}")
-            logger.info(f"[Step {step_num}] Raw input value: {raw_input}")
-            
-            # FIXED: Parse input (handles JSON strings -> dicts)
-            parsed_input = parse_tool_input(raw_input)
-            logger.info(f"[Step {step_num}] Parsed input type: {type(parsed_input)}")
-            logger.info(f"[Step {step_num}] Parsed input value: {parsed_input}")
-            
-            # FIXED: Resolve placeholders (works on both strings and dicts)
-            tool_input = resolve_placeholders(parsed_input, step_num, executed)
-            logger.info(f"[Step {step_num}] Resolved input type: {type(tool_input)}")
-            logger.info(f"[Step {step_num}] Resolved input value: {tool_input}")
-            
-            # Display input for monitoring (convert dict to JSON string)
-            input_display = json.dumps(tool_input) if isinstance(tool_input, dict) else str(tool_input)
-            
-            # Add step to monitoring
-            self._add_toolchain_step(step_num, tool_name, input_display)
-            
-            # Broadcast step started
-            schedule_broadcast(
-                self.session_id,
-                "step_started",
-                {
-                    "step_number": step_num,
-                    "tool_name": tool_name,
-                    "tool_input": input_display,
-                    "execution_id": self.execution_id
-                }
-            )
-            
-            # Show step info
-            yield f"\n[Step {step_num}] Executing: {tool_name}\n"
-            yield f"[Input] {input_display[:200]}{'...' if len(input_display) > 200 else ''}\n"
-            
-            # Find and execute tool
-            tool = next((t for t in self.tools if getattr(t, "name", "") == tool_name), None)
-            
-            if not tool:
-                error_msg = f"ERROR: Tool not found: {tool_name}"
-                yield error_msg
-                
-                self._update_toolchain_step(step_num, error=error_msg, status="failed")
-                schedule_broadcast(
-                    self.session_id,
-                    "step_failed",
-                    {"step_number": step_num, "error": error_msg}
-                )
-                
-                executed[f"step_{step_num}"] = error_msg
-                continue
-            
-            # Execute tool
-            try:
-                logger.info(f"[Step {step_num}] Executing tool: {tool_name}")
-                
-                # FIXED: Execute with proper argument handling
-                result = execute_tool_with_input(tool, tool_name, tool_input)
-                
-                # Collect output (handle both streaming and non-streaming)
-                collected = []
-                result_str = ""
-                
-                try:
-                    # Try to iterate (streaming)
-                    for chunk in result:
-                        chunk_str = str(chunk)
-                        yield chunk_str
-                        collected.append(chunk_str)
-                        
-                        # FIXED: Broadcast EVERY chunk with correct step number
-                        schedule_broadcast(
-                            self.session_id,
-                            "step_output",
-                            {"step_number": step_num, "chunk": chunk_str}
-                        )
-                        
-                except TypeError:
-                    # Not iterable - single result
-                    result_str = str(result)
-                    yield result_str
-                    
-                    # Broadcast single result
+        # Pre-plan if needed
+        if plan is None:
+            schedule_broadcast(self.session_id, "status", {"status": "planning"})
+            intercepted_plan: Optional[List[Dict]] = None
+            for item in self._planner.plan_tool_chain(query):
+                if isinstance(item, list):
+                    intercepted_plan = item
+                    self._update_execution_plan(item)
                     schedule_broadcast(
-                        self.session_id,
-                        "step_output",
-                        {"step_number": step_num, "chunk": result_str}
+                        self.session_id, "plan",
+                        {"plan": item, "total_steps": len(item), "mode": "parallel"},
                     )
                 else:
-                    # Combine collected chunks
-                    result_str = "".join(collected)
-                
-                # Store result
-                executed[f"step_{step_num}"] = result_str
-                executed[tool_name] = result_str
-                final_result = result_str
-                
-                logger.info(f"[Step {step_num}] Result length: {len(result_str)} chars")
-                logger.info(f"[Step {step_num}] Result preview: {result_str[:100]}...")
-                
-                # Update step as completed
-                self._update_toolchain_step(step_num, output=result_str, status="completed")
-                
-                # Broadcast step completed
+                    chunk = item if isinstance(item, str) else str(item)
+                    schedule_broadcast(self.session_id, "plan_chunk", {"chunk": chunk})
+                    yield chunk
+            if intercepted_plan is None:
+                self._finish_execution("failed", "Planning produced no plan")
+                schedule_broadcast(self.session_id, "execution_failed",
+                                   {"error": "Planning produced no plan"})
+                return
+            plan = intercepted_plan
+
+        schedule_broadcast(self.session_id, "status", {"status": "executing"})
+
+        # Collect branch groupings from execution output
+        branches: Dict[int, List[int]] = {}
+        current_step: Optional[int] = None
+        current_tool: Optional[str] = None
+        step_chunks:  List[str]     = []
+
+        try:
+            for chunk in self._planner.execute_tool_chain(
+                query, plan=plan, mode="parallel", **kwargs
+            ):
+                # ── Branch declaration ─────────────────────────────────────
+                branch_info = _parse_parallel_branch(chunk)
+                if branch_info:
+                    branch_num, step_ids = branch_info
+                    branches[branch_num] = step_ids
+                    # Build the full branch list and broadcast
+                    branch_list = [branches[b] for b in sorted(branches)]
+                    schedule_broadcast(
+                        self.session_id, "parallel_branches",
+                        {"branches": branch_list, "mode": "parallel"},
+                    )
+                    yield chunk
+                    continue
+
+                # ── Step start ────────────────────────────────────────────
+                step_info = _parse_step_start(chunk)
+                if step_info:
+                    if current_step is not None:
+                        output = "".join(step_chunks)
+                        self._complete_step(current_step, output)
+                        schedule_broadcast(
+                            self.session_id, "step_completed",
+                            {
+                                "step_number": current_step,
+                                "output":      output[:500],
+                                "mode":        "parallel",
+                            },
+                        )
+                    current_step, current_tool = step_info
+                    step_chunks = []
+                    self._add_step(current_step, current_tool, "")
+                    schedule_broadcast(
+                        self.session_id, "step_started",
+                        {
+                            "step_number":  current_step,
+                            "tool_name":    current_tool,
+                            "execution_id": self.execution_id,
+                            "mode":         "parallel",
+                        },
+                    )
+                    yield chunk
+                    continue
+
+                # ── Error ─────────────────────────────────────────────────
+                if current_step is not None and _is_step_error(chunk):
+                    step_chunks.append(chunk)
+                    output = "".join(step_chunks)
+                    self._fail_step(current_step, output)
+                    schedule_broadcast(
+                        self.session_id, "step_failed",
+                        {
+                            "step_number": current_step,
+                            "error":       chunk.strip(),
+                            "mode":        "parallel",
+                        },
+                    )
+                    current_step = None
+                    step_chunks  = []
+                    yield chunk
+                    continue
+
+                # ── Output chunk ──────────────────────────────────────────
+                if current_step is not None:
+                    step_chunks.append(chunk)
+                    schedule_broadcast(
+                        self.session_id, "step_output",
+                        {"step_number": current_step, "chunk": chunk, "mode": "parallel"},
+                    )
+                yield chunk
+
+            # Flush final
+            if current_step is not None and step_chunks:
+                output = "".join(step_chunks)
+                self._complete_step(current_step, output)
                 schedule_broadcast(
-                    self.session_id,
-                    "step_completed",
-                    {"step_number": step_num, "output": result_str[:500]}
+                    self.session_id, "step_completed",
+                    {
+                        "step_number": current_step,
+                        "output":      output[:500],
+                        "mode":        "parallel",
+                    },
                 )
-                
-                # Save to memory if available
-                try:
-                    if hasattr(self.agent, 'save_to_memory'):
-                        self.agent.save_to_memory(f"Step {step_num} - {tool_name}", result_str)
-                except Exception as e:
-                    logger.debug(f"Could not save to memory: {e}")
-                
-                yield f"\n[Step {step_num}] ✓ Complete\n"
-                
-            except Exception as e:
-                error_msg = f"ERROR: {str(e)}"
-                logger.error(f"[Step {step_num}] Execution failed: {error_msg}", exc_info=True)
-                yield f"\n[Step {step_num}] ✗ Failed: {error_msg}\n"
-                
-                self._update_toolchain_step(step_num, error=error_msg, status="failed")
+
+            self._finish_execution("completed")
+            schedule_broadcast(
+                self.session_id, "execution_completed",
+                {"execution_id": self.execution_id, "mode": "parallel"},
+            )
+
+        except Exception as exc:
+            logger.error(f"[Monitor/parallel] error: {exc}", exc_info=True)
+            self._finish_execution("failed", str(exc))
+            schedule_broadcast(
+                self.session_id, "execution_failed",
+                {"error": str(exc), "execution_id": self.execution_id},
+            )
+            raise
+
+    # ------------------------------------------------------------------
+    # SEQUENTIAL / EXPERT / HYBRID executor
+    # ------------------------------------------------------------------
+
+    def _run_sequential(
+        self,
+        query:    str,
+        plan:     Optional[Any] = None,
+        mode:     str = "sequential",
+        strategy: str = "default",
+        expert:   bool = False,
+        **kwargs,
+    ) -> Iterator[str]:
+        if plan is None:
+            schedule_broadcast(self.session_id, "status", {"status": "planning"})
+            intercepted_plan: Optional[List[Dict]] = None
+            for item in self._planner.plan_tool_chain(query):
+                if isinstance(item, list):
+                    intercepted_plan = item
+                    self._update_execution_plan(item)
+                    schedule_broadcast(
+                        self.session_id, "plan",
+                        {"plan": item, "total_steps": len(item), "mode": mode},
+                    )
+                else:
+                    chunk = item if isinstance(item, str) else str(item)
+                    schedule_broadcast(self.session_id, "plan_chunk", {"chunk": chunk})
+                    yield chunk
+            if intercepted_plan is None:
+                self._finish_execution("failed", "Planning produced no plan")
+                schedule_broadcast(self.session_id, "execution_failed",
+                                   {"error": "Planning produced no plan"})
+                return
+            plan = intercepted_plan
+
+        schedule_broadcast(self.session_id, "status", {"status": "executing"})
+
+        current_step: Optional[int] = None
+        current_tool: Optional[str] = None
+        step_chunks:  List[str]     = []
+
+        try:
+            for chunk in self._planner.execute_tool_chain(
+                query, plan=plan, mode=mode,
+                strategy=strategy, expert=expert, **kwargs,
+            ):
+                step_info = _parse_step_start(chunk)
+                if step_info:
+                    if current_step is not None:
+                        output = "".join(step_chunks)
+                        self._complete_step(current_step, output)
+                        schedule_broadcast(
+                            self.session_id, "step_completed",
+                            {"step_number": current_step, "output": output[:500], "mode": mode},
+                        )
+                    current_step, current_tool = step_info
+                    step_chunks = []
+                    self._add_step(current_step, current_tool, "")
+                    schedule_broadcast(
+                        self.session_id, "step_started",
+                        {
+                            "step_number":  current_step,
+                            "tool_name":    current_tool,
+                            "execution_id": self.execution_id,
+                            "mode":         mode,
+                        },
+                    )
+                    yield chunk
+                    continue
+
+                if current_step is not None and _is_step_error(chunk):
+                    step_chunks.append(chunk)
+                    output = "".join(step_chunks)
+                    self._fail_step(current_step, output)
+                    schedule_broadcast(
+                        self.session_id, "step_failed",
+                        {"step_number": current_step, "error": chunk.strip(), "mode": mode},
+                    )
+                    current_step = None
+                    step_chunks  = []
+                    yield chunk
+                    continue
+
+                if current_step is not None:
+                    step_chunks.append(chunk)
+                    schedule_broadcast(
+                        self.session_id, "step_output",
+                        {"step_number": current_step, "chunk": chunk, "mode": mode},
+                    )
+                yield chunk
+
+            if current_step is not None and step_chunks:
+                output = "".join(step_chunks)
+                self._complete_step(current_step, output)
                 schedule_broadcast(
-                    self.session_id,
-                    "step_failed",
-                    {"step_number": step_num, "error": error_msg}
+                    self.session_id, "step_completed",
+                    {"step_number": current_step, "output": output[:500], "mode": mode},
                 )
-                
-                executed[f"step_{step_num}"] = error_msg
-        
-        # Mark execution as completed
-        self._complete_toolchain_execution(final_result, "completed")
-        schedule_broadcast(
-            self.session_id,
-            "execution_completed",
-            {"final_result": final_result[:500]}
-        )
-        
-        # Show final result
-        yield f"\n{'='*60}\n"
-        yield f"[Final Result]\n{final_result}\n"
-        yield f"{'='*60}\n"
-        
-        return executed
-    
-    def plan_tool_chain(self, query: str, strategy: str = "static", **kwargs):
-        """Generate a plan with optional strategy parameter."""
-        if hasattr(self.original_planner, 'plan_tool_chain'):
-            import inspect
-            sig = inspect.signature(self.original_planner.plan_tool_chain)
-            
-            if 'strategy' in sig.parameters:
-                yield from self.original_planner.plan_tool_chain(query, strategy=strategy, **kwargs)
-            else:
-                yield from self.original_planner.plan_tool_chain(query, **kwargs)
-        else:
-            # Fallback: no separate planning method
-            yield [{"tool": "fast_llm", "input": query}]
-    
-    # ============================================================
-    # Storage Helper Methods
-    # ============================================================
-    
-    def _create_toolchain_execution(self, query: str) -> str:
-        """Create a new toolchain execution record."""
-        execution_id = str(uuid.uuid4())
-        
-        if self.session_id not in toolchain_executions:
-            toolchain_executions[self.session_id] = {}
-        
-        toolchain_executions[self.session_id][execution_id] = {
-            "execution_id": execution_id,
-            "session_id": self.session_id,
-            "query": query,
-            "plan": [],
-            "steps": [],
-            "status": "planning",
-            "start_time": datetime.utcnow().isoformat(),
-            "end_time": None,
-            "total_steps": 0,
+
+            self._finish_execution("completed")
+            schedule_broadcast(
+                self.session_id, "execution_completed",
+                {"execution_id": self.execution_id, "mode": mode},
+            )
+
+        except Exception as exc:
+            logger.error(f"[Monitor/sequential] error: {exc}", exc_info=True)
+            self._finish_execution("failed", str(exc))
+            schedule_broadcast(
+                self.session_id, "execution_failed",
+                {"error": str(exc), "execution_id": self.execution_id},
+            )
+            raise
+
+    # ------------------------------------------------------------------
+    # Backward-compat alias
+    # ------------------------------------------------------------------
+
+    def execute_adaptive(self, query: str, max_steps: int = 20) -> Iterator[str]:
+        yield from self.execute_tool_chain(query, mode="adaptive", max_steps=max_steps)
+
+    # ------------------------------------------------------------------
+    # Attribute delegation
+    # ------------------------------------------------------------------
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._planner, name)
+
+    # ------------------------------------------------------------------
+    # Execution state helpers
+    # ------------------------------------------------------------------
+
+    def _create_execution(self, query: str, mode: str = "sequential") -> str:
+        eid = str(uuid.uuid4())
+        toolchain_executions.setdefault(self.session_id, {})[eid] = {
+            "execution_id":    eid,
+            "session_id":      self.session_id,
+            "query":           query,
+            "mode":            mode,
+            "plan":            [],
+            "steps":           [],
+            "status":          "planning",
+            "start_time":      datetime.utcnow().isoformat(),
+            "end_time":        None,
+            "total_steps":     0,
             "completed_steps": 0,
-            "final_result": None
+            "final_result":    None,
         }
-        
-        active_toolchains[self.session_id] = execution_id
-        
-        return execution_id
-    
-    def _update_toolchain_plan(self, plan: List[Dict[str, str]]):
-        """Update the plan for a toolchain execution."""
-        if self.session_id in toolchain_executions and self.execution_id in toolchain_executions[self.session_id]:
-            toolchain_executions[self.session_id][self.execution_id]["plan"] = plan
-            toolchain_executions[self.session_id][self.execution_id]["total_steps"] = len(plan)
-            toolchain_executions[self.session_id][self.execution_id]["status"] = "executing"
-    
-    def _add_toolchain_step(self, step_number: int, tool_name: str, tool_input: str):
-        """Add a new step to toolchain execution."""
-        if self.session_id in toolchain_executions and self.execution_id in toolchain_executions[self.session_id]:
-            step = {
-                "step_number": step_number,
-                "tool_name": tool_name,
-                "tool_input": tool_input,
-                "tool_output": None,
-                "status": "running",
-                "start_time": datetime.utcnow().isoformat(),
-                "end_time": None,
-                "error": None,
-                "metadata": {}
-            }
-            toolchain_executions[self.session_id][self.execution_id]["steps"].append(step)
-            return step
-        return None
-    
-    def _update_toolchain_step(self, step_number: int, output: Optional[str] = None, 
-                               error: Optional[str] = None, status: str = "completed"):
-        """Update a toolchain execution step."""
-        if self.session_id in toolchain_executions and self.execution_id in toolchain_executions[self.session_id]:
-            steps = toolchain_executions[self.session_id][self.execution_id]["steps"]
-            for step in steps:
-                if step["step_number"] == step_number:
-                    if output is not None:
-                        step["tool_output"] = output
-                    if error is not None:
-                        step["error"] = error
-                    step["status"] = status
-                    step["end_time"] = datetime.utcnow().isoformat()
-                    
-                    if status == "completed":
-                        toolchain_executions[self.session_id][self.execution_id]["completed_steps"] += 1
-                    
-                    return step
-        return None
-    
-    def _complete_toolchain_execution(self, final_result: str, status: str = "completed"):
-        """Mark toolchain execution as complete."""
-        if self.session_id in toolchain_executions and self.execution_id in toolchain_executions[self.session_id]:
-            toolchain_executions[self.session_id][self.execution_id]["status"] = status
-            toolchain_executions[self.session_id][self.execution_id]["end_time"] = datetime.utcnow().isoformat()
-            toolchain_executions[self.session_id][self.execution_id]["final_result"] = final_result
-            
-            if self.session_id in active_toolchains:
-                del active_toolchains[self.session_id]
-    
-    # Delegate other methods to original planner
-    def __getattr__(self, name):
-        """Delegate unknown attributes to original planner."""
-        return getattr(self.original_planner, name)
+        active_toolchains[self.session_id] = eid
+        return eid
+
+    def _update_execution_plan(self, plan: List[Dict]) -> None:
+        rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
+        if rec is not None:
+            rec["plan"]        = plan
+            rec["total_steps"] = len(plan)
+            rec["status"]      = "executing"
+
+    def _add_step(self, step_num: int, tool_name: str, tool_input: str) -> None:
+        rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
+        if rec is None:
+            return
+        # Don't duplicate
+        existing = [s for s in rec["steps"] if s["step_number"] == step_num]
+        if existing:
+            return
+        rec["steps"].append({
+            "step_number": step_num,
+            "tool_name":   tool_name,
+            "tool_input":  tool_input,
+            "tool_output": None,
+            "status":      "running",
+            "start_time":  datetime.utcnow().isoformat(),
+            "end_time":    None,
+            "error":       None,
+        })
+        # Update total_steps for adaptive mode
+        rec["total_steps"] = max(rec["total_steps"], step_num)
+
+    def _complete_step(self, step_num: int, output: str) -> None:
+        self._update_step(step_num, output=output, status="completed")
+
+    def _fail_step(self, step_num: int, error: str) -> None:
+        self._update_step(step_num, error=error, status="failed")
+
+    def _update_step(
+        self, step_num: int,
+        output: Optional[str] = None,
+        error:  Optional[str] = None,
+        status: str = "completed",
+    ) -> None:
+        rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
+        if rec is None:
+            return
+        for step in rec["steps"]:
+            if step["step_number"] == step_num:
+                if output is not None:
+                    step["tool_output"] = output
+                if error is not None:
+                    step["error"] = error
+                step["status"]   = status
+                step["end_time"] = datetime.utcnow().isoformat()
+                if status == "completed":
+                    rec["completed_steps"] += 1
+                break
+
+    def _finish_execution(self, status: str, error: Optional[str] = None) -> None:
+        rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
+        if rec is None:
+            return
+        rec["status"]   = status
+        rec["end_time"] = datetime.utcnow().isoformat()
+        if error:
+            rec["error"] = error
+        active_toolchains.pop(self.session_id, None)
 
 
-# ============================================================
-# Integration Helper
-# ============================================================
+# ============================================================================
+# INTEGRATION HELPERS
+# ============================================================================
 
-def wrap_toolchain_with_monitoring(vera_instance, session_id: str):
+def wrap_toolchain_with_monitoring(vera_instance: Any, session_id: str) -> Any:
     """
-    Wrap Vera's toolchain with monitoring capabilities.
-    This should be called when creating/retrieving a Vera instance for a session.
-    
-    Usage in get_or_create_vera():
-        vera = VeraAgent(session_id=session_id, ...)
-        wrap_toolchain_with_monitoring(vera, session_id)
-        return vera
-    
-    Args:
-        vera_instance: Vera agent instance
-        session_id: Session ID for WebSocket broadcasting
+    Wrap vera_instance.toolchain with WebSocket monitoring.
+    Safe to call multiple times — won't double-wrap.
     """
-    # Only wrap if not already wrapped
-    if not isinstance(vera_instance.toolchain, EnhancedMonitoredToolChainPlanner):
-        vera_instance.toolchain = EnhancedMonitoredToolChainPlanner(
-            vera_instance.toolchain,
-            session_id
-        )
-        logger.info(f"[Monitoring] Wrapped toolchain for session {session_id}")
-    
+    if isinstance(vera_instance.toolchain, MonitoredToolChainPlanner):
+        return vera_instance
+
+    vera_instance.toolchain           = MonitoredToolChainPlanner(
+        vera_instance.toolchain, session_id
+    )
+    vera_instance.toolchain_expert    = vera_instance.toolchain
+    vera_instance._adaptive_toolchain = vera_instance.toolchain
+
+    logger.info(f"[Monitor] Toolchain wrapped for session {session_id}")
     return vera_instance
 
 
-# ============================================================
-# Backward Compatibility
-# ============================================================
-
-# Alias for backward compatibility
-MonitoredToolChainPlanner = EnhancedMonitoredToolChainPlanner
+# Backward-compat alias
+EnhancedMonitoredToolChainPlanner = MonitoredToolChainPlanner

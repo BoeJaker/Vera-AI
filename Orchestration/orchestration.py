@@ -351,24 +351,32 @@ class Worker(threading.Thread):
                 
                 # Consume generator and queue chunks
                 chunk_count = 0
+                collected_chunks = []
                 try:
                     for chunk in output:
                         result.stream_queue.put(chunk)
+                        # Also collect for non-streaming callers
+                        try:
+                            if isinstance(chunk, str):
+                                collected_chunks.append(chunk)
+                            elif chunk is not None:
+                                collected_chunks.append(str(chunk))
+                        except Exception:
+                            pass
                         chunk_count += 1
                     
                     # Signal end of stream
                     result.stream_queue.put(StopIteration)
                     
-                    self.logger.debug(f"Stream complete: {chunk_count} chunks")
+                    # ← FIX: store joined text so wait_for_result works too
+                    result.result = "".join(collected_chunks)
+                    
+                    self.logger.debug(f"Stream complete: {chunk_count} chunks, "
+                                      f"{len(result.result)} chars stored in result.result")
                     
                 except Exception as e:
                     result.stream_queue.put(e)
                     raise
-            
-            else:
-                # Regular result
-                result.result = output
-                self.logger.debug(f"Result captured: {type(output).__name__}")
             
             # Record success
             completed_at = time.time()
@@ -689,73 +697,173 @@ class TaskQueue:
             time.sleep(0.1)
         
         return None
-    
-    def stream_result(self, task_id: str, timeout: Optional[float] = None) -> Iterator[Any]:
+        
+    def patched_stream_result(self, task_id: str, timeout: Optional[float] = None) -> Iterator[Any]:
         """
         Stream results from a task as they become available.
-        Works for both streaming (generator) and non-streaming tasks.
-        
-        Usage:
-            task_id = task_queue.submit("llm.generate", prompt="...")
-            for chunk in task_queue.stream_result(task_id):
-                print(chunk, end='', flush=True)
+
+        Handles all race conditions between worker thread and caller:
+        - Waits for task to appear in _pending or _completed
+        - Waits for is_streaming to be set (not just the TaskResult to exist)
+        - Falls back to result.result if stream_queue is already drained
+        - Works for both streaming and non-streaming tasks
         """
-        # Wait for task to start/be ready
+        effective_timeout = timeout or 300.0
         start_time = time.time()
-        result = None
-        
-        self.logger.debug(f"Waiting for task to start: {task_id[:8]}...")
-        
+
+        def elapsed():
+            return time.time() - start_time
+
+        def timed_out():
+            return elapsed() > effective_timeout
+
+        self.logger.debug(f"stream_result: waiting for task {task_id[:8]}...")
+
+        # ── Phase 1: wait for task to exist ──────────────────────────────────
         while True:
-            result = self.get_result(task_id, timeout=0.1)
-            if result:
+            with self._lock:
+                in_pending   = task_id in self._pending
+                in_completed = task_id in self._completed
+            if in_pending or in_completed:
                 break
-            
-            if timeout and (time.time() - start_time) > timeout:
-                raise TimeoutError(f"Task {task_id[:8]}... timed out waiting to start")
-            
-            time.sleep(0.1)
-        
-        # Check if task failed
-        if result.status == TaskStatus.FAILED:
+            if timed_out():
+                raise TimeoutError(f"Task {task_id[:8]}... never appeared (timeout={effective_timeout}s)")
+            time.sleep(0.05)
+
+        # ── Phase 2: wait until we know the streaming mode ───────────────────
+        # We must NOT read is_streaming once and assume False — the worker
+        # sets it asynchronously. We need to wait until either:
+        #   • is_streaming is True  (generator task)
+        #   • status is COMPLETED with a result (sync task done)
+        #   • status is FAILED
+        result = None
+        while True:
+            with self._lock:
+                completed = self._completed.get(task_id)
+                pending   = self._pending.get(task_id)
+
+            if completed is not None:
+                result = completed
+                # If it's a completed streaming task, stream_queue may be done.
+                # We can proceed — Phase 4 will handle the drained-queue case.
+                break
+
+            if pending is not None:
+                if pending.status.name == "FAILED":
+                    result = pending
+                    break
+                # Generator task: wait for is_streaming to be set
+                if pending.is_streaming:
+                    result = pending
+                    break
+                # Sync task that finished extremely fast (result set, not yet moved):
+                if pending.result is not None:
+                    result = pending
+                    break
+
+            if timed_out():
+                raise TimeoutError(
+                    f"Task {task_id[:8]}... timed out waiting for stream start "
+                    f"(elapsed={elapsed():.1f}s)"
+                )
+            time.sleep(0.02)   # tight poll
+
+        if result is None:
+            raise TimeoutError(f"Task {task_id[:8]}... result vanished")
+
+        # ── Phase 3: failure check ────────────────────────────────────────────
+        if result.status.name == "FAILED":
             self.logger.error(f"Task failed: {result.error}")
             raise Exception(f"Task failed: {result.error}")
-        
-        # If streaming task
-        if result.is_streaming and result.stream_queue:
-            self.logger.debug(f"Streaming results for task {task_id[:8]}...")
-            
-            chunk_count = 0
-            while True:
-                try:
-                    chunk = result.stream_queue.get(timeout=timeout or 300)
-                    
-                    # Check for end of stream
-                    if chunk is StopIteration:
-                        self.logger.debug(f"Stream ended: {chunk_count} chunks")
-                        break
-                    
-                    # Check for exception
-                    if isinstance(chunk, Exception):
-                        raise chunk
-                    
-                    chunk_count += 1
-                    yield chunk
-                
-                except queue.Empty:
-                    # Check if task is completed
-                    with self._lock:
-                        if task_id in self._completed:
-                            self.logger.debug(f"Task completed externally: {chunk_count} chunks")
+
+        # ── Phase 4: streaming path ───────────────────────────────────────────
+        if result.is_streaming:
+            sq = result.stream_queue
+
+            if sq is not None:
+                self.logger.debug(f"stream_result: draining stream_queue for {task_id[:8]}...")
+                chunk_count = 0
+
+                while True:
+                    try:
+                        chunk = sq.get(timeout=min(5.0, max(0.1, effective_timeout - elapsed())))
+
+                        if chunk is StopIteration:
+                            self.logger.debug(f"stream_result: stream ended normally ({chunk_count} chunks)")
                             break
-                    continue
-        
+
+                        if isinstance(chunk, Exception):
+                            raise chunk
+
+                        chunk_count += 1
+                        yield chunk
+
+                    except queue.Empty:
+                        # Check if task completed (worker done, queue fully drained)
+                        with self._lock:
+                            done = task_id in self._completed
+                        if done:
+                            self.logger.debug(f"stream_result: task completed externally ({chunk_count} chunks)")
+                            break
+                        if timed_out():
+                            raise TimeoutError(
+                                f"stream_result: stream {task_id[:8]}... timed out mid-stream"
+                            )
+
+                # If we got zero chunks but result.result has content (joined text
+                # stored by the patched worker), yield that so callers always get
+                # something useful.
+                if chunk_count == 0:
+                    with self._lock:
+                        final = self._completed.get(task_id) or result
+                    if final.result:
+                        self.logger.debug(
+                            f"stream_result: stream_queue empty but result.result has "
+                            f"{len(str(final.result))} chars — yielding as single chunk"
+                        )
+                        yield final.result
+
+            else:
+                # stream_queue is None but is_streaming=True — task completed
+                # before we got here. Fall back to result.result.
+                with self._lock:
+                    final = self._completed.get(task_id) or result
+                if final.result is not None:
+                    self.logger.debug(
+                        f"stream_result: no stream_queue, yielding result.result "
+                        f"({len(str(final.result))} chars)"
+                    )
+                    yield final.result
+                else:
+                    self.logger.warning(
+                        f"stream_result: is_streaming=True but no queue and no result.result "
+                        f"for task {task_id[:8]}..."
+                    )
+
+            return
+
+        # ── Phase 5: non-streaming path ───────────────────────────────────────
+        # Wait for COMPLETED if still running
+        while result.status.name == "RUNNING":
+            if timed_out():
+                raise TimeoutError(
+                    f"Task {task_id[:8]}... timed out waiting for completion"
+                )
+            time.sleep(0.05)
+            with self._lock:
+                result = self._completed.get(task_id) or self._pending.get(task_id) or result
+
+        if result.result is not None:
+            self.logger.debug(
+                f"stream_result: yielding non-streaming result "
+                f"({type(result.result).__name__})"
+            )
+            yield result.result
         else:
-            # Non-streaming task, yield complete result once
-            if result.result is not None:
-                self.logger.debug(f"Yielding non-streaming result")
-                yield result.result
-    
+            self.logger.debug(
+                f"stream_result: non-streaming task returned None for {task_id[:8]}..."
+            )
+
     def get_queue_sizes(self) -> Dict[str, int]:
         """Get size of each queue"""
         with self._lock:
@@ -958,7 +1066,7 @@ class Orchestrator:
             for chunk in orchestrator.stream_result(task_id):
                 print(chunk, end='', flush=True)
         """
-        yield from self.task_queue.stream_result(task_id, timeout=timeout)
+        yield from self.task_queue.patched_stream_result(task_id, timeout=timeout)
     
     def get_stats(self) -> Dict[str, Any]:
         """Get orchestrator statistics"""

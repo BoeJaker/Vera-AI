@@ -14,6 +14,7 @@ from fastapi import (
     HTTPException,
     UploadFile,
     File,
+    Request,
 )
 
 from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
@@ -121,117 +122,117 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@wsrouter.websocket("/{session_id}")
-async def websocket_chat(websocket: WebSocket, session_id: str):
-    """WebSocket endpoint for streaming chat - works with sync generators."""
-    await websocket.accept()
+# @wsrouter.websocket("/{session_id}")
+# async def websocket_chat(websocket: WebSocket, session_id: str):
+#     """WebSocket endpoint for streaming chat - works with sync generators."""
+#     await websocket.accept()
     
-    if session_id not in sessions:
-        try:
-            await websocket.close(code=4004, reason="Session not found")
-        except Exception as e:
-            print(e)
-        return
+#     if session_id not in sessions:
+#         try:
+#             await websocket.close(code=4004, reason="Session not found")
+#         except Exception as e:
+#             print(e)
+#         return
     
-    vera = get_or_create_vera(session_id)
+#     vera = get_or_create_vera(session_id)
     
-    try:
-        while True:
-            data = await websocket.receive_text()
-            message_data = json.loads(data)
-            message = message_data.get("message", "")
+#     try:
+#         while True:
+#             data = await websocket.receive_text()
+#             message_data = json.loads(data)
+#             message = message_data.get("message", "")
             
-            if not message:
-                await websocket.send_json({"type": "error", "error": "Empty message"})
-                continue
+#             if not message:
+#                 await websocket.send_json({"type": "error", "error": "Empty message"})
+#                 continue
             
-            try:
-                if hasattr(vera, 'async_run') and callable(getattr(vera, 'async_run')):
-                    logger.info("Using vera.async_run() for streaming")
+#             try:
+#                 if hasattr(vera, 'async_run') and callable(getattr(vera, 'async_run')):
+#                     logger.info("Using vera.async_run() for streaming")
                     
-                    chunk_queue = Queue()
-                    error_occurred = [False]
+#                     chunk_queue = Queue()
+#                     error_occurred = [False]
                     
-                    def run_in_thread():
-                        try:
-                            for chunk in vera.async_run(message):
-                                chunk_queue.put(("chunk", chunk))
-                            chunk_queue.put(("done", None))
-                        except Exception as e:
-                            logger.error(f"Error in vera.async_run: {e}", exc_info=True)
-                            chunk_queue.put(("error", str(e)))
-                            error_occurred[0] = True
+#                     def run_in_thread():
+#                         try:
+#                             for chunk in vera.async_run(message):
+#                                 chunk_queue.put(("chunk", chunk))
+#                             chunk_queue.put(("done", None))
+#                         except Exception as e:
+#                             logger.error(f"Error in vera.async_run: {e}", exc_info=True)
+#                             chunk_queue.put(("error", str(e)))
+#                             error_occurred[0] = True
                     
-                    thread = Thread(target=run_in_thread, daemon=True)
-                    thread.start()
+#                     thread = Thread(target=run_in_thread, daemon=True)
+#                     thread.start()
                     
-                    while True:
-                        try:
-                            item_type, item_data = await asyncio.get_event_loop().run_in_executor(
-                                None, chunk_queue.get, True, 0.1
-                            )
+#                     while True:
+#                         try:
+#                             item_type, item_data = await asyncio.get_event_loop().run_in_executor(
+#                                 None, chunk_queue.get, True, 0.1
+#                             )
                             
-                            if item_type == "chunk":
-                                await websocket.send_json({
-                                    "type": "chunk",
-                                    "content": str(item_data),
-                                    "timestamp": datetime.utcnow().isoformat()
-                                })
-                            elif item_type == "done":
-                                break
-                            elif item_type == "error":
-                                await websocket.send_json({
-                                    "type": "error",
-                                    "error": item_data
-                                })
-                                break
+#                             if item_type == "chunk":
+#                                 await websocket.send_json({
+#                                     "type": "chunk",
+#                                     "content": str(item_data),
+#                                     "timestamp": datetime.utcnow().isoformat()
+#                                 })
+#                             elif item_type == "done":
+#                                 break
+#                             elif item_type == "error":
+#                                 await websocket.send_json({
+#                                     "type": "error",
+#                                     "error": item_data
+#                                 })
+#                                 break
                                 
-                        except Exception as e:
-                            if not thread.is_alive() and chunk_queue.empty():
-                                break
-                            continue
+#                         except Exception as e:
+#                             if not thread.is_alive() and chunk_queue.empty():
+#                                 break
+#                             continue
                     
-                    thread.join(timeout=1.0)
+#                     thread.join(timeout=1.0)
                     
-                    if not error_occurred[0]:
-                        await websocket.send_json({
-                            "type": "complete",
-                            "timestamp": datetime.utcnow().isoformat()
-                        })
+#                     if not error_occurred[0]:
+#                         await websocket.send_json({
+#                             "type": "complete",
+#                             "timestamp": datetime.utcnow().isoformat()
+#                         })
                 
-                else:
-                    logger.info("Falling back to vera.run() - no streaming")
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None, vera.run, message
-                    )
+#                 else:
+#                     logger.info("Falling back to vera.run() - no streaming")
+#                     result = await asyncio.get_event_loop().run_in_executor(
+#                         None, vera.run, message
+#                     )
                     
-                    if isinstance(result, dict):
-                        response = result.get("deep") or result.get("fast") or result.get("output", str(result))
-                    else:
-                        response = str(result)
+#                     if isinstance(result, dict):
+#                         response = result.get("deep") or result.get("fast") or result.get("output", str(result))
+#                     else:
+#                         response = str(result)
                     
-                    await websocket.send_json({
-                        "type": "chunk",
-                        "content": response,
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+#                     await websocket.send_json({
+#                         "type": "chunk",
+#                         "content": response,
+#                         "timestamp": datetime.utcnow().isoformat()
+#                     })
                     
-                    await websocket.send_json({
-                        "type": "complete",
-                        "timestamp": datetime.utcnow().isoformat()
-                    })
+#                     await websocket.send_json({
+#                         "type": "complete",
+#                         "timestamp": datetime.utcnow().isoformat()
+#                     })
                 
-            except Exception as e:
-                logger.error(f"Error processing message: {str(e)}", exc_info=True)
-                await websocket.send_json({
-                    "type": "error",
-                    "error": str(e)
-                })
+#             except Exception as e:
+#                 logger.error(f"Error processing message: {str(e)}", exc_info=True)
+#                 await websocket.send_json({
+#                     "type": "error",
+#                     "error": str(e)
+#                 })
     
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected: {session_id}")
-    except Exception as e:
-        logger.error(f"WebSocket error: {str(e)}", exc_info=True)
+#     except WebSocketDisconnect:
+#         logger.info(f"WebSocket disconnected: {session_id}")
+#     except Exception as e:
+#         logger.error(f"WebSocket error: {str(e)}", exc_info=True)
 
 # ============================================================
 # Text-to-Speech Endpoints
@@ -351,3 +352,163 @@ async def delete_file(session_id: str, filename: str):
     sessions[session_id]["files"].pop(filename)
     
     return {"status": "deleted", "filename": filename}
+
+@wsrouter.websocket("/{session_id}")
+async def websocket_chat(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    
+    if session_id not in sessions:
+        try:
+            await websocket.close(code=4004, reason="Session not found")
+        except Exception as e:
+            print(e)
+        return
+    
+    vera = get_or_create_vera(session_id)
+    
+    try:
+        while True:
+            data = await websocket.receive_text()
+            message_data = json.loads(data)
+            message = message_data.get("message", "")
+            routing_config = message_data.get("routing", {})
+            
+            if not message:
+                await websocket.send_json({"type": "error", "error": "Empty message"})
+                continue
+            
+            # Create a fresh cancellation token for this generation
+            cancel_event = threading.Event()
+            _cancellation_tokens[session_id] = cancel_event
+            
+            try:
+                if hasattr(vera, 'async_run') and callable(getattr(vera, 'async_run')):
+                    chunk_queue = Queue()
+                    error_occurred = [False]
+                    
+                    def run_in_thread():
+                        try:
+                            force_routing = routing_config.get('force', False)
+                            mode = routing_config.get('mode', 'auto')
+                            
+                            if force_routing and mode != 'auto':
+                                from Vera.Logging.logging import LogContext
+                                gen = vera.chat.execute_direct_route(
+                                    message,
+                                    routing_config,
+                                    LogContext(session_id=session_id)
+                                )
+                            else:
+                                gen = vera.async_run(message, routing_hints=routing_config)
+                            
+                            for chunk in gen:
+                                # Check cancellation before each chunk
+                                if cancel_event.is_set():
+                                    logger.info(f"Generation cancelled for session {session_id}")
+                                    chunk_queue.put(("cancelled", None))
+                                    return
+                                chunk_queue.put(("chunk", chunk))
+                            
+                            chunk_queue.put(("done", None))
+                        except Exception as e:
+                            logger.error(f"Error in vera execution: {e}", exc_info=True)
+                            chunk_queue.put(("error", str(e)))
+                            error_occurred[0] = True
+                    
+                    thread = Thread(target=run_in_thread, daemon=True)
+                    thread.start()
+                    
+                    cancelled = False
+                    while True:
+                        try:
+                            item_type, item_data = await asyncio.get_event_loop().run_in_executor(
+                                None, chunk_queue.get, True, 0.1
+                            )
+                            
+                            if item_type == "chunk":
+                                await websocket.send_json({
+                                    "type": "chunk",
+                                    "content": str(item_data),
+                                    "timestamp": datetime.utcnow().isoformat()
+                                })
+                            elif item_type == "done":
+                                break
+                            elif item_type == "cancelled":
+                                cancelled = True
+                                break
+                            elif item_type == "error":
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "error": item_data
+                                })
+                                break
+                                
+                        except Exception as e:
+                            if not thread.is_alive() and chunk_queue.empty():
+                                break
+                            continue
+                    
+                    thread.join(timeout=2.0)
+                    
+                    if cancelled:
+                        await websocket.send_json({
+                            "type": "complete",
+                            "cancelled": True,
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                    elif not error_occurred[0]:
+                        await websocket.send_json({
+                            "type": "complete",
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
+                
+                else:
+                    # Fallback non-streaming path
+                    if not cancel_event.is_set():
+                        result = await asyncio.get_event_loop().run_in_executor(
+                            None, vera.run, message
+                        )
+                        if isinstance(result, dict):
+                            response = result.get("deep") or result.get("fast") or result.get("output", str(result))
+                        else:
+                            response = str(result)
+                        
+                        await websocket.send_json({"type": "chunk", "content": response, "timestamp": datetime.utcnow().isoformat()})
+                        await websocket.send_json({"type": "complete", "timestamp": datetime.utcnow().isoformat()})
+            except Exception as e:
+                logger.error(f"Error processing message: {str(e)}", exc_info=True)
+                _cancellation_tokens.pop(session_id, None)
+                await websocket.send_json({"type": "error", "error": str(e)})
+            finally:
+                # Always clean up the cancellation token after generation finishes
+                _cancellation_tokens.pop(session_id, None)
+                
+        
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected: {session_id}")
+        _cancellation_tokens.pop(session_id, None)
+    except Exception as e:
+        logger.error(f"WebSocket error: {str(e)}", exc_info=True)
+        _cancellation_tokens.pop(session_id, None)
+
+import threading
+
+# Cancellation tokens per session
+_cancellation_tokens: Dict[str, threading.Event] = {}
+
+@router.post("/api/stop")
+async def stop_generation(request: Request):
+    """Signal the current generation to stop."""
+    body = await request.json()
+    session_id = body.get("session_id")
+    
+    if not session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    
+    if session_id in _cancellation_tokens:
+        _cancellation_tokens[session_id].set()
+        logger.info(f"Stop signal sent for session {session_id}")
+        return {"status": "stopped", "session_id": session_id}
+    
+    return {"status": "no_active_generation", "session_id": session_id}

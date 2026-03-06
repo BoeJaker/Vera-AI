@@ -102,10 +102,32 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[6] git
+[6] coding_llm
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Execute git commands: status, log, diff, branch, add, commit, push, pull.
+  Query a coding LLM for code generation, debugging, or code-related tasks. Best for: code generation, debugging, code review. Note: Optimized for code but may not perform as well on general language tasks.
+
+INPUT PARAMETERS:
+  • query [REQUIRED]
+    Type: string
+    Description: Query or prompt for the LLM
+
+
+================================================================================
+
+[7] git
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  [Sandboxed to Default] Execute git commands in the project repository.
+
+Common commands:
+- git(command='status') - Show working tree status
+- git(command='log', args='--oneline -5') - Show recent commits
+- git(command='diff') - Show unstaged changes
+- git(command='add', args='file.py') - Stage file
+- git(command='commit', args='-m "message"') - Commit changes
+- git(command='branch') - List branches
+- git(command='pull') - Pull from remote
 
 INPUT PARAMETERS:
   • repo_path [OPTIONAL]
@@ -125,10 +147,10 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[7] bash
+[8] bash
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Execute bash command. Returns command output. Use with caution.
+  [Sandboxed to Default] Execute bash command. Returns command output. Use with caution.
 
 INPUT PARAMETERS:
   • command [REQUIRED]
@@ -143,20 +165,25 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[8] python
+[9] python
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Execute Python code. Use print() for output. Supports both expressions and statements.
+  [Sandboxed to Default] Execute Python code. Use print() for output. Supports both expressions and statements.
 
 INPUT PARAMETERS:
   • code [REQUIRED]
     Type: string
     Description: Python code to execute
 
+  • working_dir [OPTIONAL]
+    Type: string
+    Description: Working directory for the command
+    Default: None
+
 
 ================================================================================
 
-[9] csv_to_json
+[10] csv_to_json
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Convert CSV file to JSON format.
@@ -169,7 +196,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[10] hash_text
+[11] hash_text
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Generate cryptographic hash (md5, sha1, sha256, sha512) of text.
@@ -187,7 +214,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[11] system_info
+[12] system_info
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get system information including OS, Python version, etc.
@@ -198,7 +225,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[12] get_env
+[13] get_env
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get environment variable value.
@@ -211,7 +238,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[13] list_env
+[14] list_env
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all environment variables (sanitized).
@@ -222,7 +249,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[14] list_modules
+[15] list_modules
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all currently loaded Python modules in the runtime.
@@ -233,7 +260,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[15] get_time
+[16] get_time
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get current date and time in specified timezone.
@@ -247,7 +274,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[16] time_delta
+[17] time_delta
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Calculate time difference between two dates or from date to now.
@@ -265,7 +292,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[17] read_file
+[18] read_file
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Read and return the contents of a file. Supports text files of any format.
@@ -278,7 +305,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[18] write_file
+[19] write_file
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Write content to a file. Creates parent directories if needed. Overwrites existing files.
@@ -295,10 +322,10 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[19] edit_file
+[20] edit_file
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Edit an existing file by replacing content. Supports replacing specific lines or patterns.
+  Edit an existing file by inserting new content at specific lines. Creates the file if it does not exist.
 
 INPUT PARAMETERS:
   • filepath [REQUIRED]
@@ -312,7 +339,24 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[20] list_directory
+[21] overwrite_file
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Overwrite an existing file with new content. Creates the file if it does not exist.
+
+INPUT PARAMETERS:
+  • filepath [REQUIRED]
+    Type: string
+    Description: Full path where file should be written
+
+  • content [REQUIRED]
+    Type: string
+    Description: Content to write to the file
+
+
+================================================================================
+
+[22] list_directory
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List contents of a directory with file sizes and types.
@@ -325,7 +369,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[21] search_files
+[23] search_files
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for files matching a pattern recursively. Pattern can be a glob pattern (*.py) or regex.
@@ -343,7 +387,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[22] count_tokens
+[24] count_tokens
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Estimate token count for text. Useful for managing context windows.
@@ -361,7 +405,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[23] regex_search
+[25] regex_search
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search text using regular expressions with optional flags.
@@ -383,7 +427,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[24] text_stats
+[26] text_stats
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Generate comprehensive statistics about text (word count, sentences, etc).
@@ -396,7 +440,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[25] ssh_connect
+[27] ssh_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to SSH server. Returns connection ID for other SSH operations.
@@ -428,7 +472,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[26] ssh_execute
+[28] ssh_execute
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute command on remote SSH server. Returns command output.
@@ -445,7 +489,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[27] ssh_ls
+[29] ssh_ls
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List contents of remote directory via SFTP.
@@ -467,7 +511,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[28] ssh_read
+[30] ssh_read
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Read contents of remote file via SFTP.
@@ -489,7 +533,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[29] ssh_download
+[31] ssh_download
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Download file from remote server via SFTP.
@@ -511,7 +555,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[30] ssh_upload
+[32] ssh_upload
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Upload file to remote server via SFTP.
@@ -533,7 +577,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[31] ssh_disconnect
+[33] ssh_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close SSH connection and clean up resources.
@@ -546,7 +590,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[32] postgres_connect
+[34] postgres_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to PostgreSQL database. Returns connection ID for queries.
@@ -576,7 +620,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[33] postgres_query
+[35] postgres_query
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute SQL query on PostgreSQL. Supports SELECT, INSERT, UPDATE, DELETE with parameterized queries.
@@ -598,7 +642,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[34] postgres_tables
+[36] postgres_tables
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all tables in a PostgreSQL schema with sizes.
@@ -620,7 +664,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[35] postgres_describe
+[37] postgres_describe
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get detailed table structure including columns, types, constraints.
@@ -642,7 +686,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[36] postgres_schemas
+[38] postgres_schemas
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all schemas in PostgreSQL database.
@@ -655,7 +699,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[37] postgres_disconnect
+[39] postgres_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close PostgreSQL connection.
@@ -668,7 +712,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[38] neo4j_connect
+[40] neo4j_connect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Connect to Neo4j graph database. Returns connection ID for queries.
@@ -694,7 +738,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[39] neo4j_query
+[41] neo4j_query
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute Cypher query on Neo4j. Supports all Cypher operations with parameterized queries.
@@ -716,7 +760,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[40] neo4j_create_node
+[42] neo4j_create_node
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Create a node in Neo4j with label and properties.
@@ -738,7 +782,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[41] neo4j_create_rel
+[43] neo4j_create_rel
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Create relationship between two nodes in Neo4j.
@@ -760,7 +804,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[42] neo4j_find
+[44] neo4j_find
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for nodes in Neo4j by label and optional property.
@@ -782,7 +826,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[43] neo4j_schema
+[45] neo4j_schema
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get Neo4j database schema including labels, relationships, and properties.
@@ -795,7 +839,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[44] neo4j_stats
+[46] neo4j_stats
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Get Neo4j database statistics including counts and distributions.
@@ -808,7 +852,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[45] neo4j_disconnect
+[47] neo4j_disconnect
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Close Neo4j connection.
@@ -821,7 +865,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[46] check_docker_status
+[48] check_docker_status
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Check if Docker is installed and running. Provides diagnostics and troubleshooting steps if Docker is unavailable.
@@ -832,10 +876,10 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[47] web_search
+[49] web_search
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Advanced web search using Playwright for robustness. Supports multiple search engines with automatic fallback.
+  Advanced web search using Playwright for robustness. Supports multiple search engines with automatic fallback. Returns full page content and in-body links from each result.
 
 INPUT PARAMETERS:
   • query [REQUIRED]
@@ -855,10 +899,10 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[48] news_search
+[50] news_search
 --------------------------------------------------------------------------------
 DESCRIPTION:
-  Search recent news using DuckDuckGo News. Best for current events.
+  Search recent news using DuckDuckGo News. Best for current events. Returns article text and in-body links from each result page.
 
 INPUT PARAMETERS:
   • query [REQUIRED]
@@ -878,7 +922,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[49] web_search_deep
+[51] web_search_deep
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Comprehensive web search with full page scraping. Use for in-depth information.
@@ -896,7 +940,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[50] investigate_username
+[52] investigate_username
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate username across social media platforms. FULLY STANDALONE. Discovers profiles, metadata, and connections. Uses only free, public sources. Automatically extracts username from any input format.
@@ -919,7 +963,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[51] investigate_email
+[53] investigate_email
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate email address. FULLY STANDALONE. Validates format, checks MX records, domain info, variations. Uses only free, public sources. Tool chaining compatible.
@@ -942,7 +986,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[52] investigate_domain
+[54] investigate_domain
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate domain. FULLY STANDALONE. WHOIS, DNS records, subdomains via certificate transparency. Uses only free, public sources. Tool chaining compatible.
@@ -965,7 +1009,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[53] investigate_phone
+[55] investigate_phone
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate phone number. FULLY STANDALONE. Format validation, country code, area code location lookup. Uses only free, public sources.
@@ -988,7 +1032,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[54] investigate_license_plate
+[56] investigate_license_plate
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate license plate. FULLY STANDALONE. Format validation, state/region identification (US/UK). Uses only publicly available pattern matching - NO private DMV data.
@@ -1011,7 +1055,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[55] investigate_company
+[57] investigate_company
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Investigate company/business. FULLY STANDALONE. Public registry searches (OpenCorporates, SEC EDGAR, Companies House). Uses only free, public sources.
@@ -1034,7 +1078,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[56] check_data_breaches
+[58] check_data_breaches
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Check for data breaches. FULLY STANDALONE. Searches known breach databases for email/username/domain. Uses HaveIBeenPwned and other free breach databases.
@@ -1052,7 +1096,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[57] detect_web_technologies
+[59] detect_web_technologies
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Advanced technology detection with configurable patterns. Identifies web servers, frameworks, CMS, libraries, analytics, CDN. Uses Wappalyzer-style pattern matching. Results stored in graph memory. FULLY STANDALONE - handles any URL format.
@@ -1075,7 +1119,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[58] crawl_website
+[60] crawl_website
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Comprehensive website crawling and mapping. Discovers pages, assets (scripts, images, CSS), forms, UI elements, links. Creates complete website structure in graph memory with relationships. FULLY STANDALONE - tool chaining compatible.
@@ -1103,7 +1147,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[59] enumerate_subdomains
+[61] enumerate_subdomains
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Subdomain enumeration via passive (CT logs) or active (DNS bruteforce) methods. Discovers subdomains and stores in graph with domain relationships. FULLY STANDALONE - automatically extracts domain from any input.
@@ -1131,7 +1175,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[60] analyze_ssl_certificate
+[62] analyze_ssl_certificate
 --------------------------------------------------------------------------------
 DESCRIPTION:
   SSL/TLS certificate analysis. Extracts certificate details, checks expiry, identifies weak ciphers/protocols. Results stored in graph memory. FULLY STANDALONE.
@@ -1154,7 +1198,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[61] comprehensive_web_scan
+[63] comprehensive_web_scan
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Full comprehensive web reconnaissance. Combines technology detection, crawling, subdomain enumeration, SSL analysis. Modes: quick, standard, deep. Creates complete website map in graph memory. FULLY STANDALONE - handles any URL format.
@@ -1187,7 +1231,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[62] search_vulnerabilities
+[64] search_vulnerabilities
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Comprehensive multi-source vulnerability search. Queries NVD, Vulners databases for CVE data. Accepts product names, services, or technologies. Example: 'Apache 2.4.51', 'nginx/1.20.1', 'WordPress 6.0'. Returns detailed CVE data with CVSS scores, exploitability, patches.
@@ -1210,7 +1254,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[63] scan_network_services_vulnerabilities
+[65] scan_network_services_vulnerabilities
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Scan network services for vulnerabilities. NETWORK-AWARE. Automatically loads services from graph memory and maps to CVEs. Use after network service detection. Tool chaining compatible. Accepts IPs, CIDRs, or formatted scan output.
@@ -1238,7 +1282,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[64] lookup_cve
+[66] lookup_cve
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Lookup specific CVE by ID. Returns comprehensive details from NVD: CVSS v3/v2 scores, attack vectors, impact metrics, weaknesses (CWE), affected configurations, references, and timeline.
@@ -1255,7 +1299,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[65] search_exploits
+[67] search_exploits
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for public exploits in ExploitDB database. Can search by product name or specific CVE ID. Returns exploit details, platforms, and download links.
@@ -1278,7 +1322,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[66] quick_vulnerability_check
+[68] quick_vulnerability_check
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Quick vulnerability check (NVD only, top 5 results). Fast lookup for discovered services or technologies. Use for rapid assessment during network/web scans.
@@ -1291,7 +1335,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[67] comprehensive_vulnerability_scan
+[69] comprehensive_vulnerability_scan
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Full comprehensive vulnerability intelligence gathering. Multi-source aggregation with filtering options. Modes: quick, standard, comprehensive, exploit_focused. Supports severity filtering, CVSS thresholds, exploit-only results.
@@ -1329,7 +1373,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[68] discover_hosts
+[70] discover_hosts
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Discover live hosts on network. Supports nmap for large scans. Accepts IPs, CIDRs, hostnames, or formatted output from other tools.
@@ -1357,7 +1401,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[69] scan_ports
+[71] scan_ports
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Scan ports on targets. Supports nmap for enhanced scanning. Accepts IPs, CIDRs, or formatted output. Tool chaining compatible.
@@ -1390,7 +1434,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[70] detect_services
+[72] detect_services
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Detect services with banner grabbing. FULLY STANDALONE. Automatically scans ports if none exist. Tool chaining compatible.
@@ -1418,7 +1462,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[71] enumerate_dns
+[73] enumerate_dns
 --------------------------------------------------------------------------------
 DESCRIPTION:
   DNS reconnaissance: records, subdomains, zone transfers. Requires dnspython. Comprehensive domain intelligence gathering.
@@ -1446,7 +1490,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[72] analyze_ssl
+[74] analyze_ssl
 --------------------------------------------------------------------------------
 DESCRIPTION:
   SSL/TLS certificate analysis and security assessment. Checks certificate validity, protocols, ciphers, and security issues.
@@ -1469,7 +1513,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[73] detect_web_technologies
+[75] detect_web_technologies
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Web technology fingerprinting with signature matching. Detects CMS, frameworks, servers, libraries with confidence scores.
@@ -1487,7 +1531,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[74] shodan_lookup
+[76] shodan_lookup
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Shodan passive reconnaissance - lookup IPs or search queries. Reveals services, vulnerabilities, organization data. Requires API key.
@@ -1514,7 +1558,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[75] comprehensive_network_scan
+[77] comprehensive_network_scan
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Full network scan: discovery, ports, services, DNS, SSL, web tech, Shodan. Modes: quick, standard, full, osint. Comprehensive reconnaissance suite.
@@ -1557,7 +1601,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[76] analyze_local_codebase
+[78] analyze_local_codebase
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Analyze local directory or file. ONLY parses code and documentation files, skips binary files, databases, vector stores, media files. Creates hierarchical graph structure: Project → Directories → Files → Classes → Functions. Supports change detection and deprecation marking. Modes: structure (files only), standard (+ parsing), deep (+ metrics), full (+ call graphs)
@@ -1580,7 +1624,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[77] analyze_git_repository
+[79] analyze_git_repository
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Clone and analyze Git repository. ONLY parses code/docs, skips binaries and databases. Supports GitHub, GitLab, Bitbucket. Creates full codebase graph with version tracking. Auto-detects project name from repo URL. Temporary clone by default.
@@ -1613,7 +1657,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[78] analyze_code_snippet
+[80] analyze_code_snippet
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Analyze code text directly. Auto-detects language. Extracts classes, functions, imports. Calculates metrics. Useful for analyzing pasted code or generated snippets.
@@ -1641,7 +1685,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[79] dork_search
+[81] dork_search
 --------------------------------------------------------------------------------
 DESCRIPTION:
   🔍 INTELLIGENT DORKING TOOL - Supports both simple keywords and advanced dorks
@@ -1724,7 +1768,7 @@ Auto-detects and generates appropriate dork queries
 
 ================================================================================
 
-[80] dork_quick
+[82] dork_quick
 --------------------------------------------------------------------------------
 DESCRIPTION:
   ⚡ QUICK KEYWORD SEARCH - Fast keyword-based dorking
@@ -1750,7 +1794,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[81] dork_search_files
+[83] dork_search_files
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for exposed files using Google dorks. Finds SQL dumps, config files, logs, backups, credentials. File types: sql, log, env, config, bak, xml, json. Anti-detection with delays and rotation.
@@ -1773,7 +1817,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[82] dork_search_logins
+[84] dork_search_logins
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for login portals and admin panels. Finds admin panels, webmail, phpMyAdmin, CMS logins, control panels. Login types: admin, webmail, cpanel, phpmyadmin, wordpress.
@@ -1791,7 +1835,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[83] dork_search_devices
+[85] dork_search_devices
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for exposed network devices. Finds webcams, printers, routers, NAS, IoT devices, SCADA systems. Device types: camera, webcam, printer, router, nas, scada.
@@ -1809,7 +1853,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[84] dork_search_misconfigs
+[86] dork_search_misconfigs
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for server misconfigurations. Finds directory listings, error pages, exposed .git/.svn, debug pages. Types: directory_listing, error_page, debug, git, svn.
@@ -1827,7 +1871,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[85] dork_search_people
+[87] dork_search_people
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Search for people information and OSINT. Finds emails, phone numbers, social profiles, resumes. Extracts and correlates personal information. Info types: email, phone, social, resume, linkedin.
@@ -1845,7 +1889,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[86] dork_custom
+[88] dork_custom
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Execute custom Google dork query. For advanced users who know exact dork syntax. Supports all search engines: google, bing, duckduckgo.
@@ -1867,7 +1911,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[87] dork_comprehensive
+[89] dork_comprehensive
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Comprehensive multi-category dorking scan. Searches files, logins, devices, misconfigs in one operation. Depth: quick (fast), standard (balanced), deep (thorough). Automatically correlates findings across categories.
@@ -1890,7 +1934,16 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[88] mcp_call
+[90] network_monitor
+--------------------------------------------------------------------------------
+DESCRIPTION:
+  Monitor one or more network ranges continuously. Detects new hosts, tracks up/down state, checks key ports, and streams live updates to the dashboard UI.
+
+INPUT SCHEMA: Error extracting schema - 'dict' object has no attribute 'schema'
+
+================================================================================
+
+[91] mcp_call
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Call a tool on an MCP server (filesystem, github, postgres, slack, etc).
@@ -1911,7 +1964,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[89] mcp_list_tools
+[92] mcp_list_tools
 --------------------------------------------------------------------------------
 DESCRIPTION:
   List all available tools from an MCP server.
@@ -1924,7 +1977,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[90] scheduling_assistant
+[93] scheduling_assistant
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Run the executive scheduling assistant. Access to calendars, todos, scheduling apps. Input: query string.
@@ -1942,7 +1995,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[91] click_element
+[94] click_element
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Click on an element with the given CSS selector
@@ -1955,7 +2008,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[92] navigate_browser
+[95] navigate_browser
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Navigate a browser to the specified URL
@@ -1968,7 +2021,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[93] previous_webpage
+[96] previous_webpage
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Navigate back to the previous page in the browser history
@@ -1979,7 +2032,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[94] extract_text
+[97] extract_text
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Extract all the text on the current webpage
@@ -1990,7 +2043,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[95] extract_hyperlinks
+[98] extract_hyperlinks
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Extract all hyperlinks on the current webpage
@@ -2004,7 +2057,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[96] get_elements
+[99] get_elements
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Retrieve elements in the current web page matching the given CSS selector
@@ -2021,7 +2074,7 @@ INPUT PARAMETERS:
 
 ================================================================================
 
-[97] current_webpage
+[100] current_webpage
 --------------------------------------------------------------------------------
 DESCRIPTION:
   Returns the URL of the current page

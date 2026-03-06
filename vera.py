@@ -58,8 +58,17 @@ from Vera.vera_chat import VeraChat
 from Vera.Ollama.Agents.Scheduling.executive_0_9 import executive
 from Vera.Memory.memory import *
 from Vera.Toolchain.toolchain import ToolChainPlanner
-from Vera.Toolchain.tools import ToolLoader
-from Vera.Toolchain.chain_of_experts_integration import integrate_hybrid_toolchain
+
+# ── MIGRATION: replaced direct ToolLoader import ──────────────────────────────
+# OLD: from Vera.Toolchain.tools import ToolLoader
+# NEW: load_tools() wraps ToolLoader and wires the enhanced framework
+from Vera.Toolchain.ToolFramework.bridge import load_tools
+# ── MIGRATION: replaced setup_toolchain import ────────────────────────────────
+# OLD: from Vera.Toolchain.toolchain import setup_toolchain
+# NEW: setup_toolchain_enhanced uses RegistryAwareToolChainPlanner
+from Vera.Toolchain.ToolFramework.integration import setup_toolchain_enhanced
+# ─────────────────────────────────────────────────────────────────────────────
+
 from Vera.Ollama.Agents.experimental.reviewer import Reviewer
 from Vera.Ollama.Agents.experimental.Planning.planning import Planner
 from Vera.ProactiveFocus.proactive_focus_manager import ProactiveFocusManager
@@ -95,14 +104,7 @@ from Vera.ProactiveFocus.stages import (
 from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
 from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
 
-from Vera.Toolchain.enhanced_toolchain_planner_integration import integrate_hybrid_planner
-from Vera.Orchestration.toolchain_tasks import (
-    toolchain_execute_stepbystep,
-    toolchain_execute_parallel, 
-    toolchain_execute_adaptive,
-    toolchain_plan_parallel
-)
-
+import Vera.Orchestration.toolchain_tasks 
 
 #---- Constants ---
 MODEL_CONFIG_FILE = "Configuration/vera_models.json"
@@ -132,6 +134,7 @@ class Vera:
     - Unified logging system with configurable verbosity
     - Context tracking across all operations
     - Performance monitoring built-in
+    - Enhanced tool framework: registry, event bus, service manager, ToolContext
     """
 
     def __init__(
@@ -141,22 +144,11 @@ class Vera:
         ollama_api_url: Optional[str] = None,
         **kwargs
     ):
-        """
-        Initialize Vera with configuration system and unified logging
-        
-        Args:
-            config_file: Path to configuration file
-            chroma_path: Override memory path (optional)
-            ollama_api_url: Override Ollama API URL (optional)
-            **kwargs: Additional overrides for backward compatibility
-        """
-        
-        # --- Load Configuration (using basic print for early setup) ---
+        # --- Load Configuration ---
         print("[Vera] Loading configuration...")
         self.config_manager = ConfigManager(config_file)
         self.config = self.config_manager.config
         
-        # Validate configuration
         issues = validate_config(self.config)
         if issues:
             print("[Vera] Configuration issues detected:")
@@ -169,15 +161,12 @@ class Vera:
         # --- Setup Unified Logging System (FIRST!) ---
         self._setup_unified_logging()
         
-        # Now we can use structured logging
         self.logger.info("Configuration loaded successfully")
         self.logger.debug("Configuration details:")
         self.logger.debug(json.dumps(self.config, indent=4, default=str))
 
-        # Register config reload callback
         self.config_manager.register_callback(self._on_config_reload)
         
-        # Apply overrides (for backward compatibility)
         if chroma_path:
             self.config.memory.chroma_path = chroma_path
             self.logger.debug(f"Memory path overridden: {chroma_path}")
@@ -185,7 +174,6 @@ class Vera:
             self.config.ollama.api_url = ollama_api_url
             self.logger.debug(f"Ollama API URL overridden: {ollama_api_url}")
         
-        # Apply kwargs overrides
         if 'enable_infrastructure' in kwargs:
             self.config.infrastructure.enable_infrastructure = kwargs['enable_infrastructure']
         if 'enable_docker' in kwargs:
@@ -211,13 +199,11 @@ class Vera:
         self.logger.info("Initializing models...")
         self.selected_models = self.config.models
         
-        # Create base context
         self.base_context = LogContext(
-            session_id=None,  # Set after session creation
+            session_id=None,
             agent="vera"
         )
         
-        # Initialize LLMs using config temperatures
         self.embedding_llm = self.selected_models.embedding_model
         
         self.logger.start_timer("model_initialization")
@@ -282,7 +268,7 @@ class Vera:
             self.focus_manager = ProactiveFocusManager(
                 agent=self,
                 hybrid_memory=self.mem if hasattr(self, 'mem') else None,
-                proactive_interval=3600,  # 60 minutes
+                proactive_interval=3600,
                 cpu_threshold=70.0
             )
             if self.config.proactive_focus.default_focus:
@@ -295,7 +281,6 @@ class Vera:
             self.logger.debug("Proactive focus manager disabled")
         
 
-        # 3. Create resource manager
         resource_limits = ResourceLimits(
             max_cpu_percent=70.0,
             max_memory_percent=80.0,
@@ -305,17 +290,12 @@ class Vera:
         resource_monitor = ResourceMonitor(limits=resource_limits)
         resource_monitor.start()
         
-        # 4. Create external resource manager
         resource_manager = ExternalResourceManager(
             hybrid_memory=self.mem if hasattr(self, 'mem') else None
         )
-        # 5. Create stage orchestrator
         self.stage_orchestrator = StageOrchestrator()
-        
-        # 6. Create calendar scheduler
         self.calendar_scheduler = CalendarScheduler()
 
-        # 7. Create background service
         self.service_config = ServiceConfig(
             max_cpu_percent=50.0,
             check_interval=30.0,
@@ -336,7 +316,7 @@ class Vera:
         print(f"  Calendar: Enabled")
         
 
-        # ===== NEW: AGENT CONFIGURATION SYSTEM =====
+        # ===== AGENT CONFIGURATION SYSTEM =====
         if self.config.agents.enabled:
             self.logger.info("Initializing agent configuration system...")
             try:
@@ -352,9 +332,6 @@ class Vera:
                 self.logger.debug(f"Agent setup complete: {self.agents}")
                 self.logger.debug(f"Agent system directories: agents_dir={self.agents.agents_dir}, templates_dir={self.agents.templates_dir}, build_dir={self.agents.build_dir}")
 
-
-
-                # Log loaded agents
                 for agent_info in self.agents.list_loaded_agents():
                     self.logger.debug(
                         f"  • {agent_info['name']}: {agent_info['description']}"
@@ -395,8 +372,6 @@ class Vera:
                 auto_scale=self.config.infrastructure.auto_scale,
                 max_resources=self.config.infrastructure.max_resources
             )
-                # logger=self.logger  # Pass logger to orchestrator
-            # )
         else:
             self.logger.info("Using Standard Orchestrator")
             self.orchestrator = Orchestrator(
@@ -404,13 +379,10 @@ class Vera:
                 redis_url=self.config.orchestrator.redis_url,
                 cpu_threshold=self.config.orchestrator.cpu_threshold,
             )
-                # logger=self.logger  # Pass logger to orchestrator
-            # )
 
         self.orchestrator.start()
         self.logger.success("Orchestrator started")
 
-        # Integrate with ProactiveFocusManager
         if self.focus_manager:
             self.proactive_orchestrator = ProactiveFocusOrchestrator(
                 self.orchestrator, 
@@ -422,27 +394,17 @@ class Vera:
         self.logger.info("Initializing memory systems...")
         self.logger.start_timer("memory_initialization")
         
-        # self.mem = HybridMemory(
-        #     neo4j_uri=self.config.memory.neo4j_uri,
-        #     neo4j_user=self.config.memory.neo4j_user,
-        #     neo4j_password=self.config.memory.neo4j_password,
-        #     chroma_dir=self.config.memory.chroma_dir,
-        #     archive_jsonl=self.config.memory.archive_path,
-        # )
-
-        # Initialize hybrid memory WITH orchestrator
         self.mem = HybridMemory(
             neo4j_uri=self.config.memory.neo4j_uri,
             neo4j_user=self.config.memory.neo4j_user,
             neo4j_password=self.config.memory.neo4j_password,
             chroma_dir=self.config.memory.chroma_dir,
             archive_jsonl=self.config.memory.archive_path,
-            orchestrator=self.orchestrator,  # Enable orchestrated encoding
+            orchestrator=self.orchestrator,
         )
         
         self.sess = self.mem.start_session(metadata={"agent": "vera"})
         
-        # Update base context with session ID
         self.base_context.session_id = self.sess.id
         self.logger.push_context(self.base_context)
         
@@ -520,7 +482,6 @@ class Vera:
             self.playwright_tools = []
             self.logger.debug("Playwright browser disabled")
 
-        # # Initialize plugin manager - recon map backwards compatible
         try:
             from Vera.Toolchain.plugin_manager import PluginManager
             self.plugin_manager = PluginManager(
@@ -534,32 +495,62 @@ class Vera:
             print(f"[Warning] Could not initialize plugin manager: {e}")
             self.plugin_manager = None
 
-        # --- Initialize Scheduling Executive and Tools ---
+        # --- Initialize Unified Project Sandbox ---
+        from Vera.Toolchain.sandbox import ProjectSandbox, get_project_sandbox
+        _default_project_root = os.path.abspath("./Output/Default")
+        self._project_sandbox_root = _default_project_root
+        self._sandbox = ProjectSandbox(_default_project_root)
+        self._sandbox._agent_ref = self        
+        self.runtime_sandbox = self._sandbox
+       
+        # --- Initialize Executive ---
         self.logger.info("Loading tools...")
         self.executive_instance = executive(vera_instance=self)
         
-        self.toolkit = ToolLoader(self)
-        self.tools = self.toolkit + self.playwright_tools
+        # ── MIGRATION: replaced ToolLoader(self) with load_tools(self) ────────
+        # This is the only change in the tool-loading block.
+        # load_tools() calls ToolLoader internally, then:
+        #   - registers all tools in a ToolRegistry (heuristic categories)
+        #   - attaches self.tool_registry, self.tool_event_bus,
+        #     self.service_manager, self.create_tool_context to this agent
+        #   - returns the identical List[BaseTool] ToolLoader would have returned
+        #
+        # Playwright tools are appended afterwards exactly as before so they
+        # are in self.tools but do NOT go through the registry (they have no
+        # args_schema and don't need category filtering).
+        raw_toolkit = load_tools(self)
+        self.tools = raw_toolkit + self.playwright_tools
+        # ─────────────────────────────────────────────────────────────────────
 
+        # Sandbox wrapping (unchanged)
+        self.tools = self._sandbox.wrap_tools(self.tools)
+        self.toolkit = self.tools
+        self.logger.success(
+            f"Tools wrapped with sandbox (root={self._sandbox.project_root})"
+        )
+
+        # Multi-param compatibility (unchanged)
         from Vera.Toolchain.multiparam import wrap_tools_multiarg
         self.tools = wrap_tools_multiarg(self.tools)
 
-        # Log loaded tools with input schemas to agent tool list file
-        tool_list_path = os.path.join(os.path.dirname(__file__), "Ollama","Agents", "agents", "tool-agent", "includes", "tool_list.txt")
+        # Log loaded tools
+        tool_list_path = os.path.join(
+            os.path.dirname(__file__),
+            "Ollama", "Agents", "agents", "tool-agent", "includes", "tool_list.txt"
+        )
         os.makedirs(os.path.dirname(tool_list_path), exist_ok=True)
-
         self.save_tool_list_with_schemas(tool_list_path)
         self.logger.info(f"Tool list with schemas written to {tool_list_path}")
         self.logger.success(f"Loaded {len(self.tools)} total tools")
 
-        # Warm up fast LLM task    
+        # Warm up fast LLM
         fast_task_id = self.orchestrator.submit_task(
             "llm.fast",
             vera_instance=self,
             prompt="hello"
         )
 
-        # --- Initialize Agents ---
+        # --- Initialize LangChain Agents ---
         self.logger.debug("Initializing agents...")
         self.light_agent = initialize_agent(
             self.tools,
@@ -577,48 +568,93 @@ class Vera:
             verbose=True
         )
 
-        # Original toolchain (preserved)
-        self.toolchain = ToolChainPlanner(self, self.tools)
-
-        # NEW: Enhanced toolchain planner with multiple execution modes
-        from Vera.Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner
-        self._enhanced_toolchain = EnhancedToolChainPlanner(self, self.tools)
-
-        #from Vera.Toolchain.unified_toolchain import ToolChainPlanner
-        #self.toolchain = ToolChainPlanner(self, self.tools)  # Uses AUTO mode
-        # from Vera.Toolchain.unified_toolchain import UnifiedToolChainPlanner, ToolChainMode
-        # self.toolchain = UnifiedToolChainPlanner(
-        #                 self, 
-        #                 self.tools,
-        #                 mode=ToolChainMode.AUTO,
-        #                 enable_orchestrator=True
-        # )
-
-        #  chain of experts
-        #integrate_hybrid_toolchain(self)
-
-        #   enhanced toolchain planner
-        #integrate_hybrid_planner(self, enable_n8n=True) 
+        # ── MIGRATION: replaced setup_toolchain() with setup_toolchain_enhanced()
+        # Must come AFTER load_tools() so self.tool_registry already exists.
+        # Sets vera.toolchain, vera.toolchain_expert, vera._adaptive_toolchain
+        # All three point to a RegistryAwareToolChainPlanner which is a
+        # transparent drop-in for ToolChainPlanner with O(1) tool lookup and
+        # optional agent_type= filtering on execute_tool_chain().
+        setup_toolchain_enhanced(self)
+        # ─────────────────────────────────────────────────────────────────────
 
         if self.focus_manager:
             def handle_proactive(thought):
                 self.logger.thought(thought, context=LogContext(agent="proactive"))
             self.focus_manager.proactive_callback = handle_proactive
         
-        # Initialize chat handler (AFTER all other components)
+        # Initialize chat handler
         self.chat = VeraChat(self)
 
-        # --- Initialize Messaging Bots (if enabled) ---
+        # --- Messaging Bots ---
         self.telegram_bot = None
         self.bot_manager = None
 
         if self.config.bots.enabled and self.config.bots.auto_start:
             self.logger.info("Initializing messaging bots...")
             self._initialize_bots()
-
+ 
         self.logger.success("Vera initialization complete!")
         self.logger.info(f"Session ID: {self.sess.id}")
-        
+
+        # Log registry summary so it's visible in startup output
+        if hasattr(self, 'tool_registry'):
+            summary = self.tool_registry.summary()
+            self.logger.info(
+                f"Tool registry: {summary['total_tools']} tools "
+                f"({summary['enhanced']} enhanced, {summary['legacy']} legacy), "
+                f"{summary['services']} services, {summary['ui_tools']} with UI"
+            )
+
+    # =========================================================================
+    # set_project_root — updated to use load_tools instead of ToolLoader
+    # =========================================================================
+
+    def set_project_root(self, path: str) -> None:
+        """
+        Change the active sandbox project root.
+
+        Call this whenever the user (or a stage) selects a different
+        working directory. All subsequent tool writes will go to *path*.
+
+        Args:
+            path: Absolute or relative path to the new project root.
+                  Relative paths are resolved from the current working
+                  directory at call time.
+        """
+        abs_path = os.path.abspath(path)
+        self._project_sandbox_root = abs_path
+        self._sandbox.set_project_root(abs_path)
+        self._sandbox._agent_ref = self      
+        self.runtime_sandbox = self._sandbox
+
+        from Vera.Toolchain.multiparam import wrap_tools_multiarg
+
+        # ── MIGRATION: use load_tools instead of ToolLoader ───────────────────
+        # load_tools re-registers all tools into the existing registry so the
+        # registry stays current after a root change.
+        raw_tools = load_tools(self) + self.playwright_tools
+        # ─────────────────────────────────────────────────────────────────────
+        raw_tools = wrap_tools_multiarg(raw_tools)
+        self.tools = self._sandbox.wrap_tools(raw_tools)
+        self.toolkit = self.tools
+
+        # Propagate to toolchain planners
+        if hasattr(self, 'toolchain') and hasattr(self.toolchain, 'tools'):
+            self.toolchain.tools = self.tools
+        if hasattr(self, '_enhanced_toolchain') and hasattr(self._enhanced_toolchain, 'tools'):
+            self._enhanced_toolchain.tools = self.tools
+
+        # Propagate to focus_manager sandbox cache
+        if hasattr(self, 'focus_manager') and self.focus_manager:
+            self.focus_manager._sandbox = self._sandbox
+
+        if hasattr(self, 'logger'):
+            self.logger.success(f"Project root updated → {abs_path}")
+
+    # =========================================================================
+    # All methods below are UNCHANGED from the original vera.py
+    # =========================================================================
+
     def _initialize_bots(self):
         """Initialize and start messaging bots in background"""
         try:
@@ -626,7 +662,6 @@ class Vera:
             import threading
             import asyncio
             
-            # Build bot config from Vera config
             bot_config = {}
             
             for platform in ['telegram', 'discord', 'slack']:
@@ -638,14 +673,12 @@ class Vera:
                         'token': platform_cfg.token,
                     }
                     
-                    # Platform-specific settings
                     if platform == 'telegram':
                         bot_config[platform]['allowed_users'] = platform_cfg.allowed_users or []
                         bot_config[platform]['owner_ids'] = self.config.bots.security.owner_ids or []
                     elif platform in ['discord', 'slack']:
                         bot_config[platform]['allowed_channels'] = platform_cfg.allowed_channels or []
             
-            # Check if any platforms enabled
             enabled_platforms = [p for p, cfg in bot_config.items() if cfg.get('enabled')]
             
             if not enabled_platforms:
@@ -654,18 +687,14 @@ class Vera:
             
             self.logger.info(f"Starting bots for: {', '.join(enabled_platforms)}")
             
-            # Create bot manager
             self.bot_manager = BotManager(bot_config, vera_instance=self)
             
-            # Store telegram bot reference if enabled
             if 'telegram' in enabled_platforms:
                 from Vera.ChatBots.telegram_bot import TelegramBot
                 self.telegram_bot = TelegramBot(self, bot_config['telegram'])
             
-            # Start in background thread if configured
             if self.config.bots.background_thread:
                 def run_bots():
-                    """Run bots in background thread"""
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
@@ -675,12 +704,9 @@ class Vera:
                 
                 bot_thread = threading.Thread(target=run_bots, daemon=True, name="BotManager")
                 bot_thread.start()
-                
                 self.logger.success(f"Bots running in background thread: {', '.join(enabled_platforms)}")
             else:
-                # This would block, so warn user
                 self.logger.warning("background_thread=false - bots will run in main thread (blocking)")
-                # Don't actually start here - user should call start_bots() manually
         
         except ImportError as e:
             self.logger.error(f"Failed to import bot components: {e}")
@@ -690,32 +716,22 @@ class Vera:
             self.logger.error(f"Failed to initialize bots: {e}", exc_info=True)
 
     def start_bots(self, platforms=None, config_file=None):
-        """
-        Start messaging bots using this Vera instance
-        
-        Args:
-            platforms: Override platforms to enable ['telegram', 'discord', 'slack']
-            config_file: Override config file (optional)
-        """
+        """Start messaging bots using this Vera instance"""
         from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
         import asyncio
         
         self.logger.info("Starting messaging bots...")
         
-        # Load configuration
         if config_file:
             self.logger.info(f"Loading bot config from {config_file}")
             config = load_config_from_file(config_file)
         elif platforms:
-            # Build config from Vera config but override platforms
             config = self._build_bot_config_from_vera_config()
             for platform in config:
                 config[platform]['enabled'] = platform in platforms
         else:
-            # Use Vera config
             config = self._build_bot_config_from_vera_config()
         
-        # Validate at least one platform
         enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
         
         if not enabled:
@@ -725,22 +741,18 @@ class Vera:
         
         self.logger.info(f"Enabled platforms: {', '.join(enabled)}")
             
-        # Create bot manager with THIS Vera instance
         self.bot_manager = BotManager(config, vera_instance=self)
         
-        # Store reference to telegram bot if enabled
         if 'telegram' in enabled:
             from Vera.ChatBots.telegram_bot import TelegramBot
             self.telegram_bot = TelegramBot(self, config['telegram'])
         
         self.logger.info(f"Launching bots: {', '.join(enabled)}")
         
-        # Check if event loop is already running
         try:
             loop = asyncio.get_running_loop()
             self.logger.warning("Event loop already running - using background thread")
             
-            # Run in background thread
             def run_in_thread():
                 new_loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(new_loop)
@@ -752,18 +764,14 @@ class Vera:
             import threading
             thread = threading.Thread(target=run_in_thread, daemon=True, name="BotManager")
             thread.start()
-            
             self.logger.success("✓ Bots running in background thread")
             
         except RuntimeError:
-            # No event loop running - safe to use asyncio.run()
             self.logger.info("Starting new event loop...")
-            
             try:
                 asyncio.run(self.bot_manager.run())
             except KeyboardInterrupt:
                 self.logger.info("✓ Shutdown complete")
-
 
     def _build_bot_config_from_vera_config(self) -> dict:
         """Build bot config dict from Vera config"""
@@ -773,13 +781,12 @@ class Vera:
             platform_cfg = getattr(self.config.bots.platforms, platform, None)
             
             if platform_cfg:
-                # Get token: config first, then env var fallback
                 token = platform_cfg.token or os.getenv(f'{platform.upper()}_BOT_TOKEN')
                 
                 config[platform] = {
                     'enabled': platform_cfg.enabled,
                     'token': token,
-                    'bot_token': token,  # TelegramBot expects 'bot_token'
+                    'bot_token': token,
                 }
                 
                 if platform == 'telegram':
@@ -791,72 +798,50 @@ class Vera:
         return config
 
     def save_tool_list_with_schemas(self, tool_list_path: str):
-        
         with open(tool_list_path, "w") as tool_file:
             tool_file.write("=" * 80 + "\n")
             tool_file.write("VERA TOOLCHAIN - AVAILABLE TOOLS\n")
             tool_file.write("=" * 80 + "\n\n")
             
             for idx, tool in enumerate(self.tools, 1):
-                # Write tool header
                 tool_file.write(f"\n[{idx}] {tool.name}\n")
                 tool_file.write("-" * 80 + "\n")
                 tool_file.write(f"DESCRIPTION:\n  {tool.description}\n\n")
                 
-                # Write input schema
                 if hasattr(tool, 'args_schema') and tool.args_schema:
                     try:
-                        # Get the Pydantic schema
                         schema = tool.args_schema.schema()
-                        
                         tool_file.write("INPUT PARAMETERS:\n")
-                        
-                        # Extract properties
                         properties = schema.get('properties', {})
                         required_fields = schema.get('required', [])
                         
                         if properties:
                             for param_name, param_info in properties.items():
-                                # Get parameter details
                                 param_type = param_info.get('type', 'string')
                                 param_desc = param_info.get('description', 'No description')
                                 is_required = param_name in required_fields
-                                
-                                # Format parameter line
                                 required_marker = " [REQUIRED]" if is_required else " [OPTIONAL]"
                                 tool_file.write(f"  • {param_name}{required_marker}\n")
                                 tool_file.write(f"    Type: {param_type}\n")
                                 tool_file.write(f"    Description: {param_desc}\n")
-                                
-                                # Include default value if present
                                 if 'default' in param_info:
                                     tool_file.write(f"    Default: {param_info['default']}\n")
-                                
-                                # Include enum values if present
                                 if 'enum' in param_info:
                                     tool_file.write(f"    Allowed values: {', '.join(map(str, param_info['enum']))}\n")
-                                
                                 tool_file.write("\n")
                         else:
                             tool_file.write("  (No parameters required)\n\n")
-                        
-                        # Optionally include full JSON schema for reference
-                        # tool_file.write("FULL JSON SCHEMA:\n")
-                        # tool_file.write("  " + json.dumps(schema, indent=2).replace("\n", "\n  ") + "\n")
-                        
                     except Exception as e:
                         tool_file.write(f"INPUT SCHEMA: Error extracting schema - {str(e)}\n")
                 else:
                     tool_file.write("INPUT SCHEMA: No schema defined\n")
                 
-                tool_file.write("\n" + "=" * 80 + "\n") 
+                tool_file.write("\n" + "=" * 80 + "\n")
 
     def _setup_unified_logging(self):
         """Setup unified logging system from config"""
-        # Convert Vera config to logging config
         log_cfg = self.config.logging
         
-        # Map component levels
         component_levels = {}
         for component, level_str in getattr(log_cfg, 'component_levels', {}).items():
             try:
@@ -864,7 +849,6 @@ class Vera:
             except KeyError:
                 component_levels[component] = LogLevel.INFO
         
-        # Create logging config
         vera_log_config = VeraLoggingConfig(
             global_level=LogLevel[log_cfg.level.upper()],
             component_levels=component_levels,
@@ -896,22 +880,16 @@ class Vera:
             stream_thoughts_inline=getattr(log_cfg, 'stream_thoughts_inline', True),
         )
         
-        # Get logger
         self.logger = get_logger("vera", vera_log_config)
     
     def _on_config_reload(self, old_config: VeraConfig, new_config: VeraConfig):
         """Handle configuration reload"""
         self.logger.info("Configuration reloaded!")
-        
-        # Update reference
         self.config = new_config
-        
-        # Check what changed and respond accordingly
         changes = []
         
         if old_config.models.fast_llm != new_config.models.fast_llm:
             changes.append(f"Fast LLM: {old_config.models.fast_llm} → {new_config.models.fast_llm}")
-            # Recreate fast LLM
             self.fast_llm = self.ollama_manager.create_llm(
                 model=new_config.models.fast_llm,
                 temperature=new_config.models.fast_temperature
@@ -924,7 +902,6 @@ class Vera:
         
         if old_config.logging.level != new_config.logging.level:
             changes.append(f"Log Level: {old_config.logging.level} → {new_config.logging.level}")
-            # Recreate logger with new config
             self._setup_unified_logging()
         
         if changes:
@@ -948,16 +925,11 @@ class Vera:
         self.logger.debug(f"Setting config: {section}.{key} = {value}")
         self.config_manager.set(section, key, value, persist)
     
-    # --- Infrastructure Management Methods ---
-    
     def get_infrastructure_stats(self):
         """Get infrastructure statistics (if enabled)"""
         if self.enable_infrastructure and hasattr(self.orchestrator, 'get_infrastructure_stats'):
             stats = self.orchestrator.get_infrastructure_stats()
-            self.logger.infrastructure_event(
-                "stats_retrieved",
-                details=stats
-            )
+            self.logger.infrastructure_event("stats_retrieved", details=stats)
             return stats
         return {"infrastructure": "disabled"}
     
@@ -999,14 +971,12 @@ class Vera:
     
     def _on_thought_captured(self, thought: str):
         """Handle captured thoughts - queue them for streaming"""
-        # Store
         self.thoughts_captured.append({
             'timestamp': time.time(),
             'thought': thought,
             'session_id': self.sess.id if hasattr(self, 'sess') else None
         })
         
-        # Log using unified system
         if hasattr(self, 'logger'):
             context = LogContext(
                 session_id=self.sess.id if hasattr(self, 'sess') else None,
@@ -1015,7 +985,6 @@ class Vera:
             )
             self.logger.thought(thought, context=context)
         
-        # Queue for streaming if enabled
         if self.stream_thoughts_inline:
             self.thought_queue.put(thought)
     
@@ -1028,12 +997,9 @@ class Vera:
         streaming_done = threading.Event()
         
         def stream_in_thread():
-            """Run LLM stream in background thread"""
             try:
                 for chunk in llm.stream(prompt):
-                    # CRITICAL: Filter out any <thought> tags from LLM output
                     text = extract_chunk_text(chunk)
-                    # Remove any thought tags the model might generate
                     text = text.replace('<thought>', '').replace('</thought>', '')
                     chunk_queue.put(('chunk', text))
             except Exception as e:
@@ -1042,44 +1008,31 @@ class Vera:
             finally:
                 streaming_done.set()
         
-        # Start streaming
         thread = threading.Thread(target=stream_in_thread, daemon=True)
         thread.start()
         
-        # Poll both queues with thought priority
         last_check = time.time()
         in_thought = False
         
         while not streaming_done.is_set() or not chunk_queue.empty() or not self.thought_queue.empty():
-            # Check thoughts FIRST (every 50ms)
             if time.time() - last_check > 0.05:
                 try:
-                    while True:  # Drain all available thoughts
+                    while True:
                         thought_chunk = self.thought_queue.get_nowait()
-                        
-                        # Start thought block if not already started
                         if not in_thought:
                             yield "\n<thought>"
                             in_thought = True
-                        
-                        # Yield raw chunk
                         yield thought_chunk
-                        
                 except Empty:
                     pass
                 last_check = time.time()
             
-            # Then check chunks
             try:
                 item_type, item_data = chunk_queue.get(timeout=0.05)
-                
                 if item_type == 'chunk':
-                    # Close thought if we were in one
                     if in_thought:
                         yield "</thought>\n"
                         in_thought = False
-                    
-                    # Yield main content chunk (already filtered)
                     yield item_data
                 elif item_type == 'error':
                     self.logger.error(f"Stream error: {item_data}")
@@ -1087,20 +1040,16 @@ class Vera:
             except Empty:
                 continue
         
-        # Final drain of thoughts
         try:
             while True:
                 thought_chunk = self.thought_queue.get_nowait()
-                
                 if not in_thought:
                     yield "\n<thought>"
                     in_thought = True
-                
                 yield thought_chunk
         except Empty:
             pass
         
-        # Close any open thought
         if in_thought:
             yield "</thought>\n"
         
@@ -1118,13 +1067,9 @@ class Vera:
         
         self.logger.debug("Starting LLM stream", context=context)
         
-        # Use the polling wrapper
         for item in self._stream_with_thought_polling(llm, prompt):
-            # Only log regular content, not thoughts (they're wrapped in tags)
             if not item.startswith('<thought>') and not item.endswith('</thought>'):
-                # Stream to console (but don't box individual chunks)
                 self.logger.response(item, context=context, stream=True)
-            
             output.append(item)
             yield item
         
@@ -1193,22 +1138,13 @@ class Vera:
                 "interaction_saved",
                 details={"query_len": len(query), "response_len": len(response)}
             )
-    
-  
-    def async_run(self, query: str, use_parallel: bool = True, ramp_config: Optional[Dict] = None):
-        """
-        Delegate to chat handler
         
-        Args:
-            query: User query
-            use_parallel: Enable parallel triage+fast execution
-            ramp_config: Optional custom ramp configuration
-        
-        Yields:
-            str: Response chunks
-        """
-        return self.chat.async_run(query, use_parallel, ramp_config)
-
+    def async_run(self, query: str, routing_hints: Optional[Dict] = None, **kwargs) -> Iterator[str]:
+        """Delegate to chat.async_run with routing hints"""
+        if hasattr(self, 'chat') and self.chat:
+            yield from self.chat.async_run(query, routing_hints=routing_hints, **kwargs)
+        else:
+            yield "Error: Chat system not initialized"
 
     def print_llm_models(self):
         """Print the variable name and model name for each Ollama LLM."""
@@ -1244,7 +1180,6 @@ class Vera:
     def get_agent_for_task(self, task_type: str) -> str:
         """Get appropriate agent name for task type"""
         if not self.agents:
-            # Fallback to model names
             fallback_map = {
                 'triage': self.selected_models.fast_llm,
                 'tool_execution': self.selected_models.tool_llm,
@@ -1266,20 +1201,16 @@ class Vera:
                     agent_name,
                     self.ollama_manager
                 )
-                
                 self.logger.debug(
                     f"Created LLM from agent config: {agent_name}",
                     context=LogContext(agent=agent_name)
                 )
-                
                 return llm
-            
             except Exception as e:
                 self.logger.warning(
                     f"Failed to create LLM from agent {agent_name}: {e}, using fallback"
                 )
         
-        # Fallback to standard model
         return self.ollama_manager.create_llm(
             model=agent_name,
             temperature=0.7
@@ -1289,7 +1220,6 @@ class Vera:
         """List all available agents"""
         if not self.agents:
             return []
-        
         return self.agents.list_loaded_agents()
 
     def reload_agent(self, agent_name: str, rebuild_model: bool = True):
@@ -1314,102 +1244,69 @@ class Vera:
         import time
         
         last_check = time.time()
-        in_thought = False  # Track if we're in a thought stream
+        in_thought = False
         
         for chunk in self.orchestrator.stream_result(task_id, timeout=timeout):
-            # Check thoughts every 50ms
             if time.time() - last_check > 0.05:
                 try:
                     while True:
                         thought_chunk = self.thought_queue.get_nowait()
-                        
-                        # Start thought block if not already started
                         if not in_thought:
                             yield "\n<thought>"
                             in_thought = True
-                        
-                        # Yield the raw chunk (no formatting)
                         yield thought_chunk
-                        
                 except Empty:
                     pass
                 last_check = time.time()
             
-            # Regular chunk - close thought if needed
             if in_thought:
                 yield "</thought>\n"
                 in_thought = False
             
-            # Yield orchestrator chunk
             yield chunk
         
-        # Final thought drain
         try:
             while True:
                 thought_chunk = self.thought_queue.get_nowait()
-                
                 if not in_thought:
                     yield "\n<thought>"
                     in_thought = True
-                
                 yield thought_chunk
-                
         except Empty:
             pass
         
-        # Close any open thought
         if in_thought:
             yield "</thought>\n"
 
     def telegram_notify(self, message: str, user_id: Optional[int] = None) -> bool:
-        """
-        Send a Telegram notification (sync wrapper for async method).
-
-        Args:
-            message: Message to send
-            user_id: Specific user ID, or None to send to all owners
-            
-        Returns:
-            bool: True if sent successfully
-        """
+        """Send a Telegram notification (sync wrapper for async method)."""
         if not hasattr(self, 'telegram_bot') or not self.telegram_bot:
             self.logger.warning("Telegram bot not initialized")
             return False
 
-        # Get event loop
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        # Send message
         if user_id:
             coro = self.telegram_bot.send_to_user(user_id, message)
         else:
             coro = self.telegram_bot.send_to_owners(message)
 
-        # Run in existing loop or create new one
         if loop.is_running():
-            # Schedule coroutine
             future = asyncio.run_coroutine_threadsafe(coro, loop)
             return future.result(timeout=10)
         else:
             return loop.run_until_complete(coro)
 
     def telegram_queue_message(self, message: str, user_id: Optional[int] = None):
-        """
-        Queue a Telegram message for async sending (non-blocking).
-
-        Args:
-            message: Message to send
-            user_id: Specific user ID, or None to send to all owners
-        """
+        """Queue a Telegram message for async sending (non-blocking)."""
         if not hasattr(self, 'telegram_bot') or not self.telegram_bot:
             self.logger.warning("Telegram bot not initialized")
             return
 
-        # Queue for all owners if no user specified
         if user_id is None:
             from Vera.ChatBots.telegram_bot import SecurityConfig
             for owner_id in SecurityConfig.OWNERS:
@@ -1421,129 +1318,17 @@ class Vera:
                 self.telegram_bot.queue_message(user_id, message)
             )
 
-    # def start_bots(self, platforms=None, config_file=None):
-    #     """
-    #     Start messaging bots using this Vera instance
-        
-    #     Args:
-    #         platforms: List of platforms to enable ['telegram', 'discord', 'slack']
-    #         config_file: Path to bot config file (optional)
-    #     """
-    #     from Vera.ChatBots.run_bots import BotManager, load_config_from_env, load_config_from_file
-    #     import asyncio
-        
-    #     self.logger.info("Starting messaging bots...")
-        
-    #     # Load configuration
-    #     if config_file:
-    #         print(f"Loading config from {config_file}...")
-    #         config = load_config_from_file(config_file)
-    #     else:
-    #         print("Loading config from environment variables...")
-    #         config = load_config_from_env()
-        
-    #     # Debug: Show what we loaded
-    #     print(f"Loaded config: {list(config.keys())}")
-    #     for platform, cfg in config.items():
-    #         print(f"  {platform}: enabled={cfg.get('enabled', False)}")
-        
-    #     # Override with platforms if specified
-    #     if platforms:
-    #         print(f"Overriding with platforms: {platforms}")
-    #         for platform in config:
-    #             config[platform]['enabled'] = platform in platforms
-        
-    #     # Validate at least one platform
-    #     enabled = [p for p, cfg in config.items() if cfg.get('enabled', False)]
-        
-    #     if not enabled:
-    #         self.logger.error("❌ No platforms enabled!")
-    #         print("\nTo fix:")
-    #         print("  1. Set environment variables:")
-    #         print("     export TELEGRAM_BOT_TOKEN='your-token'")
-    #         return
-        
-    #     print(f"\n✓ Enabled platforms: {', '.join(enabled)}")
-            
-    #     # Create bot manager with THIS Vera instance
-    #     manager = BotManager(config, vera_instance=self)
-        
-    #     # Store reference to telegram bot if enabled
-    #     if 'telegram' in enabled:
-    #         # The bot will be created by manager - we need to access it
-    #         # For now, create a direct reference
-    #         if 'telegram' in config and config['telegram'].get('enabled'):
-    #             from Vera.ChatBots.telegram_bot import TelegramBot
-    #             self.telegram_bot = TelegramBot(self, config['telegram'])
-        
-    #     self.logger.info(f"Launching bots: {', '.join(enabled)}")
-        
-    #     # Check if event loop is already running
-    #     try:
-    #         loop = asyncio.get_running_loop()
-    #         print("⚠️  Event loop already running - using existing loop")
-            
-    #         # Create task in existing loop
-    #         async def run_manager():
-    #             await manager.run()
-            
-    #         # Schedule the coroutine and wait for it
-    #         import concurrent.futures
-    #         import threading
-            
-    #         # Run in a new thread with its own event loop
-    #         def run_in_thread():
-    #             new_loop = asyncio.new_event_loop()
-    #             asyncio.set_event_loop(new_loop)
-    #             try:
-    #                 new_loop.run_until_complete(manager.run())
-    #             finally:
-    #                 new_loop.close()
-            
-    #         thread = threading.Thread(target=run_in_thread, daemon=False)
-    #         thread.start()
-            
-    #         print("✓ Bots running in background thread")
-    #         print("  Press Ctrl+C to stop")
-            
-    #         # Keep main thread alive
-    #         try:
-    #             thread.join()
-    #         except KeyboardInterrupt:
-    #             print("\n\n✓ Shutdown complete")
-                
-    #     except RuntimeError:
-    #         # No event loop running - safe to use asyncio.run()
-    #         print("Starting new event loop...")
-            
-    #         async def run_manager():
-    #             await manager.run()
-            
-    #         try:
-    #             asyncio.run(run_manager())
-    #         except KeyboardInterrupt:
-    #             print("\n\n✓ Shutdown complete")
-            
-# --- Example usage ---
+
+# --- Entry point ---
 if __name__ == "__main__":
     import sys
     
-    # Example 1: Standard orchestration (no infrastructure)
     vera = Vera(enable_infrastructure=False)
-    
-    # Example 2: With Docker infrastructure
-    # vera = Vera(
-    #     enable_infrastructure=True,
-    #     enable_docker=True,
-    #     auto_scale=True,
-    #     max_resources=5
-    # )
     
     os.system("clear")
     vera.print_llm_models()
     vera.print_agents()
     
-    # Show infrastructure stats if enabled
     if vera.enable_infrastructure:
         vera.logger.info("=== Infrastructure Stats ===")
         stats = vera.get_infrastructure_stats()
@@ -1552,7 +1337,7 @@ if __name__ == "__main__":
         vera.logger.info("=" * 40)
 
     vera.logger.info("Vera ready! Enter your queries below.")
-    vera.logger.info("Special commands: /stats, /infra, /provision, /cleanup, /clear, /exit")
+    vera.logger.info("Special commands: /stats, /infra, /provision, /cleanup, /clear, /agents, /exit")
     
     while True:
         try:
@@ -1565,7 +1350,6 @@ if __name__ == "__main__":
             vera.logger.info("Goodbye!")
             break
         
-        # Special commands
         if user_query.lower() == "/stats":
             vera.logger.print_stats()
             continue
@@ -1590,6 +1374,7 @@ if __name__ == "__main__":
             else:
                 vera.logger.warning("Infrastructure orchestration not enabled")
             continue
+
         if user_query.lower() == "/agents":
             if vera.agents:
                 vera.logger.info("=== Available Agents ===")
@@ -1599,6 +1384,7 @@ if __name__ == "__main__":
             else:
                 vera.logger.warning("Agent system not enabled")
             continue       
+
         if user_query.lower() == "/clear":
             vera.logger.warning("Clearing memory...")
             vera.vectorstore.delete_collection("vera_agent_memory")
@@ -1606,33 +1392,11 @@ if __name__ == "__main__":
             vera.logger.success("Memory cleared")
             continue
         
-        # Process query
         vera.logger.debug(f"Processing: {user_query}")
         result = ""
         for chunk in vera.async_run(user_query):
-            # Chunks are already streamed by logger.response()
             result += str(chunk)
         
-        print()  # Newline after response
-      
+        print()
+
 # ジョセフ
-
-"""
-# In your Vera code:
-
-# Send to all owners
-vera.telegram_notify("Proactive thought complete: Focus shifted to optimization")
-
-# Send to specific user
-vera.telegram_notify("Task completed!", user_id=123456789)
-
-# Queue message (non-blocking)
-vera.telegram_queue_message("New insight: Consider implementing caching")
-
-# From proactive focus system
-if self.focus_manager:
-    def proactive_callback(thought):
-        vera.telegram_notify(f"Proactive Thought:\n\n{thought}")
-    
-    self.focus_manager.proactive_callback = proactive_callback
-"""

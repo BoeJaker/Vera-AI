@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vera — Project Assistant</title>
+<style>
+  /* ── reset & tokens ──────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d0f12;
+    --surface:   #13161b;
+    --surface2:  #1c2028;
+    --border:    #252932;
+    --accent:    #4f9cf9;
+    --accent2:   #7c5cfc;
+    --text:      #e2e8f0;
+    --text-dim:  #8892a4;
+    --user-bg:   #1a2236;
+    --asst-bg:   #131820;
+    --code-bg:   #0a0c10;
+    --danger:    #f43f5e;
+    --success:   #10b981;
+    --warn:      #f59e0b;
+    --radius:    10px;
+    --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+    --font-ui:   "DM Sans", "Inter", system-ui, sans-serif;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap');
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── layout ──────────────────────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 280px 1fr 260px;
+    grid-template-rows: 48px 1fr;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── top bar ─────────────────────────────────────────────────────── */
+  .topbar {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+  }
+  .topbar-logo {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .topbar-logo span { color: var(--accent2); }
+  .topbar-focus {
+    font-size: 12px;
+    color: var(--text-dim);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3px 10px;
+    max-width: 340px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar-focus b { color: var(--accent); }
+  .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+  .topbar-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+  }
+  .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── left sidebar – board ────────────────────────────────────────── */
+  .sidebar-left {
+    grid-row: 2;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar-section {
+    padding: 12px 14px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-section-title .refresh-btn {
+    cursor: pointer;
+    opacity: .5;
+    transition: opacity .15s;
+    font-size: 13px;
+  }
+  .sidebar-section-title .refresh-btn:hover { opacity: 1; }
+
+  .board-category { margin-bottom: 10px; }
+  .board-cat-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent2);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .board-cat-label .count {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 0 5px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .board-item {
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.4;
+    padding: 4px 6px;
+    border-radius: 4px;
+    border-left: 2px solid transparent;
+    cursor: default;
+    transition: all .1s;
+    word-break: break-word;
+  }
+  .board-item:hover { background: var(--surface2); border-color: var(--accent); color: var(--text); }
+  .board-item.gap    { border-color: var(--warn); }
+  .board-item.high   { border-color: var(--danger); }
+  .board-empty { font-size: 12px; color: var(--text-dim); opacity: .5; font-style: italic; }
+
+  /* ── main chat ───────────────────────────────────────────────────── */
+  .main {
+    grid-row: 2;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  /* scrollbar */
+  .messages::-webkit-scrollbar { width: 5px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-width: 820px;
+    align-self: stretch;
+  }
+  .msg-role {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .msg.user .msg-role  { color: var(--accent); }
+  .msg.asst .msg-role  { color: var(--accent2); }
+  .msg.sys  .msg-role  { color: var(--text-dim); }
+
+  .msg-bubble {
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .msg.user .msg-bubble { background: var(--user-bg); border: 1px solid #1e2d4a; }
+  .msg.asst .msg-bubble { background: var(--asst-bg); border: 1px solid var(--border); }
+  .msg.sys  .msg-bubble {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  /* markdown-ish rendering */
+  .msg-bubble code {
+    font-family: var(--font-mono);
+    background: var(--code-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    color: #79c0ff;
+  }
+  .msg-bubble pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-size: 12.5px;
+  }
+  .msg-bubble pre code { background: none; padding: 0; }
+  .msg-bubble strong { color: #fff; font-weight: 600; }
+  .msg-bubble h2, .msg-bubble h3 {
+    color: var(--accent);
+    font-weight: 600;
+    margin: 8px 0 4px;
+  }
+  .msg-bubble ul, .msg-bubble ol { padding-left: 18px; margin: 4px 0; }
+  .msg-bubble li { margin: 2px 0; }
+
+  /* typing cursor */
+  .typing-cursor::after {
+    content: "▋";
+    color: var(--accent);
+    animation: blink .7s step-end infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ── input bar ───────────────────────────────────────────────────── */
+  .input-bar {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .quick-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .qa-btn {
+    font-size: 11px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .qa-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  .input-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+  }
+  textarea {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-family: var(--font-ui);
+    font-size: 14px;
+    resize: none;
+    min-height: 44px;
+    max-height: 160px;
+    outline: none;
+    transition: border-color .15s;
+    line-height: 1.5;
+  }
+  textarea:focus { border-color: var(--accent); }
+  textarea::placeholder { color: var(--text-dim); opacity: .5; }
+
+  .send-btn {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    border-radius: var(--radius);
+    padding: 10px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: inherit;
+    white-space: nowrap;
+    align-self: flex-end;
+    height: 44px;
+  }
+  .send-btn:hover { background: #3a8aed; }
+  .send-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── right sidebar – tree & search ──────────────────────────────── */
+  .sidebar-right {
+    grid-row: 2;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .tree-view {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.7;
+    padding: 10px 12px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .tree-view .dir  { color: var(--accent); }
+  .tree-view .file { color: var(--text-dim); }
+
+  .search-box {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-box input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    outline: none;
+    font-family: inherit;
+  }
+  .search-box input:focus { border-color: var(--accent); }
+  .search-box button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .search-box button:hover { border-color: var(--accent); color: var(--accent); }
+
+  .search-results { padding: 8px 12px; }
+  .search-result {
+    padding: 5px 6px;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .search-result:hover { background: var(--surface2); }
+  .search-result .sr-path { font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+  .search-result .sr-line { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+
+  /* ── stage pills ─────────────────────────────────────────────────── */
+  .stage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    padding: 10px 14px;
+  }
+  .stage-pill {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+  .stage-pill:hover { border-color: var(--accent2); color: var(--accent2); background: #1a1530; }
+  .stage-pill.running { border-color: var(--warn); color: var(--warn); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  /* ── status dot ──────────────────────────────────────────────────── */
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+    background: var(--success);
+    margin-right: 6px;
+    box-shadow: 0 0 6px var(--success);
+  }
+  .status-dot.idle { background: var(--text-dim); box-shadow: none; }
+  .status-dot.busy { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- ── top bar ──────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <span class="topbar-logo">VERA<span>/</span>PA</span>
+    <div id="topbarFocus" class="topbar-focus"><b>Focus:</b> loading…</div>
+    <span class="status-dot idle" id="statusDot"></span>
+    <div class="topbar-actions">
+      <button class="topbar-btn" onclick="showBoard()">📋 Board</button>
+      <button class="topbar-btn" onclick="showTree()">🌲 Tree</button>
+      <button class="topbar-btn" onclick="rescalProject()">🔄 Rescan</button>
+    </div>
+  </header>
+
+  <!-- ── left sidebar – focus board ──────────────────────────────── -->
+  <aside class="sidebar-left">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">
+        Focus Board
+        <span class="refresh-btn" onclick="refreshBoard()" title="Refresh board">⟳</span>
+      </div>
+      <div id="boardContainer"><span class="board-empty">Loading…</span></div>
+    </div>
+  </aside>
+
+  <!-- ── main chat ─────────────────────────────────────────────────── -->
+  <main class="main">
+    <div class="messages" id="messages">
+      <div class="msg sys">
+        <span class="msg-role">System</span>
+        <div class="msg-bubble">Vera Project Assistant ready. Ask about any file, trigger stages, or explore the focus board.</div>
+      </div>
+    </div>
+
+    <div class="input-bar">
+      <div class="quick-actions">
+        <button class="qa-btn" onclick="send('Show the focus board')">📋 Board</button>
+        <button class="qa-btn" onclick="send('Show project tree')">🌲 Tree</button>
+        <button class="qa-btn" onclick="send('Run the info_gaps stage')">🔍 Info Gaps</button>
+        <button class="qa-btn" onclick="send('Generate ideas for the current focus')">💡 Ideas</button>
+        <button class="qa-btn" onclick="send('Generate next steps')">📋 Next Steps</button>
+        <button class="qa-btn" onclick="send('Generate actions')">⚡ Actions</button>
+        <button class="qa-btn" onclick="send('Generate questions')">❓ Questions</button>
+        <button class="qa-btn" onclick="send('What info gaps are currently blocking progress?')">🚧 Blockers</button>
+      </div>
+      <div class="input-row">
+        <textarea
+          id="input"
+          placeholder="Ask about any file, trigger a stage, or explore the board…"
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoGrow(this)"
+        ></textarea>
+        <button class="send-btn" id="sendBtn" onclick="sendInput()">Send</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── right sidebar – tree + stages + search ──────────────────── -->
+  <aside class="sidebar-right">
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Stages</div>
+      <div class="stage-grid" id="stageGrid">
+        <button class="stage-pill" onclick="triggerStage('info_gaps')">info_gaps</button>
+        <button class="stage-pill" onclick="triggerStage('ideas')">ideas</button>
+        <button class="stage-pill" onclick="triggerStage('next_steps')">next_steps</button>
+        <button class="stage-pill" onclick="triggerStage('actions')">actions</button>
+        <button class="stage-pill" onclick="triggerStage('questions')">questions</button>
+        <button class="stage-pill" onclick="triggerStage('review')">review</button>
+        <button class="stage-pill" onclick="triggerStage('execution')">execution</button>
+        <button class="stage-pill" onclick="triggerStage('artifacts')">artifacts</button>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-section-title">Search</div>
+      <div class="search-box">
+        <input id="searchInput" placeholder="keyword…" onkeydown="if(event.key==='Enter')doSearch()">
+        <button onclick="doSearch()">Go</button>
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <div class="sidebar-section" style="flex:1">
+      <div class="sidebar-section-title">
+        Project Tree
+        <span class="refresh-btn" onclick="loadTree()" title="Refresh">⟳</span>
+      </div>
+      <div class="tree-view" id="treeView">Loading…</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = "http://llm.int:8888";   // set this to base URL if different
+// e.g. const API = "http://localhost:8000";
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+let busy = false;
+
+function setStatus(state) {
+  const dot = document.getElementById("statusDot");
+  dot.className = "status-dot " + (state || "idle");
+}
+
+function scrollToBottom() {
+  const el = document.getElementById("messages");
+  el.scrollTop = el.scrollHeight;
+}
+
+function autoGrow(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 160) + "px";
+}
+
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendInput(); }
+}
+
+// Simple markdown-ish render
+function renderMarkdown(text) {
+  return text
+    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre><code class="lang-${lang}">${escHtml(code)}</code></pre>`)
+    .replace(/`([^`]+)`/g, (_, c) => `<code>${escHtml(c)}</code>`)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^  • (.+)$/gm, '<li>$1</li>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>');
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ── Message rendering ────────────────────────────────────────────────────────
+function appendMsg(role, content, id) {
+  const wrap = document.createElement("div");
+  wrap.className = `msg ${role}`;
+  if (id) wrap.id = id;
+
+  const label = document.createElement("span");
+  label.className = "msg-role";
+  label.textContent = role === "user" ? "You" : role === "asst" ? "Vera" : "System";
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble";
+  if (role === "asst" && !content) bubble.classList.add("typing-cursor");
+  bubble.innerHTML = content ? renderMarkdown(content) : "";
+
+  wrap.appendChild(label);
+  wrap.appendChild(bubble);
+  document.getElementById("messages").appendChild(wrap);
+  scrollToBottom();
+  return bubble;
+}
+
+function updateBubble(bubble, text) {
+  bubble.innerHTML = renderMarkdown(text);
+  bubble.classList.remove("typing-cursor");
+  scrollToBottom();
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+function send(msg) {
+  const input = document.getElementById("input");
+  input.value = msg;
+  sendInput();
+}
+
+async function sendInput() {
+  if (busy) return;
+  const input = document.getElementById("input");
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = "";
+  input.style.height = "auto";
+
+  appendMsg("user", msg);
+  const bubble = appendMsg("asst", "");
+  busy = true;
+  setStatus("busy");
+  document.getElementById("sendBtn").disabled = true;
+
+  let accumulated = "";
+
+  try {
+    const res = await fetch(`${API}/assistant/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: msg }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const raw = line.slice(6).trim();
+        try {
+          const data = JSON.parse(raw);
+          if (data.done) break;
+          if (data.error) { accumulated += `\n⚠️ ${data.error}`; }
+          if (data.chunk) { accumulated += data.chunk; }
+          updateBubble(bubble, accumulated);
+        } catch (_) {}
+      }
+    }
+  } catch (err) {
+    accumulated += `\n⚠️ Network error: ${err.message}`;
+    updateBubble(bubble, accumulated);
+  }
+
+  if (!accumulated) bubble.innerHTML = '<em style="color:var(--text-dim)">No response.</em>';
+
+  busy = false;
+  setStatus("idle");
+  document.getElementById("sendBtn").disabled = false;
+
+  // Refresh board after each turn
+  setTimeout(refreshBoard, 500);
+}
+
+// ── Board ─────────────────────────────────────────────────────────────────────
+async function refreshBoard() {
+  try {
+    const res = await fetch(`${API}/assistant/board`);
+    const data = await res.json();
+    renderBoard(data);
+
+    const focusEl = document.getElementById("topbarFocus");
+    focusEl.innerHTML = `<b>Focus:</b> ${data.focus || "none"}`;
+  } catch (_) {}
+}
+
+function renderBoard(data) {
+  const board = data.board || {};
+  const container = document.getElementById("boardContainer");
+  if (!Object.keys(board).length) {
+    container.innerHTML = '<span class="board-empty">Board is empty</span>';
+    return;
+  }
+
+  let html = "";
+  for (const [cat, items] of Object.entries(board)) {
+    if (!items.length) continue;
+    html += `<div class="board-category">
+      <div class="board-cat-label">${cat} <span class="count">${items.length}</span></div>`;
+    items.slice(0, 8).forEach(item => {
+      const text = item.text || item.content || JSON.stringify(item);
+      const meta = item.metadata || {};
+      const isGap = meta.type === "info_gap";
+      const isHigh = meta.priority === "high";
+      const cls = isGap ? "gap" : isHigh ? "high" : "";
+      const badge = meta.status ? ` <span style="font-size:10px;color:var(--text-dim)">[${meta.status}]</span>` : "";
+      html += `<div class="board-item ${cls}" title="${escHtml(text)}">${escHtml(text.slice(0,90))}${text.length>90?'…':''}${badge}</div>`;
+    });
+    if (items.length > 8) html += `<div class="board-empty">… +${items.length - 8} more</div>`;
+    html += `</div>`;
+  }
+  container.innerHTML = html;
+}
+
+function showBoard() {
+  send("Show the focus board");
+}
+
+// ── Tree ──────────────────────────────────────────────────────────────────────
+async function loadTree() {
+  const el = document.getElementById("treeView");
+  el.textContent = "Loading…";
+  try {
+    const res = await fetch(`${API}/assistant/tree`);
+    const data = await res.json();
+    // Colorise dirs vs files
+    el.innerHTML = data.tree
+      .split("\n")
+      .map(line => line.endsWith("/")
+        ? `<span class="dir">${escHtml(line)}</span>`
+        : `<span class="file">${escHtml(line)}</span>`)
+      .join("\n");
+  } catch (err) {
+    el.textContent = "Error loading tree: " + err.message;
+  }
+}
+
+function showTree() {
+  send("Show project tree");
+}
+
+// ── Search ───────────────────────────────────────────────────────────────────
+async function doSearch() {
+  const q = document.getElementById("searchInput").value.trim();
+  if (!q) return;
+  const container = document.getElementById("searchResults");
+  container.innerHTML = "Searching…";
+  try {
+    const res = await fetch(`${API}/assistant/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if (!data.results.length) { container.innerHTML = '<span class="board-empty">No results.</span>'; return; }
+    container.innerHTML = data.results.slice(0, 15).map(r =>
+      `<div class="search-result" onclick="send('Show me ${r.file}')">
+        <div class="sr-path">${escHtml(r.file)}:${r.line}</div>
+        <div class="sr-line">${escHtml(r.text.trim().slice(0,80))}</div>
+      </div>`
+    ).join("");
+  } catch (err) {
+    container.innerHTML = "Error: " + err.message;
+  }
+}
+
+// ── Stage triggers ────────────────────────────────────────────────────────────
+async function triggerStage(name) {
+  const pill = [...document.querySelectorAll(".stage-pill")].find(b => b.textContent === name);
+  if (pill) pill.classList.add("running");
+  setStatus("busy");
+
+  try {
+    const res = await fetch(`${API}/assistant/stage/${name}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: "" }),
+    });
+    const data = await res.json();
+
+    // Show result as a system message
+    const resultText = data.error
+      ? `⚠️ Stage ${name} error: ${data.error}`
+      : `Stage **${name}** completed.\n\n${JSON.stringify(data.result, null, 2)}`;
+
+    appendMsg("sys", resultText);
+    refreshBoard();
+  } catch (err) {
+    appendMsg("sys", `⚠️ Stage trigger failed: ${err.message}`);
+  }
+
+  if (pill) pill.classList.remove("running");
+  setStatus("idle");
+}
+
+// ── Rescan ────────────────────────────────────────────────────────────────────
+async function rescalProject() {
+  setStatus("busy");
+  try {
+    await fetch(`${API}/assistant/rescan`, { method: "POST" });
+    await loadTree();
+    appendMsg("sys", "✓ Project files rescanned.");
+  } catch (err) {
+    appendMsg("sys", `⚠️ Rescan failed: ${err.message}`);
+  }
+  setStatus("idle");
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  await Promise.all([refreshBoard(), loadTree()]);
+})();
+</script>
+</body>
+</html>

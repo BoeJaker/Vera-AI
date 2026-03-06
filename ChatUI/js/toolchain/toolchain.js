@@ -30,7 +30,7 @@
             }
         };
     };
-
+    
     VeraChat.prototype.handleToolchainEvent = function(data) {
         console.log('Toolchain event:', data.type, data);
         
@@ -70,16 +70,28 @@
                     this.currentExecution.totalSteps = data.data.total_steps;
                     this.currentExecution.total_steps = data.data.total_steps;
                     this.updateToolchainUI();
-                    app.loadGraph()
+                    app.loadGraph();
                 }
                 break;
                 
             case 'step_started':
                 if (this.currentExecution) {
+                    // FIXED: Parse tool_input if it's a JSON string
+                    let parsedInput = data.data.tool_input;
+                    if (typeof parsedInput === 'string') {
+                        try {
+                            // Try to parse as JSON
+                            parsedInput = JSON.parse(parsedInput);
+                        } catch (e) {
+                            // Keep as string if not valid JSON
+                        }
+                    }
+                    
                     const step = {
                         number: data.data.step_number,
                         toolName: data.data.tool_name,
-                        input: data.data.tool_input,
+                        input: parsedInput,  // Store parsed version
+                        toolInput: parsedInput,  // Alias for compatibility
                         status: 'running',
                         output: '',
                         startTime: new Date(data.timestamp),
@@ -120,7 +132,7 @@
                         this.currentExecution.completedSteps++;
                         this.currentExecution.completed_steps++;
                         this.updateToolchainUI();
-                        app.loadGraph()
+                        app.loadGraph();
                     }
                 }
                 break;
@@ -167,6 +179,7 @@
                     this.updateToolchainUI();
                 }
                 break;
+                
             case 'plan_chunk':
                 if (this.currentExecution) {
                     // Initialize plan_text if it doesn't exist
@@ -189,7 +202,6 @@
                 break;
         }
     };
-
     VeraChat.prototype.updateToolchainUI = async function() {
         await this.loadAvailableTools();
         
@@ -260,102 +272,102 @@
         this.updateToolchainUI();
     };
 
-VeraChat.prototype.updateSingleToolCard = function(toolName) {
-    const tool = this.availableTools[toolName];
-    if (!tool) return;
-    
-    const cardElement = document.querySelector(`[data-tool-name="${this.escapeHtml(toolName)}"]`);
-    if (!cardElement) return;
-    
-    const isExecuting = this.executingTools && this.executingTools[toolName];
-    const hasResult = this.toolResults && this.toolResults[toolName];
-    const isExpanded = this.expandedTools && this.expandedTools[toolName];
-    
-    const newCardHtml = `
-        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
-            <div style="flex: 1;">
-                <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
-                    ${this.escapeHtml(tool.name)}
-                </div>
-                <div style="color: #64748b; font-size: 10px; font-family: monospace; margin-bottom: 8px;">
-                    ${this.escapeHtml(tool.type)}
-                </div>
-            </div>
-            <button class="panel-btn" 
-                    onclick="app.toggleToolExpand('${this.escapeHtml(tool.name)}')"
-                    style="padding: 4px 8px; font-size: 11px; min-width: auto;">
-                ${isExpanded ? '▼' : '▶'}
-            </button>
-        </div>
+    VeraChat.prototype.updateSingleToolCard = function(toolName) {
+        const tool = this.availableTools[toolName];
+        if (!tool) return;
         
-        <div style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
-            ${this.escapeHtml(tool.description)}
-        </div>
+        const cardElement = document.querySelector(`[data-tool-name="${this.escapeHtml(toolName)}"]`);
+        if (!cardElement) return;
         
-        <div id="tool-expand-${this.escapeHtml(tool.name)}" 
-            style="display: ${isExpanded ? 'block' : 'none'};">
-            
-            <div id="tool-inputs-${this.escapeHtml(tool.name)}" style="margin-bottom: 10px;">
-                <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">Loading inputs...</div>
-            </div>
-            
-            <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+        const isExecuting = this.executingTools && this.executingTools[toolName];
+        const hasResult = this.toolResults && this.toolResults[toolName];
+        const isExpanded = this.expandedTools && this.expandedTools[toolName];
+        
+        const newCardHtml = `
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                <div style="flex: 1;">
+                    <div style="color: #e2e8f0; font-weight: 600; font-size: 14px; margin-bottom: 4px;">
+                        ${this.escapeHtml(tool.name)}
+                    </div>
+                    <div style="color: #64748b; font-size: 10px; font-family: monospace; margin-bottom: 8px;">
+                        ${this.escapeHtml(tool.type)}
+                    </div>
+                </div>
                 <button class="panel-btn" 
-                        onclick="app.executeToolFromCard('${this.escapeHtml(tool.name)}')"
-                        style="flex: 1; padding: 8px; font-size: 12px;"
-                        ${isExecuting ? 'disabled' : ''}>
-                    ${isExecuting ? '⏳ Executing...' : '🚀 Execute'}
-                </button>
-                <button class="panel-btn" 
-                        onclick="app.clearToolInput('${this.escapeHtml(tool.name)}')"
-                        style="background: #64748b; padding: 8px; font-size: 12px;"
-                        ${isExecuting ? 'disabled' : ''}>
-                    Clear
+                        onclick="app.toggleToolExpand('${this.escapeHtml(tool.name)}')"
+                        style="padding: 4px 8px; font-size: 11px; min-width: auto;">
+                    ${isExpanded ? '▼' : '▶'}
                 </button>
             </div>
             
-            ${hasResult ? `
-                <div style="background: #0f172a; border-radius: 6px; padding: 10px; border-left: 3px solid ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'};">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <div style="color: ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
-                            ${this.toolResults[toolName].success ? '✓ Success' : '✗ Error'}
-                        </div>
-                        <div style="display: flex; gap: 8px; align-items: center;">
-                            <div style="color: #64748b; font-size: 9px;">
-                                ${this.toolResults[toolName].duration}ms
+            <div style="color: #94a3b8; font-size: 12px; line-height: 1.5; margin-bottom: 12px;">
+                ${this.escapeHtml(tool.description)}
+            </div>
+            
+            <div id="tool-expand-${this.escapeHtml(tool.name)}" 
+                style="display: ${isExpanded ? 'block' : 'none'};">
+                
+                <div id="tool-inputs-${this.escapeHtml(tool.name)}" style="margin-bottom: 10px;">
+                    <div style="color: #94a3b8; font-size: 11px; margin-bottom: 6px;">Loading inputs...</div>
+                </div>
+                
+                <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                    <button class="panel-btn" 
+                            onclick="app.executeToolFromCard('${this.escapeHtml(tool.name)}')"
+                            style="flex: 1; padding: 8px; font-size: 12px;"
+                            ${isExecuting ? 'disabled' : ''}>
+                        ${isExecuting ? '⏳ Executing...' : '🚀 Execute'}
+                    </button>
+                    <button class="panel-btn" 
+                            onclick="app.clearToolInput('${this.escapeHtml(tool.name)}')"
+                            style="background: #64748b; padding: 8px; font-size: 12px;"
+                            ${isExecuting ? 'disabled' : ''}>
+                        Clear
+                    </button>
+                </div>
+                
+                ${hasResult ? `
+                    <div style="background: #0f172a; border-radius: 6px; padding: 10px; border-left: 3px solid ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'};">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <div style="color: ${this.toolResults[toolName].success ? '#10b981' : '#ef4444'}; font-size: 10px; font-weight: 600; text-transform: uppercase;">
+                                ${this.toolResults[toolName].success ? '✓ Success' : '✗ Error'}
                             </div>
-                            <button onclick="app.clearToolResult('${this.escapeHtml(tool.name)}')" 
-                                    style="background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; font-size: 12px;"
-                                    title="Clear result">✕</button>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <div style="color: #64748b; font-size: 9px;">
+                                    ${this.toolResults[toolName].duration}ms
+                                </div>
+                                <button onclick="app.clearToolResult('${this.escapeHtml(tool.name)}')" 
+                                        style="background: none; border: none; color: #64748b; cursor: pointer; padding: 2px; font-size: 12px;"
+                                        title="Clear result">✕</button>
+                            </div>
+                        </div>
+                        <div style="color: #cbd5e1; font-size: 11px; font-family: monospace; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.4;">
+                            ${this.escapeHtml(this.toolResults[toolName].output)}
                         </div>
                     </div>
-                    <div style="color: #cbd5e1; font-size: 11px; font-family: monospace; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; line-height: 1.4;">
-                        ${this.escapeHtml(this.toolResults[toolName].output)}
-                    </div>
-                </div>
+                ` : ''}
+            </div>
+            
+            ${!isExpanded ? `
+                <button class="panel-btn" 
+                        onclick="app.quickExpandTool('${this.escapeHtml(tool.name)}')"
+                        style="width: 100%; padding: 8px; font-size: 12px;">
+                    ⚡ Quick Execute
+                </button>
             ` : ''}
-        </div>
+        `;
         
-        ${!isExpanded ? `
-            <button class="panel-btn" 
-                    onclick="app.quickExpandTool('${this.escapeHtml(tool.name)}')"
-                    style="width: 100%; padding: 8px; font-size: 12px;">
-                ⚡ Quick Execute
-            </button>
-        ` : ''}
-    `;
-    
-    // Update the card's opacity for executing state
-    cardElement.style.opacity = isExecuting ? '0.7' : '1';
-    cardElement.innerHTML = newCardHtml;
-    
-    // If expanded, load the schema
-    if (isExpanded) {
-        setTimeout(() => {
-            this.renderToolInputs(toolName);
-        }, 0);
-    }
-};
+        // Update the card's opacity for executing state
+        cardElement.style.opacity = isExecuting ? '0.7' : '1';
+        cardElement.innerHTML = newCardHtml;
+        
+        // If expanded, load the schema
+        if (isExpanded) {
+            setTimeout(() => {
+                this.renderToolInputs(toolName);
+            }, 0);
+        }
+    };
     VeraChat.prototype.renderCurrentExecution = function() {
         // Initialize toolchainExecutions if it doesn't exist
         if (!this.toolchainExecutions) {
@@ -407,12 +419,25 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
                     `;
                 }
                 
-                // Show structured plan if available
+                // Show structured plan if available - FIXED FOR DICT INPUTS
                 if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
                     html += `<div style="display: flex; flex-direction: column; gap: 8px;">`;
                     
                     this.currentExecution.plan.forEach((step, i) => {
                         const toolInfo = this.availableTools && this.availableTools[step.tool];
+                        
+                        // FIXED: Format input display
+                        let inputDisplay = '';
+                        if (typeof step.input === 'object' && step.input !== null) {
+                            // Pretty-print JSON
+                            inputDisplay = JSON.stringify(step.input, null, 2);
+                        } else if (step.input_display) {
+                            // Use backend-provided display (already formatted)
+                            inputDisplay = step.input_display;
+                        } else {
+                            inputDisplay = String(step.input || '');
+                        }
+                        
                         html += `
                             <div class="tool-card" style="padding: 10px; border-radius: 6px; border-left: 3px solid #8b5cf6;">
                                 <div style="color: #a78bfa; font-size: 11px; margin-bottom: 4px;">Step ${i + 1}</div>
@@ -421,7 +446,12 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
                                     ${toolInfo ? `<span style="color: #60a5fa; font-size: 11px; cursor: help;" title="${this.escapeHtml(toolInfo.description)}">ℹ️</span>` : ''}
                                 </div>
                                 ${toolInfo ? `<div style="color: #64748b; font-size: 11px; margin-bottom: 6px; font-style: italic;">${this.escapeHtml(toolInfo.description.substring(0, 80))}${toolInfo.description.length > 80 ? '...' : ''}</div>` : ''}
-                                <div style="color: #94a3b8; font-size: 12px; margin-top: 4px;">${this.escapeHtml(step.input)}</div>
+                                
+                                <!-- FIXED: Better input display -->
+                                <div style="background: #0f172a; padding: 8px; border-radius: 4px; margin-top: 6px;">
+                                    <div style="color: #60a5fa; font-size: 10px; margin-bottom: 4px; text-transform: uppercase;">Input:</div>
+                                    <pre style="color: #cbd5e1; font-size: 11px; font-family: monospace; margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 150px; overflow-y: auto;">${this.escapeHtml(inputDisplay)}</pre>
+                                </div>
                             </div>
                         `;
                     });
@@ -432,7 +462,7 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
                 html += `</div>`;
             }
             
-            // Show steps execution
+            // Show steps execution - FIXED FOR DICT INPUTS
             if (this.currentExecution.steps && this.currentExecution.steps.length > 0) {
                 html += `
                     <div class="tool-container" style="border-radius: 8px; padding: 16px;">
@@ -444,6 +474,20 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
                     const stepStatusColor = step.status === 'completed' ? '#10b981' :
                                         step.status === 'failed' ? '#ef4444' : '#3b82f6';
                     const toolInfo = this.availableTools && this.availableTools[step.toolName];
+                    
+                    // FIXED: Format tool input properly
+                    let inputDisplay = '';
+                    const rawInput = step.input || step.toolInput;
+                    
+                    if (typeof rawInput === 'object' && rawInput !== null) {
+                        inputDisplay = JSON.stringify(rawInput, null, 2);
+                    } else {
+                        inputDisplay = String(rawInput || 'No input');
+                    }
+                    
+                    // Truncate for preview (full version in collapsible section)
+                    const inputPreview = inputDisplay.length > 200 ? 
+                        inputDisplay.substring(0, 200) + '...' : inputDisplay;
                     
                     html += `
                         <div class="tool-card" style="border-radius: 6px; overflow: hidden;">
@@ -458,7 +502,7 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
                                 
                                 <div class="tool-subcard" style="padding: 8px; border-radius: 4px; margin-bottom: 8px;">
                                     <div style="color: #60a5fa; font-size: 11px; margin-bottom: 4px;">Input:</div>
-                                    <div style="color: #cbd5e1; font-size: 12px; font-family: monospace;">${step.input ? this.escapeHtml(step.input.substring(0, 200)) : 'No input'}${step.input.length > 200 ? '...' : ''}</div>
+                                    <pre style="color: #cbd5e1; font-size: 11px; font-family: monospace; margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 150px; overflow-y: auto;">${this.escapeHtml(inputPreview)}</pre>
                                 </div>
                                 
                                 ${step.output ? `
@@ -501,17 +545,15 @@ VeraChat.prototype.updateSingleToolCard = function(toolName) {
             }
         }
         
-
-        if (this.currentExecution.plan && this.currentExecution.plan.length > 0) {
+        // Show flowchart if plan exists
+        if (this.currentExecution && this.currentExecution.plan && this.currentExecution.plan.length > 0) {
             // Flowchart overview (always visible)
             html += this.buildFlowchartHTML(this.currentExecution.execution_id, this.currentExecution.plan);
-            
-            // The flowchart already has collapsible step details built-in!
-            // Just make sure it's rendered with the details section
         }
         
         return html;
     };
+
     VeraChat.prototype.renderExecutionHistory = function() {
         if (!this.toolchainExecutions || this.toolchainExecutions.length === 0) {
             return `

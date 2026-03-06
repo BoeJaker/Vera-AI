@@ -192,6 +192,17 @@ class GraphClient:
 
     def upsert_edge(self, edge: Edge):
         logger.debug(f"[GraphClient] Upserting edge: {edge.src} -[{edge.rel}]-> {edge.dst}")
+        
+        # Flatten properties - Neo4j cannot store nested dicts
+        safe_props = {}
+        for k, v in (edge.properties or {}).items():
+            if isinstance(v, dict):
+                safe_props[k] = json.dumps(v)  # serialize to string
+            elif isinstance(v, (str, int, float, bool, list)) or v is None:
+                safe_props[k] = v
+            else:
+                safe_props[k] = str(v)
+        
         cypher = """
         MATCH (a:Entity {id: $src})
         MATCH (b:Entity {id: $dst})
@@ -201,11 +212,16 @@ class GraphClient:
         """
         with self._driver.session() as sess:
             result = sess.execute_write(
-                lambda tx: tx.run(cypher, edge.model_dump()).single()
+                lambda tx: tx.run(cypher, {
+                    "src": edge.src,
+                    "dst": edge.dst,
+                    "rel": edge.rel,
+                    "properties": safe_props
+                }).single()
             )
         logger.debug(f"[GraphClient] Edge upsert result: {result}")
         return result
-
+    
     def link_session_to_entity(self, session_id: str, entity_id: str, rel: str = "FOCUSES_ON"):
         logger.debug(f"[GraphClient] Linking session {session_id} to entity {entity_id} with relation {rel}")
         cypher = """
@@ -640,6 +656,7 @@ class HybridMemory:
         try:
             # Extract entities and relations (now with IDs!)
             logger.debug(f"Extracting from text: {text[:100]}...")
+            text = sanitize_for_nlp(text)  # ← add this
             entities, relations = self.nlp.extract_all(text)
             logger.info(f"Extracted {len(entities)} entities and {len(relations)} relations")
             # logger.info(f"Sample entities: {[(e.entity_id, e.text, e.label) for e in entities[:3]]}")
@@ -851,7 +868,8 @@ class HybridMemory:
                             "extracted_from_session": session_id,
                             "head_text": rel.head,
                             "tail_text": rel.tail,
-                            "metadata": rel.metadata if hasattr(rel, 'metadata') else {}
+                            # Serialize nested dict to JSON string instead
+                            "metadata": json.dumps(rel.metadata) if hasattr(rel, 'metadata') and rel.metadata else ""
                         }
                     )
                     self.link(tail_id, head_id, relation_type, edge.properties)
@@ -1730,7 +1748,22 @@ if __name__ == "__main__":
         mem.close()
         print("\n=== Memory system closed ===")
 
+import re
 
+def sanitize_for_nlp(text: str) -> str:
+    """Normalize unicode punctuation that breaks code parsers."""
+    replacements = {
+        '\u2013': '-',   # en-dash
+        '\u2014': '--',  # em-dash
+        '\u2018': "'",   # left single quote
+        '\u2019': "'",   # right single quote
+        '\u201c': '"',   # left double quote
+        '\u201d': '"',   # right double quote
+        '\u2026': '...',  # ellipsis
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    return text
 """
 Installation commands:
     pip install neo4j chromadb pydantic spacy sentence-transformers scikit-learn langchain langchain-community

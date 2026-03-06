@@ -230,7 +230,7 @@
                     <div class="section-title">
                         <label class="section-toggle">
                             <input type="checkbox" id="cypher-date-enabled">
-                            <span Date Range</span>
+                            <span> Date Range</span>
                         </label>
                     </div>
                     <div id="cypher-date-content" class="section-body collapsed">

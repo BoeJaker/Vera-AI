@@ -729,116 +729,137 @@ def llm_reasoning(vera_instance, prompt: str):
 # STREAMING TOOL TASKS
 # ============================================================================
 
+from Vera.Orchestration.orchestration import task, TaskType, Priority
+from Vera.Logging.logging import LogContext
+
 @task("toolchain.execute", task_type=TaskType.TOOL, priority=Priority.HIGH, estimated_duration=30.0)
-def toolchain_execute(vera_instance, query: str, expert:bool=False):
+def toolchain_execute(vera_instance, query: str, plan: Optional[str] = None, strategy: Optional[str] = "default", expert: bool = False):
     """
     Execute tool chain with streaming output.
-    Streams each tool's output as it executes.
+
+    Tools are already sandbox-wrapped at Vera init time, so we just
+    route to the right toolchain and stream back chunks.  No tool swap
+    is required.
     """
-    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
-    context = LogContext(extra={'component': 'task', 'task': 'toolchain.execute', 'query_length': len(query)})
-    
+    if plan:
+        query = plan
+    logger  = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task':      'toolchain.execute',
+        'query_length': len(query),
+        'expert':    expert,
+    })
+
     if logger:
-        logger.info(f"🔧 Toolchain execution starting", context=context)
+        logger.info("🔧 Toolchain execution starting", context=context)
         logger.start_timer("toolchain_execute")
-    
+
     router = _get_router(vera_instance)
-    
-    # Try agent with tool restrictions
+
+    # ── Path 1: agent-routed execution ───────────────────────────────────
+    # We only swap the *LLM* — never the tools — so sandbox wrapping is
+    # preserved throughout.
     if router:
         try:
             agent_name = router.get_agent_for_task('tool_execution')
-            llm = router.create_llm_for_agent(agent_name)
-            tools = router.get_agent_tools(agent_name)
-            
-            tool_names = [t.name for t in tools]
+            llm        = router.create_llm_for_agent(agent_name)
+
+            tool_names = [t.name for t in vera_instance.tools]
             log_agent_selection(
                 logger, 'tool_execution', agent_name, context,
-                extra_info={'tool_count': len(tools), 'tools': tool_names}
+                extra_info={'tool_count': len(tool_names), 'tools': tool_names}
             )
-            
-            if logger:
-                logger.debug(
-                    f"Agent tools restricted to: {', '.join(tool_names)}",
-                    context=LogContext(agent=agent_name, extra={**context.extra, 'available_tools': tool_names})
-                )
-            
-            log_prompt(logger, query, LogContext(agent=agent_name, extra=context.extra), "Toolchain query")
-            
+            log_prompt(
+                logger, query,
+                LogContext(agent=agent_name, extra=context.extra),
+                "Toolchain query"
+            )
+
+            # Swap only the LLM; toolkit stays sandbox-wrapped
             original_llm = vera_instance.tool_llm
-            original_tools = vera_instance.toolkit
-            
+            vera_instance.tool_llm = llm
+
             try:
-                vera_instance.tool_llm = llm
-                vera_instance.toolkit = tools
-                
-                if logger:
-                    logger.debug(
-                        "Toolchain config swapped to agent settings",
-                        context=LogContext(agent=agent_name, extra=context.extra)
-                    )
-                
                 chunk_count = 0
-                tool_calls = []
-                for chunk in (vera_instance.toolchain_expert.execute_tool_chain(query) if expert else vera_instance.toolchain.execute_tool_chain(query)):  
+                tool_calls  = []
+                planner     = (vera_instance.toolchain_expert
+                               if expert and hasattr(vera_instance, 'toolchain_expert')
+                               else vera_instance.toolchain)
+
+                for chunk in planner.execute_tool_chain(query):
                     chunk_text = extract_chunk_text(chunk)
                     chunk_count += 1
-                    
                     if 'tool:' in chunk_text.lower():
                         tool_calls.append(chunk_text[:50])
-                    
                     yield chunk_text
-                
+
                 if logger:
-                    duration = logger.stop_timer("toolchain_execute", context=LogContext(agent=agent_name, extra=context.extra))
+                    duration = logger.stop_timer(
+                        "toolchain_execute",
+                        context=LogContext(agent=agent_name, extra=context.extra)
+                    )
                     logger.success(
-                        f"Toolchain complete via agent: {agent_name} | {chunk_count} chunks | {len(tool_calls)} tool calls detected",
+                        f"Toolchain complete via agent: {agent_name} | "
+                        f"{chunk_count} chunks | {len(tool_calls)} tool calls",
                         context=LogContext(agent=agent_name, extra={
                             **context.extra,
                             'chunk_count': chunk_count,
-                            'tool_calls': len(tool_calls),
-                            'duration': duration
+                            'tool_calls':  len(tool_calls),
+                            'duration':    duration,
                         })
                     )
                 return
-        
+
             except Exception as e:
                 log_fallback(logger, "Agent toolchain execution failed", e, context)
 
             finally:
+                # Restore only the LLM
                 vera_instance.tool_llm = original_llm
-                vera_instance.tools = original_tools
-                
                 if logger:
                     logger.debug(
-                        "Toolchain config restored to original",
+                        "tool_llm restored",
                         context=LogContext(agent=agent_name, extra=context.extra)
                     )
-                    
+
         except Exception as e:
-            log_fallback(logger, "Agent toolchain execution failed", e, context)
-    
-    # Original fallback
+            log_fallback(logger, "Agent toolchain setup failed", e, context)
+
+    # ── Path 2: direct fallback ──────────────────────────────────────────
     all_tool_names = [t.name for t in vera_instance.tools] if hasattr(vera_instance, 'tools') else []
-    
+
     if logger:
         logger.info(
             f"Using fallback toolchain with {len(all_tool_names)} tools",
-            context=LogContext(extra={**context.extra, 'tool_count': len(all_tool_names), 'tools': all_tool_names})
+            context=LogContext(extra={
+                **context.extra,
+                'tool_count': len(all_tool_names),
+                'tools':      all_tool_names,
+            })
         )
-    
+
     log_prompt(logger, query, context, "Fallback toolchain query")
-    
+
     chunk_count = 0
-    for chunk in vera_instance.toolchain.execute_tool_chain(query):
+    planner = (vera_instance.toolchain_expert
+               if expert and hasattr(vera_instance, 'toolchain_expert')
+               else vera_instance.toolchain)
+
+    for chunk in planner.execute_tool_chain(query):
         chunk_count += 1
         yield extract_chunk_text(chunk)
-    
+
     if logger:
         duration = logger.stop_timer("toolchain_execute", context=context)
         logger.success(
             f"Toolchain complete via fallback | {chunk_count} chunks",
-            context=LogContext(extra={**context.extra, 'chunk_count': chunk_count, 'duration': duration, 'fallback': True})
+            context=LogContext(extra={
+                **context.extra,
+                'chunk_count': chunk_count,
+                'duration':    duration,
+                'fallback':    True,
+            })
         )
 
 
@@ -2142,3 +2163,470 @@ def memory_extract_entities(vera_instance, session_id: str, text: str,
             logger.error(f"Entity extraction failed: {e}", exc_info=True, context=context)
         
         raise
+# ============================================================================
+# CONTENT GENERATION TASKS
+# ============================================================================
+
+def _get_llm_for_content_type(vera_instance, content_type: str, logger=None, context=None):
+    """
+    Resolve the correct LLM for a given content type, always going through
+    ollama_manager so that instance routing, enabled flags, and load balancing
+    are all respected.
+
+    Falls back to pre-baked vera_instance LLMs only as a last resort, and
+    logs clearly when it does so.
+
+    Content type → model tier mapping:
+        guide          → deep_llm
+        research       → deep_llm
+        plan           → intermediate_llm (falls back to fast_llm)
+        code           → coding_llm
+        documentation  → intermediate_llm (falls back to fast_llm)
+        generic        → fast_llm
+    """
+    content_type_to_model_attr = {
+        'guide':         'deep_llm',
+        'research':      'deep_llm',
+        'plan':          'intermediate_llm',
+        'code':          'coding_llm',
+        'documentation': 'intermediate_llm',
+        'generic':       'fast_llm',
+    }
+
+    # Determine which model attr to use, with intermediate falling back to fast
+    model_attr = content_type_to_model_attr.get(content_type, 'fast_llm')
+
+    # ── Path 1: go through ollama_manager (preferred) ──────────────────────
+    if hasattr(vera_instance, 'ollama_manager'):
+        config = getattr(vera_instance, 'config', None)
+        models_config = getattr(config, 'models', None) if config else None
+
+        model_name = None
+        if models_config:
+            # Try requested tier first
+            model_name = getattr(models_config, model_attr, None)
+
+            # intermediate falls back to fast if not configured
+            if not model_name and model_attr == 'intermediate_llm':
+                model_name = getattr(models_config, 'fast_llm', None)
+
+        if model_name:
+            try:
+                if logger:
+                    logger.debug(
+                        f"[content_llm] Creating '{model_attr}' via ollama_manager: {model_name}",
+                        context=context
+                    )
+                return vera_instance.ollama_manager.create_llm(model_name)
+            except Exception as e:
+                if logger:
+                    logger.warning(
+                        f"[content_llm] ollama_manager.create_llm('{model_name}') failed: {e} — "
+                        f"trying pre-baked LLM",
+                        context=context
+                    )
+        else:
+            if logger:
+                logger.warning(
+                    f"[content_llm] No model name found for '{model_attr}' in config — "
+                    f"trying pre-baked LLM",
+                    context=context
+                )
+
+    # ── Path 2: pre-baked LLM on vera_instance (last resort) ───────────────
+    # intermediate falls back to fast if not present
+    if model_attr == 'intermediate_llm' and not hasattr(vera_instance, 'intermediate_llm'):
+        model_attr = 'fast_llm'
+
+    llm = getattr(vera_instance, model_attr, None) or getattr(vera_instance, 'fast_llm', None)
+
+    if logger:
+        logger.warning(
+            f"[content_llm] Using pre-baked vera_instance.{model_attr} — "
+            f"this may bypass instance routing!",
+            context=context
+        )
+
+    return llm
+
+
+# ============================================================================
+# CONTENT GENERATION TASKS
+# ============================================================================
+
+@task("content.generate", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=20.0)
+def content_generate(vera_instance, prompt: str, content_type: str = "generic", **kwargs):
+    """
+    Generate content based on prompt and content type.
+    Streams response as it's generated WITH real-time thoughts.
+
+    Args:
+        prompt: The generation prompt
+        content_type: Type of content (guide, research, plan, code, documentation, generic)
+        **kwargs: Additional parameters (filepath, metadata, etc.)
+
+    Content types determine which LLM and approach to use:
+        - guide:         Deep LLM for comprehensive guides
+        - research:      Deep LLM with structured output
+        - plan:          Intermediate LLM for planning documents
+        - code:          Coding LLM optimised for code generation
+        - documentation: Intermediate LLM for docs
+        - generic:       Fast LLM for general content
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    filepath = kwargs.get('filepath', 'unknown')
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'content.generate',
+        'content_type': content_type,
+        'filepath': filepath,
+        'prompt_length': len(prompt)
+    })
+
+    if logger:
+        logger.info(
+            f"📝 Content generation starting: type={content_type}, file={filepath}",
+            context=context
+        )
+        logger.start_timer("content_generate")
+
+    router = _get_router(vera_instance)
+
+    # Map content types to agent tasks
+    content_type_to_agent_task = {
+        'guide':         'content_creation',
+        'research':      'research',
+        'plan':          'planning',
+        'code':          'coding',
+        'documentation': 'documentation',
+        'generic':       'conversation',
+    }
+
+    # ── Path 1: agent router ────────────────────────────────────────────────
+    if router:
+        try:
+            agent_task = content_type_to_agent_task.get(content_type, 'conversation')
+            agent_name = router.get_agent_for_task(agent_task)
+
+            log_agent_selection(
+                logger, agent_task, agent_name, context,
+                extra_info={'content_type': content_type, 'mapped_to': agent_task}
+            )
+
+            llm = router.create_llm_for_agent(agent_name)
+
+            log_prompt(
+                logger, prompt,
+                LogContext(agent=agent_name, extra=context.extra),
+                "Content generation prompt"
+            )
+
+            chunk_count = 0
+            response_preview = ""
+            full_content = ""
+
+            for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                chunk_count += 1
+                full_content += chunk_text
+
+                try:
+                    if len(response_preview) < 200 and chunk_text:
+                        response_preview += str(chunk_text)
+                except Exception:
+                    pass
+
+                print(chunk_text)
+                
+                yield chunk_text
+
+            if logger:
+                duration = logger.stop_timer(
+                    "content_generate",
+                    context=LogContext(agent=agent_name, extra=context.extra)
+                )
+                logger.success(
+                    f"Content generation complete via agent: {agent_name} | "
+                    f"{chunk_count} chunks | {len(full_content)} chars",
+                    context=LogContext(agent=agent_name, extra={
+                        **context.extra,
+                        'chunk_count': chunk_count,
+                        'content_length': len(full_content),
+                        'duration': duration
+                    })
+                )
+
+            return
+
+        except Exception as e:
+            log_fallback(logger, f"Agent content generation failed for {content_type}", e, context)
+
+    # ── Path 2: ollama_manager fallback (respects enabled/routing config) ──
+    llm = _get_llm_for_content_type(vera_instance, content_type, logger=logger, context=context)
+    llm_name = f"{content_type} -> {type(llm).__name__}"
+
+    if logger:
+        logger.info(
+            f"Using fallback content generation: {llm_name}",
+            context=LogContext(extra={**context.extra, 'fallback_llm': llm_name})
+        )
+
+    log_prompt(logger, prompt, context, "Fallback content generation prompt")
+
+    chunk_count = 0
+    response_preview = ""
+    full_content = ""
+
+    for chunk in vera_instance._stream_with_thought_polling(llm, prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+        chunk_count += 1
+        full_content += chunk_text
+        
+        print(chunk)
+
+        try:
+            if len(response_preview) < 200 and chunk_text:
+                response_preview += str(chunk_text)
+        except Exception:
+            pass
+
+        yield chunk_text
+
+    if logger:
+        duration = logger.stop_timer("content_generate", context=context)
+        logger.success(
+            f"Content generation complete via fallback: {llm_name} | "
+            f"{chunk_count} chunks | {len(full_content)} chars",
+            context=LogContext(extra={
+                **context.extra,
+                'chunk_count': chunk_count,
+                'content_length': len(full_content),
+                'duration': duration,
+                'fallback': True
+            })
+        )
+
+
+@task("content.generate_structured", task_type=TaskType.LLM, priority=Priority.HIGH, estimated_duration=25.0)
+def content_generate_structured(vera_instance, prompt: str, structure_schema: Dict[str, Any], **kwargs):
+    """
+    Generate structured content that follows a specific schema.
+    Useful for generating JSON, outlines, or formatted documents.
+
+    Args:
+        prompt: The generation prompt
+        structure_schema: JSON schema or structure definition
+        **kwargs: Additional parameters
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'content.generate_structured',
+        'prompt_length': len(prompt),
+        'has_schema': bool(structure_schema)
+    })
+
+    if logger:
+        logger.info(f"📋 Structured content generation starting", context=context)
+        logger.start_timer("content_structured")
+
+    structured_prompt = f"""{prompt}
+
+IMPORTANT: Generate output following this structure:
+{json.dumps(structure_schema, indent=2)}
+
+Ensure the output is valid JSON or follows the exact structure specified.
+"""
+
+    router = _get_router(vera_instance)
+
+    # ── Path 1: agent router ────────────────────────────────────────────────
+    if router:
+        try:
+            agent_name = router.get_agent_for_task('planning')
+            log_agent_selection(logger, 'planning (structured)', agent_name, context)
+
+            llm = router.create_llm_for_agent(agent_name)
+
+            log_prompt(
+                logger, structured_prompt,
+                LogContext(agent=agent_name, extra=context.extra),
+                "Structured generation prompt"
+            )
+
+            chunk_count = 0
+            full_content = ""
+
+            for chunk in vera_instance._stream_with_thought_polling(llm, structured_prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                chunk_count += 1
+                full_content += chunk_text
+                yield chunk_text
+
+            if logger:
+                duration = logger.stop_timer(
+                    "content_structured",
+                    context=LogContext(agent=agent_name, extra=context.extra)
+                )
+                logger.success(
+                    f"Structured content complete via agent: {agent_name} | {len(full_content)} chars",
+                    context=LogContext(agent=agent_name, extra={
+                        **context.extra,
+                        'chunk_count': chunk_count,
+                        'content_length': len(full_content),
+                        'duration': duration
+                    })
+                )
+
+            return
+
+        except Exception as e:
+            log_fallback(logger, "Agent structured generation failed", e, context)
+
+    # ── Path 2: ollama_manager fallback ─────────────────────────────────────
+    # Structured content benefits from deep/reasoning capability
+    llm = _get_llm_for_content_type(vera_instance, 'research', logger=logger, context=context)
+    llm_name = f"structured -> {type(llm).__name__}"
+
+    if logger:
+        logger.info(
+            f"Using fallback structured generation: {llm_name}",
+            context=LogContext(extra={**context.extra, 'fallback_llm': llm_name})
+        )
+
+    log_prompt(logger, structured_prompt, context, "Fallback structured generation prompt")
+
+    chunk_count = 0
+    full_content = ""
+
+    for chunk in vera_instance._stream_with_thought_polling(llm, structured_prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+        chunk_count += 1
+        full_content += chunk_text
+        yield chunk_text
+
+    if logger:
+        duration = logger.stop_timer("content_structured", context=context)
+        logger.success(
+            f"Structured content complete via fallback: {llm_name} | {len(full_content)} chars",
+            context=LogContext(extra={
+                **context.extra,
+                'chunk_count': chunk_count,
+                'content_length': len(full_content),
+                'duration': duration,
+                'fallback': True
+            })
+        )
+
+
+@task("content.refine", task_type=TaskType.LLM, priority=Priority.NORMAL, estimated_duration=15.0)
+def content_refine(vera_instance, content: str, refinement_instructions: str, **kwargs):
+    """
+    Refine existing content based on instructions.
+    Used for iterative improvement of generated content.
+
+    Args:
+        content: The content to refine
+        refinement_instructions: Instructions for how to improve the content
+        **kwargs: Additional parameters
+    """
+    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    context = LogContext(extra={
+        'component': 'task',
+        'task': 'content.refine',
+        'content_length': len(content),
+        'instructions_length': len(refinement_instructions)
+    })
+
+    if logger:
+        logger.info(f"✨ Content refinement starting: {len(content)} chars", context=context)
+        logger.start_timer("content_refine")
+
+    refinement_prompt = f"""Original Content:
+{content}
+
+Refinement Instructions:
+{refinement_instructions}
+
+Please refine the content according to the instructions. Maintain the overall structure and message but improve based on the feedback provided.
+"""
+
+    router = _get_router(vera_instance)
+
+    # ── Path 1: agent router ────────────────────────────────────────────────
+    if router:
+        try:
+            agent_name = router.get_agent_for_task('review')
+            log_agent_selection(logger, 'review (refinement)', agent_name, context)
+
+            llm = router.create_llm_for_agent(agent_name)
+
+            log_prompt(
+                logger, refinement_prompt,
+                LogContext(agent=agent_name, extra=context.extra),
+                "Refinement prompt"
+            )
+
+            chunk_count = 0
+            refined_content = ""
+
+            for chunk in vera_instance._stream_with_thought_polling(llm, refinement_prompt):
+                chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+                chunk_count += 1
+                refined_content += chunk_text
+                yield chunk_text
+
+            if logger:
+                duration = logger.stop_timer(
+                    "content_refine",
+                    context=LogContext(agent=agent_name, extra=context.extra)
+                )
+                logger.success(
+                    f"Content refinement complete via agent: {agent_name} | {len(refined_content)} chars",
+                    context=LogContext(agent=agent_name, extra={
+                        **context.extra,
+                        'chunk_count': chunk_count,
+                        'refined_length': len(refined_content),
+                        'duration': duration
+                    })
+                )
+
+            return
+
+        except Exception as e:
+            log_fallback(logger, "Agent content refinement failed", e, context)
+
+    # # ── Path 2: ollama_manager fallback ─────────────────────────────────────
+    # Refinement is a deep task — use the deep model tier
+    llm = _get_llm_for_content_type(vera_instance, 'research', logger=logger, context=context)
+    llm_name = f"refine -> {type(llm).__name__}"
+
+    if logger:
+        logger.info(
+            f"Using fallback content refinement: {llm_name}",
+            context=LogContext(extra={**context.extra, 'fallback_llm': llm_name})
+        )
+
+    log_prompt(logger, refinement_prompt, context, "Fallback refinement prompt")
+
+    chunk_count = 0
+    refined_content = ""
+
+    for chunk in vera_instance._stream_with_thought_polling(llm, refinement_prompt):
+        chunk_text = extract_chunk_text(chunk) if not isinstance(chunk, str) else chunk
+        chunk_count += 1
+        refined_content += chunk_text
+        yield chunk_text
+
+    if logger:
+        duration = logger.stop_timer("content_refine", context=context)
+        logger.success(
+            f"Content refinement complete via fallback: {llm_name} | {len(refined_content)} chars",
+            context=LogContext(extra={
+                **context.extra,
+                'chunk_count': chunk_count,
+                'refined_length': len(refined_content),
+                'duration': duration,
+                'fallback': True
+            })
+        )

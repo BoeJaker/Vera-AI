@@ -32,19 +32,18 @@
     VeraChat.prototype.initOrchestrator = async function() {
         console.log('Initializing enhanced orchestrator UI...');
         
-        // Load task templates
+        // Clear any stale task state from the previous session
+        try {
+            await fetch(`${this.orchestratorState.apiUrl}/tasks/clear_stale`, { method: 'POST' });
+        } catch (e) {
+            console.warn('[Orchestrator] Could not clear stale tasks:', e);
+        }
+        
         await this.loadTaskTemplates();
-        
-        // Setup WebSocket
         this.setupOrchestratorWebSocket();
-        
-        // Start periodic updates
         this.startOrchestratorUpdates();
-        
-        // Initial load
         await this.refreshOrchestrator();
     };
-
     // ========================================================================
     // WEBSOCKET MANAGEMENT (Enhanced)
     // ========================================================================
@@ -57,7 +56,7 @@
             
             this.orchestratorState.ws.onopen = () => {
                 console.log('Orchestrator WebSocket connected');
-                this.addSystemMessage('Orchestrator WebSocket connected', 'success');
+                // this.addSystemMessage('Orchestrator WebSocket connected', 'success');
             };
             
             this.orchestratorState.ws.onmessage = (event) => {
@@ -104,13 +103,13 @@
     VeraChat.prototype.onTaskSubmitted = function(data) {
         const taskName = data.task_name || 'unknown';
         const desc = data.description || taskName;
-        this.addSystemMessage(`📋 Task submitted: ${desc}`, 'info');
+        // this.addSystemMessage(`📋 Task submitted: ${desc}`, 'info');
         this.refreshTaskQueue();
     };
 
     VeraChat.prototype.onTaskStarted = function(data) {
         const taskName = data.task_name || 'unknown';
-        this.addSystemMessage(`▶️ Task started: ${taskName}`, 'info');
+        // this.addSystemMessage(`▶️ Task started: ${taskName}`, 'info');
         this.refreshTaskQueue();
         if (this.orchestratorState.currentPanel === 'workers') {
             this.refreshWorkerPools();
@@ -119,7 +118,7 @@
 
     VeraChat.prototype.onTaskCompleted = function(data) {
         const taskName = data.task_name || 'unknown';
-        this.addSystemMessage(`✓ Task completed: ${taskName}`, 'success');
+        // this.addSystemMessage(`✓ Task completed: ${taskName}`, 'success');
         this.refreshTaskQueue();
         this.refreshDashboard();
     };
@@ -127,12 +126,12 @@
     VeraChat.prototype.onTaskFailed = function(data) {
         const taskName = data.task_name || 'unknown';
         const error = data.error || 'Unknown error';
-        this.addSystemMessage(`✗ Task failed: ${taskName} - ${error}`, 'error');
+        // this.addSystemMessage(`✗ Task failed: ${taskName} - ${error}`, 'error');
         this.refreshTaskQueue();
     };
 
     VeraChat.prototype.onTaskCancelled = function(data) {
-        this.addSystemMessage(`🚫 Task cancelled: ${data.task_id.substring(0, 8)}`, 'warning');
+        // this.addSystemMessage(`🚫 Task cancelled: ${data.task_id.substring(0, 8)}`, 'warning');
         this.refreshTaskQueue();
     };
 
@@ -795,7 +794,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
-            this.addSystemMessage(`✓ Task submitted: ${data.task_id.substring(0, 8)}`, 'success');
+            // this.addSystemMessage(`✓ Task submitted: ${data.task_id.substring(0, 8)}`, 'success');
             
             // Hide form
             document.getElementById('orch-template-form-container').style.display = 'none';
@@ -842,7 +841,7 @@
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
-            this.addSystemMessage(`✓ Task submitted: ${data.task_id.substring(0, 8)}`, 'success');
+            // this.addSystemMessage(`✓ Task submitted: ${data.task_id.substring(0, 8)}`, 'success');
             
             // Clear form
             document.getElementById('orch-advanced-task-name').value = '';

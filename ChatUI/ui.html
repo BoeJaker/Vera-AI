@@ -10,11 +10,12 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <!-- Agent YAML Parsing-->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
-
+    
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/cypher.css">
     <link rel="stylesheet" href="css/chat-history.css">
     <link rel="stylesheet" href="css/graph-ui.css">
+    <link rel="stylesheet" href="css/workspace.css">
 </head>
 <body>
     <div class="container">
@@ -491,7 +492,7 @@
     <script src="js/graph/loader.js"></script>
     <script src="js/graph/graph_storage.js"></script>
     <script src="js/graph/filters.js"></script>
-    
+    <script src="js/workspace.js"></script>
     <!-- graph deprecated
     <script src="js/graph/data.js"></script>
     <script src="js/graph/style.js"></script>
@@ -506,12 +507,17 @@
     <script src="js/graph/cypher.js"></script> 
     <script src="js/graph/card-view.js"></script> 
     <script src="js/graph/card-view-enhanced.js"></script> 
+    <script src="js/graph/patch.js"></script>
     <script src="js/toolchain/toolchain.js"></script>
     <script src="js/toolchain/toolchain-workflows.js"></script>
     <script src="js/toolchain/toolchain-query.js"></script>
     <script src="js/proactive_focus/proactive-focus-manager.js?v=3"></script>
     <script src="js/proactive_focus/proactive-focus-manager-enhanced.js?v=3"></script>
+
+    <script src="js/proactive_focus/questions_&_workspace.js"></script>
+    <script src="js/proactive_focus/proactivefocus_patch.js"></script>
     <script src="js/proactive_focus/status_monitor.js"></script>
+    <script src="js/proactive_focus/theme.js"></script>
     <script src="js/memory.js?v=3"></script>
     <script src="js/notebook.js"></script>
     <script src="js/agents.js"></script>
@@ -527,8 +533,11 @@
     <script src="js/chat/graph.js"></script>
     <script src="js/chat/graph-init.js"></script>
     <script src="js/chat/toolchain-render.js"></script>
+    <script src="js/chat/chatflow-control.js"></script>
+    <script src="js/chat/voice.js"></script>
     <script src="js/calendar/scheduling,js"></script>
-
+    <script src="js/chatbot_manager.js"></script>
+    <script src="js/chatbot_theme.js"></script>
     <script>// Header minimize/expand functionality
         function toggleHeader() {
             const header = document.getElementById('header');
@@ -628,5 +637,20 @@
         }
         
     </script>
+    <script>
+        const ws = new WebSocket("ws://localhost:8000/tts");
+
+        ws.onmessage = async (event) => {
+            const audioBlob = new Blob([event.data], { type: "audio/wav" });
+            const url = URL.createObjectURL(audioBlob);
+            const audio = new Audio(url);
+            audio.play();
+        };
+
+        // Send text chunk
+        ws.onopen = () => {
+            ws.send("Hello, this is a streaming TTS test.");
+        };
+        </script>
 </body>
 </html>

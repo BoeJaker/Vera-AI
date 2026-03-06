@@ -113,7 +113,7 @@ ollama:
       api_url: "http://localhost:11434"
       priority: 1
       max_concurrent: 1
-      enabled: true
+      enabled: false # Local instance is very slow, disable by default
       timeout: 2400
       has_gpu: true
       cpu_only: true  # Mark as CPU-only

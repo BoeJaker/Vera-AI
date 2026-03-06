@@ -279,23 +279,21 @@ async def start_session(resume_session_id: Optional[str] = None):
                 vera.toolchain = EnhancedMonitoredToolChainPlanner(original_toolchain, session_id)
                 logger.info(f"Wrapped toolchain with monitoring for session {session_id}")
             
-            # ============================================================
+           # ============================================================
             # CONNECT VERA'S ORCHESTRATOR TO API (FIRST SESSION ONLY)
+            # Subsequent sessions just update vera_instance reference.
             # ============================================================
             with _orchestrator_connect_lock:
                 if not _orchestrator_connected:
                     try:
                         logger.info("[Orchestrator] Connecting Vera's orchestrator to API...")
                         
-                        # Vera already created an orchestrator in __init__
-                        # Just connect it to the API state and setup tracking
                         orchestrator_api.state.orchestrator = vera.orchestrator
                         orchestrator_api.state.vera_instance = vera
                         
-                        # Setup tracking hooks
+                        # Setup tracking hooks ONCE on first successful connection only
                         orchestrator_api.setup_orchestrator_tracking(vera.orchestrator)
                         
-                        # Get stats
                         stats = vera.orchestrator.get_stats()
                         total_workers = sum(
                             pool.get("num_workers", 0)
@@ -307,16 +305,18 @@ async def start_session(resume_session_id: Optional[str] = None):
                         logger.info(f"[Orchestrator]   - Total workers: {total_workers}")
                         logger.info(f"[Orchestrator]   - Status: {'Running' if vera.orchestrator.running else 'Stopped'}")
                         logger.info(f"[Orchestrator]   - Registered tasks: {registered_tasks}")
-                        logger.info(f"[Orchestrator]   - Task tracking: enabled")
                         
+                        # Only mark connected on actual success — failure allows retry next session
                         _orchestrator_connected = True
                         
                     except Exception as e:
                         logger.error(f"[Orchestrator] Failed to connect: {e}", exc_info=True)
-                        # Don't fail session creation if orchestrator connection fails
-                        # Mark as attempted to avoid repeated failures
-                        _orchestrator_connected = True
-            
+                        # Do NOT set _orchestrator_connected=True on failure
+                else:
+                    # Already connected — just point to this session's Vera so tasks
+                    # submitted via the API use the right instance.
+                    orchestrator_api.state.vera_instance = vera
+                    logger.debug(f"[Orchestrator] Updated vera_instance for new session {session_id}")
             logger.info(f"Created new session: {session_id}")
             
             return SessionStartResponse(
@@ -437,7 +437,13 @@ async def end_session(session_id: str):
                     await ws.close()
                 except Exception as e:
                     logger.warning(f"Error closing websocket: {e}")
-        
+        # If the orchestrator is currently pointing at this session's Vera,
+        # clear the reference so tasks don't run against a deleted instance.
+        if (orchestrator_api.state.vera_instance is not None and
+                session_id in vera_instances and
+                orchestrator_api.state.vera_instance is vera_instances[session_id]):
+            orchestrator_api.state.vera_instance = None
+            logger.info(f"[Orchestrator] Cleared stale vera_instance for ended session {session_id}")
         # Cleanup all resources
         vera_instances.pop(session_id, None)
         sessions.pop(session_id, None)

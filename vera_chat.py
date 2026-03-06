@@ -45,6 +45,171 @@ class VeraChat:
             "tool", "bash-agent", "python-agent", 
             "scheduling-agent", "idea-agent", "toolchain-expert"
         }
+    
+    def execute_direct_route(self, query: str, routing_config: Dict, context: LogContext) -> Iterator[str]:
+        """Execute query with forced routing, bypassing triage"""
+        mode = routing_config.get('mode', 'simple')
+        
+        self.logger.info(f"🎯 Direct routing to: {mode}", context=context)
+        
+        # Map UI mode names to execution methods
+        if mode == 'simple' or mode == 'fast':
+            self.logger.info("Executing simple/fast mode", context=context)
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "llm.fast",
+                    vera_instance=self.vera,
+                    prompt=query
+                )
+                
+                for chunk in self.vera.orchestrator.stream_result(task_id, timeout=30.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Fast LLM failed: {e}", context=context)
+                for chunk in self.vera.stream_llm(self.vera.fast_llm, query):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+        
+        elif mode == 'intermediate':
+            self.logger.info("Executing intermediate mode", context=context)
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "llm.generate",
+                    vera_instance=self.vera,
+                    llm_type='intermediate',
+                    prompt=query
+                )
+                
+                for chunk in self.vera.orchestrator.stream_result(task_id, timeout=60.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Intermediate LLM failed: {e}", context=context)
+                for chunk in self.vera.stream_llm(self.vera.intermediate_llm, query):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+        
+        elif mode == 'reasoning':
+            self.logger.info("Executing reasoning mode", context=context)
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "llm.reasoning",
+                    vera_instance=self.vera,
+                    prompt=query
+                )
+                
+                for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=90.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Reasoning LLM failed: {e}", context=context)
+                for chunk in self.vera.stream_llm(self.vera.reasoning_llm, query):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            # Add conclusion for reasoning
+            yield "\n\n--- Conclusion ---\n"
+            for chunk in self._generate_conclusion(query, query, context):
+                yield chunk
+        
+        elif mode == 'complex':
+            self.logger.info("Executing complex/deep mode", context=context)
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "llm.deep",
+                    vera_instance=self.vera,
+                    prompt=query
+                )
+                
+                for chunk in self._stream_orchestrator_with_thoughts(task_id, timeout=90.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Deep LLM failed: {e}", context=context)
+                for chunk in self.vera.stream_llm(self.vera.deep_llm, query):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            # Add conclusion
+            yield "\n\n--- Conclusion ---\n"
+            for chunk in self._generate_conclusion(query, query, context):
+                yield chunk
+        
+        elif mode == 'coding':
+            self.logger.info("Executing coding mode", context=context)
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "llm.coding",
+                    vera_instance=self.vera,
+                    prompt=query
+                )
+                
+                for chunk in self.vera.orchestrator.stream_result(task_id, timeout=60.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Coding LLM failed: {e}", context=context)
+                for chunk in self.vera.stream_llm(self.vera.fast_llm, query):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+        
+        elif mode in ['toolchain', 'toolchain-parallel', 'toolchain-adaptive', 'toolchain-stepbystep']:
+            # Map to appropriate task
+            task_map = {
+                'toolchain':           ('toolchain.execute',          {}),
+                'toolchain-parallel':  ('toolchain.execute.parallel', {}),
+                'toolchain-adaptive':  ('toolchain.execute_adaptive', {}),          # ← fixed task name
+                'toolchain-stepbystep':('toolchain.execute_adaptive', {'max_steps': 10}), # ← fixed task name
+            }
+            
+            task_name, kwargs = task_map.get(mode, ('toolchain.execute', {}))
+            
+            self.logger.info(f"Executing {task_name}", context=context)
+            yield "\n\n--- Executing Toolchain ---\n"
+            
+            try:
+                expert_mode = routing_config.get('expert', False)
+                
+                task_id = self.vera.orchestrator.submit_task(
+                    task_name,
+                    vera_instance=self.vera,
+                    query=query,
+                    **kwargs
+                )
+                
+                for chunk in self.vera.orchestrator.stream_result(task_id, timeout=600.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+            
+            except Exception as e:
+                self.logger.error(f"Toolchain execution failed: {e}", context=context)
+                # Adaptive fallback — run directly without orchestrator
+                if 'adaptive' in mode or 'stepbystep' in mode:
+                    max_steps = kwargs.get('max_steps', 20)
+                    for chunk in self.vera.adaptive_toolchain.execute_adaptive(query, max_steps=max_steps):
+                        yield extract_chunk_text(chunk)
+                else:
+                    for chunk in self.vera.toolchain.execute_tool_chain(query):
+                        yield extract_chunk_text(chunk)
+        
+        elif mode == 'counsel' or mode.startswith('counsel-'):
+            counsel_mode = routing_config.get('counsel_mode', 'vote')
+            models = routing_config.get('models', ['fast', 'intermediate', 'deep'])
+            
+            self.logger.info(f"Executing counsel mode: {counsel_mode} with models: {models}", context=context)
+            yield from self._execute_counsel_mode(query, context, counsel_mode=counsel_mode, models=models)
+        
+        else:
+            # Unknown mode - default to simple
+            self.logger.warning(f"Unknown routing mode '{mode}', defaulting to simple", context=context)
+            yield from self.execute_direct_route(query, {'mode': 'simple'}, context)
+            
     def _detect_parallel_opportunity(self, query: str) -> bool:
         """Detect if query has parallel execution opportunities"""
         parallel_indicators = [
@@ -72,14 +237,17 @@ class VeraChat:
                 return True
         
         return False
+            
     
-    def async_run(self, query: str, use_parallel: bool = True, ramp_config: Optional[Dict] = None) -> Iterator[str]:
+    def async_run(self, query: str, use_parallel: bool = True, ramp_config: Optional[Dict] = None, routing_hints: Optional[Dict] = None) -> Iterator[str]:
         """
-        Fully parallel orchestrated execution
+        Fully parallel orchestrated execution with optional routing hints
         
         Args:
             query: User query
+            use_parallel: Enable parallel execution
             ramp_config: Optional custom ramp configuration
+            routing_hints: Optional routing configuration from UI
             
         Yields:
             Response chunks as they're generated
@@ -92,6 +260,21 @@ class VeraChat:
         )
         
         self.logger.info(f"Processing query: {query[:100]}{'...' if len(query) > 100 else ''}", context=query_context)
+
+        self.logger.info(f"🔍 async_run called with routing_hints: {routing_hints}", context=query_context)
+        
+        # Check for forced routing
+        if routing_hints:
+            self.logger.info(f"🔍 routing_hints.get('force'): {routing_hints.get('force')}", context=query_context)
+            self.logger.info(f"🔍 routing_hints.get('mode'): {routing_hints.get('mode')}", context=query_context)
+        
+        # Check for forced routing
+        if routing_hints and routing_hints.get('force') and routing_hints.get('mode') != 'auto':
+            self.logger.info(f"🎯 Forced routing to: {routing_hints['mode']}", context=query_context)
+            yield from self.execute_direct_route(query, routing_hints, query_context)
+            return
+    
+        
         self.logger.start_timer("total_query_processing")
         
         # Log query to memory
@@ -109,7 +292,7 @@ class VeraChat:
         # ====================================================================
         
         full_triage, preamble_response, classification, total_response, complete = yield from self._parallel_execute(
-            query, query_context
+            query, query_context, routing_hints
         )
         
         # Save triage to memory
@@ -146,6 +329,28 @@ class VeraChat:
             yield from self._handle_focus_change(full_triage, route_context)
             total_response += "[Focus changed]"
         
+        elif "adaptive" in classification:
+            # ── Adaptive step-by-step toolchain ──────────────────────────────
+            max_steps = getattr(self.vera.config, 'adaptive_toolchain', {}).get('max_steps', 20) \
+                        if hasattr(self.vera, 'config') else 20
+            try:
+                task_id = self.vera.orchestrator.submit_task(
+                    "toolchain.execute_adaptive",
+                    vera_instance=self.vera,
+                    query=query,
+                    max_steps=max_steps,
+                )
+                for chunk in self.vera.orchestrator.stream_result(task_id, timeout=300.0):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+                    total_response += chunk_text
+            except Exception as e:
+                self.logger.error(f"Adaptive toolchain task failed: {e}, falling back to direct", context=route_context)
+                for chunk in self.vera.adaptive_toolchain.execute_adaptive(query, max_steps=max_steps):
+                    chunk_text = extract_chunk_text(chunk)
+                    yield chunk_text
+                    total_response += chunk_text
+
         elif classification == "proactive":
             yield from self._handle_proactive(route_context)
             total_response += "[Proactive thinking started]"
@@ -158,12 +363,10 @@ class VeraChat:
             yield "\n\n"
             total_response += "\n\n"
             
-            # Continue with ORIGINAL query, not preamble
             for chunk in self._execute_reasoning_continuation(query, preamble_response, route_context):
                 yield chunk
                 total_response += chunk
             
-            # Add conclusion
             if total_response.strip():
                 yield "\n\n--- Conclusion ---\n"
                 total_response += "\n\n--- Conclusion ---\n"
@@ -176,7 +379,6 @@ class VeraChat:
             yield "\n\n"
             total_response += "\n\n"
             
-            # Continue with ORIGINAL query
             for chunk in self._execute_deep_continuation(query, preamble_response, route_context):
                 yield chunk
                 total_response += chunk
@@ -236,24 +438,23 @@ class VeraChat:
             # Adaptive detection (complex multi-step)
             adaptive_keywords = [
                 "research", "analyze", "create report", "investigate",
-                "debug and fix", "optimize", "refactor", "comprehensive"
+                "debug and fix", "optimize", "refactor", "comprehensive",
+                "step by step", "step-by-step", "iteratively", "one at a time",
             ]
             
             if any(kw in query.lower() for kw in adaptive_keywords):
                 return "toolchain-adaptive"
         
         return classification
+
     # ====================================================================
     # PARALLEL EXECUTION
     # ====================================================================
-    
-    def _parallel_execute(self, query: str, context: LogContext) -> tuple:
-        """
-        Execute triage and preamble in parallel
-        Start action immediately when classified
         
-        Returns:
-            (full_triage, preamble_response, classification, total_response, complete)
+    def _parallel_execute(self, query: str, context: LogContext, routing_hints: Optional[Dict] = None) -> tuple:
+        """
+        Execute triage and preamble in parallel.
+        Start action immediately when classified.
         """
         self.logger.info("🚀 Parallel execution: triage + preamble + action", context=context)
         
@@ -368,19 +569,19 @@ class VeraChat:
                         "timeout": 90.0
                     },
                     "toolchain-adaptive": {
-                        "task": "toolchain.execute.adaptive",
+                        "task": "toolchain.execute_adaptive",       # ← fixed
                         "kwargs": {},
-                        "timeout": 120.0
+                        "timeout": 300.0                            # ← longer timeout for adaptive
                     },
                     "toolchain-quick": {
-                        "task": "toolchain.execute.stepbystep",
-                        "kwargs": {"max_steps": 3},
+                        "task": "toolchain.execute_adaptive",       # ← reuse adaptive with few steps
+                        "kwargs": {"max_steps": 5},
                         "timeout": 60.0
                     },
                     "toolchain-stepbystep": {
-                        "task": "toolchain.execute.stepbystep",
+                        "task": "toolchain.execute_adaptive",       # ← same engine, explicit cap
                         "kwargs": {"max_steps": 10},
-                        "timeout": 120.0
+                        "timeout": 180.0
                     },
                     "tool": {
                         "task": "toolchain.execute",
@@ -424,31 +625,40 @@ class VeraChat:
                 
                 except Exception as e:
                     self.logger.error(f"❌ Task {config['task']} failed: {e}")
-                    self.logger.info("🔄 Trying direct toolchain execution...")
                     
-                    # Fallback to direct execution
-                    try:
-                        chunk_count = 0
-                        for chunk in self.vera.toolchain.execute_tool_chain(query):
-                            chunk_text = extract_chunk_text(chunk)
-                            action_chunks.put(chunk_text)
-                            chunk_count += 1
-                        
-                        self.logger.success(f"✓ Direct execution complete: {chunk_count} chunks")
+                    # Adaptive-aware fallback
+                    is_adaptive = classification in (
+                        "toolchain-adaptive", "toolchain-quick", "toolchain-stepbystep"
+                    )
                     
-                    except Exception as e2:
-                        self.logger.error(f"❌ Direct execution also failed: {e2}")
-                        action_chunks.put(f"\n[Error executing toolchain: {e2}]\n")
+                    if is_adaptive and hasattr(self.vera, 'adaptive_toolchain'):
+                        self.logger.info("🔄 Falling back to direct adaptive execution...")
+                        max_steps = config["kwargs"].get("max_steps", 20)
+                        try:
+                            for chunk in self.vera.adaptive_toolchain.execute_adaptive(
+                                query, max_steps=max_steps
+                            ):
+                                action_chunks.put(extract_chunk_text(chunk))
+                        except Exception as e2:
+                            self.logger.error(f"❌ Direct adaptive also failed: {e2}")
+                            action_chunks.put(f"\n[Error in adaptive toolchain: {e2}]\n")
+                    else:
+                        self.logger.info("🔄 Falling back to standard toolchain...")
+                        try:
+                            for chunk in self.vera.toolchain.execute_tool_chain(query):
+                                action_chunks.put(extract_chunk_text(chunk))
+                        except Exception as e2:
+                            self.logger.error(f"❌ Fallback also failed: {e2}")
+                            action_chunks.put(f"\n[Error executing toolchain: {e2}]\n")
                     
                     action_chunks.put(None)
             
             # ============================================================
-            # OTHER ACTION ROUTES (bash-agent, python-agent, etc.)
+            # OTHER ACTION ROUTES
             # ============================================================
             else:
                 self.logger.info(f"⚡ Executing action route: {classification}")
                 
-                # Map other action routes to their tasks
                 route_task_map = {
                     "bash-agent": "agent.bash",
                     "python-agent": "agent.python",
@@ -515,9 +725,7 @@ class VeraChat:
                 
                 elif event[0] == "complete":
                     full_triage = event[1]
-                    # Extract classification
                     classification = full_triage.strip().split()[0].lower()
-                    # Enhance it
                     classification = self._enhance_triage_classification(classification, query)
                     triage_done = True
                 
@@ -703,10 +911,9 @@ Continue from where it left off and finish the answer."""
     # ====================================================================
     
     def _execute_intermediate_continuation(self, query: str, preamble: str, context: LogContext) -> Iterator[str]:
-        """Continue with intermediate model - USE ORIGINAL QUERY"""
+        """Continue with intermediate model"""
         self.logger.start_timer("intermediate_continuation")
         
-        # Build on preamble but focus on ORIGINAL query
         prompt = f"""The user asked: {query}
 
 Brief introduction provided: {preamble}
@@ -744,10 +951,9 @@ Now provide intermediate-level analysis to fully answer the user's question."""
             )
     
     def _execute_reasoning_continuation(self, query: str, preamble: str, context: LogContext) -> Iterator[str]:
-        """Continue with reasoning model - USE ORIGINAL QUERY"""
+        """Continue with reasoning model"""
         self.logger.start_timer("reasoning_continuation")
         
-        # Build on preamble but focus on ORIGINAL query
         prompt = f"""The user asked: {query}
 
 Brief introduction provided: {preamble}
@@ -785,10 +991,9 @@ Now apply deep reasoning to fully answer the user's question."""
             )
     
     def _execute_deep_continuation(self, query: str, preamble: str, context: LogContext) -> Iterator[str]:
-        """Continue with deep model - USE ORIGINAL QUERY"""
+        """Continue with deep model"""
         self.logger.start_timer("deep_continuation")
         
-        # Build on preamble but focus on ORIGINAL query
         prompt = f"""The user asked: {query}
 
 Brief introduction provided: {preamble}
@@ -848,28 +1053,26 @@ Now provide comprehensive analysis to fully answer the user's question."""
         except Exception as e:
             self.logger.error(f"Proactive task failed: {e}")
             yield "\n[Proactive thinking unavailable]\n"
-    
-    def _execute_counsel_mode(self, query: str, context: LogContext) -> Iterator[str]:
-        """Execute counsel mode"""
+        
+    def _execute_counsel_mode(self, query: str, context: LogContext, counsel_mode: str = 'vote', models: list = None) -> Iterator[str]:
+        """Execute counsel mode with specified configuration"""
         from Vera.vera_counsel import CounselExecutor
         
-        counsel_config = getattr(self.vera.config, 'counsel', {
-            'mode': 'vote',
-            'models': ['fast', 'fast', 'fast']
-        })
+        if models is None:
+            models = ['fast', 'intermediate', 'deep']
         
         executor = CounselExecutor(self.vera, self.logger)
         
         for chunk in executor.execute(
             query=query,
-            mode=counsel_config.get('mode', 'vote'),
-            models=counsel_config.get('models', ['fast', 'fast', 'fast']),
+            mode=counsel_mode,
+            models=models,
             context=context
         ):
             yield chunk
     
     def _execute_coding(self, query: str) -> Iterator[str]:
-        """Generate conclusion summary"""
+        """Execute coding task"""
         self.logger.start_timer("Executing coding task")
         
         coding_prompt = query
@@ -889,7 +1092,6 @@ Now provide comprehensive analysis to fully answer the user's question."""
             for chunk in self.vera.stream_llm(self.vera.fast_llm, coding_prompt):
                 chunk_text = extract_chunk_text(chunk)
                 yield chunk_text
-
 
     def _generate_conclusion(self, query: str, total_response: str, context: LogContext) -> Iterator[str]:
         """Generate conclusion summary"""

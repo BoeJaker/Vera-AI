@@ -1,360 +1,372 @@
-
 """
-Enhanced Toolchain Task Registration
-Adds support for:
-- Step-by-step execution (plan as you go)
-- Parallel execution (independent branches)
-- Adaptive execution (intelligent mode selection)
+Toolchain Task Registrations
+==============================
+All toolchain orchestrator tasks in one file.
+
+Previously split across:
+  - toolchain_tasks_enhanced.py  (STEP_BY_STEP / PARALLEL / ADAPTIVE modes
+                                   via EnhancedToolChainPlanner)
+  - toolchain_tasks_adaptive.py  (ADAPTIVE mode via AdaptiveToolChainPlanner)
+
+Now all modes route through the single unified ToolChainPlanner exposed on
+``vera_instance.toolchain`` (set up by ``setup_toolchain()`` in vera.py).
+
+Task name → mode mapping
+  toolchain.execute              sequential  (default, existing wiring)
+  toolchain.execute.adaptive     adaptive    (step-by-step, feeds output back)
+  toolchain.execute.parallel     parallel    (concurrent independent branches)
+  toolchain.execute.expert       expert      (5-stage domain-expert pipeline)
+  toolchain.execute.hybrid       hybrid      (expert → sequential fallback)
+  toolchain.plan                 —           (plan only, no execution)
 """
 
 from Vera.Orchestration.orchestration import task, TaskType, Priority
 from Vera.Logging.logging import LogContext
-from Vera.Toolchain.enhanced_toolchain_planner import EnhancedToolChainPlanner, ExecutionMode
 
-# Import the extract_chunk_text utility from main task registrations
-try:
-    from Vera.Orchestration.task_registrations import extract_chunk_text
-except ImportError:
-    # Fallback implementation
-    def extract_chunk_text(chunk):
-        if chunk is None:
-            return ""
-        if isinstance(chunk, str):
-            return chunk
-        if isinstance(chunk, dict):
-            for key in ['text', 'content', 'message', 'data']:
-                if key in chunk and chunk[key] is not None:
-                    return str(chunk[key])
-            return str(chunk)
-        if hasattr(chunk, 'text'):
-            return str(chunk.text)
-        if hasattr(chunk, 'content'):
-            return str(chunk.content)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _planner(vera_instance):
+    """
+    Return the unified ToolChainPlanner from the vera instance.
+    If it has not been set up yet (e.g. during tests) create it on demand.
+    """
+    if not hasattr(vera_instance, "toolchain") or vera_instance.toolchain is None:
+        from Vera.Toolchain.toolchain import setup_toolchain
+        setup_toolchain(vera_instance)
+    return vera_instance.toolchain
+
+
+def _extract_chunk_text(chunk) -> str:
+    """Normalise any chunk type to a plain string."""
+    if chunk is None:
+        return ""
+    if isinstance(chunk, str):
+        return chunk
+    if isinstance(chunk, dict):
+        for key in ("text", "content", "message", "data", "output", "delta"):
+            if key in chunk and chunk[key] is not None:
+                return str(chunk[key])
         return str(chunk)
+    for attr in ("text", "content"):
+        val = getattr(chunk, attr, None)
+        if val is not None:
+            return str(val)
+    return str(chunk)
 
 
-@task("toolchain.execute.stepbystep", task_type=TaskType.TOOL, priority=Priority.HIGH, estimated_duration=60.0)
-def toolchain_execute_stepbystep(vera_instance, query: str, max_steps: int = 10):
+def _run_task(vera_instance, query, mode, task_name, extra_kwargs=None):
     """
-    Execute toolchain in STEP-BY-STEP mode.
-    Plans one step, executes it, then plans the next based on results.
-    More adaptive than sequential execution.
-    
+    Shared generator body for all toolchain tasks.
+    Handles logging, timing, error reporting, and streaming.
+
     Args:
-        query: The task to accomplish
-        max_steps: Maximum number of steps to execute (safety limit)
+        vera_instance: The running Vera agent.
+        query:         User goal / request string.
+        mode:          ExecutionMode string ("sequential", "adaptive", etc.)
+        task_name:     Task identifier for log context.
+        extra_kwargs:  Extra kwargs forwarded to execute_tool_chain.
+
+    Yields:
+        str chunks.
     """
-    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    logger  = getattr(vera_instance, "logger", None)
     context = LogContext(extra={
-        'component': 'task',
-        'task': 'toolchain.execute.stepbystep',
-        'query_length': len(query),
-        'max_steps': max_steps
+        "component": "task",
+        "task":         task_name,
+        "mode":         mode,
+        "query_length": len(query),
+        **(extra_kwargs or {}),
     })
-    
+
     if logger:
-        logger.info(
-            f"🔧 Step-by-step toolchain execution starting (max {max_steps} steps)",
-            context=context
-        )
-        logger.start_timer("toolchain_stepbystep")
-    
-    # Create enhanced planner
-    if not hasattr(vera_instance, '_enhanced_toolchain'):
-        vera_instance._enhanced_toolchain = EnhancedToolChainPlanner(
-            vera_instance, 
-            vera_instance.tools
-        )
-    
-    planner = vera_instance._enhanced_toolchain
-    
+        logger.info(f"🔧 Toolchain [{mode}] starting", context=context)
+        logger.start_timer(task_name)
+
+    planner    = _planner(vera_instance)
     chunk_count = 0
-    steps_executed = 0
-    
+
     try:
         for chunk in planner.execute_tool_chain(
             query,
-            mode=ExecutionMode.STEP_BY_STEP
+            mode=mode,
+            **(extra_kwargs or {}),
         ):
-            chunk_text = extract_chunk_text(chunk)
+            text = _extract_chunk_text(chunk)
             chunk_count += 1
-            
-            # Count actual step executions
-            if "Executing Tool:" in chunk_text:
-                steps_executed += 1
-            
-            yield chunk_text
-        
+            yield text
+
         if logger:
-            duration = logger.stop_timer("toolchain_stepbystep", context=context)
+            duration = logger.stop_timer(task_name, context=context)
             logger.success(
-                f"Step-by-step toolchain complete | {steps_executed} steps | {chunk_count} chunks",
+                f"Toolchain [{mode}] complete | {chunk_count} chunks",
                 context=LogContext(extra={
                     **context.extra,
-                    'steps_executed': steps_executed,
-                    'chunk_count': chunk_count,
-                    'duration': duration
-                })
+                    "chunk_count": chunk_count,
+                    "duration":    duration,
+                }),
             )
-    
-    except Exception as e:
+
+    except Exception as exc:
         if logger:
-            duration = logger.stop_timer("toolchain_stepbystep", context=context)
+            duration = logger.stop_timer(task_name, context=context)
             logger.error(
-                f"Step-by-step toolchain failed: {type(e).__name__}: {str(e)}",
+                f"Toolchain [{mode}] failed: {type(exc).__name__}: {exc}",
                 exc_info=True,
                 context=LogContext(extra={
                     **context.extra,
-                    'steps_executed': steps_executed,
-                    'duration': duration,
-                    'error': str(e)
-                })
+                    "chunk_count": chunk_count,
+                    "duration":    duration,
+                    "error":       str(exc),
+                }),
             )
-        
-        yield f"\n[ Toolchain Agent ] ✗ Error: {str(e)}\n"
+        yield f"\n[ Toolchain ] ✗ Error ({mode}): {exc}\n"
+        raise
 
 
-@task("toolchain.execute.parallel", task_type=TaskType.TOOL, priority=Priority.HIGH, estimated_duration=45.0)
-def toolchain_execute_parallel(vera_instance, query: str):
+# ---------------------------------------------------------------------------
+# Sequential  (default)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.execute",
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=60.0,
+)
+def toolchain_execute(vera_instance, query: str, plan=None, strategy: str = "default"):
     """
-    Execute toolchain in PARALLEL mode.
-    Plans multiple independent branches and executes them simultaneously.
-    Ideal for tasks that can be decomposed into independent subtasks.
-    
+    Sequential toolchain execution (default mode).
+
+    Plans all steps up-front, then executes them in order.
+    Includes error recovery and goal-check replanning.
+
     Args:
-        query: The task to accomplish
+        query:    The task to accomplish.
+        plan:     Optional pre-built plan list (skips planning phase).
+        strategy: Hint string ("default", "comprehensive", etc.).
+                  Maps to a mode via ToolChainPlanner._STRATEGY_TO_MODE.
     """
-    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
-    context = LogContext(extra={
-        'component': 'task',
-        'task': 'toolchain.execute.parallel',
-        'query_length': len(query)
-    })
-    
-    if logger:
-        logger.info(
-            f"🔧 Parallel toolchain execution starting",
-            context=context
-        )
-        logger.start_timer("toolchain_parallel")
-    
-    # Create enhanced planner
-    if not hasattr(vera_instance, '_enhanced_toolchain'):
-        vera_instance._enhanced_toolchain = EnhancedToolChainPlanner(
-            vera_instance,
-            vera_instance.tools
-        )
-    
-    planner = vera_instance._enhanced_toolchain
-    
-    chunk_count = 0
-    branches_detected = 0
-    
-    try:
-        for chunk in planner.execute_tool_chain(
-            query,
-            mode=ExecutionMode.PARALLEL
-        ):
-            chunk_text = extract_chunk_text(chunk)
-            chunk_count += 1
-            
-            # Count branches
-            if "branches" in chunk_text.lower() and "branch" in chunk_text.lower():
-                try:
-                    import json
-                    # Try to extract branch count from planning output
-                    if "{" in chunk_text:
-                        # This is approximate - just for logging
-                        branches_detected = chunk_text.count('"branch_id"')
-                except Exception:
-                    pass
-            
-            yield chunk_text
-        
-        if logger:
-            duration = logger.stop_timer("toolchain_parallel", context=context)
-            logger.success(
-                f"Parallel toolchain complete | ~{branches_detected} branches | {chunk_count} chunks",
-                context=LogContext(extra={
-                    **context.extra,
-                    'branches_detected': branches_detected,
-                    'chunk_count': chunk_count,
-                    'duration': duration
-                })
-            )
-    
-    except Exception as e:
-        if logger:
-            duration = logger.stop_timer("toolchain_parallel", context=context)
-            logger.error(
-                f"Parallel toolchain failed: {type(e).__name__}: {str(e)}",
-                exc_info=True,
-                context=LogContext(extra={
-                    **context.extra,
-                    'duration': duration,
-                    'error': str(e)
-                })
-            )
-        
-        yield f"\n[ Toolchain Agent ] ✗ Error: {str(e)}\n"
+    yield from _run_task(
+        vera_instance, query,
+        mode="sequential",
+        task_name="toolchain.execute",
+        extra_kwargs={"plan": plan, "strategy": strategy},
+    )
 
 
-@task("toolchain.execute.adaptive", task_type=TaskType.TOOL, priority=Priority.HIGH, estimated_duration=50.0)
-def toolchain_execute_adaptive(vera_instance, query: str):
+# ---------------------------------------------------------------------------
+# Adaptive  (step-by-step, feeds output back into next planning decision)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.execute_adaptive",      # legacy name kept for backward compat
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=60.0,
+)
+def toolchain_execute_adaptive(vera_instance, query: str, max_steps: int = 20):
     """
-    Execute toolchain in ADAPTIVE mode.
-    Intelligently chooses between step-by-step and parallel execution
-    based on the task structure.
-    
+    Adaptive step-by-step toolchain execution.
+
+    Plans one tool at a time, feeding each output back into the next
+    planning decision.  Terminates when the LLM returns DONE or max_steps
+    is reached.
+
     Args:
-        query: The task to accomplish
+        query:     The task to accomplish.
+        max_steps: Hard cap on iterations (default 20).
     """
-    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
-    context = LogContext(extra={
-        'component': 'task',
-        'task': 'toolchain.execute.adaptive',
-        'query_length': len(query)
-    })
-    
-    if logger:
-        logger.info(
-            f"🔧 Adaptive toolchain execution starting",
-            context=context
-        )
-        logger.start_timer("toolchain_adaptive")
-    
-    # Create enhanced planner
-    if not hasattr(vera_instance, '_enhanced_toolchain'):
-        vera_instance._enhanced_toolchain = EnhancedToolChainPlanner(
-            vera_instance,
-            vera_instance.tools
-        )
-    
-    planner = vera_instance._enhanced_toolchain
-    
-    chunk_count = 0
-    
-    try:
-        for chunk in planner.execute_tool_chain(
-            query,
-            mode=ExecutionMode.ADAPTIVE
-        ):
-            chunk_text = extract_chunk_text(chunk)
-            chunk_count += 1
-            yield chunk_text
-        
-        if logger:
-            duration = logger.stop_timer("toolchain_adaptive", context=context)
-            logger.success(
-                f"Adaptive toolchain complete | {chunk_count} chunks",
-                context=LogContext(extra={
-                    **context.extra,
-                    'chunk_count': chunk_count,
-                    'duration': duration
-                })
-            )
-    
-    except Exception as e:
-        if logger:
-            duration = logger.stop_timer("toolchain_adaptive", context=context)
-            logger.error(
-                f"Adaptive toolchain failed: {type(e).__name__}: {str(e)}",
-                exc_info=True,
-                context=LogContext(extra={
-                    **context.extra,
-                    'duration': duration,
-                    'error': str(e)
-                })
-            )
-        
-        yield f"\n[ Toolchain Agent ] ✗ Error: {str(e)}\n"
+    yield from _run_task(
+        vera_instance, query,
+        mode="adaptive",
+        task_name="toolchain.execute_adaptive",
+        extra_kwargs={"max_steps": max_steps},
+    )
 
 
-@task("toolchain.plan.parallel", task_type=TaskType.TOOL, priority=Priority.NORMAL, estimated_duration=10.0)
-def toolchain_plan_parallel(vera_instance, query: str):
+# Also register under the newer dot-separated name for consistency
+@task(
+    "toolchain.execute.adaptive",
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=60.0,
+)
+def toolchain_execute_adaptive_dotted(vera_instance, query: str, max_steps: int = 20):
+    """Alias of toolchain.execute_adaptive (dot-separated naming convention)."""
+    yield from _run_task(
+        vera_instance, query,
+        mode="adaptive",
+        task_name="toolchain.execute.adaptive",
+        extra_kwargs={"max_steps": max_steps},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Parallel  (concurrent independent branches)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.execute.parallel",
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=45.0,
+)
+def toolchain_execute_parallel(vera_instance, query: str, max_workers: int = 6):
     """
-    Plan a parallel execution strategy without executing.
-    Useful for previewing the execution plan.
-    
+    Parallel toolchain execution.
+
+    Analyses the plan for dependency-free steps and runs them concurrently
+    using a thread pool.  Falls back to sequential within dependent groups.
+
     Args:
-        query: The task to plan for
-    
-    Returns:
-        ExecutionPlan object with branches defined
+        query:       The task to accomplish.
+        max_workers: Thread pool size (default 6).
     """
-    logger = vera_instance.logger if hasattr(vera_instance, 'logger') else None
+    yield from _run_task(
+        vera_instance, query,
+        mode="parallel",
+        task_name="toolchain.execute.parallel",
+        extra_kwargs={"max_workers": max_workers},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Expert  (5-stage domain-expert pipeline)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.execute.expert",
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=90.0,
+)
+def toolchain_execute_expert(vera_instance, query: str):
+    """
+    Expert toolchain execution (5-stage domain pipeline).
+
+    Stages:
+      1. Domain triage   – identifies relevant technical domains
+      2. Tool filtering  – narrows tool list to domain-relevant tools
+      3. Expert planning – plans via tool-agent router (tool list always visible)
+      4. Validation      – corrects any hallucinated tool names
+      5. Execution       – runs the validated plan with streaming output
+
+    Args:
+        query: The task to accomplish.
+    """
+    yield from _run_task(
+        vera_instance, query,
+        mode="expert",
+        task_name="toolchain.execute.expert",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Hybrid  (expert → sequential fallback)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.execute.hybrid",
+    task_type=TaskType.TOOL,
+    priority=Priority.HIGH,
+    estimated_duration=75.0,
+)
+def toolchain_execute_hybrid(vera_instance, query: str):
+    """
+    Hybrid toolchain execution.
+
+    Attempts expert mode first.  If expert mode produces errors, falls
+    back automatically to sequential execution.
+
+    Args:
+        query: The task to accomplish.
+    """
+    yield from _run_task(
+        vera_instance, query,
+        mode="hybrid",
+        task_name="toolchain.execute.hybrid",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Plan-only  (returns plan without executing)
+# ---------------------------------------------------------------------------
+
+@task(
+    "toolchain.plan",
+    task_type=TaskType.TOOL,
+    priority=Priority.NORMAL,
+    estimated_duration=10.0,
+)
+def toolchain_plan(vera_instance, query: str):
+    """
+    Generate a sequential execution plan without running it.
+
+    Streams planning thoughts as they arrive, then yields the final plan
+    as a JSON string.  Useful for previewing what the toolchain would do.
+
+    Args:
+        query: The task to plan for.
+
+    Yields:
+        str chunks (planning thoughts + final JSON plan).
+    """
+    import json
+
+    logger  = getattr(vera_instance, "logger", None)
     context = LogContext(extra={
-        'component': 'task',
-        'task': 'toolchain.plan.parallel',
-        'query_length': len(query)
+        "component":    "task",
+        "task":         "toolchain.plan",
+        "query_length": len(query),
     })
-    
+
     if logger:
-        logger.info(f"📋 Planning parallel execution strategy", context=context)
-        logger.start_timer("toolchain_plan")
-    
-    # Create enhanced planner
-    if not hasattr(vera_instance, '_enhanced_toolchain'):
-        vera_instance._enhanced_toolchain = EnhancedToolChainPlanner(
-            vera_instance,
-            vera_instance.tools
-        )
-    
-    planner = vera_instance._enhanced_toolchain
-    
-    plan = None
+        logger.info("📋 Toolchain planning (no execution)", context=context)
+        logger.start_timer("toolchain.plan")
+
+    planner     = _planner(vera_instance)
     chunk_count = 0
-    
+    final_plan  = None
+
     try:
-        for chunk in planner.plan_parallel_branches(query):
+        for item in planner.plan_tool_chain(query):
             chunk_count += 1
-            
-            if hasattr(chunk, 'steps'):  # This is the ExecutionPlan
-                plan = chunk
-                
-                if logger:
-                    logger.debug(
-                        f"Plan generated: {len(plan.steps)} steps, {len(plan.branches)} branches",
-                        context=LogContext(extra={
-                            **context.extra,
-                            'step_count': len(plan.steps),
-                            'branch_count': len(plan.branches)
-                        })
-                    )
-                
-                # Yield plan summary
-                import json
-                yield f"\n[ Toolchain Plan ]\n"
-                yield json.dumps(plan.to_dict(), indent=2)
-                yield f"\n"
+            if isinstance(item, list):
+                # This is the final plan object yielded at the end of the generator
+                final_plan = item
+                yield "\n[ Toolchain Plan ]\n"
+                yield json.dumps(final_plan, indent=2, default=str)
+                yield "\n"
             else:
-                # Planning thoughts
-                yield extract_chunk_text(chunk)
-        
+                yield _extract_chunk_text(item)
+
         if logger:
-            duration = logger.stop_timer("toolchain_plan", context=context)
+            step_count = len(final_plan) if final_plan else 0
+            duration   = logger.stop_timer("toolchain.plan", context=context)
             logger.success(
-                f"Planning complete | {chunk_count} chunks",
+                f"Planning complete | {step_count} steps | {chunk_count} chunks",
                 context=LogContext(extra={
                     **context.extra,
-                    'chunk_count': chunk_count,
-                    'duration': duration
-                })
+                    "step_count":  step_count,
+                    "chunk_count": chunk_count,
+                    "duration":    duration,
+                }),
             )
-        
-        return plan
-    
-    except Exception as e:
+
+    except Exception as exc:
         if logger:
-            duration = logger.stop_timer("toolchain_plan", context=context)
+            duration = logger.stop_timer("toolchain.plan", context=context)
             logger.error(
-                f"Planning failed: {type(e).__name__}: {str(e)}",
+                f"Planning failed: {type(exc).__name__}: {exc}",
                 exc_info=True,
                 context=LogContext(extra={
                     **context.extra,
-                    'duration': duration,
-                    'error': str(e)
-                })
+                    "duration": duration,
+                    "error":    str(exc),
+                }),
             )
-        
-        return {"error": str(e)}
+        yield f"\n[ Toolchain ] ✗ Planning error: {exc}\n"
+        raise

@@ -16,13 +16,14 @@ class FocusBoard:
         self.boards_dir = boards_dir
         os.makedirs(boards_dir, exist_ok=True)
         
-        self.board = {
+        self.focus_board = {
             "progress": [],
             "next_steps": [],
             "issues": [],
             "ideas": [],
             "actions": [],
-            "completed": []
+            "completed": [],
+            "questions": []
         }
     
     def add_item(self, category: str, note: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -205,7 +206,7 @@ class FocusBoard:
             loaded_board = data.get("board", {})
             
             # Ensure all expected categories exist
-            for category in ["progress", "next_steps", "issues", "ideas", "actions", "completed"]:
+            for category in ["progress", "next_steps", "issues", "ideas", "actions", "completed", "questions"]:
                 if category not in loaded_board:
                     loaded_board[category] = []
             
@@ -246,13 +247,14 @@ class FocusBoard:
                 return loaded.get('project_id')
         
         # Clear board for new focus
-        self.board = {
+        self.focus_board = {
             "progress": [],
             "next_steps": [],
             "issues": [],
             "ideas": [],
             "actions": [],
-            "completed": []
+            "completed": [],
+            "questions": []
         }
         
         # Create project in memory

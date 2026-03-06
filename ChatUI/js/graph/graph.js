@@ -126,19 +126,22 @@
                 }
             };
         } else {
-            // Small/medium graph - full physics
             return {
                 enabled: true,
-                barnesHut: {
-                    gravitationalConstant: -9000,
-                    centralGravity: 0.06,
-                    springLength: 300,
-                    springConstant: 0.01,
-                    damping: 0.62
+                solver: 'forceAtlas2Based',
+                forceAtlas2Based: {
+                    gravitationalConstant: -50,
+                    centralGravity: 0.01,
+                    springLength: 100,
+                    springConstant: 0.08,
+                    damping: 0.4,
+                    avoidOverlap: 0.5
                 },
                 stabilization: {
                     enabled: true,
-                    iterations: 200
+                    iterations: 200,
+                    updateInterval: 25,
+                    fit: true
                 }
             };
         }

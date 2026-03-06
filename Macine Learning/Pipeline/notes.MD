@@ -1,0 +1,4566 @@
+Excellent. Since you already have:
+
+* ✅ A graph (assume Neo4j or similar)
+* ✅ A basic event bus
+* ✅ Ollama
+
+We’ll build a **complete PoC capability pipeline runtime** that:
+
+* Supports **pre-LLM ML capabilities**
+* Supports **post-LLM ML capabilities**
+* Pulls structured data from your graph
+* Listens/emits via event bus
+* Produces structured, explainable inference
+
+This will be:
+
+> Deterministic signals → Structured fusion → LLM reasoning → Post-analysis validation → Event emission
+
+---
+
+# 🧠 Architecture
+
+```text
+Event → Capability Pipeline (Pre)
+        ↓
+Graph Enrichment
+        ↓
+LLM Inference (Ollama)
+        ↓
+Post Capabilities (Validation / Scoring / Guardrails)
+        ↓
+Event Bus Output
+```
+
+We’ll implement:
+
+* Capability base classes
+* Pre-capability examples (ML + graph)
+* Post-capability examples
+* Async orchestrator
+* Event-driven execution
+* Clean plug-in model
+
+---
+
+# 📁 Project Structure
+
+```text
+runtime/
+│
+├── main.py
+├── pipeline.py
+├── ollama_client.py
+├── eventbus.py
+├── graph_adapter.py
+│
+└── capabilities/
+    ├── base.py
+    ├── pre/
+    │   ├── anomaly.py
+    │   ├── graph_context.py
+    │   ├── risk_fusion.py
+    │
+    └── post/
+        ├── response_validator.py
+        ├── confidence_estimator.py
+```
+
+---
+
+# 🔌 1️⃣ Capability Base Classes
+
+## capabilities/base.py
+
+```python
+from abc import ABC, abstractmethod
+
+class PreLLMCapability(ABC):
+    async def setup(self, runtime): pass
+
+    @abstractmethod
+    async def process(self, event: dict, context: dict) -> dict:
+        pass
+
+
+class PostLLMCapability(ABC):
+    async def setup(self, runtime): pass
+
+    @abstractmethod
+    async def process(self, llm_output: str, context: dict) -> dict:
+        pass
+```
+
+---
+
+# 🧠 2️⃣ Example Pre-LLM Capabilities
+
+---
+
+## 🔎 ML Anomaly Capability (Pre)
+
+```python
+# capabilities/pre/anomaly.py
+
+import numpy as np
+from sklearn.ensemble import IsolationForest
+from capabilities.base import PreLLMCapability
+
+class AnomalyCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.model = IsolationForest(contamination=0.1)
+        self.model.fit(np.random.rand(50, 4))
+
+    async def process(self, event, context):
+        features = np.array(event.get("features", [[0,0,0,0]]))
+        score = self.model.predict(features)[0]
+
+        context["anomaly"] = score == -1
+        return context
+```
+
+---
+
+## 🌐 Graph Context Enrichment (Pre)
+
+```python
+# capabilities/pre/graph_context.py
+
+from capabilities.base import PreLLMCapability
+
+class GraphContextCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.graph = runtime.graph
+
+    async def process(self, event, context):
+        node = event.get("node")
+
+        neighbors = await self.graph.get_neighbors(node)
+
+        context["graph_context"] = {
+            "node": node,
+            "neighbors": neighbors
+        }
+
+        return context
+```
+
+Assumes your graph adapter implements:
+
+```python
+async def get_neighbors(self, node_id): ...
+```
+
+---
+
+## ⚖ Risk Fusion (Pre)
+
+```python
+# capabilities/pre/risk_fusion.py
+
+from capabilities.base import PreLLMCapability
+
+class RiskFusionCapability(PreLLMCapability):
+
+    async def process(self, event, context):
+        score = 0
+
+        if context.get("anomaly"):
+            score += 3
+
+        if len(context.get("graph_context", {}).get("neighbors", [])) > 5:
+            score += 2
+
+        context["risk_score"] = score
+        context["risk_level"] = (
+            "LOW" if score <= 2 else
+            "MEDIUM" if score <= 4 else
+            "HIGH"
+        )
+
+        return context
+```
+
+---
+
+# 🧠 3️⃣ Ollama Client
+
+```python
+# ollama_client.py
+
+import httpx
+import json
+
+class OllamaClient:
+
+    def __init__(self, endpoint, model):
+        self.endpoint = endpoint
+        self.model = model
+
+    async def generate(self, context):
+
+        prompt = f"""
+You are a system reasoning engine.
+
+Structured World Context:
+{json.dumps(context, indent=2)}
+
+Provide:
+1. Situation summary
+2. Risk assessment
+3. Recommended actions
+4. Confidence explanation
+"""
+
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                self.endpoint,
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+            )
+
+        return response.json()["response"]
+```
+
+---
+
+# 🧠 4️⃣ Post-LLM Capabilities
+
+---
+
+## 🔍 Response Validator
+
+Checks if LLM output contradicts deterministic signals.
+
+```python
+# capabilities/post/response_validator.py
+
+from capabilities.base import PostLLMCapability
+
+class ResponseValidator(PostLLMCapability):
+
+    async def process(self, llm_output, context):
+
+        if context.get("risk_level") == "HIGH" and "low risk" in llm_output.lower():
+            context["validation_warning"] = "LLM risk mismatch"
+
+        return context
+```
+
+---
+
+## 📊 Confidence Estimator (Post ML)
+
+```python
+# capabilities/post/confidence_estimator.py
+
+from capabilities.base import PostLLMCapability
+import random
+
+class ConfidenceEstimator(PostLLMCapability):
+
+    async def process(self, llm_output, context):
+
+        base = 0.6
+
+        if context.get("anomaly"):
+            base -= 0.1
+
+        if context.get("risk_level") == "HIGH":
+            base += 0.1
+
+        context["llm_confidence"] = round(min(max(base, 0.1), 0.95), 2)
+
+        return context
+```
+
+---
+
+# 🔁 5️⃣ Pipeline Orchestrator
+
+## pipeline.py
+
+```python
+class CapabilityPipeline:
+
+    def __init__(self, pre_caps, post_caps, llm):
+        self.pre_caps = pre_caps
+        self.post_caps = post_caps
+        self.llm = llm
+
+    async def initialize(self, runtime):
+        for cap in self.pre_caps + self.post_caps:
+            await cap.setup(runtime)
+
+    async def run(self, event):
+
+        context = {"event": event}
+
+        # Pre-LLM
+        for cap in self.pre_caps:
+            context = await cap.process(event, context)
+
+        # LLM
+        llm_output = await self.llm.generate(context)
+
+        context["llm_output"] = llm_output
+
+        # Post-LLM
+        for cap in self.post_caps:
+            context = await cap.process(llm_output, context)
+
+        return context
+```
+
+---
+
+# 📡 6️⃣ Event Bus Adapter
+
+Example simple async pub/sub.
+
+```python
+# eventbus.py
+
+class EventBus:
+
+    def __init__(self):
+        self.subscribers = []
+
+    def subscribe(self, handler):
+        self.subscribers.append(handler)
+
+    async def publish(self, event):
+        for sub in self.subscribers:
+            await sub(event)
+```
+
+---
+
+# 🌐 7️⃣ Graph Adapter (Stub)
+
+```python
+# graph_adapter.py
+
+class GraphAdapter:
+
+    async def get_neighbors(self, node_id):
+        # Replace with Neo4j query
+        return ["serviceA", "serviceB"]
+```
+
+---
+
+# 🚀 8️⃣ Full Runtime
+
+## main.py
+
+```python
+import asyncio
+
+from pipeline import CapabilityPipeline
+from ollama_client import OllamaClient
+from eventbus import EventBus
+from graph_adapter import GraphAdapter
+
+from capabilities.pre.anomaly import AnomalyCapability
+from capabilities.pre.graph_context import GraphContextCapability
+from capabilities.pre.risk_fusion import RiskFusionCapability
+
+from capabilities.post.response_validator import ResponseValidator
+from capabilities.post.confidence_estimator import ConfidenceEstimator
+
+
+class Runtime:
+    def __init__(self):
+        self.graph = GraphAdapter()
+
+
+async def main():
+
+    runtime = Runtime()
+
+    llm = OllamaClient(
+        endpoint="http://localhost:11434/api/generate",
+        model="llama3"
+    )
+
+    pipeline = CapabilityPipeline(
+        pre_caps=[
+            AnomalyCapability(),
+            GraphContextCapability(),
+            RiskFusionCapability()
+        ],
+        post_caps=[
+            ResponseValidator(),
+            ConfidenceEstimator()
+        ],
+        llm=llm
+    )
+
+    await pipeline.initialize(runtime)
+
+    bus = EventBus()
+
+    async def handler(event):
+        result = await pipeline.run(event)
+        print("FINAL OUTPUT:\n", result)
+
+    bus.subscribe(handler)
+
+    # Simulated event
+    await bus.publish({
+        "node": "web01",
+        "features": [[0.9, 0.1, 0.3, 0.7]]
+    })
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+# 🧠 What This Gives You
+
+You now have:
+
+* Event-driven orchestration
+* Graph-aware enrichment
+* ML anomaly signals
+* Deterministic risk fusion
+* LLM structured reasoning
+* Post-LLM guardrails
+* Confidence estimation
+
+LLM is no longer free-floating — it is:
+
+> A reasoning layer embedded inside a deterministic cognitive pipeline.
+
+---
+
+# 🔥 Next-Level Extensions
+
+You can now add:
+
+* Time-window drift detection
+* Graph centrality scoring
+* Blast radius simulation
+* Multi-model routing
+* Policy engine gating
+* Redis-backed context memory
+* Embedding similarity novelty detection
+* Automatic action execution modules
+
+---
+
+If you'd like next, I can:
+
+* Upgrade this into a distributed worker system
+* Add streaming LLM support
+* Add real graph queries for Neo4j
+* Add packet anomaly modeling
+* Or design a formal Capability SDK spec
+
+What direction do you want to push it?
+
+
+Excellent. Since you already have:
+
+* ✅ A graph (assume Neo4j or similar)
+* ✅ A basic event bus
+* ✅ Ollama
+
+We’ll build a **complete PoC capability pipeline runtime** that:
+
+* Supports **pre-LLM ML capabilities**
+* Supports **post-LLM ML capabilities**
+* Pulls structured data from your graph
+* Listens/emits via event bus
+* Produces structured, explainable inference
+
+This will be:
+
+> Deterministic signals → Structured fusion → LLM reasoning → Post-analysis validation → Event emission
+
+---
+
+# 🧠 Architecture
+
+```text
+Event → Capability Pipeline (Pre)
+        ↓
+Graph Enrichment
+        ↓
+LLM Inference (Ollama)
+        ↓
+Post Capabilities (Validation / Scoring / Guardrails)
+        ↓
+Event Bus Output
+```
+
+We’ll implement:
+
+* Capability base classes
+* Pre-capability examples (ML + graph)
+* Post-capability examples
+* Async orchestrator
+* Event-driven execution
+* Clean plug-in model
+
+---
+
+# 📁 Project Structure
+
+```text
+runtime/
+│
+├── main.py
+├── pipeline.py
+├── ollama_client.py
+├── eventbus.py
+├── graph_adapter.py
+│
+└── capabilities/
+    ├── base.py
+    ├── pre/
+    │   ├── anomaly.py
+    │   ├── graph_context.py
+    │   ├── risk_fusion.py
+    │
+    └── post/
+        ├── response_validator.py
+        ├── confidence_estimator.py
+```
+
+---
+
+# 🔌 1️⃣ Capability Base Classes
+
+## capabilities/base.py
+
+```python
+from abc import ABC, abstractmethod
+
+class PreLLMCapability(ABC):
+    async def setup(self, runtime): pass
+
+    @abstractmethod
+    async def process(self, event: dict, context: dict) -> dict:
+        pass
+
+
+class PostLLMCapability(ABC):
+    async def setup(self, runtime): pass
+
+    @abstractmethod
+    async def process(self, llm_output: str, context: dict) -> dict:
+        pass
+```
+
+---
+
+# 🧠 2️⃣ Example Pre-LLM Capabilities
+
+---
+
+## 🔎 ML Anomaly Capability (Pre)
+
+```python
+# capabilities/pre/anomaly.py
+
+import numpy as np
+from sklearn.ensemble import IsolationForest
+from capabilities.base import PreLLMCapability
+
+class AnomalyCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.model = IsolationForest(contamination=0.1)
+        self.model.fit(np.random.rand(50, 4))
+
+    async def process(self, event, context):
+        features = np.array(event.get("features", [[0,0,0,0]]))
+        score = self.model.predict(features)[0]
+
+        context["anomaly"] = score == -1
+        return context
+```
+
+---
+
+## 🌐 Graph Context Enrichment (Pre)
+
+```python
+# capabilities/pre/graph_context.py
+
+from capabilities.base import PreLLMCapability
+
+class GraphContextCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.graph = runtime.graph
+
+    async def process(self, event, context):
+        node = event.get("node")
+
+        neighbors = await self.graph.get_neighbors(node)
+
+        context["graph_context"] = {
+            "node": node,
+            "neighbors": neighbors
+        }
+
+        return context
+```
+
+Assumes your graph adapter implements:
+
+```python
+async def get_neighbors(self, node_id): ...
+```
+
+---
+
+## ⚖ Risk Fusion (Pre)
+
+```python
+# capabilities/pre/risk_fusion.py
+
+from capabilities.base import PreLLMCapability
+
+class RiskFusionCapability(PreLLMCapability):
+
+    async def process(self, event, context):
+        score = 0
+
+        if context.get("anomaly"):
+            score += 3
+
+        if len(context.get("graph_context", {}).get("neighbors", [])) > 5:
+            score += 2
+
+        context["risk_score"] = score
+        context["risk_level"] = (
+            "LOW" if score <= 2 else
+            "MEDIUM" if score <= 4 else
+            "HIGH"
+        )
+
+        return context
+```
+
+---
+
+# 🧠 3️⃣ Ollama Client
+
+```python
+# ollama_client.py
+
+import httpx
+import json
+
+class OllamaClient:
+
+    def __init__(self, endpoint, model):
+        self.endpoint = endpoint
+        self.model = model
+
+    async def generate(self, context):
+
+        prompt = f"""
+You are a system reasoning engine.
+
+Structured World Context:
+{json.dumps(context, indent=2)}
+
+Provide:
+1. Situation summary
+2. Risk assessment
+3. Recommended actions
+4. Confidence explanation
+"""
+
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                self.endpoint,
+                json={
+                    "model": self.model,
+                    "prompt": prompt,
+                    "stream": False
+                }
+            )
+
+        return response.json()["response"]
+```
+
+---
+
+# 🧠 4️⃣ Post-LLM Capabilities
+
+---
+
+## 🔍 Response Validator
+
+Checks if LLM output contradicts deterministic signals.
+
+```python
+# capabilities/post/response_validator.py
+
+from capabilities.base import PostLLMCapability
+
+class ResponseValidator(PostLLMCapability):
+
+    async def process(self, llm_output, context):
+
+        if context.get("risk_level") == "HIGH" and "low risk" in llm_output.lower():
+            context["validation_warning"] = "LLM risk mismatch"
+
+        return context
+```
+
+---
+
+## 📊 Confidence Estimator (Post ML)
+
+```python
+# capabilities/post/confidence_estimator.py
+
+from capabilities.base import PostLLMCapability
+import random
+
+class ConfidenceEstimator(PostLLMCapability):
+
+    async def process(self, llm_output, context):
+
+        base = 0.6
+
+        if context.get("anomaly"):
+            base -= 0.1
+
+        if context.get("risk_level") == "HIGH":
+            base += 0.1
+
+        context["llm_confidence"] = round(min(max(base, 0.1), 0.95), 2)
+
+        return context
+```
+
+---
+
+# 🔁 5️⃣ Pipeline Orchestrator
+
+## pipeline.py
+
+```python
+class CapabilityPipeline:
+
+    def __init__(self, pre_caps, post_caps, llm):
+        self.pre_caps = pre_caps
+        self.post_caps = post_caps
+        self.llm = llm
+
+    async def initialize(self, runtime):
+        for cap in self.pre_caps + self.post_caps:
+            await cap.setup(runtime)
+
+    async def run(self, event):
+
+        context = {"event": event}
+
+        # Pre-LLM
+        for cap in self.pre_caps:
+            context = await cap.process(event, context)
+
+        # LLM
+        llm_output = await self.llm.generate(context)
+
+        context["llm_output"] = llm_output
+
+        # Post-LLM
+        for cap in self.post_caps:
+            context = await cap.process(llm_output, context)
+
+        return context
+```
+
+---
+
+# 📡 6️⃣ Event Bus Adapter
+
+Example simple async pub/sub.
+
+```python
+# eventbus.py
+
+class EventBus:
+
+    def __init__(self):
+        self.subscribers = []
+
+    def subscribe(self, handler):
+        self.subscribers.append(handler)
+
+    async def publish(self, event):
+        for sub in self.subscribers:
+            await sub(event)
+```
+
+---
+
+# 🌐 7️⃣ Graph Adapter (Stub)
+
+```python
+# graph_adapter.py
+
+class GraphAdapter:
+
+    async def get_neighbors(self, node_id):
+        # Replace with Neo4j query
+        return ["serviceA", "serviceB"]
+```
+
+---
+
+# 🚀 8️⃣ Full Runtime
+
+## main.py
+
+```python
+import asyncio
+
+from pipeline import CapabilityPipeline
+from ollama_client import OllamaClient
+from eventbus import EventBus
+from graph_adapter import GraphAdapter
+
+from capabilities.pre.anomaly import AnomalyCapability
+from capabilities.pre.graph_context import GraphContextCapability
+from capabilities.pre.risk_fusion import RiskFusionCapability
+
+from capabilities.post.response_validator import ResponseValidator
+from capabilities.post.confidence_estimator import ConfidenceEstimator
+
+
+class Runtime:
+    def __init__(self):
+        self.graph = GraphAdapter()
+
+
+async def main():
+
+    runtime = Runtime()
+
+    llm = OllamaClient(
+        endpoint="http://localhost:11434/api/generate",
+        model="llama3"
+    )
+
+    pipeline = CapabilityPipeline(
+        pre_caps=[
+            AnomalyCapability(),
+            GraphContextCapability(),
+            RiskFusionCapability()
+        ],
+        post_caps=[
+            ResponseValidator(),
+            ConfidenceEstimator()
+        ],
+        llm=llm
+    )
+
+    await pipeline.initialize(runtime)
+
+    bus = EventBus()
+
+    async def handler(event):
+        result = await pipeline.run(event)
+        print("FINAL OUTPUT:\n", result)
+
+    bus.subscribe(handler)
+
+    # Simulated event
+    await bus.publish({
+        "node": "web01",
+        "features": [[0.9, 0.1, 0.3, 0.7]]
+    })
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+---
+
+# 🧠 What This Gives You
+
+You now have:
+
+* Event-driven orchestration
+* Graph-aware enrichment
+* ML anomaly signals
+* Deterministic risk fusion
+* LLM structured reasoning
+* Post-LLM guardrails
+* Confidence estimation
+
+LLM is no longer free-floating — it is:
+
+> A reasoning layer embedded inside a deterministic cognitive pipeline.
+
+---
+
+# 🔥 Next-Level Extensions
+
+You can now add:
+
+* Time-window drift detection
+* Graph centrality scoring
+* Blast radius simulation
+* Multi-model routing
+* Policy engine gating
+* Redis-backed context memory
+* Embedding similarity novelty detection
+* Automatic action execution modules
+
+---
+
+If you'd like next, I can:
+
+* Upgrade this into a distributed worker system
+* Add streaming LLM support
+* Add real graph queries for Neo4j
+* Add packet anomaly modeling
+* Or design a formal Capability SDK spec
+
+What direction do you want to push it?
+
+
+Excellent. Below is an **extended full PoC architecture** that integrates all requested capabilities into your existing:
+
+* Graph
+* Event bus
+* Ollama inference layer
+* Capability pipeline
+
+This design keeps:
+
+* Deterministic ML and graph logic outside the LLM
+* LLM as structured reasoning layer
+* Policy + safety gates enforced post-inference
+* Fully modular capability SDK
+
+---
+
+# 🧠 Extended Cognitive Pipeline Architecture
+
+```text
+Event
+  ↓
+Redis Context Loader
+  ↓
+Pre-LLM Capabilities
+  - Drift Detection (time window)
+  - Packet Anomaly Model
+  - Graph Centrality Scoring
+  - Blast Radius Simulation
+  - Embedding Novelty Detection
+  - Risk Fusion
+  ↓
+Policy Gate (pre-LLM)
+  ↓
+Multi-Model Router
+  ↓
+LLM (Ollama streaming optional)
+  ↓
+Post-LLM Capabilities
+  - Response Validator
+  - Confidence Estimator
+  - Policy Gate (post)
+  - Action Executor
+  ↓
+Redis Context Save
+  ↓
+Event Bus Emit
+```
+
+---
+
+# 1️⃣ Time-Window Drift Detection
+
+Detects statistical shift over sliding window from Redis or Postgres.
+
+```python
+# capabilities/pre/drift.py
+
+import numpy as np
+from collections import deque
+from capabilities.base import PreLLMCapability
+
+class DriftDetectionCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.window = deque(maxlen=100)
+
+    async def process(self, event, context):
+        value = event.get("metric", 0)
+        self.window.append(value)
+
+        if len(self.window) < 20:
+            context["drift"] = False
+            return context
+
+        mean = np.mean(self.window)
+        std = np.std(self.window)
+
+        drift = abs(value - mean) > 2 * std
+
+        context["drift"] = drift
+        context["drift_stats"] = {
+            "mean": float(mean),
+            "std": float(std)
+        }
+
+        return context
+```
+
+---
+
+# 2️⃣ Graph Centrality Scoring (Neo4j)
+
+Real query using degree centrality.
+
+```python
+# capabilities/pre/centrality.py
+
+from capabilities.base import PreLLMCapability
+
+class GraphCentralityCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.driver = runtime.graph.driver
+
+    async def process(self, event, context):
+        node = event.get("node")
+
+        query = """
+        MATCH (n {name:$node})-[r]-()
+        RETURN count(r) as degree
+        """
+
+        async with self.driver.session() as session:
+            result = await session.run(query, node=node)
+            record = await result.single()
+            degree = record["degree"] if record else 0
+
+        context["centrality_score"] = degree
+        return context
+```
+
+---
+
+# 3️⃣ Blast Radius Simulation
+
+Traverse dependency graph up to N hops.
+
+```python
+# capabilities/pre/blast_radius.py
+
+class BlastRadiusCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.driver = runtime.graph.driver
+
+    async def process(self, event, context):
+        node = event.get("node")
+
+        query = """
+        MATCH path = (n {name:$node})-[:DEPENDS_ON*1..3]->(m)
+        RETURN distinct m.name as impacted
+        """
+
+        impacted = []
+
+        async with self.driver.session() as session:
+            result = await session.run(query, node=node)
+            async for record in result:
+                impacted.append(record["impacted"])
+
+        context["blast_radius"] = impacted
+        context["blast_radius_size"] = len(impacted)
+        return context
+```
+
+---
+
+# 4️⃣ Packet Anomaly Modeling
+
+Lightweight feature-based model.
+
+```python
+# capabilities/pre/packet_anomaly.py
+
+from sklearn.ensemble import IsolationForest
+import numpy as np
+
+class PacketAnomalyCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.model = IsolationForest(contamination=0.05)
+        self.model.fit(np.random.rand(200, 6))
+
+    async def process(self, event, context):
+        features = np.array(event.get("packet_features", [[0]*6]))
+        prediction = self.model.predict(features)[0]
+
+        context["packet_anomaly"] = prediction == -1
+        return context
+```
+
+---
+
+# 5️⃣ Embedding Similarity Novelty Detection
+
+Uses Ollama embeddings.
+
+```python
+# capabilities/pre/novelty.py
+
+import httpx
+import numpy as np
+
+class EmbeddingNoveltyCapability(PreLLMCapability):
+
+    async def setup(self, runtime):
+        self.endpoint = "http://ollama:11434/api/embeddings"
+        self.memory = []
+
+    async def embed(self, text):
+        async with httpx.AsyncClient() as client:
+            r = await client.post(self.endpoint, json={
+                "model": "llama3",
+                "prompt": text
+            })
+        return np.array(r.json()["embedding"])
+
+    async def process(self, event, context):
+        text = event.get("description", "")
+        embedding = await self.embed(text)
+
+        if not self.memory:
+            self.memory.append(embedding)
+            context["novel"] = False
+            return context
+
+        sims = [np.dot(embedding, m) for m in self.memory]
+        max_sim = max(sims)
+
+        context["novel"] = max_sim < 0.8
+
+        if context["novel"]:
+            self.memory.append(embedding)
+
+        return context
+```
+
+---
+
+# 6️⃣ Multi-Model Router
+
+Routes by risk level.
+
+```python
+# routing.py
+
+class ModelRouter:
+
+    def route(self, context):
+        if context.get("risk_level") == "HIGH":
+            return "llama3:70b"
+        if context.get("novel"):
+            return "llama3"
+        return "mistral"
+```
+
+Modify pipeline:
+
+```python
+model_name = router.route(context)
+llm_output = await self.llm.generate(context, model=model_name)
+```
+
+---
+
+# 7️⃣ Policy Engine Gating
+
+Simple deterministic gate.
+
+```python
+# policy.py
+
+class PolicyEngine:
+
+    def evaluate(self, context):
+        if context.get("risk_level") == "HIGH" and not context.get("packet_anomaly"):
+            return False
+        return True
+```
+
+Apply pre- and post-LLM.
+
+---
+
+# 8️⃣ Redis-Backed Context Memory
+
+```python
+# context_store.py
+
+import redis.asyncio as redis
+import json
+
+class ContextStore:
+
+    def __init__(self, url):
+        self.redis = redis.from_url(url)
+
+    async def save(self, key, context):
+        await self.redis.set(key, json.dumps(context))
+
+    async def load(self, key):
+        data = await self.redis.get(key)
+        return json.loads(data) if data else {}
+```
+
+---
+
+# 9️⃣ Automatic Action Execution Module
+
+Only executes if policy permits.
+
+```python
+# capabilities/post/action_executor.py
+
+class ActionExecutor(PostLLMCapability):
+
+    async def process(self, llm_output, context):
+
+        if context.get("risk_level") == "HIGH":
+            print("Triggering mitigation workflow...")
+            # call external API
+            context["action_executed"] = True
+
+        return context
+```
+
+---
+
+# 🔟 Streaming LLM Support
+
+Modify Ollama client:
+
+```python
+async def generate_stream(self, context, model):
+
+    async with httpx.AsyncClient(timeout=None) as client:
+        async with client.stream("POST", self.endpoint, json={
+            "model": model,
+            "prompt": prompt,
+            "stream": True
+        }) as response:
+
+            async for line in response.aiter_lines():
+                if line:
+                    yield json.loads(line)["response"]
+```
+
+---
+
+# 1️⃣1️⃣ Distributed Worker Upgrade
+
+To scale:
+
+* Replace in-memory event bus with Redis Streams or Kafka
+* Multiple worker containers subscribe
+* Capability engine becomes stateless
+* Context stored centrally in Redis/Postgres
+* Graph remains shared Neo4j cluster
+
+Flow becomes:
+
+```text
+Producer → Redis Stream
+          ↓
+Worker Pool (Capability Engine Instances)
+          ↓
+LLM Layer
+          ↓
+Result Stream
+```
+
+Horizontal scaling achieved.
+
+---
+
+# 🧠 Result
+
+You now have:
+
+* Time-aware drift modeling
+* Graph-aware reasoning
+* Structural impact simulation
+* Packet-level anomaly ML
+* Semantic novelty detection
+* Deterministic risk fusion
+* Policy guardrails
+* Multi-model routing
+* Automatic mitigation hooks
+* Redis state persistence
+* Streaming inference
+* Horizontal scalability
+
+This is no longer an LLM wrapper.
+
+It is a:
+
+> Cognitive Infrastructure Control Runtime
+
+---
+
+If you'd like, next we can:
+
+* Convert this into a complete runnable Docker stack
+* Formalize a Capability SDK spec
+* Add OpenTelemetry tracing
+* Add reinforcement learning from human feedback
+* Add graph embeddings for structural anomaly detection
+
+Which direction should we solidify next?
+
+
+Yes. What you’re describing is a **real-time worldview distillation engine**:
+
+> Massive heterogeneous stream → Signal extraction → Relevance filtering → Graph consolidation → LLM situational synthesis
+
+The critical architectural principle:
+
+The LLM must *not* ingest raw stream firehose data.
+It must ingest a **compressed, relevance-weighted, structured state vector of the world**.
+
+Below is a concrete expansion of your capability system to support this.
+
+---
+
+# 🧠 High-Level Architecture
+
+```text
+Multi-Source Event Streams
+(news, social, weather, flights, satellites, OHLCV, graph deltas)
+        ↓
+Stream Normalization Layer
+        ↓
+Capability Filtering & Scoring Layer
+        ↓
+Relevance + Novelty + Impact Fusion
+        ↓
+Graph Update (Only High-Value Signals)
+        ↓
+World State Snapshot Builder
+        ↓
+LLM Perspective Engine
+```
+
+We’ll add capability categories specifically for:
+
+* Cross-domain signal correlation
+* Temporal compression
+* Impact modeling
+* Market & geospatial reasoning
+* Narrative abstraction
+
+---
+
+# 🔌 Core Worldview Capability Types
+
+---
+
+# 1️⃣ Multi-Source Normalization Capabilities
+
+Each stream must be converted into a **common schema**.
+
+Example unified event format:
+
+```json
+{
+  "timestamp": "...",
+  "domain": "news | weather | flight | market | satellite | social",
+  "entity_refs": [],
+  "geo": { "lat": 0, "lon": 0 },
+  "numeric_features": {},
+  "text": "",
+  "source_weight": 0.0
+}
+```
+
+Add a:
+
+### StreamNormalizationCapability
+
+This:
+
+* Cleans input
+* Tags domain
+* Extracts named entities
+* Standardizes geo references
+
+---
+
+# 2️⃣ Named Entity & Cross-Graph Linking
+
+### EntityLinkingCapability
+
+* Uses embeddings + graph lookup
+* Links news mentions to graph nodes
+* Links flights to airports in graph
+* Links weather events to regions
+
+Result:
+
+```json
+"linked_nodes": ["airport_LHR", "company_TSLA"]
+```
+
+This is how raw streams affect your world graph.
+
+---
+
+# 3️⃣ Real-Time Relevance Scoring
+
+You must aggressively filter.
+
+### RelevanceScoringCapability
+
+Combines:
+
+* Graph centrality of referenced nodes
+* Source reliability weighting
+* Event novelty
+* Domain-specific volatility
+
+Example:
+
+```json
+"relevance_score": 0.82
+```
+
+Only events above threshold update the graph.
+
+---
+
+# 4️⃣ Embedding-Based Novelty Detection (Global)
+
+Maintain rolling embedding centroid of:
+
+* Recent accepted events
+
+New event embedding compared to centroid:
+
+```python
+novelty = 1 - cosine_similarity(event, centroid)
+```
+
+Only high novelty + high relevance events persist.
+
+---
+
+# 5️⃣ Temporal Compression Capability
+
+Instead of feeding 10,000 events:
+
+* Maintain time-window aggregations:
+
+```json
+"weather_delta": { "storm_intensity": +2.1 },
+"market_volatility_spike": true,
+"flight_disruption_index": 0.63
+```
+
+This becomes world-state features.
+
+---
+
+# 6️⃣ Market OHLCV Capability
+
+For financial ingestion:
+
+### Volatility & Regime Detection
+
+* Rolling ATR
+* Z-score anomaly detection
+* Regime classification (trend, range, panic)
+
+Adds:
+
+```json
+"market_regime": "high_volatility",
+"sector_rotation": ["energy", "defense"]
+```
+
+---
+
+# 7️⃣ Satellite & Geospatial Capability
+
+If ingesting satellite or weather:
+
+### Geo-Impact Modeling
+
+* Spatial clustering (DBSCAN)
+* Population density overlay
+* Infrastructure overlay from graph
+
+Output:
+
+```json
+"geo_impact_score": 0.74,
+"affected_infrastructure": ["port_ams", "airport_LHR"]
+```
+
+---
+
+# 8️⃣ Cross-Domain Correlation Engine
+
+This is critical.
+
+Correlates:
+
+* Weather + flight cancellations
+* News + OHLCV spikes
+* Social sentiment + price movement
+* Satellite + supply chain disruption
+
+Implements rolling cross-correlation matrices.
+
+Adds:
+
+```json
+"cross_domain_signal": {
+  "weather_flight_corr": 0.71,
+  "news_market_corr": 0.64
+}
+```
+
+---
+
+# 9️⃣ Social Sentiment & Narrative Momentum
+
+### Sentiment + Acceleration Detection
+
+Not just sentiment — acceleration.
+
+If sentiment derivative spikes:
+
+```json
+"sentiment_acceleration": true
+```
+
+This often precedes events.
+
+---
+
+# 🔟 Event Impact Propagation via Graph
+
+When event links to nodes:
+
+Simulate propagation:
+
+```text
+Company → Supplier → Logistics Hub → Region
+```
+
+Update graph node weights:
+
+```json
+"node_state_update": {
+  "company_TSLA": { "risk": +2 }
+}
+```
+
+This creates evolving world-state fields.
+
+---
+
+# 1️⃣1️⃣ World State Snapshot Builder
+
+Instead of raw data, construct:
+
+```json
+{
+  "global_risk_index": 0.62,
+  "market_volatility": 0.77,
+  "infrastructure_disruption": 0.41,
+  "top_emerging_entities": [...],
+  "cross_domain_alerts": [...],
+  "novel_clusters": [...]
+}
+```
+
+This is what LLM sees.
+
+---
+
+# 1️⃣2️⃣ Perspective Synthesis Capability
+
+Now LLM receives:
+
+* Graph summary
+* Top 10 most relevant signals
+* Risk vectors
+* Regime classification
+* Cross-domain correlations
+* Geo-impact summary
+
+Prompt:
+
+```text
+You are forming a structured situational awareness report.
+Describe:
+- Global state
+- Emerging risk clusters
+- Cross-domain causal links
+- Near-term outlook
+```
+
+The LLM is now forming perspective, not filtering noise.
+
+---
+
+# 🔥 Advanced Capabilities You Can Add
+
+---
+
+### 🔹 Attention Allocation Engine
+
+Compute:
+
+```python
+attention_weight = relevance * novelty * centrality * volatility
+```
+
+Only highest attention events enter ontology.
+
+---
+
+### 🔹 Causal Graph Inference
+
+Use Bayesian networks or Granger causality between:
+
+* Weather → Flights
+* News → Market
+* Social → Volatility
+
+Adds probabilistic causality edges.
+
+---
+
+### 🔹 Entropy Compression Monitor
+
+Measure entropy of event stream.
+If entropy rises sharply:
+
+> Something structurally new is happening.
+
+---
+
+### 🔹 Regime Shift Detector
+
+Applies change-point detection across domains.
+
+Detects:
+
+* War onset
+* Financial crash
+* Extreme weather cycle
+* Infrastructure failure cascade
+
+---
+
+### 🔹 Long-Horizon Trend Extraction
+
+Maintain:
+
+* Weekly trend vector
+* Monthly macro vector
+
+Allow LLM to compare:
+
+"Today vs baseline macro state"
+
+---
+
+# 🧠 Architectural Guardrails
+
+Key to making this work:
+
+1. **Do not update graph with raw events**
+2. Update graph only with:
+
+   * Filtered
+   * Scored
+   * Correlated
+   * De-duplicated signals
+3. Maintain:
+
+   * Short-term memory (Redis)
+   * Medium-term state (Postgres)
+   * Structural ontology (Neo4j)
+   * Narrative state (LLM summaries archived)
+
+---
+
+# 🧬 What You Are Building
+
+This becomes:
+
+* A live multi-domain signal fusion engine
+* A structural ontology with evolving weights
+* A perspective-generating AI layer
+* A relevance-gated world compression system
+
+This is closer to:
+
+* Strategic situational awareness systems
+* Quantitative macro signal engines
+* Infrastructure + geopolitical fusion engines
+
+---
+
+# 🚀 If You Want To Go Even Further
+
+We can add:
+
+* Graph embeddings for structural anomaly detection
+* Real-time reinforcement feedback loops
+* Multi-agent LLM debate for perspective diversity
+* Synthetic “counterfactual simulation” capability
+* Strategic forecasting module
+
+---
+
+# ⚖ Important Insight
+
+The system’s power comes from:
+
+> Selective ingestion + cross-domain correlation + structured compression
+
+Not from LLM size.
+
+The LLM becomes:
+
+* A perspective synthesizer
+* A causal narrator
+* A hypothesis generator
+
+---
+
+If you’d like next, I can:
+
+* Design the full event-to-ontology data schema
+* Write a real-time stream filtering engine
+* Show how to compute cross-domain correlations live
+* Or build a “World Attention Index” model
+
+Which direction do you want to solidify first?
+
+/**
+ * Cypher Query Panel v3 - Fixed ID Conflicts
+ * 
+ * All IDs prefixed with 'cypher-' to avoid conflicts with main tab system
+ */
+
+(function() {
+    'use strict';
+
+    window.CypherQuery = {
+        panelOpen: false,
+        mode: 'builder',
+        schema: null,
+        schemaLoaded: false,
+        queryHistory: [],
+        savedQueries: [],
+        maxHistory: 50,
+        currentResults: null,
+        timeField: 'auto',
+        
+        // Builder state
+        builder: {
+            nodeLabel: '',
+            nodeFilters: [],
+            dateEnabled: false,
+            dateFrom: '',
+            dateTo: '',
+            datePreset: '',
+            includeRelationships: false,
+            relationshipType: '',
+            relationshipDirection: 'any',
+            relationshipDepth: 1,
+            targetNodeLabel: '',
+            targetFilters: [],
+            returnType: 'nodes',
+            orderBy: '',
+            orderDirection: 'DESC',
+            limit: 100
+        },
+        
+        // Layout state
+        layout: {
+            mode: 'force',
+            groupBy: 'type',
+            timelineProperty: 'created_at',
+            physicsEnabled: true,
+            stabilized: false
+        },
+        
+        // Operators
+        operators: [
+            { value: '=', label: 'equals' },
+            { value: '<>', label: 'not equals' },
+            { value: 'CONTAINS', label: 'contains' },
+            { value: 'STARTS WITH', label: 'starts with' },
+            { value: 'ENDS WITH', label: 'ends with' },
+            { value: '>', label: 'greater than' },
+            { value: '<', label: 'less than' },
+            { value: '>=', label: 'greater or equal' },
+            { value: '<=', label: 'less or equal' },
+            { value: 'IS NOT NULL', label: 'exists' },
+            { value: 'IS NULL', label: 'not exists' },
+            { value: '=~', label: 'regex' }
+        ],
+        
+        // Date presets
+        datePresets: [
+            { value: 'today', label: 'Today' },
+            { value: 'yesterday', label: 'Yesterday' },
+            { value: 'last7', label: 'Last 7 days' },
+            { value: 'last30', label: 'Last 30 days' },
+            { value: 'thisWeek', label: 'This week' },
+            { value: 'lastWeek', label: 'Last week' },
+            { value: 'thisMonth', label: 'This month' },
+            { value: 'lastMonth', label: 'Last month' },
+            { value: 'custom', label: 'Custom range' }
+        ],
+        
+        // Templates
+        templates: [
+            { name: "All Nodes", query: "MATCH (n) RETURN n LIMIT 100" },
+            { name: "Recent Activity", query: "MATCH (n) WHERE n.created_at IS NOT NULL RETURN n ORDER BY n.created_at DESC LIMIT 100" },
+            { name: "Hub Nodes", query: "MATCH (n) WITH n, size((n)--()) as deg WHERE deg > 3 RETURN n, deg ORDER BY deg DESC LIMIT 50" },
+            { name: "Orphans", query: "MATCH (n) WHERE NOT (n)--() RETURN n LIMIT 100" },
+            { name: "Full Subgraph", query: "MATCH (n)-[r]-(m) RETURN n, r, m LIMIT 200" }
+        ],
+        
+        /**
+         * Initialize
+         */
+        init: function() {
+            this.loadSavedQueries();
+            this.loadHistory();
+            this.createUI();
+            this.setupEventListeners();
+            console.log('CypherQuery v3 initialized');
+        },
+        
+        /**
+         * Create UI
+         */
+        createUI: function() {
+            if (document.getElementById('cypher-panel')) return;
+            
+            const panel = document.createElement('div');
+            panel.id = 'cypher-panel';
+            panel.className = 'cypher-panel';
+            panel.innerHTML = `
+                <div class="cypher-header">
+                    <div class="cypher-title">
+                        Query Builder
+                    </div>
+                    <div class="cypher-header-btns">
+                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">Load Schema</button>
+                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">Stats</button>
+                        <button id="cypher-btn-close" class="hdr-btn" title="Close">✕</button>
+                    </div>
+                </div>
+                
+                <!-- Tabs -->
+                <div class="cypher-tabs">
+                    <button class="cypher-tab-btn active" data-cypher-tab="builder" Build</button>
+                    <button class="cypher-tab-btn" data-cypher-tab="layout">Layout</button>
+                    <button class="cypher-tab-btn" data-cypher-tab="editor">Raw</button>
+                </div>
+                
+                <div class="cypher-body">
+                    <!-- Builder Tab -->
+                    <div id="cypher-tab-builder" class="cypher-tab-content active">
+                        ${this.renderBuilderTab()}
+                    </div>
+                    
+                    <!-- Layout Tab -->
+                    <div id="cypher-tab-layout" class="cypher-tab-content">
+                        ${this.renderLayoutTab()}
+                    </div>
+                    
+                    <!-- Editor Tab -->
+                    <div id="cypher-tab-editor" class="cypher-tab-content">
+                        ${this.renderEditorTab()}
+                    </div>
+                    
+                    <!-- Query Preview -->
+                    <div class="query-preview-box">
+                        <div class="preview-hdr">
+                            <span>Generated Query</span>
+                            <button id="cypher-btn-copy" class="tiny-btn" title="Copy">📋</button>
+                        </div>
+                        <pre id="cypher-query-preview"></pre>
+                    </div>
+                    
+                    <!-- Execute -->
+                    <div class="execute-section">
+                        <div class="exec-options">
+                            <label><input type="checkbox" id="cypher-opt-replace" checked> Replace</label>
+                            <label><input type="checkbox" id="cypher-opt-fit"> Fit view</label>
+                            <label><input type="checkbox" id="cypher-opt-apply-layout" checked> Apply layout</label>
+                        </div>
+                        <button id="cypher-btn-execute" class="btn-execute">▶ Execute</button>
+                    </div>
+                    
+                    <!-- Results -->
+                    <div id="cypher-results-box" class="results-box" style="display:none">
+                        <div class="results-hdr">
+                            <span>Results</span>
+                            <button id="cypher-btn-clear-results" class="tiny-btn">✕</button>
+                        </div>
+                        <div id="cypher-results-content"></div>
+                    </div>
+                    
+                    <!-- Collapsibles -->
+                    <details class="detail-section">
+                        <summary>Templates</summary>
+                        <div id="cypher-templates-container"></div>
+                    </details>
+                    <details class="detail-section">
+                        <summary>History</summary>
+                        <div id="cypher-history-container"></div>
+                    </details>
+                    <details class="detail-section">
+                        <summary>Saved</summary>
+                        <div id="cypher-saved-container"></div>
+                    </details>
+                </div>
+                
+                <div id="cypher-loading-overlay" class="loading-overlay">
+                    <div class="spinner"></div>
+                    <div id="cypher-loading-text">Loading...</div>
+                </div>
+            `;
+            
+            document.body.appendChild(panel);
+            // this.createToggleButton();
+            this.populateTemplates();
+            this.renderHistory();
+            this.renderSaved();
+            this.loadSchema();
+            this.updatePreview();
+        },
+        
+        /**
+         * Render builder tab
+         */
+        renderBuilderTab: function() {
+            return `
+                <!-- Node Selection -->
+                <div class="section-box">
+                    <div class="section-title">Source Nodes</div>
+                    <div class="section-body">
+                        <div class="field">
+                            <label>Label</label>
+                            <select id="cypher-node-label" class="field-select">
+                                <option value="">Any</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Filters -->
+                        <div class="filters-area">
+                            <div class="filters-hdr">
+                                <span>Filters</span>
+                                <button id="cypher-btn-add-filter" class="btn-add">+ Add</button>
+                            </div>
+                            <div id="cypher-node-filters"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Date Range -->
+                 <div class="section-box">
+                    <div class="section-title">
+                        <label class="section-toggle">
+                            <input type="checkbox" id="cypher-date-enabled">
+                            <span Date Range</span>
+                        </label>
+                    </div>
+                    <div id="cypher-date-content" class="section-body collapsed">
+                        <div class="field">
+                            <label>Time Source</label>
+                            <select id="cypher-time-field" class="field-select">
+                                <option value="auto">Auto (fallback chain)</option>
+                                <option value="id">Node ID timestamp</option>
+                                <option value="created_at">created_at property</option>
+                                <option value="updated_at">updated_at property</option>
+                                <option value="timestamp">timestamp property</option>
+                            </select>
+                            <small style="color: #888; font-size: 11px; margin-top: 4px; display: block;">
+                                Auto tries: ID → created_at → updated_at → timestamp
+                            </small>
+                        </div>
+                        <div class="field">
+                            <label>Preset</label>
+                            <select id="cypher-date-preset" class="field-select">
+                                <option value="">Select...</option>
+                                ${this.datePresets.map(p => `<option value="${p.value}">${p.label}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div id="cypher-custom-date-range" class="date-range-fields" style="display:none">
+                            <div class="field half">
+                                <label>From</label>
+                                <input type="datetime-local" id="cypher-date-from" class="field-input">
+                            </div>
+                            <div class="field half">
+                                <label>To</label>
+                                <input type="datetime-local" id="cypher-date-to" class="field-input">
+                            </div>
+                        </div>
+                        <div class="date-quick-btns">
+                            <button class="date-quick" data-hours="1">1h</button>
+                            <button class="date-quick" data-hours="6">6h</button>
+                            <button class="date-quick" data-hours="24">24h</button>
+                            <button class="date-quick" data-hours="72">3d</button>
+                            <button class="date-quick" data-hours="168">7d</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Relationships -->
+                <div class="section-box">
+                    <div class="section-title">
+                        <label class="section-toggle">
+                            <input type="checkbox" id="cypher-rels-enabled">
+                            <span>Relationships</span>
+                        </label>
+                    </div>
+                    <div id="cypher-rels-content" class="section-body collapsed">
+                        <div class="field">
+                            <label>Type</label>
+                            <select id="cypher-rel-type" class="field-select">
+                                <option value="">Any</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Direction</label>
+                            <div class="dir-buttons">
+                                <button class="dir-btn" data-dir="outgoing">→</button>
+                                <button class="dir-btn active" data-dir="any">↔</button>
+                                <button class="dir-btn" data-dir="incoming">←</button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>Depth: <span id="cypher-depth-val">1</span></label>
+                            <input type="range" id="cypher-rel-depth" min="1" max="5" value="1">
+                        </div>
+                        <div class="subsection">
+                            <div class="subsection-title">Target Node</div>
+                            <div class="field">
+                                <label>Label</label>
+                                <select id="cypher-target-label" class="field-select">
+                                    <option value="">Any</option>
+                                </select>
+                            </div>
+                            <div class="filters-area">
+                                <div class="filters-hdr">
+                                    <span>Target Filters</span>
+                                    <button id="cypher-btn-add-target-filter" class="btn-add">+ Add</button>
+                                </div>
+                                <div id="cypher-target-filters"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Return Options -->
+                <div class="section-box">
+                    <div class="section-title">Return</div>
+                    <div class="section-body">
+                        <div class="field">
+                            <label>Return</label>
+                            <select id="cypher-return-type" class="field-select">
+                                <option value="nodes">Nodes only</option>
+                                <option value="subgraph">Nodes & Relationships</option>
+                                <option value="paths">Full Paths</option>
+                                <option value="count">Count only</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Order by</label>
+                            <div class="order-row">
+                                <select id="cypher-order-by" class="field-select">
+                                    <option value="">None</option>
+                                    <option value="n.created_at">Created date</option>
+                                    <option value="n.id">ID</option>
+                                    <option value="n.text">Text</option>
+                                    <option value="n.name">Name</option>
+                                    <option value="degree">Connections</option>
+                                </select>
+                                <button id="cypher-order-dir-btn" class="order-dir">↓</button>
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>Limit</label>
+                            <input type="number" id="cypher-limit-input" class="field-input" value="100" min="1" max="5000">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <button class="quick-btn" data-quick="all">All</button>
+                    <button class="quick-btn" data-quick="recent">Recent</button>
+                    <button class="quick-btn" data-quick="hubs">Hubs</button>
+                    <button class="quick-btn" data-quick="orphans">Orphans</button>
+                    <button class="quick-btn" data-quick="last-hour">Last Hour</button>
+                </div>
+            `;
+        },
+        
+        /**
+         * Render layout tab
+         */
+        renderLayoutTab: function() {
+            return `
+                <div class="section-box">
+                    <div class="section-title">Layout Mode</div>
+                    <div class="section-body">
+                        <div class="layout-modes">
+                            <button class="layout-btn active" data-layout="force" title="Force-directed">
+                                <span class="layout-icon">🕸️</span>
+                                <span>Force</span>
+                            </button>
+                            <button class="layout-btn" data-layout="timeline" title="Timeline by date">
+                                <span class="layout-icon">📅</span>
+                                <span>Timeline</span>
+                            </button>
+                            <button class="layout-btn" data-layout="hierarchical" title="Hierarchical tree">
+                                <span class="layout-icon">🌳</span>
+                                <span>Tree</span>
+                            </button>
+                            <button class="layout-btn" data-layout="grouped" title="Group by property">
+                                <span class="layout-icon">📦</span>
+                                <span>Grouped</span>
+                            </button>
+                            <button class="layout-btn" data-layout="circular" title="Circular layout">
+                                <span class="layout-icon">⭕</span>
+                                <span>Circular</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Timeline Options -->
+                <div id="cypher-timeline-options" class="section-box" style="display:none">
+                    <div class="section-title">Timeline Settings</div>
+                    <div class="section-body">
+                        <div class="field">
+                            <label>Time Property</label>
+                            <select id="cypher-timeline-property" class="field-select">
+                                <option value="created_at">created_at</option>
+                                <option value="updated_at">updated_at</option>
+                                <option value="timestamp">timestamp</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Orientation</label>
+                            <div class="toggle-btns">
+                                <button class="toggle-btn active" data-orient="horizontal">Horizontal</button>
+                                <button class="toggle-btn" data-orient="vertical">Vertical</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Grouped Options -->
+                <div id="cypher-grouped-options" class="section-box" style="display:none">
+                    <div class="section-title">Grouping Settings</div>
+                    <div class="section-body">
+                        <div class="field">
+                            <label>Group By</label>
+                            <select id="cypher-group-by" class="field-select">
+                                <option value="type">Type</option>
+                                <option value="label">Label</option>
+                                <option value="session_id">Session</option>
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>
+                                <input type="checkbox" id="cypher-show-group-boxes" checked>
+                                Show group boundaries
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Physics Settings -->
+                <div class="section-box">
+                    <div class="section-title">Physics & Performance</div>
+                    <div class="section-body">
+                        <div class="field">
+                            <label>
+                                <input type="checkbox" id="cypher-physics-enabled" checked>
+                                Enable physics simulation
+                            </label>
+                        </div>
+                        <div class="field">
+                            <label>Gravity: <span id="cypher-gravity-val">-2000</span></label>
+                            <input type="range" id="cypher-gravity-slider" min="-8000" max="-500" value="-2000">
+                        </div>
+                        <div class="field">
+                            <label>Spring Length: <span id="cypher-spring-val">200</span></label>
+                            <input type="range" id="cypher-spring-slider" min="50" max="500" value="200">
+                        </div>
+                        <div class="field">
+                            <label>Damping: <span id="cypher-damping-val">0.9</span></label>
+                            <input type="range" id="cypher-damping-slider" min="0.1" max="1" step="0.05" value="0.9">
+                        </div>
+                        <div class="physics-actions">
+                            <button id="cypher-btn-stabilize" class="action-btn">Quick Stabilize</button>
+                            <button id="cypher-btn-freeze" class="action-btn">Freeze</button>
+                            <button id="cypher-btn-unfreeze" class="action-btn">Unfreeze</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Layout Actions -->
+                <div class="section-box">
+                    <div class="section-title">Actions</div>
+                    <div class="section-body">
+                        <div class="layout-actions">
+                            <button id="cypher-btn-apply-layout" class="action-btn primary">Apply Layout</button>
+                            <button id="cypher-btn-fit-view" class="action-btn">Fit to View</button>
+                            <button id="cypher-btn-reset-layout" class="action-btn">Reset</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        },
+        
+        /**
+         * Render editor tab
+         */
+        renderEditorTab: function() {
+            return `
+                <div class="editor-box">
+                    <div class="editor-toolbar">
+                        <button id="cypher-btn-format" class="tool-btn" title="Format">⚙️</button>
+                        <button id="cypher-btn-clear-editor" class="tool-btn" title="Clear">🗑️</button>
+                        <button id="cypher-btn-save-query" class="tool-btn" title="Save">💾</button>
+                    </div>
+                    <div class="editor-wrapper">
+                        <div id="cypher-line-nums" class="line-nums"></div>
+                        <textarea id="cypher-editor" placeholder="MATCH (n) RETURN n LIMIT 100" spellcheck="false"></textarea>
+                    </div>
+                </div>
+            `;
+        },
+        
+        /**
+         * Create toggle button
+         */
+        createToggleButton: function() {
+            let container = document.getElementById('cypher-toggle-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'cypher-toggle-container';
+                document.body.appendChild(container);
+            }
+            
+            if (!document.getElementById('cypher-toggle-btn')) {
+                const btn = document.createElement('button');
+                btn.id = 'cypher-toggle-btn';
+                btn.innerHTML = '⚡';
+                btn.title = 'Query Builder (Ctrl+Shift+C)';
+                btn.onclick = () => this.togglePanel();
+                container.appendChild(btn);
+            }
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+                    e.preventDefault();
+                    this.togglePanel();
+                }
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && this.panelOpen) {
+                    e.preventDefault();
+                    this.executeQuery();
+                }
+            });
+        },
+        
+        /**
+         * Setup event listeners
+         */
+        setupEventListeners: function() {
+            const self = this;
+            
+            // Header buttons
+            this.on('cypher-btn-close', 'click', () => self.togglePanel());
+            this.on('cypher-btn-refresh-schema', 'click', () => self.loadSchema(true));
+            this.on('cypher-btn-stats', 'click', () => self.showStats());
+            
+            // Tabs
+            document.querySelectorAll('.cypher-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.switchTab(btn.dataset.cypherTab));
+            });
+            
+            // Builder controls
+            this.on('cypher-node-label', 'change', () => self.updateBuilder());
+            this.on('cypher-btn-add-filter', 'click', () => self.addFilter('cypher-node-filters'));
+            this.on('cypher-btn-add-target-filter', 'click', () => self.addFilter('cypher-target-filters'));
+            
+            // Date controls
+            // this.on('cypher-date-enabled', 'change', (e) => {
+            //     document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
+            //     self.builder.dateEnabled = e.target.checked;
+            //     self.updateBuilder();
+            // });
+            // this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
+            
+            // document.querySelectorAll('.date-quick').forEach(btn => {
+            //     btn.addEventListener('click', () => {
+            //         const hours = parseInt(btn.dataset.hours);
+            //         self.setDateRange(hours);
+            //     });
+            // });
+            // Date controls
+            this.on('cypher-date-enabled', 'change', (e) => {
+                document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.dateEnabled = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
+            this.on('cypher-time-field', 'change', (e) => {  // NEW
+                self.builder.timeField = e.target.value;
+                self.updateBuilder();
+            });
+            // Relationships
+            this.on('cypher-rels-enabled', 'change', (e) => {
+                document.getElementById('cypher-rels-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.includeRelationships = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-rel-type', 'change', () => self.updateBuilder());
+            this.on('cypher-rel-depth', 'input', (e) => {
+                document.getElementById('cypher-depth-val').textContent = e.target.value;
+                self.builder.relationshipDepth = parseInt(e.target.value);
+                self.updateBuilder();
+            });
+            this.on('cypher-target-label', 'change', () => self.updateBuilder());
+            
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    self.builder.relationshipDirection = btn.dataset.dir;
+                    self.updateBuilder();
+                });
+            });
+            
+            // Return options
+            this.on('cypher-return-type', 'change', () => self.updateBuilder());
+            this.on('cypher-order-by', 'change', () => self.updateBuilder());
+            this.on('cypher-order-dir-btn', 'click', () => {
+                self.builder.orderDirection = self.builder.orderDirection === 'DESC' ? 'ASC' : 'DESC';
+                document.getElementById('cypher-order-dir-btn').textContent = self.builder.orderDirection === 'DESC' ? '↓' : '↑';
+                self.updateBuilder();
+            });
+            this.on('cypher-limit-input', 'change', () => self.updateBuilder());
+            
+            // Quick actions
+            document.querySelectorAll('.quick-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.applyQuickAction(btn.dataset.quick));
+            });
+            
+            // Layout controls
+            document.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.setLayoutMode(btn.dataset.layout));
+            });
+            
+            // Physics controls
+            this.on('cypher-physics-enabled', 'change', (e) => self.togglePhysics(e.target.checked));
+            this.on('cypher-gravity-slider', 'input', (e) => self.updatePhysics('gravity', e.target.value));
+            this.on('cypher-spring-slider', 'input', (e) => self.updatePhysics('spring', e.target.value));
+            this.on('cypher-damping-slider', 'input', (e) => self.updatePhysics('damping', e.target.value));
+            
+            this.on('cypher-btn-stabilize', 'click', () => self.quickStabilize());
+            this.on('cypher-btn-freeze', 'click', () => self.freezeGraph());
+            this.on('cypher-btn-unfreeze', 'click', () => self.unfreezeGraph());
+            this.on('cypher-btn-apply-layout', 'click', () => self.applyCurrentLayout());
+            this.on('cypher-btn-fit-view', 'click', () => self.fitView());
+            this.on('cypher-btn-reset-layout', 'click', () => self.resetLayout());
+            
+            // Group/timeline options
+            this.on('cypher-group-by', 'change', () => { self.layout.groupBy = document.getElementById('cypher-group-by').value; });
+            this.on('cypher-timeline-property', 'change', () => { self.layout.timelineProperty = document.getElementById('cypher-timeline-property').value; });
+            
+            // Execute
+            this.on('cypher-btn-execute', 'click', () => self.executeQuery());
+            this.on('cypher-btn-copy', 'click', () => self.copyQuery());
+            this.on('cypher-btn-clear-results', 'click', () => { document.getElementById('cypher-results-box').style.display = 'none'; });
+            
+            // Editor
+            const editor = document.getElementById('cypher-editor');
+            if (editor) {
+                editor.addEventListener('input', () => {
+                    self.updateLineNumbers();
+                    self.updatePreview();
+                });
+                editor.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const start = editor.selectionStart;
+                        editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(editor.selectionEnd);
+                        editor.selectionStart = editor.selectionEnd = start + 2;
+                    }
+                });
+            }
+            
+            this.on('cypher-btn-format', 'click', () => self.formatQuery());
+            this.on('cypher-btn-clear-editor', 'click', () => {
+                document.getElementById('cypher-editor').value = '';
+                self.updateLineNumbers();
+            });
+            this.on('cypher-btn-save-query', 'click', () => self.saveCurrentQuery());
+            
+            this.updateLineNumbers();
+        },
+        
+        /**
+         * Helper to add listener
+         */
+        on: function(id, event, handler) {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener(event, handler);
+        },
+        
+        /**
+         * Toggle panel
+         */
+        togglePanel: function() {
+            this.panelOpen = !this.panelOpen;
+            document.getElementById('cypher-panel').classList.toggle('open', this.panelOpen);
+            if (this.panelOpen && !this.schemaLoaded) this.loadSchema();
+        },
+        
+        /**
+         * Switch tab
+         */
+        switchTab: function(tab) {
+            document.querySelectorAll('.cypher-tab-btn').forEach(b => b.classList.toggle('active', b.dataset.cypherTab === tab));
+            document.querySelectorAll('.cypher-tab-content').forEach(c => c.classList.toggle('active', c.id === `cypher-tab-${tab}`));
+            this.mode = tab === 'editor' ? 'editor' : 'builder';
+            
+            if (tab === 'editor') {
+                document.getElementById('cypher-editor').value = this.buildQuery();
+                this.updateLineNumbers();
+            }
+        },
+        
+        /**
+         * Load schema
+         */
+        loadSchema: async function(force = false) {
+            if (this.schemaLoaded && !force) return;
+            
+            this.showLoading(true, 'Loading schema...');
+            
+            try {
+                const response = await fetch('http://llm.int:8888/api/graph/schema');
+                const data = await response.json();
+                
+                this.schema = data;
+                this.schemaLoaded = true;
+                
+                this.populateSelect('cypher-node-label', data.labels || []);
+                this.populateSelect('cypher-target-label', data.labels || []);
+                this.populateSelect('cypher-rel-type', data.relationship_types || []);
+                
+                // Add properties to group-by
+                const groupBy = document.getElementById('cypher-group-by');
+                if (groupBy && data.property_keys) {
+                    data.property_keys.slice(0, 15).forEach(p => {
+                        if (!['type', 'label', 'session_id'].includes(p)) {
+                            const opt = document.createElement('option');
+                            opt.value = p;
+                            opt.textContent = p;
+                            groupBy.appendChild(opt);
+                        }
+                    });
+                }
+                
+                this.notify('Schema loaded', 'success');
+            } catch (e) {
+                console.error('Schema load error:', e);
+                this.notify('Failed to load schema', 'error');
+            } finally {
+                this.showLoading(false);
+            }
+        },
+        
+        /**
+         * Populate select
+         */
+        populateSelect: function(id, options) {
+            const select = document.getElementById(id);
+            if (!select) return;
+            const current = select.value;
+            select.innerHTML = '<option value="">Any</option>';
+            options.forEach(opt => {
+                const o = document.createElement('option');
+                o.value = opt;
+                o.textContent = opt;
+                select.appendChild(o);
+            });
+            if (current) select.value = current;
+        },
+        
+        /**
+         * Add filter row
+         */
+        addFilter: function(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+            
+            const props = this.schema?.property_keys || ['id', 'text', 'name', 'type', 'created_at'];
+            const id = `cypher-filter-${Date.now()}`;
+            
+            const row = document.createElement('div');
+            row.className = 'filter-row';
+            row.id = id;
+            row.innerHTML = `
+                <select class="filter-prop">
+                    <option value="">Property</option>
+                    ${props.map(p => `<option value="${p}">${p}</option>`).join('')}
+                </select>
+                <select class="filter-op">
+                    ${this.operators.map(o => `<option value="${o.value}">${o.label}</option>`).join('')}
+                </select>
+                <input type="text" class="filter-val" placeholder="Value">
+                <button class="filter-del" data-id="${id}">✕</button>
+            `;
+            
+            container.appendChild(row);
+            
+            row.querySelector('.filter-del').addEventListener('click', () => {
+                row.remove();
+                this.updateBuilder();
+            });
+            
+            row.querySelectorAll('select, input').forEach(el => {
+                el.addEventListener('change', () => this.updateBuilder());
+                el.addEventListener('input', () => this.updateBuilder());
+            });
+        },
+        
+        /**
+         * Get filters from container
+         */
+        getFilters: function(containerId) {
+            const container = document.getElementById(containerId);
+            if (!container) return [];
+            
+            const filters = [];
+            container.querySelectorAll('.filter-row').forEach(row => {
+                const prop = row.querySelector('.filter-prop')?.value;
+                const op = row.querySelector('.filter-op')?.value;
+                const val = row.querySelector('.filter-val')?.value;
+                if (prop && op) filters.push({ prop, op, val });
+            });
+            return filters;
+        },
+        
+        /**
+         * Apply date preset
+         */
+        applyDatePreset: function(preset) {
+            const customRange = document.getElementById('cypher-custom-date-range');
+            
+            if (preset === 'custom') {
+                customRange.style.display = 'flex';
+                this.builder.datePreset = 'custom';
+                return;
+            }
+            
+            customRange.style.display = 'none';
+            this.builder.datePreset = preset;
+            
+            const now = new Date();
+            let from, to = now;
+            
+            switch (preset) {
+                case 'today':
+                    from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    break;
+                case 'yesterday':
+                    from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                    to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                    break;
+                case 'last7':
+                    from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'last30':
+                    from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'thisWeek':
+                    const dayOfWeek = now.getDay();
+                    from = new Date(now.getTime() - dayOfWeek * 24 * 60 * 60 * 1000);
+                    from.setHours(0, 0, 0, 0);
+                    break;
+                case 'lastWeek':
+                    const currentDay = now.getDay();
+                    const startOfThisWeek = new Date(now.getTime() - currentDay * 24 * 60 * 60 * 1000);
+                    from = new Date(startOfThisWeek.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    to = startOfThisWeek;
+                    break;
+                case 'thisMonth':
+                    from = new Date(now.getFullYear(), now.getMonth(), 1);
+                    break;
+                case 'lastMonth':
+                    from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                    to = new Date(now.getFullYear(), now.getMonth(), 1);
+                    break;
+                default:
+                    return;
+            }
+            
+            this.builder.dateFrom = from.toISOString();
+            this.builder.dateTo = to.toISOString();
+            this.updateBuilder();
+        },
+        
+        /**
+         * Set date range by hours
+         */
+        setDateRange: function(hours) {
+            const now = new Date();
+            const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
+            
+            this.builder.dateEnabled = true;
+            document.getElementById('cypher-date-enabled').checked = true;
+            document.getElementById('cypher-date-content').classList.remove('collapsed');
+            
+            this.builder.dateFrom = from.toISOString();
+            this.builder.dateTo = now.toISOString();
+            document.getElementById('cypher-date-preset').value = '';
+            document.getElementById('cypher-custom-date-range').style.display = 'flex';
+            document.getElementById('cypher-date-from').value = from.toISOString().slice(0, 16);
+            document.getElementById('cypher-date-to').value = now.toISOString().slice(0, 16);
+            
+            this.updateBuilder();
+        },
+        
+        /**
+         * Apply quick action
+         */
+        applyQuickAction: function(action) {
+            this.resetBuilder();
+            
+            switch (action) {
+                case 'all':
+                    break;
+                case 'recent':
+                    this.builder.orderBy = 'n.created_at';
+                    this.builder.orderDirection = 'DESC';
+                    break;
+                case 'hubs':
+                    this.builder.orderBy = 'degree';
+                    this.builder.orderDirection = 'DESC';
+                    this.builder.limit = 50;
+                    break;
+                case 'orphans':
+                    this.builder.returnType = 'orphans';
+                    break;
+                case 'last-hour':
+                    this.setDateRange(1);
+                    return;
+            }
+            
+            this.syncUIFromBuilder();
+            this.updateBuilder();
+        },
+        
+        /**
+         * Reset builder
+         */
+        resetBuilder: function() {
+            this.builder = {
+                nodeLabel: '',
+                nodeFilters: [],
+                dateEnabled: false,
+                dateFrom: '',
+                dateTo: '',
+                datePreset: '',
+                includeRelationships: false,
+                relationshipType: '',
+                relationshipDirection: 'any',
+                relationshipDepth: 1,
+                targetNodeLabel: '',
+                targetFilters: [],
+                returnType: 'nodes',
+                orderBy: '',
+                orderDirection: 'DESC',
+                limit: 100
+            };
+        },
+        
+        /**
+         * Sync UI from builder state
+         */
+        syncUIFromBuilder: function() {
+            const b = this.builder;
+            document.getElementById('cypher-node-label').value = b.nodeLabel;
+            document.getElementById('cypher-date-enabled').checked = b.dateEnabled;
+            document.getElementById('cypher-date-content').classList.toggle('collapsed', !b.dateEnabled);
+            document.getElementById('cypher-rels-enabled').checked = b.includeRelationships;
+            document.getElementById('cypher-rels-content').classList.toggle('collapsed', !b.includeRelationships);
+            document.getElementById('cypher-rel-type').value = b.relationshipType;
+            document.getElementById('cypher-rel-depth').value = b.relationshipDepth;
+            document.getElementById('cypher-depth-val').textContent = b.relationshipDepth;
+            document.getElementById('cypher-target-label').value = b.targetNodeLabel;
+            document.getElementById('cypher-return-type').value = b.returnType === 'orphans' ? 'nodes' : b.returnType;
+            document.getElementById('cypher-order-by').value = b.orderBy;
+            document.getElementById('cypher-order-dir-btn').textContent = b.orderDirection === 'DESC' ? '↓' : '↑';
+            document.getElementById('cypher-limit-input').value = b.limit;
+            
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.dir === b.relationshipDirection);
+            });
+            
+            document.getElementById('cypher-node-filters').innerHTML = '';
+            document.getElementById('cypher-target-filters').innerHTML = '';
+            // Sync time field selector
+            const timeField = document.getElementById('cypher-time-field');
+            if (timeField) timeField.value = b.timeField;
+        },
+        
+        /**
+         * Update builder state from UI
+         */
+        updateBuilder: function() {
+            const b = this.builder;
+            b.nodeLabel = document.getElementById('cypher-node-label')?.value || '';
+            b.nodeFilters = this.getFilters('cypher-node-filters');
+            b.relationshipType = document.getElementById('cypher-rel-type')?.value || '';
+            b.targetNodeLabel = document.getElementById('cypher-target-label')?.value || '';
+            b.targetFilters = this.getFilters('cypher-target-filters');
+            b.returnType = document.getElementById('cypher-return-type')?.value || 'nodes';
+            b.orderBy = document.getElementById('cypher-order-by')?.value || '';
+            b.limit = parseInt(document.getElementById('cypher-limit-input')?.value) || 100;
+            
+            // Custom date range
+            if (b.datePreset === 'custom') {
+                const fromEl = document.getElementById('cypher-date-from');
+                const toEl = document.getElementById('cypher-date-to');
+                if (fromEl?.value) b.dateFrom = new Date(fromEl.value).toISOString();
+                if (toEl?.value) b.dateTo = new Date(toEl.value).toISOString();
+            }
+            const timeFieldEl = document.getElementById('cypher-time-field');
+            if (timeFieldEl) b.timeField = timeFieldEl.value;
+            this.updatePreview();
+        },
+        
+        /**
+         * Build Cypher query
+         */
+        buildQuery: function() {
+            if (this.mode === 'editor') {
+                return document.getElementById('cypher-editor')?.value || '';
+            }
+            
+            const b = this.builder;
+            let query = '';
+            
+            // Orphan nodes
+            if (b.returnType === 'orphans') {
+                query = `MATCH (n${b.nodeLabel ? ':' + this.esc(b.nodeLabel) : ''})\nWHERE NOT (n)--()`;
+                query += this.buildFilters(b.nodeFilters, 'n', true);
+                if (b.dateEnabled && b.dateFrom) {
+                    query += `\n  AND n.created_at >= datetime('${b.dateFrom}')`;
+                    if (b.dateTo) query += `\n  AND n.created_at <= datetime('${b.dateTo}')`;
+                }
+                query += `\nRETURN n\nLIMIT ${b.limit}`;
+                return query;
+            }
+            
+            // Regular query
+            let matchClause = 'MATCH ';
+            const nodePattern = `(n${b.nodeLabel ? ':' + this.esc(b.nodeLabel) : ''})`;
+            
+            if (b.includeRelationships) {
+                const relType = b.relationshipType ? ':' + this.esc(b.relationshipType) : '';
+                const depth = b.relationshipDepth > 1 ? `*1..${b.relationshipDepth}` : '';
+                const targetLabel = b.targetNodeLabel ? ':' + this.esc(b.targetNodeLabel) : '';
+                
+                let relPattern;
+                if (b.relationshipDirection === 'outgoing') {
+                    relPattern = `-[r${relType}${depth}]->(m${targetLabel})`;
+                } else if (b.relationshipDirection === 'incoming') {
+                    relPattern = `<-[r${relType}${depth}]-(m${targetLabel})`;
+                } else {
+                    relPattern = `-[r${relType}${depth}]-(m${targetLabel})`;
+                }
+                
+                if (b.returnType === 'paths') {
+                    matchClause += `path = ${nodePattern}${relPattern}`;
+                } else {
+                    matchClause += `${nodePattern}${relPattern}`;
+                }
+            } else {
+                matchClause += nodePattern;
+            }
+            
+            query = matchClause;
+            
+            // WHERE clause
+            let hasWhere = false;
+            
+            if (b.nodeFilters.length > 0) {
+                query += this.buildFilters(b.nodeFilters, 'n', hasWhere);
+                hasWhere = true;
+            }
+            
+            // Date filter
+            if (b.dateEnabled && b.dateFrom) {
+                const timeSource = b.timeField === 'auto' ? 'created_at/updated_at/timestamp' : b.timeField;
+                query += (hasWhere ? '\n  AND ' : '\nWHERE ') + `n.${timeSource} >= datetime('${b.dateFrom}')`;
+                hasWhere = true;
+                if (b.dateTo) {
+                    query += `\n  AND n.${timeSource} <= datetime('${b.dateTo}')`;
+                }
+            }
+            
+            if (b.includeRelationships && b.targetFilters.length > 0) {
+                query += this.buildFilters(b.targetFilters, 'm', hasWhere);
+                hasWhere = true;
+            }
+            
+            // Degree ordering
+            if (b.orderBy === 'degree') {
+                query += '\nWITH n, size((n)--()) as degree';
+                if (b.includeRelationships) {
+                    query = query.replace('WITH n,', 'WITH n, r, m,');
+                }
+            }
+            
+            // RETURN
+            query += '\nRETURN ';
+            switch (b.returnType) {
+                case 'count':
+                    query += 'count(n) as count';
+                    break;
+                case 'paths':
+                    query += 'path';
+                    break;
+                case 'subgraph':
+                    query += b.includeRelationships ? 'n, r, m' : 'n';
+                    break;
+                default:
+                    if (b.orderBy === 'degree') {
+                        query += 'n, degree';
+                    } else {
+                        query += b.includeRelationships ? 'n, r, m' : 'n';
+                    }
+            }
+            
+            // ORDER BY
+            if (b.orderBy && b.returnType !== 'count') {
+                query += `\nORDER BY ${b.orderBy} ${b.orderDirection}`;
+            }
+            
+            // LIMIT
+            if (b.returnType !== 'count') {
+                query += `\nLIMIT ${b.limit}`;
+            }
+            
+            return query;
+        },
+        
+        /**
+         * Build filter clause
+         */
+        buildFilters: function(filters, nodeVar, hasWhere) {
+            if (filters.length === 0) return '';
+            
+            const conditions = filters.map(f => {
+                const prop = `${nodeVar}.${f.prop}`;
+                
+                if (f.op === 'IS NOT NULL') return `${prop} IS NOT NULL`;
+                if (f.op === 'IS NULL') return `${prop} IS NULL`;
+                if (f.op === 'CONTAINS') return `toLower(${prop}) CONTAINS toLower('${this.escStr(f.val)}')`;
+                if (f.op === 'STARTS WITH' || f.op === 'ENDS WITH') return `${prop} ${f.op} '${this.escStr(f.val)}'`;
+                if (f.op === '=~') return `${prop} =~ '${this.escStr(f.val)}'`;
+                
+                const num = parseFloat(f.val);
+                const val = !isNaN(num) && isFinite(num) ? num : `'${this.escStr(f.val)}'`;
+                return `${prop} ${f.op} ${val}`;
+            });
+            
+            return (hasWhere ? '\n  AND ' : '\nWHERE ') + conditions.join('\n  AND ');
+        },
+        
+        esc: function(label) {
+            return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(label) ? label : '`' + label.replace(/`/g, '``') + '`';
+        },
+        
+        escStr: function(s) {
+            return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        },
+        
+        /**
+         * Update preview
+         */
+        updatePreview: function() {
+            const preview = document.getElementById('cypher-query-preview');
+            if (preview) preview.textContent = this.buildQuery();
+        },
+        
+        /**
+         * Copy query
+         */
+        copyQuery: function() {
+            navigator.clipboard.writeText(this.buildQuery()).then(() => this.notify('Copied!', 'success'));
+        },
+        
+        /**
+         * Execute query
+         */
+ 
+ 
+        executeQuery: async function() {
+            const query = this.buildQuery();
+            if (!query.trim()) {
+                this.notify('No query', 'warning');
+                return;
+            }
+            
+            const replace = document.getElementById('cypher-opt-replace')?.checked ?? true;
+            const fit = document.getElementById('cypher-opt-fit')?.checked ?? false;
+            const applyLayout = document.getElementById('cypher-opt-apply-layout')?.checked ?? true;
+            
+            this.showLoading(true, 'Executing...');
+            
+            try {
+                // Build API URL based on whether we're using date range
+                let apiUrl = 'http://llm.int:8888/api/graph/cypher';
+                let requestBody = { 
+                    query, 
+                    parameters: {}, 
+                    limit: this.builder.limit 
+                };
+                
+                // If using date range via builder, use the timerange endpoint instead
+                if (this.builder.dateEnabled && this.builder.dateFrom && this.mode === 'builder') {
+                    const params = new URLSearchParams();
+                    if (this.builder.dateFrom) params.append('after', this.builder.dateFrom);
+                    if (this.builder.dateTo) params.append('before', this.builder.dateTo);
+                    if (this.builder.nodeLabel) params.append('node_types', this.builder.nodeLabel);
+                    params.append('time_field', this.builder.timeField);
+                    params.append('max_nodes', this.builder.limit);
+                    
+                    apiUrl = `http://llm.int:8888/api/graph/timerange?${params.toString()}`;
+                    
+                    const response = await fetch(apiUrl);
+                    const data = await response.json();
+                    
+                    // FIX: Check response status first
+                    if (!response.ok) {
+                        throw new Error(data.detail || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // FIX: Validate data structure before accessing
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Invalid response format from server');
+                    }
+                    
+                    this.currentResults = data;
+                    this.showResults(data);
+                    
+                    // FIX: Safe access to nested properties
+                    const nodeCount = data.nodes?.length || 0;
+                    const edgeCount = data.edges?.length || 0;
+                    
+                    if (nodeCount > 0 || edgeCount > 0) {
+                        this.updateGraph(data, replace, fit, applyLayout);
+                        const timeFieldLabel = this.builder.timeField === 'auto' ? 'auto (fallback chain)' : this.builder.timeField;
+                        this.notify(`${nodeCount} nodes, ${edgeCount} edges (using ${timeFieldLabel})`, 'success');
+                    } else {
+                        this.notify('No results', 'info');
+                    }
+                } else {
+                    // Use regular cypher endpoint
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    // FIX: Check response status
+                    if (!response.ok) {
+                        throw new Error(data.detail || data.error || `HTTP error! status: ${response.status}`);
+                    }
+                    
+                    // FIX: Validate data structure
+                    if (!data || typeof data !== 'object') {
+                        throw new Error('Invalid response format from server');
+                    }
+                    
+                    if (!data.success) {
+                        this.showError(data.error || 'Query failed');
+                        return;
+                    }
+                    
+                    this.currentResults = data;
+                    this.addToHistory(query, data);
+                    this.showResults(data);
+                    
+                    // FIX: Safe access to nested properties
+                    const nodeCount = data.nodes?.length || 0;
+                    const edgeCount = data.edges?.length || 0;
+                    
+                    if (nodeCount > 0 || edgeCount > 0) {
+                        this.updateGraph(data, replace, fit, applyLayout);
+                        this.notify(`${nodeCount} nodes, ${edgeCount} edges`, 'success');
+                    } else {
+                        this.notify('No results', 'info');
+                    }
+                }
+                
+            } catch (e) {
+                console.error('Query error:', e);
+                this.showError(e.message || 'Query execution failed');
+            } finally {
+                this.showLoading(false);
+            }
+        },
+
+
+        /**
+         * ALSO UPDATE showResults to handle missing data gracefully
+         */
+        showResults: function(data) {
+            const box = document.getElementById('cypher-results-box');
+            const content = document.getElementById('cypher-results-content');
+            if (!box || !content) return;
+            
+            box.style.display = 'block';
+            
+            // FIX: Safe access with defaults
+            const stats = data.stats || {};
+            const nodeCount = stats.node_count || data.nodes?.length || 0;
+            const edgeCount = stats.edge_count || data.edges?.length || 0;
+            const resultCount = stats.result_count || 0;
+            
+            content.innerHTML = `
+                <div class="results-stats">
+                    <span><b>${nodeCount}</b> nodes</span>
+                    <span><b>${edgeCount}</b> edges</span>
+                    <span><b>${resultCount}</b> records</span>
+                </div>
+            `;
+        },
+        /**
+         * Update graph with results - NOW USES UNIFIED LOADER
+         */
+        updateGraph: function(data, replace, fit, applyLayout) {
+            if (!window.network || !window.GraphDataLoader) {
+                console.error('Network or GraphDataLoader not available');
+                return;
+            }
+            
+            try {
+                window.GraphDataLoader.loadData(
+                    data.nodes || [],
+                    data.edges || [],
+                    {
+                        replace: replace,
+                        fit: fit,
+                        animate: (data.nodes?.length || 0) < 200,
+                        applyLayout: applyLayout,
+                        applyTheme: false,        // Don't re-apply theme for queries
+                        updateGraphAddon: true
+                    }
+                );
+            } catch (e) {
+                console.error('Graph update error:', e);
+            }
+        },
+        // ==========================================
+        // LAYOUT FUNCTIONS
+        // ==========================================
+        
+        /**
+         * Set layout mode
+         */
+        setLayoutMode: function(mode) {
+            this.layout.mode = mode;
+            
+            document.querySelectorAll('.layout-btn').forEach(b => b.classList.toggle('active', b.dataset.layout === mode));
+            
+            // Show/hide options
+            document.getElementById('cypher-timeline-options').style.display = mode === 'timeline' ? 'block' : 'none';
+            document.getElementById('cypher-grouped-options').style.display = mode === 'grouped' ? 'block' : 'none';
+        },
+        
+        /**
+         * Apply current layout
+         */
+        applyCurrentLayout: function() {
+            if (!window.network) return;
+            
+            const nodes = network.body.data.nodes.get();
+            if (nodes.length === 0) return;
+            
+            // First, configure optimized physics
+            this.configureOptimizedPhysics();
+            
+            switch (this.layout.mode) {
+                case 'timeline':
+                    this.applyTimelineLayout(nodes);
+                    break;
+                case 'hierarchical':
+                    this.applyHierarchicalLayout();
+                    break;
+                case 'grouped':
+                    this.applyGroupedLayout(nodes);
+                    break;
+                case 'circular':
+                    this.applyCircularLayout(nodes);
+                    break;
+                default:
+                    this.applyForceLayout();
+            }
+        },
+        
+        /**
+         * Configure optimized physics for faster settling
+         */
+        configureOptimizedPhysics: function() {
+            if (!window.network) return;
+            
+            network.setOptions({
+                physics: {
+                    enabled: true,
+                    solver: 'barnesHut',
+                    barnesHut: {
+                        gravitationalConstant: -2000,
+                        centralGravity: 0.3,
+                        springLength: 150,
+                        springConstant: 0.04,
+                        damping: 0.9,
+                        avoidOverlap: 0.5
+                    },
+                    stabilization: {
+                        enabled: true,
+                        iterations: 100,
+                        updateInterval: 25,
+                        fit: true
+                    },
+                    maxVelocity: 50,
+                    minVelocity: 0.75,
+                    timestep: 0.5
+                }
+            });
+        },
+/**
+ * Extract timestamp from node based on timeField setting
+ */
+getNodeTimestamp: function(node) {
+    const props = node.properties || {};
+    
+    // Helper to extract timestamp from ID (MongoDB ObjectId style)
+    const getTimestampFromId = (id) => {
+        if (!id || typeof id !== 'string') return null;
+        // MongoDB ObjectId: first 8 hex chars are timestamp
+        if (id.length >= 8) {
+            const timestamp = parseInt(id.substring(0, 8), 16);
+            if (!isNaN(timestamp) && timestamp > 0) {
+                return timestamp * 1000; // Convert to milliseconds
+            }
+        }
+        return null;
+    };
+    
+    switch (this.builder.timeField) {
+        case 'id':
+            return getTimestampFromId(node.id);
+        case 'created_at':
+            return props.created_at ? new Date(props.created_at).getTime() : null;
+        case 'updated_at':
+            return props.updated_at ? new Date(props.updated_at).getTime() : null;
+        case 'timestamp':
+            return props.timestamp ? new Date(props.timestamp).getTime() : null;
+        case 'auto':
+        default:
+            // Fallback chain: id -> created_at -> updated_at -> timestamp
+            return getTimestampFromId(node.id) ||
+                   (props.created_at ? new Date(props.created_at).getTime() : null) ||
+                   (props.updated_at ? new Date(props.updated_at).getTime() : null) ||
+                   (props.timestamp ? new Date(props.timestamp).getTime() : null);
+    }
+},
+
+/**
+ * Apply collision-free positioning using force-based separation
+ */
+applyCollisionAvoidance: function(positions, nodeRadius = 30, iterations = 50) {
+    const nodes = positions.slice();
+    const repulsionStrength = nodeRadius * 2;
+    
+    for (let iter = 0; iter < iterations; iter++) {
+        const forces = nodes.map(() => ({ x: 0, y: 0 }));
+        
+        // Calculate repulsion forces between all pairs
+        for (let i = 0; i < nodes.length; i++) {
+            for (let j = i + 1; j < nodes.length; j++) {
+                const dx = nodes[j].x - nodes[i].x;
+                const dy = nodes[j].y - nodes[i].y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist < repulsionStrength && dist > 0) {
+                    const force = (repulsionStrength - dist) / dist;
+                    const fx = (dx / dist) * force;
+                    const fy = (dy / dist) * force;
+                    
+                    forces[i].x -= fx;
+                    forces[i].y -= fy;
+                    forces[j].x += fx;
+                    forces[j].y += fy;
+                }
+            }
+        }
+        
+        // Apply forces with damping
+        const damping = 0.5;
+        for (let i = 0; i < nodes.length; i++) {
+            nodes[i].x += forces[i].x * damping;
+            nodes[i].y += forces[i].y * damping;
+        }
+    }
+    
+    return nodes;
+},    
+/**
+ * Apply timeline layout - FIXED VERSION
+ */
+applyTimelineLayout: function(nodes) {
+    if (!window.network) return;
+    
+    // Get timestamps for all nodes using the same logic as time range search
+    const nodesWithTime = nodes.map(node => ({
+        node: node,
+        timestamp: this.getNodeTimestamp(node)
+    })).filter(item => item.timestamp !== null);
+    
+    const noTimeNodes = nodes.filter(node => this.getNodeTimestamp(node) === null);
+    
+    if (nodesWithTime.length === 0) {
+        this.notify(`No nodes with ${this.builder.timeField} timestamp found`, 'warning');
+        return;
+    }
+    
+    // Sort by timestamp
+    nodesWithTime.sort((a, b) => a.timestamp - b.timestamp);
+    
+    const container = document.getElementById('graph');
+    const width = container?.clientWidth || 1200;
+    const height = container?.clientHeight || 600;
+    
+    // Disable physics for positioning
+    network.setOptions({ physics: { enabled: false } });
+    
+    // Calculate positions with proper spacing
+    const xSpacing = Math.max(100, width / (nodesWithTime.length + 1));
+    const yRange = height * 0.6; // Use 60% of height for main timeline
+    
+    let positions = nodesWithTime.map((item, i) => ({
+        id: item.node.id,
+        x: xSpacing * (i + 1) - width / 2,
+        y: 0 // Start on centerline
+    }));
+    
+    // Apply collision avoidance
+    positions = this.applyCollisionAvoidance(positions, 25, 40);
+    
+    // Constrain Y positions to reasonable range
+    positions = positions.map(pos => ({
+        ...pos,
+        y: Math.max(-yRange/2, Math.min(yRange/2, pos.y))
+    }));
+    
+    network.body.data.nodes.update(positions);
+    
+    // Place nodes without timestamps at the bottom
+    if (noTimeNodes.length > 0) {
+        const bottomY = height / 2 - 150;
+        const bottomSpacing = Math.min(100, width / (noTimeNodes.length + 1));
+        
+        let bottomPositions = noTimeNodes.map((node, i) => ({
+            id: node.id,
+            x: bottomSpacing * (i + 1) - width / 2,
+            y: bottomY
+        }));
+        
+        bottomPositions = this.applyCollisionAvoidance(bottomPositions, 25, 30);
+        network.body.data.nodes.update(bottomPositions);
+    }
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    const timeFieldLabel = this.builder.timeField === 'auto' ? 'auto (fallback chain)' : this.builder.timeField;
+    this.notify(`Timeline layout applied (${nodesWithTime.length} nodes, using ${timeFieldLabel})`, 'success');
+},
+
+/**
+ * Apply hierarchical layout - IMPROVED VERSION
+ */
+applyHierarchicalLayout: function() {
+    if (!window.network) return;
+    
+    const nodeCount = network.body.data.nodes.length;
+    const baseSpacing = 150;
+    const scaledSpacing = Math.max(baseSpacing, Math.min(300, baseSpacing + nodeCount * 2));
+    
+    network.setOptions({
+        layout: {
+            hierarchical: {
+                enabled: true,
+                direction: 'UD',
+                sortMethod: 'directed',
+                nodeSpacing: scaledSpacing,
+                levelSeparation: scaledSpacing,
+                treeSpacing: Math.max(200, scaledSpacing * 1.2),
+                blockShifting: true,
+                edgeMinimization: true,
+                parentCentralization: true
+            }
+        },
+        physics: {
+            enabled: false
+        }
+    });
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+        
+        // Get current positions after hierarchical layout
+        const nodes = network.body.data.nodes.get();
+        let positions = nodes.map(n => {
+            const pos = network.getPositions([n.id])[n.id];
+            return { id: n.id, x: pos.x, y: pos.y };
+        });
+        
+        // Apply gentle collision avoidance to clean up any overlaps
+        positions = this.applyCollisionAvoidance(positions, 30, 20);
+        
+        // Update with collision-free positions
+        network.body.data.nodes.update(positions);
+        
+        setTimeout(() => {
+            network.setOptions({ layout: { hierarchical: { enabled: false } } });
+            network.fit({ animation: { duration: 300 } });
+        }, 200);
+    }, 500);
+    
+    this.notify('Hierarchical layout applied', 'success');
+},
+
+/**
+ * Apply grouped layout - IMPROVED VERSION
+ */
+applyGroupedLayout: function(nodes) {
+    if (!window.network) return;
+    
+    const groupProp = this.layout.groupBy;
+    
+    // Group nodes
+    const groups = {};
+    nodes.forEach(n => {
+        const props = n.properties || {};
+        const groupVal = props[groupProp] || n[groupProp] || n.type || 'Other';
+        if (!groups[groupVal]) groups[groupVal] = [];
+        groups[groupVal].push(n);
+    });
+    
+    const groupNames = Object.keys(groups);
+    const container = document.getElementById('graph');
+    const width = container?.clientWidth || 1200;
+    const height = container?.clientHeight || 600;
+    
+    // Disable physics for positioning
+    network.setOptions({ physics: { enabled: false } });
+    
+    const groupCount = groupNames.length;
+    const cols = Math.ceil(Math.sqrt(groupCount));
+    const rows = Math.ceil(groupCount / cols);
+    const cellWidth = width / cols;
+    const cellHeight = height / rows;
+    
+    let allPositions = [];
+    
+    groupNames.forEach((groupName, gi) => {
+        const col = gi % cols;
+        const row = Math.floor(gi / cols);
+        const centerX = col * cellWidth + cellWidth / 2 - width / 2;
+        const centerY = row * cellHeight + cellHeight / 2 - height / 2;
+        
+        const groupNodes = groups[groupName];
+        const nodeCount = groupNodes.length;
+        
+        // Calculate appropriate radius based on node count
+        const baseRadius = Math.min(cellWidth, cellHeight) * 0.3;
+        const layers = Math.ceil(Math.sqrt(nodeCount / 8)); // Nodes per layer
+        
+        let groupPositions = [];
+        
+        if (nodeCount === 1) {
+            // Single node at center
+            groupPositions.push({
+                id: groupNodes[0].id,
+                x: centerX,
+                y: centerY
+            });
+        } else if (nodeCount <= 8) {
+            // Single circle
+            groupNodes.forEach((node, ni) => {
+                const angle = (2 * Math.PI * ni) / nodeCount;
+                groupPositions.push({
+                    id: node.id,
+                    x: centerX + baseRadius * Math.cos(angle),
+                    y: centerY + baseRadius * Math.sin(angle)
+                });
+            });
+        } else {
+            // Multiple concentric circles
+            let nodeIndex = 0;
+            for (let layer = 0; layer < layers && nodeIndex < nodeCount; layer++) {
+                const layerRadius = baseRadius * (0.3 + 0.7 * (layer / Math.max(1, layers - 1)));
+                const nodesInLayer = Math.min(
+                    nodeCount - nodeIndex,
+                    Math.ceil(8 * (layer + 1))
+                );
+                
+                for (let i = 0; i < nodesInLayer && nodeIndex < nodeCount; i++, nodeIndex++) {
+                    const angle = (2 * Math.PI * i) / nodesInLayer;
+                    groupPositions.push({
+                        id: groupNodes[nodeIndex].id,
+                        x: centerX + layerRadius * Math.cos(angle),
+                        y: centerY + layerRadius * Math.sin(angle)
+                    });
+                }
+            }
+        }
+        
+        // Apply collision avoidance within the group
+        if (groupPositions.length > 1) {
+            groupPositions = this.applyCollisionAvoidance(groupPositions, 25, 30);
+            
+            // Re-center the group after collision avoidance
+            const avgX = groupPositions.reduce((sum, p) => sum + p.x, 0) / groupPositions.length;
+            const avgY = groupPositions.reduce((sum, p) => sum + p.y, 0) / groupPositions.length;
+            groupPositions = groupPositions.map(p => ({
+                id: p.id,
+                x: p.x - avgX + centerX,
+                y: p.y - avgY + centerY
+            }));
+        }
+        
+        allPositions.push(...groupPositions);
+    });
+    
+    network.body.data.nodes.update(allPositions);
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    this.notify(`Grouped by ${groupProp} (${groupCount} groups)`, 'success');
+},
+
+/**
+ * Apply circular layout - IMPROVED VERSION
+ */
+applyCircularLayout: function(nodes) {
+    if (!window.network) return;
+    
+    network.setOptions({ physics: { enabled: false } });
+    
+    const count = nodes.length;
+    // Calculate radius to ensure adequate spacing
+    const minSpacing = 80; // Minimum distance between adjacent nodes
+    const radius = Math.max(300, (count * minSpacing) / (2 * Math.PI));
+    
+    let positions = nodes.map((node, i) => {
+        const angle = (2 * Math.PI * i) / count - Math.PI / 2; // Start at top
+        return {
+            id: node.id,
+            x: radius * Math.cos(angle),
+            y: radius * Math.sin(angle)
+        };
+    });
+    
+    // Apply light collision avoidance (shouldn't be needed but just in case)
+    if (count > 3) {
+        positions = this.applyCollisionAvoidance(positions, 25, 15);
+    }
+    
+    network.body.data.nodes.update(positions);
+    
+    setTimeout(() => {
+        network.fit({ animation: { duration: 500 } });
+    }, 100);
+    
+    this.notify('Circular layout applied', 'success');
+},
+        /**
+         * Apply force-directed layout
+         */
+        applyForceLayout: function() {
+            this.configureOptimizedPhysics();
+            network.setOptions({ layout: { hierarchical: { enabled: false } } });
+            this.quickStabilize();
+        },
+        
+        /**
+         * Quick stabilize
+         */
+        quickStabilize: function() {
+            if (!window.network) return;
+            
+            this.notify('Stabilizing...', 'info');
+            
+            network.setOptions({
+                physics: {
+                    enabled: true,
+                    stabilization: {
+                        enabled: true,
+                        iterations: 150,
+                        updateInterval: 10
+                    }
+                }
+            });
+            
+            network.stabilize(150);
+            
+            network.once('stabilizationIterationsDone', () => {
+                network.setOptions({
+                    physics: {
+                        stabilization: { enabled: false },
+                        barnesHut: {
+                            gravitationalConstant: -1500,
+                            springConstant: 0.02,
+                            damping: 0.95
+                        }
+                    }
+                });
+                this.notify('Stabilized', 'success');
+            });
+        },
+        
+        /**
+         * Toggle physics
+         */
+        togglePhysics: function(enabled) {
+            if (!window.network) return;
+            network.setOptions({ physics: { enabled } });
+            this.layout.physicsEnabled = enabled;
+        },
+        
+        /**
+         * Update physics settings
+         */
+        updatePhysics: function(param, value) {
+            if (!window.network) return;
+            
+            const val = parseFloat(value);
+            
+            switch (param) {
+                case 'gravity':
+                    document.getElementById('cypher-gravity-val').textContent = val;
+                    network.setOptions({ physics: { barnesHut: { gravitationalConstant: val } } });
+                    break;
+                case 'spring':
+                    document.getElementById('cypher-spring-val').textContent = val;
+                    network.setOptions({ physics: { barnesHut: { springLength: val } } });
+                    break;
+                case 'damping':
+                    document.getElementById('cypher-damping-val').textContent = val.toFixed(2);
+                    network.setOptions({ physics: { barnesHut: { damping: val } } });
+                    break;
+            }
+        },
+        
+        /**
+         * Freeze graph
+         */
+        freezeGraph: function() {
+            if (!window.network) return;
+            network.setOptions({ physics: { enabled: false } });
+            document.getElementById('cypher-physics-enabled').checked = false;
+            this.notify('Graph frozen', 'info');
+        },
+        
+        /**
+         * Unfreeze graph
+         */
+        unfreezeGraph: function() {
+            if (!window.network) return;
+            network.setOptions({ physics: { enabled: true } });
+            document.getElementById('cypher-physics-enabled').checked = true;
+            this.notify('Graph unfrozen', 'info');
+        },
+        
+        /**
+         * Fit view
+         */
+        fitView: function() {
+            if (window.network) {
+                network.fit({ animation: { duration: 500, easingFunction: 'easeInOutQuad' } });
+            }
+        },
+        
+        /**
+         * Reset layout
+         */
+        resetLayout: function() {
+            this.setLayoutMode('force');
+            this.applyForceLayout();
+        },
+        
+        // ==========================================
+        // UI HELPERS
+        // ==========================================
+        
+        // showResults: function(data) {
+        //     const box = document.getElementById('cypher-results-box');
+        //     const content = document.getElementById('cypher-results-content');
+        //     if (!box || !content) return;
+            
+        //     box.style.display = 'block';
+        //     content.innerHTML = `
+        //         <div class="results-stats">
+        //             <span><b>${data.stats.node_count || 0}</b> nodes</span>
+        //             <span><b>${data.stats.edge_count || 0}</b> edges</span>
+        //             <span><b>${data.stats.result_count || 0}</b> records</span>
+        //         </div>
+        //     `;
+        // },
+        
+        showStats: async function() {
+            this.showLoading(true, 'Loading stats...');
+            try {
+                const response = await fetch('http://llm.int:8888/api/graph/stats');
+                const data = await response.json();
+                
+                const box = document.getElementById('cypher-results-box');
+                const content = document.getElementById('cypher-results-content');
+                box.style.display = 'block';
+                
+                content.innerHTML = `
+                    <div class="stats-display">
+                        <div class="stat-big"><b>${(data.total_nodes || 0).toLocaleString()}</b> nodes</div>
+                        <div class="stat-big"><b>${(data.total_relationships || 0).toLocaleString()}</b> relationships</div>
+                        <div class="stat-section">
+                            <b>By Type:</b>
+                            ${Object.entries(data.nodes_by_type || {}).slice(0, 8).map(([t, c]) => 
+                                `<div class="stat-row"><span>${t}</span><span>${c}</span></div>`
+                            ).join('')}
+                        </div>
+                    </div>
+                `;
+            } catch (e) {
+                this.notify('Failed to load stats', 'error');
+            } finally {
+                this.showLoading(false);
+            }
+        },
+        
+        formatQuery: function() {
+            const editor = document.getElementById('cypher-editor');
+            if (!editor) return;
+            
+            let q = editor.value;
+            ['MATCH', 'WHERE', 'RETURN', 'ORDER BY', 'LIMIT', 'WITH', 'AND', 'OR'].forEach(kw => {
+                q = q.replace(new RegExp(`\\s+${kw}\\s+`, 'gi'), `\n${kw} `);
+            });
+            editor.value = q.trim();
+            this.updateLineNumbers();
+        },
+        
+        updateLineNumbers: function() {
+            const editor = document.getElementById('cypher-editor');
+            const nums = document.getElementById('cypher-line-nums');
+            if (!editor || !nums) return;
+            
+            const lines = editor.value.split('\n');
+            nums.innerHTML = lines.map((_, i) => `<div>${i + 1}</div>`).join('');
+        },
+        
+        // History & Saved
+        addToHistory: function(query, result) {
+            this.queryHistory.unshift({
+                query,
+                timestamp: new Date().toISOString(),
+                nodes: result?.stats?.node_count || 0,
+                edges: result?.stats?.edge_count || 0
+            });
+            if (this.queryHistory.length > this.maxHistory) {
+                this.queryHistory = this.queryHistory.slice(0, this.maxHistory);
+            }
+            try { localStorage.setItem('cypher_history', JSON.stringify(this.queryHistory)); } catch(e) {}
+            this.renderHistory();
+        },
+        
+        renderHistory: function() {
+            const container = document.getElementById('cypher-history-container');
+            if (!container) return;
+            
+            if (this.queryHistory.length === 0) {
+                container.innerHTML = '<div class="empty-msg">No history</div>';
+                return;
+            }
+            
+            container.innerHTML = this.queryHistory.slice(0, 10).map((h, i) => `
+                <div class="list-item" data-idx="${i}">
+                    <div class="item-text">${this.escHtml(h.query.substring(0, 40))}...</div>
+                    <div class="item-meta">${h.nodes}n / ${h.edges}e</div>
+                </div>
+            `).join('');
+            
+            container.querySelectorAll('.list-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const h = this.queryHistory[parseInt(item.dataset.idx)];
+                    if (h) {
+                        this.switchTab('editor');
+                        document.getElementById('cypher-editor').value = h.query;
+                        this.updateLineNumbers();
+                        this.updatePreview();
+                    }
+                });
+            });
+        },
+        
+        populateTemplates: function() {
+            const container = document.getElementById('cypher-templates-container');
+            if (!container) return;
+            
+            container.innerHTML = this.templates.map((t, i) => `
+                <div class="list-item" data-idx="${i}">
+                    <div class="item-text">${t.name}</div>
+                </div>
+            `).join('');
+            
+            container.querySelectorAll('.list-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const t = this.templates[parseInt(item.dataset.idx)];
+                    if (t) {
+                        this.switchTab('editor');
+                        document.getElementById('cypher-editor').value = t.query;
+                        this.updateLineNumbers();
+                        this.updatePreview();
+                    }
+                });
+            });
+        },
+        
+        saveCurrentQuery: function() {
+            const query = this.buildQuery();
+            if (!query) return;
+            const name = prompt('Save as:');
+            if (!name) return;
+            this.savedQueries.push({ name, query });
+            try { localStorage.setItem('cypher_saved', JSON.stringify(this.savedQueries)); } catch(e) {}
+            this.renderSaved();
+            this.notify('Saved', 'success');
+        },
+        
+        renderSaved: function() {
+            const container = document.getElementById('cypher-saved-container');
+            if (!container) return;
+            
+            if (this.savedQueries.length === 0) {
+                container.innerHTML = '<div class="empty-msg">No saved queries</div>';
+                return;
+            }
+            
+            container.innerHTML = this.savedQueries.map((s, i) => `
+                <div class="list-item saved-item">
+                    <div class="item-text" data-idx="${i}">${this.escHtml(s.name)}</div>
+                    <button class="del-btn" data-idx="${i}">✕</button>
+                </div>
+            `).join('');
+            
+            container.querySelectorAll('.item-text').forEach(el => {
+                el.addEventListener('click', () => {
+                    const s = this.savedQueries[parseInt(el.dataset.idx)];
+                    if (s) {
+                        this.switchTab('editor');
+                        document.getElementById('cypher-editor').value = s.query;
+                        this.updateLineNumbers();
+                        this.updatePreview();
+                    }
+                });
+            });
+            
+            container.querySelectorAll('.del-btn').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.savedQueries.splice(parseInt(el.dataset.idx), 1);
+                    try { localStorage.setItem('cypher_saved', JSON.stringify(this.savedQueries)); } catch(e) {}
+                    this.renderSaved();
+                });
+            });
+        },
+        
+        loadSavedQueries: function() {
+            try { this.savedQueries = JSON.parse(localStorage.getItem('cypher_saved') || '[]'); } catch(e) {}
+        },
+        
+        loadHistory: function() {
+            try { this.queryHistory = JSON.parse(localStorage.getItem('cypher_history') || '[]'); } catch(e) {}
+        },
+        
+        showLoading: function(show, text = 'Loading...') {
+            const el = document.getElementById('cypher-loading-overlay');
+            if (el) {
+                el.style.display = show ? 'flex' : 'none';
+                document.getElementById('cypher-loading-text').textContent = text;
+            }
+        },
+        
+        showError: function(msg) {
+            this.notify(msg, 'error');
+        },
+        
+        notify: function(msg, type = 'info') {
+            document.querySelectorAll('.cypher-toast').forEach(t => t.remove());
+            
+            const toast = document.createElement('div');
+            toast.className = `cypher-toast ${type}`;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.classList.add('show'), 10);
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        },
+        
+        escHtml: function(s) {
+            const div = document.createElement('div');
+            div.textContent = String(s);
+            return div.innerHTML;
+        },
+        
+        /**
+         * Get the full query panel HTML (for inline display)
+         */
+        getQueryPanelHTML: function() {
+            return `
+                <div class="cypher-panel-inline">
+                    <style>
+                        /* Inline panel styles - scoped */
+                        .cypher-panel-inline .cypher-tabs {
+                            display: flex;
+                            gap: 8px;
+                            margin-bottom: 16px;
+                            border-bottom: 2px solid var(--border);
+                            padding-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-btn {
+                            padding: 8px 16px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px 6px 0 0;
+                            cursor: pointer;
+                            font-size: 13px;
+                            font-weight: 600;
+                            transition: all 0.2s;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-content {
+                            display: none;
+                        }
+                        
+                        .cypher-panel-inline .cypher-tab-content.active {
+                            display: block;
+                        }
+                        
+                        .cypher-panel-inline .section-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 12px;
+                        }
+                        
+                        .cypher-panel-inline .section-title {
+                            padding: 12px;
+                            font-size: 13px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                            border-bottom: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline .section-body {
+                            padding: 12px;
+                        }
+                        
+                        .cypher-panel-inline .section-body.collapsed {
+                            display: none;
+                        }
+                        
+                        .cypher-panel-inline .section-toggle {
+                            display: flex;
+                            align-items: center;
+                            gap: 8px;
+                            cursor: pointer;
+                        }
+                        
+                        .cypher-panel-inline .field {
+                            margin-bottom: 12px;
+                        }
+                        
+                        .cypher-panel-inline .field label {
+                            display: block;
+                            color: var(--text-secondary);
+                            font-size: 11px;
+                            font-weight: 600;
+                            margin-bottom: 4px;
+                        }
+                        
+                        .cypher-panel-inline .field-select,
+                        .cypher-panel-inline .field-input {
+                            width: 100%;
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            font-size: 13px;
+                        }
+                        
+                        .cypher-panel-inline .filters-area {
+                            margin-top: 12px;
+                        }
+                        
+                        .cypher-panel-inline .filters-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            margin-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .btn-add {
+                            padding: 4px 12px;
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .filter-row {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr 1fr auto;
+                            gap: 6px;
+                            margin-bottom: 6px;
+                        }
+                        
+                        .cypher-panel-inline .filter-prop,
+                        .cypher-panel-inline .filter-op,
+                        .cypher-panel-inline .filter-val {
+                            padding: 6px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline .filter-del {
+                            padding: 4px 8px;
+                            background: var(--error, #ef4444);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        }
+                        
+                        .cypher-panel-inline .dir-buttons {
+                            display: flex;
+                            gap: 4px;
+                        }
+                        
+                        .cypher-panel-inline .dir-btn {
+                            flex: 1;
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        }
+                        
+                        .cypher-panel-inline .dir-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .order-row {
+                            display: flex;
+                            gap: 6px;
+                        }
+                        
+                        .cypher-panel-inline .order-dir {
+                            padding: 8px 16px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 16px;
+                        }
+                        
+                        .cypher-panel-inline .quick-actions {
+                            display: grid;
+                            grid-template-columns: repeat(3, 1fr);
+                            gap: 6px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .quick-btn {
+                            padding: 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 11px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .quick-btn:hover {
+                            background: var(--hover);
+                        }
+                        
+                        .cypher-panel-inline .query-preview-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .preview-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                        }
+                        
+                        .cypher-panel-inline .tiny-btn {
+                            padding: 4px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline #cypher-query-preview {
+                            padding: 12px;
+                            margin: 0;
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            color: var(--text);
+                            white-space: pre-wrap;
+                            word-wrap: break-word;
+                            max-height: 200px;
+                            overflow-y: auto;
+                        }
+                        
+                        .cypher-panel-inline .execute-section {
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .exec-options {
+                            display: flex;
+                            gap: 12px;
+                            margin-bottom: 8px;
+                            font-size: 12px;
+                            color: var(--text);
+                        }
+                        
+                        .cypher-panel-inline .exec-options label {
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                        }
+                        
+                        .cypher-panel-inline .exec-options input[type="checkbox"] {
+                            accent-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .btn-execute {
+                            width: 100%;
+                            padding: 12px;
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border: none;
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 14px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .btn-execute:hover {
+                            background: var(--hover);
+                        }
+                        
+                        .cypher-panel-inline .results-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .results-hdr {
+                            display: flex;
+                            justify-content: space-between;
+                            align-items: center;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                        }
+                        
+                        .cypher-panel-inline #cypher-results-content {
+                            padding: 12px;
+                        }
+                        
+                        .cypher-panel-inline .results-stats {
+                            display: flex;
+                            gap: 16px;
+                            font-size: 12px;
+                            color: var(--text);
+                        }
+                        
+                        .cypher-panel-inline .date-range-fields {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr;
+                            gap: 8px;
+                        }
+                        
+                        .cypher-panel-inline .date-quick-btns {
+                            display: flex;
+                            gap: 4px;
+                            margin-top: 8px;
+                        }
+                        
+                        .cypher-panel-inline .date-quick {
+                            flex: 1;
+                            padding: 6px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 11px;
+                        }
+                        
+                        .cypher-panel-inline .subsection {
+                            margin-top: 12px;
+                            padding: 12px;
+                            background: var(--bg-surface);
+                            border-radius: 6px;
+                        }
+                        
+                        .cypher-panel-inline .subsection-title {
+                            font-size: 11px;
+                            font-weight: 600;
+                            color: var(--text-secondary);
+                            margin-bottom: 8px;
+                        }
+                        
+                        .cypher-panel-inline .layout-modes {
+                            display: grid;
+                            grid-template-columns: repeat(5, 1fr);
+                            gap: 8px;
+                        }
+                        
+                        .cypher-panel-inline .layout-btn {
+                            display: flex;
+                            flex-direction: column;
+                            align-items: center;
+                            gap: 4px;
+                            padding: 12px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 10px;
+                        }
+                        
+                        .cypher-panel-inline .layout-btn.active {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .layout-icon {
+                            font-size: 20px;
+                        }
+                        
+                        .cypher-panel-inline .action-btn {
+                            padding: 10px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 6px;
+                            cursor: pointer;
+                            font-size: 12px;
+                            font-weight: 600;
+                        }
+                        
+                        .cypher-panel-inline .action-btn.primary {
+                            background: var(--accent);
+                            color: var(--text-inverted);
+                            border-color: var(--accent);
+                        }
+                        
+                        .cypher-panel-inline .physics-actions,
+                        .cypher-panel-inline .layout-actions {
+                            display: grid;
+                            grid-template-columns: 1fr 1fr 1fr;
+                            gap: 6px;
+                        }
+                        
+                        .cypher-panel-inline .editor-box {
+                            background: var(--bg);
+                            border: 1px solid var(--border-subtle);
+                            border-radius: 8px;
+                            margin-bottom: 16px;
+                        }
+                        
+                        .cypher-panel-inline .editor-toolbar {
+                            display: flex;
+                            gap: 8px;
+                            padding: 8px 12px;
+                            border-bottom: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline .tool-btn {
+                            padding: 4px 12px;
+                            background: var(--bg-surface);
+                            color: var(--text);
+                            border: 1px solid var(--border);
+                            border-radius: 4px;
+                            cursor: pointer;
+                            font-size: 12px;
+                        }
+                        
+                        .cypher-panel-inline .editor-wrapper {
+                            display: flex;
+                            max-height: 300px;
+                        }
+                        
+                        .cypher-panel-inline .line-nums {
+                            padding: 12px 8px;
+                            background: var(--bg-surface);
+                            color: var(--text-secondary);
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            text-align: right;
+                            user-select: none;
+                            border-right: 1px solid var(--border-subtle);
+                        }
+                        
+                        .cypher-panel-inline #cypher-editor {
+                            flex: 1;
+                            padding: 12px;
+                            background: var(--bg);
+                            color: var(--text);
+                            border: none;
+                            font-family: 'Courier New', monospace;
+                            font-size: 11px;
+                            resize: none;
+                            outline: none;
+                        }
+                    </style>
+                    <div class="cypher-inline-header">
+                        <button id="cypher-btn-refresh-schema" class="hdr-btn" title="Refresh Schema">Refresh Schema</button>
+                        <button id="cypher-btn-stats" class="hdr-btn" title="Stats">Stats</button>
+                    </div>
+                    <!-- Tabs -->
+                    <div class="cypher-tabs">
+                        <button class="cypher-tab-btn active" data-cypher-tab="builder">Build</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="layout">Layout</button>
+                        <button class="cypher-tab-btn" data-cypher-tab="editor">Raw Query</button>
+                    </div>
+                    
+                    <!-- Builder Tab -->
+                    <div id="cypher-tab-builder" class="cypher-tab-content active">
+                        ${this.renderBuilderTab()}
+                    </div>
+                    
+                    <!-- Layout Tab -->
+                    <div id="cypher-tab-layout" class="cypher-tab-content">
+                        ${this.renderLayoutTab()}
+                    </div>
+                    
+                    <!-- Editor Tab -->
+                    <div id="cypher-tab-editor" class="cypher-tab-content">
+                        ${this.renderEditorTab()}
+                    </div>
+                    
+                    <!-- Query Preview -->
+                    <div class="query-preview-box">
+                        <div class="preview-hdr">
+                            <span>Generated Query</span>
+                            <button id="cypher-btn-copy" class="tiny-btn" title="Copy">📋</button>
+                        </div>
+                        <pre id="cypher-query-preview"></pre>
+                    </div>
+                    
+                    <!-- Execute -->
+                    <div class="execute-section">
+                        <div class="exec-options">
+                            <label><input type="checkbox" id="cypher-opt-replace" checked> Replace</label>
+                            <label><input type="checkbox" id="cypher-opt-fit"> Fit view</label>
+                            <label><input type="checkbox" id="cypher-opt-apply-layout" checked> Apply layout</label>
+                        </div>
+                        <button id="cypher-btn-execute" class="btn-execute">▶ Execute</button>
+                    </div>
+                    
+                    <!-- Results -->
+                    <div id="cypher-results-box" class="results-box" style="display:none">
+                        <div class="results-hdr">
+                            <span>Results</span>
+                            <button id="cypher-btn-clear-results" class="tiny-btn">✕</button>
+                        </div>
+                        <div id="cypher-results-content"></div>
+                    </div>
+                </div>
+            `;
+        },
+
+        /**
+        * Show query builder in GraphInfoCard
+        */
+        showInCard: function(nodeId) {
+            if (!window.GraphInfoCard) {
+                console.warn('GraphInfoCard not available');
+                return;
+            }
+            
+            // Ensure schema is loaded
+            if (!this.schemaLoaded) {
+                this.loadSchema();
+            }
+            
+            const html = this.getQueryPanelHTML();
+            
+            window.GraphInfoCard.showInlineContent(
+                'Graph Query Builder',
+                html,
+                nodeId ? `window.GraphInfoCard.expandNodeInfo('${nodeId}')` : null
+            );
+            
+            // Re-setup event listeners after rendering
+            setTimeout(() => {
+                this.setupInlineEventListeners();
+                this.updatePreview();
+            }, 100);
+        },
+
+        /**
+        * Setup event listeners for inline version
+        * (Simplified version of setupEventListeners that works in the card)
+        */
+        setupInlineEventListeners: function() {
+            const self = this;
+            this.on('cypher-btn-refresh-schema', 'click', () => self.loadSchema(true));
+            this.on('cypher-btn-stats', 'click', () => self.showStats());
+            // Tabs
+            document.querySelectorAll('.cypher-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.switchTab(btn.dataset.cypherTab));
+            });
+            
+            // Builder controls
+            this.on('cypher-node-label', 'change', () => self.updateBuilder());
+            this.on('cypher-btn-add-filter', 'click', () => self.addFilter('cypher-node-filters'));
+            this.on('cypher-btn-add-target-filter', 'click', () => self.addFilter('cypher-target-filters'));
+            
+            // Date controls
+            this.on('cypher-date-enabled', 'change', (e) => {
+                document.getElementById('cypher-date-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.dateEnabled = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-date-preset', 'change', (e) => self.applyDatePreset(e.target.value));
+            this.on('cypher-time-field', 'change', (e) => {
+                self.builder.timeField = e.target.value;
+                self.updateBuilder();
+            });
+            
+            document.querySelectorAll('.date-quick').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const hours = parseInt(btn.dataset.hours);
+                    self.setDateRange(hours);
+                });
+            });
+            
+            // Relationships
+            this.on('cypher-rels-enabled', 'change', (e) => {
+                document.getElementById('cypher-rels-content').classList.toggle('collapsed', !e.target.checked);
+                self.builder.includeRelationships = e.target.checked;
+                self.updateBuilder();
+            });
+            this.on('cypher-rel-type', 'change', () => self.updateBuilder());
+            this.on('cypher-rel-depth', 'input', (e) => {
+                document.getElementById('cypher-depth-val').textContent = e.target.value;
+                self.builder.relationshipDepth = parseInt(e.target.value);
+                self.updateBuilder();
+            });
+            this.on('cypher-target-label', 'change', () => self.updateBuilder());
+            
+            document.querySelectorAll('.dir-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.dir-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    self.builder.relationshipDirection = btn.dataset.dir;
+                    self.updateBuilder();
+                });
+            });
+            
+            // Return options
+            this.on('cypher-return-type', 'change', () => self.updateBuilder());
+            this.on('cypher-order-by', 'change', () => self.updateBuilder());
+            this.on('cypher-order-dir-btn', 'click', () => {
+                self.builder.orderDirection = self.builder.orderDirection === 'DESC' ? 'ASC' : 'DESC';
+                document.getElementById('cypher-order-dir-btn').textContent = self.builder.orderDirection === 'DESC' ? '↓' : '↑';
+                self.updateBuilder();
+            });
+            this.on('cypher-limit-input', 'change', () => self.updateBuilder());
+            
+            // Quick actions
+            document.querySelectorAll('.quick-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.applyQuickAction(btn.dataset.quick));
+            });
+            
+            // Layout controls
+            document.querySelectorAll('.layout-btn').forEach(btn => {
+                btn.addEventListener('click', () => self.setLayoutMode(btn.dataset.layout));
+            });
+            
+            // Physics controls
+            this.on('cypher-physics-enabled', 'change', (e) => self.togglePhysics(e.target.checked));
+            this.on('cypher-gravity-slider', 'input', (e) => self.updatePhysics('gravity', e.target.value));
+            this.on('cypher-spring-slider', 'input', (e) => self.updatePhysics('spring', e.target.value));
+            this.on('cypher-damping-slider', 'input', (e) => self.updatePhysics('damping', e.target.value));
+            
+            this.on('cypher-btn-stabilize', 'click', () => self.quickStabilize());
+            this.on('cypher-btn-freeze', 'click', () => self.freezeGraph());
+            this.on('cypher-btn-unfreeze', 'click', () => self.unfreezeGraph());
+            this.on('cypher-btn-apply-layout', 'click', () => self.applyCurrentLayout());
+            this.on('cypher-btn-fit-view', 'click', () => self.fitView());
+            this.on('cypher-btn-reset-layout', 'click', () => self.resetLayout());
+            
+            // Execute
+            this.on('cypher-btn-execute', 'click', () => self.executeQuery());
+            this.on('cypher-btn-copy', 'click', () => self.copyQuery());
+            this.on('cypher-btn-clear-results', 'click', () => {
+                document.getElementById('cypher-results-box').style.display = 'none';
+            });
+            
+            // Editor
+            const editor = document.getElementById('cypher-editor');
+            if (editor) {
+                editor.addEventListener('input', () => {
+                    self.updateLineNumbers();
+                    self.updatePreview();
+                });
+            }
+            
+            this.on('cypher-btn-format', 'click', () => self.formatQuery());
+            this.on('cypher-btn-clear-editor', 'click', () => {
+                document.getElementById('cypher-editor').value = '';
+                self.updateLineNumbers();
+            });
+            this.on('cypher-btn-save-query', 'click', () => self.saveCurrentQuery());
+            
+            this.updateLineNumbers();
+        },
+
+    };
+    
+    // Init
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => CypherQuery.init());
+    } else {
+        CypherQuery.init();
+    }
+
+    
+})();
+
+
+# capabilities/post/action_executor.py
+class ActionExecutorCapability:
+    async def process(self, llm_output, context):
+        proposed_actions = llm_output.get("proposed_actions", [])
+        approved_actions = []
+        for action in proposed_actions:
+            if context.get("policy_engine").evaluate(action):
+                # Execute action (API call, code patch, alert)
+                approved_actions.append(action)
+        context["executed_actions"] = approved_actions
+        return context

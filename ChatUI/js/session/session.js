@@ -51,25 +51,26 @@
             this.tabs = [
                 { id: 'chat', label: 'Chat', columnId: 1 },
                 { id: 'chat-history', label: 'Chat History', columnId: 1 },
-                { id: 'terminal', label: 'Terminal', columnId: 1 },
+                // { id: 'terminal', label: 'Terminal', columnId: 1 },
                 { id: 'agents', label: 'Agents', columnId: 1 },
-                { id: 'organiser', label: 'Organiser', columnId: 1 },
                 { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
                 { id: 'memory', label: 'Memory', columnId: 2 },
+                { id: 'organiser', label: 'Organiser', columnId: 2 },
                 { id: 'notebook', label: 'Notebook', columnId: 2 },
                 { id: 'canvas', label: 'Canvas', columnId: 2 },
-                { id: 'visualiser', label: 'Visualiser', columnId: 2 },
+                // { id: 'visualiser', label: 'Visualiser', columnId: 2 },
                 { id: 'toolchain', label: 'Toolchain', columnId: 2 },
                 { id: 'focus', label: 'Proactive Focus', columnId: 2 },
-                { id: 'training', label: 'Training', columnId: 2 },
+                // { id: 'training', label: 'Training', columnId: 2 },
                 { id: 'orchestration', label: 'Orchestration', columnId: 2 },
                 { id: 'ollama', label: 'Ollama Manager', columnId: 2 },
-                // { id: 'analytics', label: 'Analytics', columnId: 2 },
-                // { id: 'files', label: 'Files', columnId: 2 },
-                { id: 'settings', label: 'Settings', columnId: 1 },
+                // { id: 'analytics', label: 'Analytics', columnId: 2 },                
                 { id: 'ml', label: 'Machine Learning', columnId: 2 },
-                { id: 'config', label: 'Configuration', columnId: 2 }
-
+                { id: 'workspace', label: 'Workspace', columnId: 1 },
+                { id: 'chatbots', label: 'Chatbots', columnId: 1 },
+                // { id: 'worldview', label: 'Worldview', columnId: 1 }
+                { id: 'config', label: 'Configuration', columnId: 1 },
+                { id: 'settings', label: 'Settings', columnId: 1 },
             ];
             this.activeTabPerColumn = {};
             this.draggedTab = null;
@@ -145,7 +146,7 @@
             } else {
                 console.warn('initModernFeatures not loaded yet');
             }
-            
+
             if (typeof this.initOllama === 'function') {
                 this.initOllama();
             } else {
@@ -372,6 +373,8 @@
         getTabContent(tabId) {
             switch(tabId) {
                 // 2. ADD THIS CASE TO getTabContent() function (around line 500+):
+                case 'chatbots':
+                    return `<div id="chatbot-manager-container" style="height: 100%; overflow-y: auto;"></div>`;
                 case 'ml':
                     return `
                         <div id="ml-container" style="padding: 24px; height: 100%; overflow-y: auto;">
@@ -1269,12 +1272,16 @@
                     `;
                 case 'chat-history':
                     return `
-                        <aside class="session-sidebar" style="float:left;">
+                        <div class="session-sidebar" style="float:left;">
                             <div id="session-history-container"></div>
-                        </aside>
+                        </div>
                     `;
 
-                    
+                case 'workspace':
+                    return `
+                        <div id="workspace-browser-container" style="height: 100%; overflow: hidden;"></div>
+                    `;
+    
                 case 'graph':
                     return `
                         <div class="panel-header" draggable="false" style="cursor: default; position: absolute; top: 0; left: 0; right: 0; z-index: 10;">
@@ -2334,13 +2341,38 @@
                     }
                 }, 50);
             }
-                            
+             
+            if (tabId === 'workspace') {
+                setTimeout(() => {
+                    if (!this.workspaceBrowser) {
+                        this.workspaceBrowser = new WorkspaceBrowser({
+                            containerId: 'workspace-browser-container',
+                            apiBaseUrl: 'http://llm.int:8888/api/workspaces',
+                        });
+                    }
+                    this.workspaceBrowser.init();
+                }, 50);
+            }
+            if (tabId === 'chatbots') {
+                setTimeout(() => {
+                    const container = document.getElementById('chatbot-manager-container');
+                    if (container && !container._chatbotInit) {
+                        container._chatbotInit = true;
+                        const mgr = new ChatbotManager({ 
+                            apiBaseUrl: 'http://llm.int:8888/api/chatbots',  // full URL, not relative
+                            containerId: 'chatbot-manager-container'
+                        });
+                        mgr.init();
+                        mgr.registerWithThemeManager(window.themeManager);
+                    }
+                }, 50);
+            }
             if (tabId === 'focus') {
                 console.log('=== FOCUS TAB ACTIVATED ===');
                 console.log('this.activeTab:', this.activeTab);
                 console.log('updateFocusUI exists?', typeof this.updateFocusUI);
                 console.log('loadFocusStatus exists?', typeof this.loadFocusStatus);
-                
+                registerFocusBoardTheme(window.themeManager);
                 setTimeout(() => {
                     console.log('Focus timeout fired');
                     console.log('Container exists?', !!document.getElementById('tab-focus'));

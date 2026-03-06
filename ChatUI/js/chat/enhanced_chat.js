@@ -412,7 +412,17 @@
         };
         VeraChat.prototype.sendMessage = async function() {
             const input = document.getElementById('messageInput');
-            const message = input.value.trim();
+            let message = input.value.trim();
+            
+            // Include attached pastes if present
+            if (this.attachedPastes && this.attachedPastes.length > 0) {
+                this.attachedPastes.forEach(attachment => {
+                    message += '\n\n---\n**Attached Text:**\n```\n' + attachment.content + '\n```';
+                });
+                this.attachedPastes = [];
+                const container = document.getElementById('attachments-container');
+                if (container) container.innerHTML = '';
+            }
             
             if (!message || this.processing) return;
             
@@ -424,11 +434,37 @@
             input.value = '';
             input.style.height = 'auto';
             
+            // NEW: Check if we should use WebSocket with routing
             if (this.useWebSocket) {
-                const sent = await this.sendMessageViaWebSocket(message);
-                if (sent) return;
+                this.veraRobot.setState('thinking');
+                
+                if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                    try {
+                        // Get routing config
+                        const routingConfig = this.getRoutingConfig ? this.getRoutingConfig() : { mode: 'auto', force: false };
+                        
+                        console.log('📤 Sending with routing config:', routingConfig);
+                        
+                        this.websocket.send(JSON.stringify({
+                            message: message,
+                            files: Object.keys(this.files || {}),
+                            routing: routingConfig
+                        }));
+                        
+                        // Show routing indicator
+                        if (routingConfig.mode !== 'auto' && typeof this.setControlStatus === 'function') {
+                            this.setControlStatus(`🎯 Using ${this.getRoutingDisplayName(routingConfig.mode)} mode`);
+                        }
+                        
+                        return; // Exit early - WebSocket will handle response
+                    } catch (error) {
+                        console.error('WebSocket send error:', error);
+                        // Fall through to HTTP fallback
+                    }
+                }
             }
             
+            // Fallback to HTTP
             try {
                 const response = await fetch('http://llm.int:8888/api/chat', {
                     method: 'POST',
@@ -436,7 +472,7 @@
                     body: JSON.stringify({
                         session_id: this.sessionId,
                         message: message,
-                        files: Object.keys(this.files)
+                        files: Object.keys(this.files || {})
                     })
                 });
                 
@@ -444,12 +480,10 @@
                 const responseText = typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
                 
                 this.addMessage('assistant', responseText);
-                // await VeraChat.loadGraph();
             } catch (error) {
                 console.error('Send error:', error);
                 this.addSystemMessage(`Error: ${error.message}`);
             }
-            // VeraChat.loadGraph();
 
             this.processing = false;
             document.getElementById('sendBtn').disabled = false;
@@ -591,6 +625,11 @@
             if (message.role !== 'system') {
                 messageEl.onclick = (e) => {
                     if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
+                        return;
+                    }
+                    // Don't trigger menu if user just finished selecting text
+                    const selection = window.getSelection();
+                    if (selection && selection.toString().length > 0) {
                         return;
                     }
                     this.toggleMessageMenu(message.id);
@@ -779,6 +818,7 @@
         
         // Start timestamp updater
         this.startTimestampUpdater();
+        this.addRoutingControls();
     };
     
     VeraChat.prototype.ensureToolsLoaded = async function() {
@@ -1597,6 +1637,11 @@
         if (message.role !== 'system') {
             messageEl.onclick = (e) => {
                 if (e.target.closest('button') || e.target.closest('a') || e.target.closest('.format-btn')) {
+                    return;
+                }
+                // Don't trigger menu if user just finished selecting text
+                const selection = window.getSelection();
+                if (selection && selection.toString().length > 0) {
                     return;
                 }
                 this.toggleMessageMenu(message.id);
@@ -2748,7 +2793,7 @@ VeraChat.prototype.quickSaveToNotebook = async function(message) {
                         type: 'chat_message',
                         message_id: message.id,
                         role: message.role,
-                        timestamp: message.timestamp
+                        timestamp: new Date(message.timestamp).toISOString()  // was: message.timestamp
                     }
                 })
             }
@@ -4202,5 +4247,71 @@ if (!document.getElementById('thought-container-styles')) {
     style.textContent = thoughtStyles;
     document.head.appendChild(style);
 }
+const messageSizingFix = `
+/* Fix: Messages should never shrink below their initial rendered width */
+.message.modern-message {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
 
+.message-content-container {
+    min-width: 0;
+    flex: 1;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.message-content {
+    min-width: 0;
+    width: 100%;
+}
+
+.message-rendered {
+    min-width: 0;
+    width: 100%;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Mermaid: scroll internally, never collapse the bubble */
+.mermaid-diagram {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.mermaid-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.mermaid-rendered svg {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Code blocks: scroll internally */
+.enhanced-code-block {
+    width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+}
+
+.enhanced-code-block pre {
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.message-wide .message-content-container {
+    width: 100%;
+}
+`;
+
+if (!document.getElementById('message-sizing-fix')) {
+    const style = document.createElement('style');
+    style.id = 'message-sizing-fix';
+    style.textContent = messageSizingFix;
+    document.head.appendChild(style);
+}
 })();

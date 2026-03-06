@@ -7,7 +7,6 @@ Compatible with the frontend chat interface
 # Fast API imports
 # ============================================================
 
-
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -29,10 +28,18 @@ from uuid import uuid4
 from neo4j import GraphDatabase
 
 # ============================================================
-# Vera imports
+# Vera Base imports
 # ============================================================
 
 from Vera.vera import Vera
+from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import set_main_loop
+# from Vera.ChatUI.api.Toolchain.toolchain_broadcast import schedule_broadcast, init_broadcast_loop
+
+
+# ============================================================
+# Vera API imports
+# ============================================================
+
 import Vera.ChatUI.api.plugins_api as plugins_api
 import Vera.ChatUI.api.Canvas.execution_api as execution_api
 import Vera.ChatUI.api.Canvas.canvas_api as canvas_api # < to be replaced by execution_api
@@ -43,6 +50,7 @@ import Vera.ChatUI.api.Toolchain.n8n_proxy as n8n_proxy
 import Vera.ChatUI.api.Graph.graph_api as graph_api
 import Vera.ChatUI.api.Chat.chat_api as chat_api
 import Vera.ChatUI.api.Chat.chat_history_api as chat_history_api
+import Vera.ChatUI.api.Chat.voice as voice_api
 import Vera.ChatUI.api.Orchestrator.orchestrator_api as orchestrator_api
 import Vera.ChatUI.api.Orchestrator.api_api as api_api
 import Vera.ChatUI.api.Orchestrator.infra_api as infra_api
@@ -57,7 +65,11 @@ import Vera.ChatUI.api.agents_api as agents_api
 import Vera.ChatUI.api.scheduling as scheduling_api 
 import Vera.ChatUI.api.Toolchain.tool_execution_api as tool_execution_api
 import Vera.ChatUI.api.ml_api as ml_api
+import Vera.ChatUI.api.workspace as workspace_api
+import Vera.ChatUI.api.assistant_api as assistant_api
 # from Vera.ChatUI.api.session import vera_instances, sessions, toolchain_executions, active_toolchains, websocket_connections
+import Vera.ChatUI.api.chatbot_api as chatbot_api
+
 
 # ============================================================
 # Logging setup
@@ -104,6 +116,7 @@ app.include_router(canvas_api.router)
 app.include_router(chat_api.router)
 app.include_router(chat_api.wsrouter)
 app.include_router(chat_history_api.router)
+app.include_router(voice_api.router)
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
 app.include_router(toolchain_query_api.router)
@@ -124,6 +137,10 @@ app.include_router(agents_api.router)
 app.include_router(scheduling_api.router)
 app.include_router(tool_execution_api.router)
 app.include_router(ml_api.router)
+app.include_router(workspace_api.router)
+app.include_router(assistant_api.build_router(vera_instance=None, project_root="/home/boejaker/vera_sandbox/coding_a_network_scanner_in_python/"))
+app.include_router(chatbot_api.router)
+
 # ============================================================
 # Global storage
 # ============================================================
@@ -138,11 +155,12 @@ toolchain_executions: Dict[str, Dict[str, Any]] = defaultdict(dict)  # session_i
 active_toolchains: Dict[str, str] = {}  # session_id -> current execution_id
 websocket_connections: Dict[str, List[WebSocket]] = defaultdict(list)  # session_id -> [websockets]
 
-from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import set_main_loop
 
 @app.on_event("startup")
 async def startup_event():
     set_main_loop()
+    # from Vera.ChatUI.api.Toolchain.toolchain_broadcast import init_broadcast_loop
+    # init_broadcast_loop()
     print("✓ Main event loop captured for WebSocket broadcasts")
 
 # ============================================================

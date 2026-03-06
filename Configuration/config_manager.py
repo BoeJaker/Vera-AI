@@ -294,7 +294,7 @@ class OllamaConfig:
             self.instances = converted_instances
         else:
             # Default instances if none provided
-            # TODO # FIX THIS TO REFLECT ACTUAL CONFIG
+            
             self.instances = [
                 OllamaInstanceConfig(
                     name="remote",
@@ -332,12 +332,12 @@ class OllamaConfig:
                     # has_gpu=True,
                     # gpu_memory_gb=12
                 # ),
-                OllamaInstanceConfig(
-                    name="local",
-                    api_url="http://localhost:11434",
-                    priority=1,
-                    max_concurrent=1
-                )
+                # OllamaInstanceConfig(
+                #     name="local",
+                #     api_url="http://localhost:11434",
+                #     priority=1,
+                #     max_concurrent=1
+                # )
             ]
 
 

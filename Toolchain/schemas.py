@@ -95,7 +95,7 @@ class CommandInput(BaseModel):
 class PythonInput(BaseModel):
     """Input schema for Python code execution."""
     code: str = Field(..., description="Python code to execute")
-
+    working_dir: Optional[str] = Field(default=None, description="Working directory for the command")
 
 class SearchInput(BaseModel):
     """Input schema for web searches."""

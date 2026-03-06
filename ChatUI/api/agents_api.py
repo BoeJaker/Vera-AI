@@ -35,9 +35,9 @@ router = APIRouter(prefix="/api/agents/v2", tags=["agents-v2"])
 # CONFIGURATION
 # ============================================================================
 
-AGENTS_DIR = Path("./Vera/Agents/agents")
-TEMPLATES_DIR = Path("./Vera/Agents/templates")
-BUILD_DIR = Path("./Vera/Agents/build")
+AGENTS_DIR = Path("./Vera/Ollama/Agents/agents")
+TEMPLATES_DIR = Path("./Vera/Ollama/Agents/templates")
+BUILD_DIR = Path("./Vera/Ollama/Agents/build")
 
 # Ensure directories exist
 AGENTS_DIR.mkdir(parents=True, exist_ok=True)

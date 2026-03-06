@@ -1,7 +1,8 @@
 /**
- * GraphToolExecutor Module - Enhanced with Plugin Support, Search, and Drag-and-Drop
+ * GraphToolExecutor Module - Enhanced with Plugin Support, Search, Drag-and-Drop, and Throbber Animation
  * Executes both Vera tools and plugins against selected graph nodes
  * Now renders in GraphInfoCard with search filtering and property drag-and-drop
+ * Added visual feedback with animated throbber during tool execution
  */
 
 (function() {
@@ -18,7 +19,10 @@
         executionHistory: [],
         draggedProperty: null,  // Store dragged property data
         searchDebounceTimer: null,  // For debouncing search input
-        propertyStore: {},  // NEW: Store properties by ID for safe drag/drop
+        propertyStore: {},  // Store properties by ID for safe drag/drop
+        
+        // Throbber animation state
+        activeThrobbers: new Map(),  // nodeId -> { intervalId, originalState }
         
         /**
          * Initialize the module
@@ -36,11 +40,171 @@
         },
         
         /**
+         * Start throbber animation on a node
+         * Creates a pulsing ring effect around the node
+         */
+        startThrobber: function(nodeId) {
+            if (!window.network) {
+                console.warn('Network not available for throbber');
+                return;
+            }
+            
+            // Stop existing throbber if any
+            this.stopThrobber(nodeId);
+            
+            try {
+                const node = network.body.data.nodes.get(nodeId);
+                if (!node) {
+                    console.warn('Node not found for throbber:', nodeId);
+                    return;
+                }
+                
+                // Store original node state
+                const originalState = {
+                    borderWidth: node.borderWidth || 2,
+                    borderWidthSelected: node.borderWidthSelected || 3,
+                    color: node.color,
+                    shapeProperties: node.shapeProperties || {}
+                };
+                
+                // Animation parameters
+                let phase = 0;
+                const maxPhase = 60; // Full cycle in frames
+                const minBorderWidth = originalState.borderWidth;
+                const maxBorderWidth = originalState.borderWidth + 8;
+                
+                // Get base color for pulsing effect
+                const baseColor = typeof node.color === 'object' 
+                    ? node.color.border || node.color.background || '#60a5fa'
+                    : node.color || '#60a5fa';
+                
+                // Animation loop
+                const intervalId = setInterval(() => {
+                    phase = (phase + 1) % maxPhase;
+                    
+                    // Smooth sine wave for pulsing
+                    const progress = Math.sin((phase / maxPhase) * Math.PI * 2) * 0.5 + 0.5;
+                    
+                    // Calculate current border width
+                    const currentBorderWidth = minBorderWidth + (maxBorderWidth - minBorderWidth) * progress;
+                    
+                    // Calculate opacity for glow effect (inverted so glow is brightest at peak)
+                    const glowOpacity = 0.3 + (0.7 * progress);
+                    
+                    // Update node with animation state
+                    const updateData = {
+                        id: nodeId,
+                        borderWidth: currentBorderWidth,
+                        borderWidthSelected: currentBorderWidth + 1,
+                        color: {
+                            border: baseColor,
+                            background: typeof node.color === 'object' 
+                                ? (node.color.background || baseColor)
+                                : baseColor,
+                            highlight: {
+                                border: this.adjustBrightness(baseColor, 30),
+                                background: typeof node.color === 'object' 
+                                    ? (node.color.highlight?.background || baseColor)
+                                    : baseColor
+                            }
+                        },
+                        shapeProperties: {
+                            borderDashes: false,
+                            borderRadius: originalState.shapeProperties.borderRadius || 0
+                        },
+                        shadow: {
+                            enabled: true,
+                            color: baseColor,
+                            size: 10 + (15 * progress),
+                            x: 0,
+                            y: 0
+                        }
+                    };
+                    
+                    network.body.data.nodes.update(updateData);
+                }, 1000 / 30); // 30 FPS for smooth animation
+                
+                // Store throbber state
+                this.activeThrobbers.set(nodeId, {
+                    intervalId: intervalId,
+                    originalState: originalState
+                });
+                
+                console.log('Throbber started for node:', nodeId);
+                
+            } catch (e) {
+                console.error('Error starting throbber:', e);
+            }
+        },
+        
+        /**
+         * Stop throbber animation and restore node to original state
+         */
+        stopThrobber: function(nodeId) {
+            if (!this.activeThrobbers.has(nodeId)) {
+                return;
+            }
+            
+            try {
+                const throbberState = this.activeThrobbers.get(nodeId);
+                
+                // Stop animation loop
+                clearInterval(throbberState.intervalId);
+                
+                // Restore original node state
+                if (window.network) {
+                    const restoreData = {
+                        id: nodeId,
+                        borderWidth: throbberState.originalState.borderWidth,
+                        borderWidthSelected: throbberState.originalState.borderWidthSelected,
+                        color: throbberState.originalState.color,
+                        shapeProperties: throbberState.originalState.shapeProperties,
+                        shadow: {
+                            enabled: false
+                        }
+                    };
+                    
+                    network.body.data.nodes.update(restoreData);
+                }
+                
+                // Remove from active throbbers
+                this.activeThrobbers.delete(nodeId);
+                
+                console.log('Throbber stopped for node:', nodeId);
+                
+            } catch (e) {
+                console.error('Error stopping throbber:', e);
+            }
+        },
+        
+        /**
+         * Stop all active throbbers
+         */
+        stopAllThrobbers: function() {
+            const nodeIds = Array.from(this.activeThrobbers.keys());
+            nodeIds.forEach(nodeId => this.stopThrobber(nodeId));
+        },
+        
+        /**
+         * Adjust color brightness (helper for animation effects)
+         */
+        adjustBrightness: function(color, percent) {
+            if (!color || !color.startsWith('#')) return color;
+            
+            const num = parseInt(color.replace('#', ''), 16);
+            const amt = Math.round(2.55 * percent);
+            const R = Math.min(255, Math.max(0, (num >> 16) + amt));
+            const G = Math.min(255, Math.max(0, (num >> 8 & 0x00FF) + amt));
+            const B = Math.min(255, Math.max(0, (num & 0x0000FF) + amt));
+            
+            return '#' + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
+        },
+        
+        /**
          * Load available tools from API
          */
         loadAvailableTools: async function() {
             try {
-                // NEW: Use the dedicated tools API
                 const response = await fetch(
                     `${this.apiBaseUrl}/api/tools/${this.sessionId}/list`
                 );
@@ -59,6 +223,7 @@
                 this.availableTools = [];
             }
         },
+        
         /**
          * Load available plugins from API
          */
@@ -327,7 +492,7 @@
             setTimeout(() => {
                 const searchInput = document.getElementById('tool-search-input');
                 if (searchInput) {
-                    const cursorPos = searchTerm.length; // Put cursor at end
+                    const cursorPos = searchTerm.length;
                     searchInput.focus();
                     searchInput.setSelectionRange(cursorPos, cursorPos);
                 }
@@ -676,7 +841,7 @@
         },
         
         /**
-         * Handle drag start for property items - FIXED VERSION
+         * Handle drag start for property items
          */
         handlePropertyDragStart: function(event, propId) {
             const propData = this.propertyStore[propId];
@@ -695,7 +860,7 @@
         },
         
         /**
-         * Handle drag end for property items - RESET OPACITY
+         * Handle drag end for property items
          */
         handlePropertyDragEnd: function(event) {
             event.target.style.opacity = '1';
@@ -719,7 +884,6 @@
          * Handle drag leave field container
          */
         handleFieldDragLeave: function(event) {
-            // Only reset if we're actually leaving the container (not entering a child)
             if (event.currentTarget.contains(event.relatedTarget)) {
                 return;
             }
@@ -730,7 +894,7 @@
         },
         
         /**
-         * Handle drop on field container - FIXED VERSION
+         * Handle drop on field container
          */
         handleFieldDrop: function(event) {
             event.preventDefault();
@@ -745,21 +909,18 @@
                 return;
             }
             
-            // Get param name from container
             const paramName = container.getAttribute('data-param-name');
             if (!paramName) {
                 console.error('No param name found on container');
                 return;
             }
             
-            // Find the input field within this container
             const inputField = container.querySelector(`#param-${paramName}`);
             if (!inputField) {
                 console.error('Input field not found for param:', paramName);
                 return;
             }
             
-            // Set the value based on input type
             const value = this.draggedProperty.value;
             if (inputField.tagName === 'SELECT') {
                 inputField.value = String(value);
@@ -771,7 +932,6 @@
                 inputField.value = String(value);
             }
             
-            // Visual feedback
             inputField.style.borderColor = '#10b981';
             inputField.style.background = '#1e293b';
             setTimeout(() => {
@@ -781,7 +941,6 @@
             
             console.log('✓ Dropped property', this.draggedProperty.name, 'into field', paramName, 'with value:', value);
             
-            // Clear dragged property
             this.draggedProperty = null;
         },
         
@@ -832,245 +991,256 @@
         
         /**
          * Execute the tool or plugin with collected inputs - RENDERS IN INFO CARD
+         * NOW WITH THROBBER ANIMATION!
          */
-  executeItem: async function(nodeId, itemName, itemType) {
-        if (!window.GraphInfoCard) {
-            alert('GraphInfoCard not available');
-            return;
-        }
-        
-        // Collect form data
-        const form = document.getElementById('item-input-form');
-        if (!form) {
-            console.error('Form not found');
-            return;
-        }
-        
-        const inputs = form.querySelectorAll('input, select, textarea');
-        
-        const itemInput = {};
-        inputs.forEach(input => {
-            const paramName = input.id.replace('param-', '');
-            let value = input.value;
-            
-            // Type conversion
-            if (input.type === 'number') {
-                value = parseFloat(value);
-            } else if (input.tagName === 'SELECT' && (value === 'true' || value === 'false')) {
-                value = value === 'true';
+        executeItem: async function(nodeId, itemName, itemType) {
+            if (!window.GraphInfoCard) {
+                alert('GraphInfoCard not available');
+                return;
             }
             
-            itemInput[paramName] = value;
-        });
-        
-        const icon = itemType === 'plugin' ? '🔌' : '🔧';
-        
-        // Show executing state
-        window.GraphInfoCard.showInlineContent(
-            `${icon} Executing`,
-            `<div style="text-align: center; padding: 40px;">
-                <div style="font-size: 48px; margin-bottom: 16px;">⚙️</div>
-                <div style="color: #60a5fa; font-size: 16px; font-weight: 600; margin-bottom: 8px;">
-                    Executing ${icon} ${this.escapeHtml(itemName)}
-                </div>
-                <div style="color: #94a3b8; font-size: 13px;">Processing...</div>
-            </div>`
-        );
-        
-        try {
-            const startTime = Date.now();
-            
-            // Execute via appropriate API
-            let response;
-            if (itemType === 'plugin') {
-                // Use existing plugin API
-                response = await fetch(
-                    `${this.apiBaseUrl}/api/plugins/${this.sessionId}/execute`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            node_id: nodeId,
-                            plugin_name: itemName,
-                            parameters: itemInput
-                        })
-                    }
-                );
-            } else {
-                // NEW: Use enhanced tool execution API with node linking
-                response = await fetch(
-                    `${this.apiBaseUrl}/api/tools/${this.sessionId}/execute`,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            tool_name: itemName,
-                            tool_input: itemInput,
-                            node_id: nodeId,        // NEW: Pass node context
-                            link_results: true      // NEW: Enable graph linking
-                        })
-                    }
-                );
+            // Collect form data
+            const form = document.getElementById('item-input-form');
+            if (!form) {
+                console.error('Form not found');
+                return;
             }
             
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || `HTTP ${response.status}`);
-            }
+            const inputs = form.querySelectorAll('input, select, textarea');
             
-            const result = await response.json();
-            const duration = Date.now() - startTime;
-
-            // Store in execution history
-            this.executionHistory.push({
-                nodeId,
-                itemName,
-                itemType,
-                input: itemInput,
-                output: result.output,
-                timestamp: new Date().toISOString(),
-                duration,
-                graphContext: result.graph_context
+            const itemInput = {};
+            inputs.forEach(input => {
+                const paramName = input.id.replace('param-', '');
+                let value = input.value;
+                
+                // Type conversion
+                if (input.type === 'number') {
+                    value = parseFloat(value);
+                } else if (input.tagName === 'SELECT' && (value === 'true' || value === 'false')) {
+                    value = value === 'true';
+                }
+                
+                itemInput[paramName] = value;
             });
             
-            // Refresh the graph to show new results/links
-            if (typeof app !== 'undefined' && typeof app.loadGraph === 'function') {
-                app.loadGraph();
-            }
+            const icon = itemType === 'plugin' ? '🔌' : '🔧';
             
-            // Show result with graph context
-            this.showItemResult(nodeId, itemName, itemType, itemInput, result.output, 
-                              duration, result.graph_context);
+            // START THROBBER ANIMATION
+            this.startThrobber(nodeId);
             
-        } catch (error) {
-            console.error('Execution error:', error);
+            // Show executing state
             window.GraphInfoCard.showInlineContent(
-                '❌ Execution Failed',
-                `<div style="text-align: center; padding: 30px;">
-                    <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
-                    <div style="color: #ef4444; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-                        Execution Failed
+                `${icon} Executing`,
+                `<div style="text-align: center; padding: 40px;">
+                    <div style="font-size: 48px; margin-bottom: 16px;">⚙️</div>
+                    <div style="color: #60a5fa; font-size: 16px; font-weight: 600; margin-bottom: 8px;">
+                        Executing ${icon} ${this.escapeHtml(itemName)}
                     </div>
-                    <div style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">
-                        ${this.escapeHtml(error.message)}
+                    <div style="color: #94a3b8; font-size: 13px;">Processing...</div>
+                    <div style="color: #64748b; font-size: 11px; margin-top: 8px; font-style: italic;">
+                        Watch the graph for visual feedback
                     </div>
-                    <button onclick="window.GraphToolExecutor.showToolSelector('${nodeId}')" style="
-                        padding: 10px 24px; background: #3b82f6; color: white;
-                        border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
-                    ">Try Again</button>
-                </div>`,
-                `window.GraphToolExecutor.showToolSelector('${nodeId}')`
+                </div>`
             );
-        }
-    },
-    
+            
+            try {
+                const startTime = Date.now();
+                
+                // Execute via appropriate API
+                let response;
+                if (itemType === 'plugin') {
+                    response = await fetch(
+                        `${this.apiBaseUrl}/api/plugins/${this.sessionId}/execute`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                node_id: nodeId,
+                                plugin_name: itemName,
+                                parameters: itemInput
+                            })
+                        }
+                    );
+                } else {
+                    response = await fetch(
+                        `${this.apiBaseUrl}/api/tools/${this.sessionId}/execute`,
+                        {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                tool_name: itemName,
+                                tool_input: itemInput,
+                                node_id: nodeId,
+                                link_results: true
+                            })
+                        }
+                    );
+                }
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || `HTTP ${response.status}`);
+                }
+                
+                const result = await response.json();
+                const duration = Date.now() - startTime;
+
+                // Store in execution history
+                this.executionHistory.push({
+                    nodeId,
+                    itemName,
+                    itemType,
+                    input: itemInput,
+                    output: result.output,
+                    timestamp: new Date().toISOString(),
+                    duration,
+                    graphContext: result.graph_context
+                });
+                
+                // STOP THROBBER ANIMATION
+                this.stopThrobber(nodeId);
+                
+                // Refresh the graph to show new results/links
+                if (typeof app !== 'undefined' && typeof app.loadGraph === 'function') {
+                    app.loadGraph();
+                }
+                
+                // Show result with graph context
+                this.showItemResult(nodeId, itemName, itemType, itemInput, result.output, 
+                                  duration, result.graph_context);
+                
+            } catch (error) {
+                console.error('Execution error:', error);
+                
+                // STOP THROBBER ON ERROR
+                this.stopThrobber(nodeId);
+                
+                window.GraphInfoCard.showInlineContent(
+                    '❌ Execution Failed',
+                    `<div style="text-align: center; padding: 30px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">❌</div>
+                        <div style="color: #ef4444; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
+                            Execution Failed
+                        </div>
+                        <div style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">
+                            ${this.escapeHtml(error.message)}
+                        </div>
+                        <button onclick="window.GraphToolExecutor.showToolSelector('${nodeId}')" style="
+                            padding: 10px 24px; background: #3b82f6; color: white;
+                            border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
+                        ">Try Again</button>
+                    </div>`,
+                    `window.GraphToolExecutor.showToolSelector('${nodeId}')`
+                );
+            }
+        },
         
         /**
          * Show execution result - RENDERS IN INFO CARD
          */
         showItemResult: function(nodeId, itemName, itemType, input, output, duration, graphContext) {
-                if (!window.GraphInfoCard) {
-                    alert('GraphInfoCard not available');
-                    return;
-                }
-                
-                const nodeData = this.graphAddon.nodesData[nodeId];
-                const nodeName = nodeData ? nodeData.display_name : nodeId;
-                
-                const icon = itemType === 'plugin' ? '🔌' : '🔧';
-                const badgeColor = itemType === 'plugin' ? '#8b5cf6' : '#3b82f6';
-                
-                // Truncate output if very long
-                let displayOutput = output;
-                let truncated = false;
-                if (output.length > 2000) {
-                    displayOutput = output.substring(0, 2000);
-                    truncated = true;
-                }
-                
-                // Build graph context display
-                let graphContextHtml = '';
-                if (graphContext && graphContext.enabled) {
-                    graphContextHtml = `
-                        <div style="margin-bottom: 16px; padding: 12px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b;">
-                            <div style="color: #60a5fa; font-size: 11px; font-weight: 600; margin-bottom: 8px;">
-                                🔗 Graph Context Created
-                            </div>
-                            <div style="color: #94a3b8; font-size: 11px; font-family: 'Monaco', monospace;">
-                                ${graphContext.links_created.map(link => 
-                                    `<div style="margin-bottom: 4px;">• ${this.escapeHtml(link)}</div>`
-                                ).join('')}
-                            </div>
-                            <div style="color: #64748b; font-size: 10px; margin-top: 8px; font-style: italic;">
-                                💡 Result linked to ${this.escapeHtml(nodeName)} in knowledge graph
-                            </div>
-                        </div>
-                    `;
-                }
-                
-                const content = `
-                    <div style="text-align: center; margin-bottom: 20px;">
-                        <div style="font-size: 48px; margin-bottom: 8px;">✅</div>
-                        <div style="color: #10b981; font-size: 16px; font-weight: 600; margin-bottom: 4px;">
-                            Executed Successfully
-                        </div>
-                        <div style="color: #94a3b8; font-size: 12px;">
-                            Completed in ${duration}ms
-                        </div>
-                    </div>
-                    
+            if (!window.GraphInfoCard) {
+                alert('GraphInfoCard not available');
+                return;
+            }
+            
+            const nodeData = this.graphAddon.nodesData[nodeId];
+            const nodeName = nodeData ? nodeData.display_name : nodeId;
+            
+            const icon = itemType === 'plugin' ? '🔌' : '🔧';
+            const badgeColor = itemType === 'plugin' ? '#8b5cf6' : '#3b82f6';
+            
+            // Truncate output if very long
+            let displayOutput = output;
+            let truncated = false;
+            if (output.length > 2000) {
+                displayOutput = output.substring(0, 2000);
+                truncated = true;
+            }
+            
+            // Build graph context display
+            let graphContextHtml = '';
+            if (graphContext && graphContext.enabled) {
+                graphContextHtml = `
                     <div style="margin-bottom: 16px; padding: 12px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b;">
-                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                            <span style="color: #e2e8f0; font-size: 14px; font-weight: 600;">${icon} ${this.escapeHtml(itemName)}</span>
-                            <span style="
-                                padding: 2px 8px; font-size: 10px; font-weight: 600;
-                                background: ${badgeColor}22; color: ${badgeColor};
-                                border-radius: 4px;
-                            ">${itemType.toUpperCase()}</span>
+                        <div style="color: #60a5fa; font-size: 11px; font-weight: 600; margin-bottom: 8px;">
+                            🔗 Graph Context Created
                         </div>
-                        <div style="color: #94a3b8; font-size: 12px;">
-                            On node: <span style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</span>
+                        <div style="color: #94a3b8; font-size: 11px; font-family: 'Monaco', monospace;">
+                            ${graphContext.links_created.map(link => 
+                                `<div style="margin-bottom: 4px;">• ${this.escapeHtml(link)}</div>`
+                            ).join('')}
                         </div>
-                    </div>
-                    
-                    ${graphContextHtml}
-                    
-                    <div style="margin-bottom: 16px;">
-                        <div style="color: #94a3b8; font-size: 12px; font-weight: 600; margin-bottom: 8px;">Output</div>
-                        <div style="
-                            background: #0f172a; padding: 12px; border-radius: 6px;
-                            border: 1px solid #1e293b; max-height: 300px; overflow-y: auto;
-                            font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; color: #e2e8f0;
-                            white-space: pre-wrap; word-break: break-word; line-height: 1.4;
-                        ">${this.escapeHtml(displayOutput)}${truncated ? '\n\n... [Output truncated at 2000 characters]' : ''}</div>
-                    </div>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 8px;">
-                        ${graphContext && graphContext.execution_node_id ? `
-                            <button onclick="window.GraphToolExecutor.viewExecutionInGraph('${graphContext.execution_node_id}')" style="
-                                width: 100%; padding: 12px; background: #6366f1; color: white;
-                                border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
-                            ">🔍 View in Graph</button>
-                        ` : ''}
-                        <div style="display: flex; gap: 8px;">
-                            <button onclick="window.GraphToolExecutor.showToolSelector('${nodeId}')" style="
-                                flex: 1; padding: 10px; background: ${badgeColor}; color: white;
-                                border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
-                            ">Run Another</button>
-                            <button onclick="window.GraphInfoCard.expandNodeInfo('${nodeId}')" style="
-                                flex: 1; padding: 10px; background: #334155; color: #e2e8f0;
-                                border: 1px solid #475569; border-radius: 6px; cursor: pointer; font-weight: 600;
-                            ">Back to Node</button>
+                        <div style="color: #64748b; font-size: 10px; margin-top: 8px; font-style: italic;">
+                            💡 Result linked to ${this.escapeHtml(nodeName)} in knowledge graph
                         </div>
                     </div>
                 `;
+            }
+            
+            const content = `
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="font-size: 48px; margin-bottom: 8px;">✅</div>
+                    <div style="color: #10b981; font-size: 16px; font-weight: 600; margin-bottom: 4px;">
+                        Executed Successfully
+                    </div>
+                    <div style="color: #94a3b8; font-size: 12px;">
+                        Completed in ${duration}ms
+                    </div>
+                </div>
                 
-                window.GraphInfoCard.showInlineContent(
-                    '✅ Execution Complete',
-                    content,
-                    `window.GraphToolExecutor.showToolSelector('${nodeId}')`
-                );
-            },
+                <div style="margin-bottom: 16px; padding: 12px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                        <span style="color: #e2e8f0; font-size: 14px; font-weight: 600;">${icon} ${this.escapeHtml(itemName)}</span>
+                        <span style="
+                            padding: 2px 8px; font-size: 10px; font-weight: 600;
+                            background: ${badgeColor}22; color: ${badgeColor};
+                            border-radius: 4px;
+                        ">${itemType.toUpperCase()}</span>
+                    </div>
+                    <div style="color: #94a3b8; font-size: 12px;">
+                        On node: <span style="color: #e2e8f0;">${this.escapeHtml(nodeName)}</span>
+                    </div>
+                </div>
+                
+                ${graphContextHtml}
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="color: #94a3b8; font-size: 12px; font-weight: 600; margin-bottom: 8px;">Output</div>
+                    <div style="
+                        background: #0f172a; padding: 12px; border-radius: 6px;
+                        border: 1px solid #1e293b; max-height: 300px; overflow-y: auto;
+                        font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; color: #e2e8f0;
+                        white-space: pre-wrap; word-break: break-word; line-height: 1.4;
+                    ">${this.escapeHtml(displayOutput)}${truncated ? '\n\n... [Output truncated at 2000 characters]' : ''}</div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    ${graphContext && graphContext.execution_node_id ? `
+                        <button onclick="window.GraphToolExecutor.viewExecutionInGraph('${graphContext.execution_node_id}')" style="
+                            width: 100%; padding: 12px; background: #6366f1; color: white;
+                            border: none; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 14px;
+                        ">🔍 View in Graph</button>
+                    ` : ''}
+                    <div style="display: flex; gap: 8px;">
+                        <button onclick="window.GraphToolExecutor.showToolSelector('${nodeId}')" style="
+                            flex: 1; padding: 10px; background: ${badgeColor}; color: white;
+                            border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
+                        ">Run Another</button>
+                        <button onclick="window.GraphInfoCard.expandNodeInfo('${nodeId}')" style="
+                            flex: 1; padding: 10px; background: #334155; color: #e2e8f0;
+                            border: 1px solid #475569; border-radius: 6px; cursor: pointer; font-weight: 600;
+                        ">Back to Node</button>
+                    </div>
+                </div>
+            `;
+            
+            window.GraphInfoCard.showInlineContent(
+                '✅ Execution Complete',
+                content,
+                `window.GraphToolExecutor.showToolSelector('${nodeId}')`
+            );
+        },
         
         /**
          * Reload plugins from server - RENDERS IN INFO CARD
@@ -1147,31 +1317,15 @@
         },
         
         /**
-         * Save result to node properties
+         * View execution node in graph
          */
-        saveResultToNode: function(nodeId, itemType, output) {
-            // Show success notification
-            if (window.GraphInfoCard) {
-                window.GraphInfoCard.showInlineContent(
-                    '💾 Save Result',
-                    `<div style="text-align: center; padding: 30px;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">💾</div>
-                        <div style="color: #60a5fa; font-size: 14px; font-weight: 600; margin-bottom: 8px;">
-                            Save to Node
-                        </div>
-                        <div style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">
-                            This feature requires an API endpoint to update node properties.<br>
-                            Implementation pending.
-                        </div>
-                        <button onclick="window.GraphInfoCard.expandNodeInfo('${nodeId}')" style="
-                            padding: 10px 24px; background: #3b82f6; color: white;
-                            border: none; border-radius: 6px; cursor: pointer; font-weight: 600;
-                        ">Back to Node</button>
-                    </div>`,
-                    `window.GraphInfoCard.expandNodeInfo('${nodeId}')`
-                );
-            } else {
-                alert(`Result from ${itemType} would be saved to node ${nodeId}\n\n(API implementation pending)`);
+        viewExecutionInGraph: function(executionNodeId) {
+            if (this.graphAddon && this.graphAddon.focusNode) {
+                this.graphAddon.focusNode(executionNodeId);
+                
+                if (this.graphAddon.expandNodeInfo) {
+                    this.graphAddon.expandNodeInfo(executionNodeId);
+                }
             }
         },
         
@@ -1182,17 +1336,6 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
-        },
-            viewExecutionInGraph: function(executionNodeId) {
-        if (this.graphAddon && this.graphAddon.focusNode) {
-            // Focus on the execution node in the graph
-            this.graphAddon.focusNode(executionNodeId);
-            
-            // Optionally expand to show connected nodes
-            if (this.graphAddon.expandNodeInfo) {
-                this.graphAddon.expandNodeInfo(executionNodeId);
-            }
         }
-    },
     };
 })();

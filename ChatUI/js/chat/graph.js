@@ -85,7 +85,7 @@
                     <div class="context-section">
                         <label class="context-label">Include in queries:</label>
                         <div class="context-mode-buttons">
-                            <button class="context-mode-btn active" data-mode="selected" 
+                            <button class="context-mode-btn active" data-mode="none" 
                                     onclick="window.GraphChatIntegration.setContextMode('selected')">
                                 Selected
                             </button>

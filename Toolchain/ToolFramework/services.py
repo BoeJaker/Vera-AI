@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-from Vera.Toolchain.tool_framework.core import (
+from Vera.Toolchain.ToolFramework.core import (
     ToolCapability,
     ToolContext,
     ToolDescriptor,

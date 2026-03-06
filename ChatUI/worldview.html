@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Worldview Prototype</title>
+
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+<script src="https://unpkg.com/satellite.js/dist/satellite.min.js"></script>
+
+<style>
+html, body, #cesiumContainer {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+#panel {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    background: rgba(0,0,0,0.7);
+    color: white;
+    padding: 10px;
+    font-family: monospace;
+    z-index: 10;
+}
+</style>
+</head>
+
+<body>
+<div id="cesiumContainer"></div>
+<div id="panel">
+    Flights: <span id="flightCount">0</span><br>
+    Satellites: <span id="satCount">0</span>
+</div>
+
+<script>
+
+/* =============================
+   VIEWER SETUP
+============================= */
+
+const viewer = new Cesium.Viewer("cesiumContainer", {
+    baseLayerPicker: false,
+    animation: false,
+    timeline: false,
+    imageryProvider: new Cesium.UrlTemplateImageryProvider({
+        url: "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        credit: "© OpenStreetMap contributors"
+    }),
+    terrainProvider: new Cesium.EllipsoidTerrainProvider()
+});
+
+viewer.scene.globe.enableLighting = true;
+viewer.scene.globe.depthTestAgainstTerrain = false;
+
+/* =============================
+   FLIGHTS
+============================= */
+
+async function loadFlights() {
+    try {
+        const response = await fetch("https://opensky-network.org/api/states/all");
+        const data = await response.json();
+
+        // remove previous flight entities only
+        const flightsToRemove = viewer.entities.values.filter(e => e.type === "flight");
+        flightsToRemove.forEach(e => viewer.entities.remove(e));
+
+        let count = 0;
+
+        (data.states || []).forEach(state => {
+            const lon = state[5];
+            const lat = state[6];
+            const alt = state[7];
+            const callsign = state[1];
+
+            if (lon && lat && alt) {
+                viewer.entities.add({
+                    type: "flight",
+                    position: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+                    point: {
+                        pixelSize: 4,
+                        color: Cesium.Color.CYAN
+                    },
+                    label: {
+                        text: callsign ? callsign.trim() : "",
+                        font: "10px monospace",
+                        showBackground: true,
+                        pixelOffset: new Cesium.Cartesian2(0, -10)
+                    }
+                });
+                count++;
+            }
+        });
+
+        document.getElementById("flightCount").innerText = count;
+
+    } catch (err) {
+        console.error("Flight error:", err);
+    }
+}
+
+loadFlights();
+setInterval(loadFlights, 20000);
+
+/* =============================
+   SATELLITES (ISS Example)
+============================= */
+
+let satellites = [];
+let satelliteEntities = [];
+
+async function loadTLE() {
+    const response = await fetch("https://celestrak.org/NORAD/elements/stations.txt");
+    const text = await response.text();
+    const lines = text.split("\n");
+
+    for (let i = 0; i < lines.length; i += 3) {
+        const name = lines[i].trim();
+        const line1 = lines[i+1];
+        const line2 = lines[i+2];
+
+        if (line1 && line2) {
+            const satrec = satellite.twoline2satrec(line1, line2);
+            satellites.push({ name, satrec });
+        }
+    }
+
+    document.getElementById("satCount").innerText = satellites.length;
+}
+
+function updateSatellites() {
+
+    const now = new Date();
+
+    satellites.forEach((sat, index) => {
+
+        const pv = satellite.propagate(sat.satrec, now);
+        if (!pv.position) return;
+
+        const gmst = satellite.gstime(now);
+        const geo = satellite.eciToGeodetic(pv.position, gmst);
+
+        const lon = Cesium.Math.toDegrees(geo.longitude);
+        const lat = Cesium.Math.toDegrees(geo.latitude);
+        const height = geo.height * 1000;
+
+        if (!satelliteEntities[index]) {
+            satelliteEntities[index] = viewer.entities.add({
+                type: "satellite",
+                position: Cesium.Cartesian3.fromDegrees(lon, lat, height),
+                point: {
+                    pixelSize: 5,
+                    color: Cesium.Color.YELLOW
+                },
+                label: {
+                    text: sat.name,
+                    font: "9px monospace",
+                    show: false
+                }
+            });
+        } else {
+            satelliteEntities[index].position =
+                Cesium.Cartesian3.fromDegrees(lon, lat, height);
+        }
+    });
+}
+
+loadTLE().then(() => {
+    setInterval(updateSatellites, 1000);
+});
+
+</script>
+</body>
+</html>

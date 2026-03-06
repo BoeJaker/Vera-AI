@@ -23,7 +23,7 @@ from typing import (
 from langchain.tools import BaseTool
 from langchain_core.tools import StructuredTool
 
-from Vera.Toolchain.tool_framework.core import (
+from Vera.Toolchain.ToolFramework.core import (
     ToolCapability,
     ToolCategory,
     ToolContext,
@@ -149,7 +149,7 @@ class ToolRegistry:
         # Try to extract input schema
         if hasattr(tool, "args_schema") and tool.args_schema:
             try:
-                desc.input_schema = tool.args_schema.model_json_schema()
+                desc.input_schema = tool.args_schema
             except Exception:
                 pass
         

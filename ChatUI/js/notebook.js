@@ -841,7 +841,7 @@
                                 type: 'chat_message',
                                 message_id: messageId,
                                 role: message.role,
-                                timestamp: message.timestamp
+                                timestamp: new Date(message.timestamp).toISOString()
                             }
                         })
                     }
