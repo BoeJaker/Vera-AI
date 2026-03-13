@@ -1,3 +1,6 @@
+
+from __future__ import annotations
+
 """
 Vera Tool Framework - Core
 ============================
@@ -32,7 +35,11 @@ Design Goals:
     - ToolContext is the single injection point for system services
 """
 
-from __future__ import annotations
+"""
+TODO
+Full tool output streaming
+
+"""
 
 import asyncio
 import inspect

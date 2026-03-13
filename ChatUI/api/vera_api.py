@@ -51,6 +51,7 @@ import Vera.ChatUI.api.Graph.graph_api as graph_api
 import Vera.ChatUI.api.Chat.chat_api as chat_api
 import Vera.ChatUI.api.Chat.chat_history_api as chat_history_api
 import Vera.ChatUI.api.Chat.voice as voice_api
+import Vera.ChatUI.api.Chat.context_api as context_api
 import Vera.ChatUI.api.Orchestrator.orchestrator_api as orchestrator_api
 import Vera.ChatUI.api.Orchestrator.api_api as api_api
 import Vera.ChatUI.api.Orchestrator.infra_api as infra_api
@@ -117,6 +118,7 @@ app.include_router(chat_api.router)
 app.include_router(chat_api.wsrouter)
 app.include_router(chat_history_api.router)
 app.include_router(voice_api.router)
+app.include_router(context_api.router)  
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
 app.include_router(toolchain_query_api.router)

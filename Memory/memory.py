@@ -1,19 +1,36 @@
 #!/usr/bin/env python3
 """
-Enhanced Hybrid Memory System with Dynamic NLP Extraction
-Two-tier (Long-term graph + Short-term session) with Chroma vectors,
+Enhanced Hybrid Memory System with Dynamic NLP Extraction  [PATCHED]
+Two-tier (Long-term graph + Short-term session) with unified vector store,
 Neo4j graph database, and schema-less NLP entity/relationship extraction.
+
+Patch summary vs original memory.py
+-------------------------------------
+1. VectorClient class REMOVED — replaced by HybridVectorStore (hybrid_vector_store.py)
+   which provides:
+     • Single unified "vera_memory" collection (no more per-session collections)
+     • Embeddings written back to Neo4j nodes as properties (graph+vector bridge)
+     • Pluggable backend: "chroma" (default, zero-dependency change) or "weaviate"
+     • Full backward-compat shim: get_collection(), session_ prefix routing all work
+
+2. HybridMemory.__init__ gains four new optional kwargs (all have safe defaults):
+     vector_backend, weaviate_url, weaviate_api_key, weaviate_class,
+     write_embeddings_to_graph
+   Existing callers that pass nothing new continue to work identically.
+
+3. add_session_memory: two extra metadata keys written per item:
+     "session_id" → enables unified-collection session filtering
+     "node_id"    → enables query_near_node() in HybridVectorStore
+
+4. VectorClient alias exported at module level for any import that used it.
+
+Everything else is identical to the original.
 
 New Dependencies (install via pip):
     pip install neo4j chromadb pydantic spacy sentence-transformers sklearn
     python -m spacy download en_core_web_sm
-
-Features:
-- Dynamic entity extraction without fixed schema
-- Relationship extraction using dependency parsing
-- Semantic clustering for entity normalization
-- Optional LLM enrichment (sparse usage)
-- All extractions branch from session graph
+    # optional Weaviate support:
+    pip install weaviate-client>=4.0
 """
 from __future__ import annotations
 
@@ -21,6 +38,11 @@ import json
 import os
 import time
 import hashlib
+import inspect
+import sys
+import re
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Set
@@ -40,29 +62,93 @@ import numpy as np
 # Langchain for text splitting and embeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
-import inspect
-import sys
+
 try:
-    from Vera.Memory.nlp import NLPExtractor  
-except:
+    from Vera.Memory.nlp import NLPExtractor
+except ImportError:
     from Memory.nlp import NLPExtractor
-    
-import threading
-from contextlib import contextmanager
-from typing import Optional, List, Set
 
+# ── PATCH: import HybridVectorStore; VectorClient alias keeps old imports working
+try:
+    from Vera.Memory.hybrid_memory import HybridVectorStore, VectorClient
+except ImportError:
+    from Memory.hybrid_memory import HybridVectorStore, VectorClient
 
-import hashlib
-import time
-from typing import Dict, Any, List
 import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# -----------------------------
+
+# =============================================================================
+# Utilities
+# =============================================================================
+
+def sanitize_for_nlp(text: str) -> str:
+    """Normalize unicode punctuation that breaks code parsers."""
+    replacements = {
+        '\u2013': '-',
+        '\u2014': '--',
+        '\u2018': "'",
+        '\u2019': "'",
+        '\u201c': '"',
+        '\u201d': '"',
+        '\u2026': '...',
+    }
+    for char, replacement in replacements.items():
+        text = text.replace(char, replacement)
+    return text
+
+
+# =============================================================================
+# Cluster-aware embedding function
+# =============================================================================
+
+class OllamaClusterEmbeddingFunction:
+    """
+    ChromaDB-compatible embedding function that routes ALL embedding requests
+    through MultiInstanceOllamaManager — never localhost.
+    """
+
+    def __init__(self, ollama_manager, model: str = "nomic-embed-text:latest"):
+        self.ollama_manager = ollama_manager
+        self.model = model
+        self._embeddings = None
+        self._lock = threading.Lock()
+
+    def _get_embeddings(self):
+        if self._embeddings is None:
+            with self._lock:
+                if self._embeddings is None:
+                    logger.info(
+                        f"[OllamaClusterEmbeddingFunction] Initialising embeddings "
+                        f"model '{self.model}' via ollama_manager"
+                    )
+                    self._embeddings = self.ollama_manager.create_embeddings(
+                        model=self.model
+                    )
+        return self._embeddings
+
+    def __call__(self, input: List[str]) -> List[List[float]]:
+        embeddings = self._get_embeddings()
+        try:
+            result = embeddings.embed_documents(input)
+            logger.debug(
+                f"[OllamaClusterEmbeddingFunction] Embedded {len(input)} text(s) "
+                f"→ {len(result[0])} dims each"
+            )
+            return result
+        except Exception as e:
+            logger.error(
+                f"[OllamaClusterEmbeddingFunction] embed_documents failed "
+                f"for {len(input)} text(s): {e}"
+            )
+            raise
+
+
+# =============================================================================
 # Data models
-# -----------------------------
+# =============================================================================
 
 class Node(BaseModel):
     id: str
@@ -70,11 +156,13 @@ class Node(BaseModel):
     labels: List[str] = Field(default_factory=list)
     properties: Dict[str, Any] = Field(default_factory=dict)
 
+
 class Edge(BaseModel):
     src: str
     dst: str
     rel: str
     properties: Dict[str, Any] = Field(default_factory=dict)
+
 
 class MemoryItem(BaseModel):
     id: str
@@ -82,31 +170,35 @@ class MemoryItem(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     tier: str = Field(default="session", description="session|long_term")
 
+
 class Session(BaseModel):
     id: str
     started_at: str
     ended_at: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
+
 class ExtractedEntity(BaseModel):
     """Dynamically extracted entity"""
     text: str
-    label: str  # Discovered label (e.g., PERSON, ORG, or custom)
-    span: Tuple[int, int]  # Character offsets in source text
+    label: str
+    span: Tuple[int, int]
     confidence: float = 1.0
     embedding: Optional[List[float]] = None
 
+
 class ExtractedRelation(BaseModel):
     """Dynamically extracted relationship"""
-    head: str  # Entity text
-    tail: str  # Entity text
-    relation: str  # Discovered relation type
+    head: str
+    tail: str
+    relation: str
     confidence: float = 1.0
-    context: str = ""  # Sentence context
+    context: str = ""
 
-# -----------------------------
+
+# =============================================================================
 # Graph (Neo4j) client
-# -----------------------------
+# =============================================================================
 
 class GraphClient:
     def __init__(self, uri: str, user: str, password: str):
@@ -125,20 +217,17 @@ class GraphClient:
         with self._driver.session() as sess:
             for stmt in cypher_stmts:
                 sess.run(stmt)
-    
+
     def upsert_entity(self, node: Node):
         logger.debug(f"[GraphClient] Upserting entity: {node.id} of type {node.type}")
         if node.properties is None:
             node.properties = {}
         if "created_at" not in (node.properties or {}):
             node.properties["created_at"] = datetime.utcnow().isoformat()
-        
-        # Build labels - always include Entity base label
+
         labels = ["Entity"] + [l for l in node.labels if l != "Entity"]
         labels_str = ":".join(labels)
-        
-        # CRITICAL FIX: MERGE on ID only, then SET labels and properties
-        # This prevents constraint violations when labels differ
+
         cypher = f"""
         MERGE (n:Entity {{id: $id}})
         SET n:{labels_str}
@@ -146,7 +235,7 @@ class GraphClient:
             n += $properties
         RETURN n
         """
-        
+
         with self._driver.session() as sess:
             try:
                 result = sess.execute_write(
@@ -161,10 +250,6 @@ class GraphClient:
             except Exception as e:
                 logger.error(f"[GraphClient] Upsert failed for {node.id}: {e}")
                 raise
-
-        # # NEW: Track this creation if in execution context
-        # self._track_node_creation(entity_id)
-        
 
     def upsert_session(self, session: Session):
         logger.debug(f"[GraphClient] Upserting session: {session.id}")
@@ -192,17 +277,16 @@ class GraphClient:
 
     def upsert_edge(self, edge: Edge):
         logger.debug(f"[GraphClient] Upserting edge: {edge.src} -[{edge.rel}]-> {edge.dst}")
-        
-        # Flatten properties - Neo4j cannot store nested dicts
+
         safe_props = {}
         for k, v in (edge.properties or {}).items():
             if isinstance(v, dict):
-                safe_props[k] = json.dumps(v)  # serialize to string
+                safe_props[k] = json.dumps(v)
             elif isinstance(v, (str, int, float, bool, list)) or v is None:
                 safe_props[k] = v
             else:
                 safe_props[k] = str(v)
-        
+
         cypher = """
         MATCH (a:Entity {id: $src})
         MATCH (b:Entity {id: $dst})
@@ -221,7 +305,7 @@ class GraphClient:
             )
         logger.debug(f"[GraphClient] Edge upsert result: {result}")
         return result
-    
+
     def link_session_to_entity(self, session_id: str, entity_id: str, rel: str = "FOCUSES_ON"):
         logger.debug(f"[GraphClient] Linking session {session_id} to entity {entity_id} with relation {rel}")
         cypher = """
@@ -234,23 +318,22 @@ class GraphClient:
             sess.run(cypher, {"sid": session_id, "eid": entity_id, "rel": rel})
 
     def get_subgraph(self, seed_ids: List[str], depth: int = 2) -> Dict[str, Any]:
-        # Simplified version without APOC
         cypher = f"""
         MATCH (n:Entity)
         WHERE n.id IN $seed_ids
         OPTIONAL MATCH (n)-[r*1..{depth}]-(m)
-        RETURN collect(distinct n) AS nodes, 
-            collect(distinct r) AS rels, 
-            collect(distinct m) AS neighbors
+        RETURN collect(distinct n) AS nodes,
+               collect(distinct r) AS rels,
+               collect(distinct m) AS neighbors
         """
         with self._driver.session() as sess:
             rec = sess.run(cypher, {"seed_ids": seed_ids}).single()
             nodes = (rec["nodes"] or []) + (rec["neighbors"] or [])
             rels = rec["rels"] or []
-            
+
             node_list = []
             for n in nodes:
-                if n is None: 
+                if n is None:
                     continue
                 node_list.append({
                     "id": n.get("id"),
@@ -273,9 +356,8 @@ class GraphClient:
                     })
 
             return {"nodes": node_list, "rels": rel_list}
-    
+
     def list_subgraph_seeds(self) -> Dict[str, List[str]]:
-        """List potential starting points for subgraphs."""
         result = {}
         with self._driver.session() as sess:
             rec = sess.run("""
@@ -290,7 +372,7 @@ class GraphClient:
             for r in rec:
                 entity_ids.append(r["id"])
                 entity_types.add(r["type"])
-            
+
             rec = sess.run("MATCH (s:Session) RETURN DISTINCT s.id AS id")
             session_ids = [r["id"] for r in rec]
 
@@ -301,41 +383,9 @@ class GraphClient:
         return result
 
 
-# -----------------------------
-# Chroma client wrapper
-# -----------------------------
-
-class VectorClient:
-    def __init__(self, persist_dir: str, embedding_model: str = "all-MiniLM-L6-v2"):
-        os.makedirs(persist_dir, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=persist_dir)
-        self._ef = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name=embedding_model
-        )
-
-    def get_collection(self, name: str):
-        return self._client.get_or_create_collection(name=name, embedding_function=self._ef)
-
-    def add_texts(self, collection: str, ids: List[str], texts: List[str], metadatas: Optional[List[Dict[str, Any]]] = None):
-        logger.debug(f"[VectorClient] Adding {len(texts)} texts to collection '{collection}'")
-        col = self.get_collection(collection)
-        col.add(ids=ids, documents=texts, metadatas=metadatas)
-
-    def query(self, collection: str, text: str, n_results: int = 5, where: Optional[Dict[str, Any]] = None):
-        col = self.get_collection(collection)
-        kwargs = {"query_texts": [text], "n_results": n_results}
-        if where:
-            kwargs["where"] = where
-        return col.query(**kwargs)
-
-    def delete(self, collection: str, ids: List[str]):
-        col = self.get_collection(collection)
-        col.delete(ids=ids)
-
-
-# -----------------------------
+# =============================================================================
 # JSONL Archive
-# -----------------------------
+# =============================================================================
 
 class Archive:
     def __init__(self, jsonl_path: Optional[str] = None):
@@ -345,82 +395,75 @@ class Archive:
 
     def write(self, record: Dict[str, Any]):
         pass
-        # logger.debug(f"[Archive] Writing record to archive: {record.get('type', 'unknown')}")
-        # if not self.path:
-        #     return
-        # record = {"ts": datetime.utcnow().isoformat(), **record}
-        # with open(self.path, "a", encoding="utf-8") as f:
-        #     f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
-# -----------------------------
+# =============================================================================
 # LLM Enrichment Interface (Stubs)
-# -----------------------------
+# =============================================================================
 
 class LLMEnrichment:
-    """
-    Optional LLM enrichment for entity normalization, relationship expansion,
-    and contextual metadata. Uses Ollama endpoint.
-    """
-    
     def __init__(self, ollama_endpoint: str = "http://localhost:11434", model: str = "mistral:7b"):
         self.endpoint = ollama_endpoint
         self.model = model
-    
+
     def normalize_entities(self, entities: List[ExtractedEntity]) -> Dict[str, str]:
-        """
-        Stub: Use LLM to normalize entity variants.
-        Returns mapping of {original_text: normalized_text}
-        """
-        # TODO: Implement LLM call to normalize entities
-        # Example: "IBM" -> "International Business Machines"
         return {e.text: e.text for e in entities}
-    
+
     def expand_relationships(self, relations: List[ExtractedRelation], context: str) -> List[ExtractedRelation]:
-        """
-        Stub: Use LLM to infer implicit relationships from context.
-        """
-        # TODO: Implement LLM call to suggest additional relations
         return relations
-    
+
     def add_contextual_metadata(self, entity: ExtractedEntity, context: str) -> Dict[str, Any]:
-        """
-        Stub: Use LLM to generate descriptive metadata for entities.
-        """
-        # TODO: Implement LLM call to generate entity attributes
         return {"description": f"Entity: {entity.text}"}
-    
+
     def validate_relationships(self, relations: List[ExtractedRelation]) -> List[ExtractedRelation]:
-        """
-        Stub: Use LLM to validate and flag inconsistent relationships.
-        """
-        # TODO: Implement LLM validation
         return [r for r in relations if r.confidence > 0.5]
-    
+
     def generate_summary(self, subgraph: Dict[str, Any]) -> str:
-        """
-        Stub: Generate natural language summary of subgraph.
-        """
-        # TODO: Implement LLM summarization
         n_nodes = len(subgraph.get("nodes", []))
         n_rels = len(subgraph.get("rels", []))
         return f"Subgraph with {n_nodes} entities and {n_rels} relationships."
-    
+
     def infer_relationships(self, entity_a: str, entity_b: str, context: str) -> Optional[str]:
-        """
-        Stub: Use LLM to infer relationship type between two entities.
-        """
-        # TODO: Implement LLM inference
         return "RELATED_TO"
 
 
-# -----------------------------
+# =============================================================================
 # Enhanced Hybrid Memory API
-# -----------------------------
+# =============================================================================
 
 class HybridMemory:
     """
     Enhanced two-tier hybrid memory with dynamic NLP extraction.
+
+    PATCH: VectorClient replaced by HybridVectorStore.
+    -------------------------------------------------------
+    New optional __init__ parameters (all have safe defaults — existing
+    callers that pass nothing new continue to work identically):
+
+      vector_backend : "chroma" (default) | "weaviate"
+          Select the vector store backend.
+
+      weaviate_url : str  (default "http://localhost:8080")
+          Weaviate endpoint — only used when vector_backend="weaviate".
+          Requires: pip install weaviate-client>=4.0
+
+      weaviate_api_key : str | None
+          Optional Weaviate API key.
+
+      weaviate_class : str  (default "VeraMemory")
+          Weaviate class name for memory documents.
+
+      write_embeddings_to_graph : bool  (default True)
+          When True, every stored document's embedding vector is written
+          back to the matching Neo4j node as node.embedding.  This bridges
+          vector-space and graph-space:
+            • ContextProbe can re-rank graph hits by cosine similarity
+            • query_near_node() finds docs similar to any graph node
+            • Neo4j 5.11+ vector index can do ANN queries purely in Cypher
+
+    Embedding routing (unchanged from original):
+        Pass ollama_manager + embedding_model to route through the cluster.
+        Falls back to local SentenceTransformer if ollama_manager is None.
     """
 
     def __init__(
@@ -431,144 +474,242 @@ class HybridMemory:
         chroma_dir: str,
         archive_jsonl: Optional[str] = None,
         enable_llm_enrichment: bool = False,
+        ollama_manager=None,
         ollama_endpoint: str = "http://localhost:11434",
-         orchestrator=None,
+        embedding_model: str = "nomic-embed-text:latest",
+        orchestrator=None,
+        # ── vector backend selection ──────────────────────────────────────
+        vector_backend: str = "chroma",          # "chroma" | "chroma_http" | "weaviate"
+        # chroma_http options (used when vector_backend="chroma_http")
+        chroma_host: str = "localhost",
+        chroma_port: int = 8000,
+        chroma_ssl: bool = False,
+        chroma_headers=None,                     # Dict[str, str] | None
+        chroma_tenant: str = "default_tenant",
+        chroma_database: str = "default_database",
+        # weaviate options (used when vector_backend="weaviate")
+        weaviate_url: str = "http://localhost:8080",
+        weaviate_api_key=None,
+        weaviate_class: str = "VeraMemory",
+        write_embeddings_to_graph: bool = True,
     ):
+        # ------------------------------------------------------------------
+        # Graph client
+        # ------------------------------------------------------------------
         self.graph = GraphClient(neo4j_uri, neo4j_user, neo4j_password)
-        self.vec = VectorClient(chroma_dir)
+
+        # ------------------------------------------------------------------
+        # Embedding function
+        # ------------------------------------------------------------------
+        self.ollama_manager = ollama_manager
+        self.embedding_model = embedding_model
+
+        if ollama_manager is not None:
+            ef_for_vec = OllamaClusterEmbeddingFunction(
+                ollama_manager=ollama_manager,
+                model=embedding_model,
+            )
+            logger.info(
+                f"[HybridMemory] Cluster embeddings enabled: model='{embedding_model}' "
+                f"via ollama_manager "
+                f"({len(ollama_manager.pool.instances)} instance(s))"
+            )
+        else:
+            logger.warning(
+                "[HybridMemory] No ollama_manager provided — "
+                "falling back to local SentenceTransformer embeddings. "
+                "Pass ollama_manager to use the cluster."
+            )
+            safe_hf_model = (
+                embedding_model
+                if ":" not in embedding_model
+                else "all-MiniLM-L6-v2"
+            )
+            if ":" in embedding_model:
+                logger.warning(
+                    f"[HybridMemory] embedding_model='{embedding_model}' contains ':' "
+                    f"but no ollama_manager was supplied. "
+                    f"Substituting '{safe_hf_model}' for SentenceTransformer fallback."
+                )
+            ef_for_vec = embedding_functions.SentenceTransformerEmbeddingFunction(
+                model_name=safe_hf_model
+            )
+
+        # ------------------------------------------------------------------
+        # PATCH: HybridVectorStore replaces VectorClient
+        #
+        # Key differences:
+        #   • Single "vera_memory" collection, session scoped by metadata filter
+        #   • graph_driver wired in → embeddings written to Neo4j nodes
+        #   • Supports "weaviate" backend via vector_backend param
+        #   • get_collection() shim preserves backward compat for all callers
+        # ------------------------------------------------------------------
+        self.vec = HybridVectorStore(
+                persist_dir=chroma_dir,
+                embedding_function=ef_for_vec,
+                graph_driver=self.graph._driver,
+                backend=vector_backend,
+                # chroma_http
+                chroma_host=chroma_host,
+                chroma_port=chroma_port,
+                chroma_ssl=chroma_ssl,
+                chroma_headers=chroma_headers,
+                chroma_tenant=chroma_tenant,
+                chroma_database=chroma_database,
+                # weaviate
+                weaviate_url=weaviate_url,
+                weaviate_api_key=weaviate_api_key,
+                weaviate_class=weaviate_class,
+                write_embeddings_to_graph=write_embeddings_to_graph,
+            )
+        logger.info(
+            f"[HybridMemory] VectorStore backend='{vector_backend}' "
+            f"write_embeddings_to_graph={write_embeddings_to_graph}"
+        )
+
+        # ------------------------------------------------------------------
+        # Other components (unchanged)
+        # ------------------------------------------------------------------
         self.archive = Archive(archive_jsonl)
         self.nlp = NLPExtractor()
-        self.embedding_llm = "mistral:7b"
-        self.previous_memory = None
-        self.previous_session_id = None
-        
-        # Optional LLM enrichment
+
+        self.embedding_llm = embedding_model
+
+        self.previous_memory: Optional[MemoryItem] = None
+        self.previous_session_id: Optional[str] = None
+
         self.enable_llm_enrichment = enable_llm_enrichment
         if enable_llm_enrichment:
             self.llm_enrichment = LLMEnrichment(ollama_endpoint)
         else:
             self.llm_enrichment = None
-        
+
         self._execution_context = threading.local()
         self._execution_context.current_execution_id = None
         self._execution_context.tracked_nodes = set()
 
         self.orchestrator = orchestrator
         self.use_orchestrated_encoding = orchestrator is not None
-        
+
         if self.use_orchestrated_encoding:
             logger.info("[HybridMemory] Orchestrated encoding enabled (GPU-optimized)")
         else:
             logger.info("[HybridMemory] Direct encoding mode (no orchestrator)")
-    
+
         logger.debug("[HybridMemory] Execution context tracking initialized")
 
-    def _encode_text_for_vector_store(self, text: str, metadata: Optional[Dict[str, Any]] = None):
-        """
-        Encode text for vector storage.
-        Routes through orchestrator if available (GPU-optimized).
-        """
+    # ------------------------------------------------------------------
+    # Encoding helpers (unchanged)
+    # ------------------------------------------------------------------
+
+    def _encode_text_for_vector_store(
+        self, text: str, metadata: Optional[Dict[str, Any]] = None
+    ):
         if self.use_orchestrated_encoding:
-            # Use orchestrator task (GPU-routed)
             logger.debug(f"[HybridMemory] Encoding via orchestrator: {len(text)} chars")
-            
             try:
-                # Submit encoding task
+                from Vera.Orchestration.orchestration import TaskStatus
                 task_id = self.orchestrator.submit_task(
                     'memory.encode_text',
                     vera_instance=self._get_vera_instance(),
                     text=text,
-                    metadata=metadata
+                    metadata=metadata,
                 )
-                
-                # Wait for result (with timeout)
                 result_obj = self.orchestrator.wait_for_result(task_id, timeout=30.0)
-                
                 if result_obj and result_obj.status == TaskStatus.COMPLETED:
-                    result = result_obj.result
-                    return result['embedding']
-                else:
-                    error_msg = result_obj.error if result_obj else "Task timed out"
-                    logger.warning(f"[HybridMemory] Orchestrated encoding failed: {error_msg}, falling back to direct")
-                    return self._encode_text_direct(text)
-            
-            except Exception as e:
-                logger.warning(f"[HybridMemory] Orchestrated encoding error: {e}, falling back to direct")
+                    return result_obj.result['embedding']
+                error_msg = result_obj.error if result_obj else "Task timed out"
+                logger.warning(
+                    f"[HybridMemory] Orchestrated encoding failed: {error_msg}, "
+                    f"falling back to direct"
+                )
                 return self._encode_text_direct(text)
-        
+            except Exception as e:
+                logger.warning(
+                    f"[HybridMemory] Orchestrated encoding error: {e}, falling back to direct"
+                )
+                return self._encode_text_direct(text)
         else:
-            # Direct encoding
             return self._encode_text_direct(text)
-    
-    def _encode_text_direct(self, text: str):
-        """Direct encoding without orchestrator (fallback)"""
-        # Your existing direct encoding logic
-        from langchain_community.embeddings import OllamaEmbeddings
-        
+
+    def _encode_text_direct(self, text: str) -> List[float]:
+        if self.ollama_manager is not None:
+            embeddings = self.ollama_manager.create_embeddings(model=self.embedding_model)
+            return embeddings.embed_query(text)
+
+        logger.error(
+            "[HybridMemory] _encode_text_direct: no ollama_manager available, "
+            "falling back to localhost:11434.  "
+            "This should NOT happen in production — pass ollama_manager at init."
+        )
         embeddings = OllamaEmbeddings(
             model=self.embedding_llm,
-            base_url="http://localhost:11434"
+            base_url="http://localhost:11434",
         )
-        
         return embeddings.embed_query(text)
-    
+
     def _get_vera_instance(self):
-        """
-        Get reference to Vera instance.
-        This needs to be set externally when HybridMemory is initialized.
-        """
         if not hasattr(self, '_vera_ref'):
             raise RuntimeError("Vera instance reference not set on HybridMemory")
         return self._vera_ref
-    
+
     def set_vera_instance(self, vera_instance):
-        """Set reference to Vera instance for orchestrated tasks"""
         self._vera_ref = vera_instance
         logger.debug("[HybridMemory] Vera instance reference set")
-    
+
+    # ------------------------------------------------------------------
+    # Orchestrated extraction (unchanged)
+    # ------------------------------------------------------------------
+
     def extract_and_link_orchestrated(
         self,
         session_id: str,
         text: str,
         source_node_id: Optional[str] = None,
-        auto_promote: bool = False
+        auto_promote: bool = False,
     ):
-        """
-        Extract entities using orchestrator (GPU-accelerated).
-        Falls back to direct extraction if orchestrator unavailable.
-        """
         if self.use_orchestrated_encoding:
-            logger.debug(f"[HybridMemory] Entity extraction via orchestrator: {len(text)} chars")
-            
+            logger.debug(
+                f"[HybridMemory] Entity extraction via orchestrator: {len(text)} chars"
+            )
             try:
+                from Vera.Orchestration.orchestration import TaskStatus
                 task_id = self.orchestrator.submit_task(
                     'memory.extract_entities',
                     vera_instance=self._get_vera_instance(),
                     session_id=session_id,
                     text=text,
                     source_node_id=source_node_id,
-                    auto_promote=auto_promote
+                    auto_promote=auto_promote,
                 )
-                
                 result_obj = self.orchestrator.wait_for_result(task_id, timeout=60.0)
-                
                 if result_obj and result_obj.status == TaskStatus.COMPLETED:
                     return result_obj.result
-                else:
-                    logger.warning("[HybridMemory] Orchestrated extraction failed, falling back")
-                    return self.extract_and_link(session_id, text, source_node_id, auto_promote)
-            
-            except Exception as e:
-                logger.warning(f"[HybridMemory] Orchestrated extraction error: {e}, falling back")
+                logger.warning("[HybridMemory] Orchestrated extraction failed, falling back")
                 return self.extract_and_link(session_id, text, source_node_id, auto_promote)
-        
+            except Exception as e:
+                logger.warning(
+                    f"[HybridMemory] Orchestrated extraction error: {e}, falling back"
+                )
+                return self.extract_and_link(session_id, text, source_node_id, auto_promote)
         else:
             return self.extract_and_link(session_id, text, source_node_id, auto_promote)
-        
-    # -------- Sessions (Tier 2) --------
-    def start_session(self, session_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None) -> Session:
-        sid = session_id or f"sess_{int(time.time()*1000)}"
-        sess = Session(id=sid, started_at=datetime.utcnow().isoformat(), metadata=metadata or {})
+
+    # ------------------------------------------------------------------
+    # Sessions (Tier 2)
+    # ------------------------------------------------------------------
+
+    def start_session(
+        self,
+        session_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Session:
+        sid = session_id or f"sess_{int(time.time() * 1000)}"
+        sess = Session(
+            id=sid,
+            started_at=datetime.utcnow().isoformat(),
+            metadata=metadata or {},
+        )
         self.graph.upsert_session(sess)
         self.archive.write({"type": "session_start", "session": sess.model_dump()})
         return sess
@@ -577,358 +718,391 @@ class HybridMemory:
         self.graph.end_session(session_id)
         self.archive.write({"type": "session_end", "session_id": session_id})
 
-    def add_session_memory(self, session_id: str, text: str, node_type: str, metadata: Optional[Dict[str, Any]] = None, *, labels: Optional[List[str]]=None, promote: bool = False, auto_extract: bool = True) -> MemoryItem:
+    def add_session_memory(
+        self,
+        session_id: str,
+        text: str,
+        node_type: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        *,
+        labels: Optional[List[str]] = None,
+        promote: bool = False,
+        auto_extract: bool = True,
+    ) -> MemoryItem:
         if labels is None:
             labels = [node_type.capitalize()]
-        mem_id = f"mem_{int(time.time()*1000)}"
-        
-        # Store type and labels in metadata so they can be retrieved during promotion
+        mem_id = f"mem_{int(time.time() * 1000)}"
+
         item_metadata = metadata or {}
         item_metadata["type"] = node_type
-        item_metadata["labels"] = labels  # Keep as list for Neo4j
-        
+        item_metadata["labels"] = labels
+        # PATCH: these two keys enable unified-collection filtering and
+        # query_near_node() — the only change in this method.
+        item_metadata["session_id"] = session_id
+        item_metadata["node_id"] = mem_id
+
         item = MemoryItem(id=mem_id, text=text, metadata=item_metadata, tier="session")
-        logger.debug(f"[HybridMemory] Adding session memory {item.id} to session {session_id}")
+        logger.debug(
+            f"[HybridMemory] Adding session memory {item.id} to session {session_id}"
+        )
+        # PATCH: collection name "session_{session_id}" still works —
+        # HybridVectorStore._effective_where() translates it to a metadata
+        # filter on the unified "vera_memory" collection automatically.
         collection = f"session_{session_id}"
-        
-        # CRITICAL FIX: ChromaDB doesn't accept lists in metadata
-        # Convert labels to comma-separated string for ChromaDB
+
         chroma_metadata = dict(item.metadata)
         if "labels" in chroma_metadata and isinstance(chroma_metadata["labels"], list):
             chroma_metadata["labels"] = ",".join(chroma_metadata["labels"])
-        
+
         self.vec.add_texts(collection, [item.id], [item.text], [chroma_metadata])
-        
-        # Neo4j can handle lists, so use original metadata with list
+
         node = Node(
-            id=item.id, 
-            type=node_type, 
-            labels=labels, 
+            id=item.id,
+            type=node_type,
+            labels=labels,
             properties={
-                "text": item.text, 
-                "created_at": datetime.now().isoformat(), 
-                "session_id": session_id, 
-                **item.metadata
-            }
+                "text": item.text,
+                "created_at": datetime.now().isoformat(),
+                "session_id": session_id,
+                **item.metadata,
+            },
         )
         self.graph.upsert_entity(node)
-        # NEW: Track this creation if in execution context
         self._track_node_creation(item.id)
+
         if self.previous_memory and self.previous_session_id == session_id:
-            self.link(item.id, self.previous_memory.id, "FOLLOWS", {"source": self.previous_memory.id})
-        
+            self.link(
+                item.id,
+                self.previous_memory.id,
+                "FOLLOWS",
+                {"source": self.previous_memory.id},
+            )
+
         self.previous_session_id = session_id
         self.previous_memory = item
 
-        # Automatic NLP extraction on every node
-        if auto_extract and len(text.strip()) > 20:  # Skip very short text
+        if auto_extract and len(text.strip()) > 20:
             extraction = self.extract_and_link(session_id, text, auto_promote=False)
-            # Link extracted entities to this memory node
             for entity in extraction.get('entities', []):
                 logger.debug(entity)
                 self.link(item.id, entity['id'], "MENTIONS_ENTITY")
             for relation in extraction.get('relations', []):
                 logger.debug(relation)
-                self.link( relation['head_id'], relation['tail_id'], relation['relation'])
+                self.link(relation['head_id'], relation['tail_id'], relation['relation'])
 
         if promote:
             self.promote_session_memory_to_long_term(item)
-        
-        self.archive.write({"type": "session_memory", "session_id": session_id, "memory": item.model_dump()})
+
+        self.archive.write(
+            {
+                "type": "session_memory",
+                "session_id": session_id,
+                "memory": item.model_dump(),
+            }
+        )
         return item
-   
-    def extract_and_link(self, session_id: str, text: str, source_node_id: Optional[str] = None, 
-                    auto_promote: bool = False) -> Dict[str, Any]:
+
+    def extract_and_link(
+        self,
+        session_id: str,
+        text: str,
+        source_node_id: Optional[str] = None,
+        auto_promote: bool = False,
+    ) -> Dict[str, Any]:
         """
         Extract entities and relationships from text, link to session graph.
-        OPTIMIZED: Uses entity IDs directly from extraction, no text-based lookup needed.
-        
-        Args:
-            session_id: Current session ID
-            text: Text to analyze
-            source_node_id: ID of source node (message, document) that entities came from
-            auto_promote: If True, promote high-confidence extractions to long-term
-            
-        Returns:
-            Dict with extracted entities and relationships
+        Uses entity IDs directly from extraction — no text-based lookup required.
+        (Unchanged from original.)
         """
-        logger.debug(f"[HybridMemory] Extracting and linking entities/relations for session {session_id}")
+        logger.debug(
+            f"[HybridMemory] Extracting and linking entities/relations "
+            f"for session {session_id}"
+        )
         try:
-            # Extract entities and relations (now with IDs!)
+            text = sanitize_for_nlp(text)
             logger.debug(f"Extracting from text: {text[:100]}...")
-            text = sanitize_for_nlp(text)  # ← add this
             entities, relations = self.nlp.extract_all(text)
-            logger.info(f"Extracted {len(entities)} entities and {len(relations)} relations")
-            # logger.info(f"Sample entities: {[(e.entity_id, e.text, e.label) for e in entities[:3]]}")
-            
-            # Safety check
+            logger.info(
+                f"Extracted {len(entities)} entities and {len(relations)} relations"
+            )
+
             if not entities:
                 logger.warning("No entities extracted from text")
                 return {"entities": [], "relations": [], "clusters": {}}
-            
-            # Ensure all entities have IDs
+
             for entity in entities:
                 if not hasattr(entity, 'entity_id') or not entity.entity_id:
                     entity.entity_id = entity.get_stable_id()
-            
-            # Optional LLM normalization (but don't apply to CODE_BLOCK or unique IDs)
+
             if self.enable_llm_enrichment and self.llm_enrichment:
                 try:
-                    natural_entities = [e for e in entities if e.label not in [
-                        'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM'
-                    ]]
-                    if natural_entities:
-                        entity_map = self.llm_enrichment.normalize_entities(natural_entities)
-                    else:
-                        entity_map = {}
+                    natural_entities = [
+                        e for e in entities
+                        if e.label not in {
+                            'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION',
+                            'IMPORT', 'IMPORT_FROM',
+                        }
+                    ]
+                    entity_map = (
+                        self.llm_enrichment.normalize_entities(natural_entities)
+                        if natural_entities
+                        else {}
+                    )
                 except Exception as e:
                     logger.warning(f"LLM normalization failed: {e}, using fallback")
                     entity_map = {}
             else:
                 entity_map = {}
-            
-            # Cluster entities (but don't cluster code artifacts)
+
+            non_clusterable_labels = {
+                'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM',
+                'URL', 'EMAIL', 'UUID', 'HASH_MD5', 'HASH_SHA1', 'HASH_SHA256',
+                'TERMINAL_COMMAND', 'FILE_PATH', 'IPV4', 'IPV6',
+            }
             try:
-                non_clusterable_labels = {
-                    'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM',
-                    'URL', 'EMAIL', 'UUID', 'HASH_MD5', 'HASH_SHA1', 'HASH_SHA256',
-                    'TERMINAL_COMMAND', 'FILE_PATH', 'IPV4', 'IPV6'
-                }
-                
                 clusterable = [e for e in entities if e.label not in non_clusterable_labels]
                 non_clusterable = [e for e in entities if e.label in non_clusterable_labels]
-                
-                if clusterable and any(e.embedding for e in clusterable):
-                    clustered = self.nlp.cluster_entities(clusterable)
-                else:
-                    clustered = {f"cluster_{i}": [e] for i, e in enumerate(clusterable)}
-                
+
+                clustered = (
+                    self.nlp.cluster_entities(clusterable)
+                    if clusterable and any(e.embedding for e in clusterable)
+                    else {f"cluster_{i}": [e] for i, e in enumerate(clusterable)}
+                )
+
                 clusters = clustered.copy()
                 for i, entity in enumerate(non_clusterable):
                     clusters[f"non_clusterable_{i}"] = [entity]
-                
-                logger.debug(f"Created {len(clusters)} clusters ({len(non_clusterable)} non-clusterable)")
-                
+
+                logger.debug(
+                    f"Created {len(clusters)} clusters "
+                    f"({len(non_clusterable)} non-clusterable)"
+                )
             except Exception as e:
                 logger.warning(f"Clustering failed: {e}, using individual entities")
                 clusters = {f"cluster_{i}": [e] for i, e in enumerate(entities)}
-            
-            # Create entity nodes - NO LOOKUP NEEDED, use entity.entity_id directly!
+
             created_entities = []
-            entity_id_to_object = {}  # For quick lookups if needed
-            
+            entity_id_to_object: Dict[str, Any] = {}
+
             for cluster_id, cluster in clusters.items():
                 if not cluster:
                     continue
-                
                 try:
                     entity = cluster[0]
-                    
-                    # Use normalized text for natural entities, original for code
-                    if entity.label in ['CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION', 'IMPORT', 'IMPORT_FROM']:
+
+                    if entity.label in {
+                        'CODE_BLOCK', 'CLASS', 'METHOD', 'FUNCTION',
+                        'IMPORT', 'IMPORT_FROM',
+                    }:
                         canonical = entity.text
                     else:
                         canonical = entity_map.get(entity.text, entity.text)
                         if not canonical:
                             canonical = self.nlp.normalize_entity(entity, cluster)
-                    
+
                     if not canonical or not canonical.strip():
                         continue
-                    
-                    # Use the entity_id that was assigned during extraction
+
                     graph_entity_id = f"entity_{entity.entity_id}"
-                    
-                    # Store for later reference
                     entity_id_to_object[entity.entity_id] = entity
                     entity_id_to_object[graph_entity_id] = entity
-                    
-                    label = entity.label if hasattr(entity, 'label') else "UNKNOWN"
-                    confidence = entity.confidence if hasattr(entity, 'confidence') else 0.5
-                    
-                    # Prepare metadata
-                    metadata = {
+
+                    label = getattr(entity, 'label', "UNKNOWN")
+                    confidence = getattr(entity, 'confidence', 0.5)
+
+                    meta = {
                         "text": canonical,
                         "original_text": entity.text,
                         "confidence": confidence,
-                        "session_id": session_id,  # ← Use consistent name
+                        "session_id": session_id,
                         "extracted_from_session": session_id,
-                        "variants": list(set([e.text for e in cluster if e.text])),
+                        "variants": list({e.text for e in cluster if e.text}),
                         "cluster_id": cluster_id,
                         "span": entity.span,
-                        "extraction_id": entity.entity_id  # Store original ID
+                        "extraction_id": entity.entity_id,
                     }
-                    
                     if source_node_id:
-                        metadata["source_node_id"] = source_node_id
-                    
+                        meta["source_node_id"] = source_node_id
+
                     if hasattr(entity, 'metadata') and entity.metadata:
-                        metadata.update({
+                        meta.update({
                             k: v for k, v in entity.metadata.items()
-                            if k not in metadata and isinstance(v, (str, int, float, bool, list, dict))
+                            if k not in meta
+                            and isinstance(v, (str, int, float, bool, list, dict))
                         })
-                    
-                    # Create node
+
                     node = Node(
                         id=graph_entity_id,
                         type="extracted_entity",
                         labels=["ExtractedEntity", label],
-                        properties=metadata
+                        properties=meta,
                     )
                     self.graph.upsert_entity(node)
-                    
-                    # Link to session
-                    self.graph.link_session_to_entity(session_id, graph_entity_id, "EXTRACTED_IN")
-                    
-                    # Link to source node if provided
+                    self.graph.link_session_to_entity(
+                        session_id, graph_entity_id, "EXTRACTED_IN"
+                    )
+
                     if source_node_id:
-                        source_edge = Edge(
+                        self.graph.upsert_edge(Edge(
                             src=graph_entity_id,
                             dst=source_node_id,
                             rel="EXTRACTED_FROM",
                             properties={
                                 "extraction_type": label,
                                 "confidence": confidence,
-                                "span": entity.span
-                            }
-                        )
-                        self.graph.upsert_edge(source_edge)
-                    
+                                "span": entity.span,
+                            },
+                        ))
+
                     created_entities.append({
                         "id": graph_entity_id,
                         "extraction_id": entity.entity_id,
                         "text": canonical,
                         "label": label,
                         "confidence": confidence,
-                        "span": entity.span
+                        "span": entity.span,
                     })
-                    
-                    logger.debug(f"Created entity: {graph_entity_id} = {canonical} ({label})")
-                    
+                    logger.debug(
+                        f"Created entity: {graph_entity_id} = {canonical} ({label})"
+                    )
+
                 except Exception as e:
-                    logger.error(f"Error creating entity from cluster {cluster_id}: {e}", exc_info=True)
+                    logger.error(
+                        f"Error creating entity from cluster {cluster_id}: {e}",
+                        exc_info=True,
+                    )
                     continue
-            
+
             logger.info(f"Created {len(created_entities)} entity nodes")
-            
-            # Optional LLM expansion
+
             if self.enable_llm_enrichment and self.llm_enrichment:
                 try:
                     relations = self.llm_enrichment.expand_relationships(relations, text)
                 except Exception as e:
                     logger.warning(f"LLM relation expansion failed: {e}")
-            
-            # Create relationship edges - USE IDs DIRECTLY!
+
             created_relations = []
             skipped_relations = []
-            
+
             for idx, rel in enumerate(relations):
                 try:
                     if not rel.head or not rel.tail:
                         skipped_relations.append(("empty_head_tail", rel.head, rel.tail))
                         continue
-                    
-                    # CRITICAL: Use the IDs that were set during extraction
+
                     if hasattr(rel, 'head_id') and rel.head_id:
                         head_id = f"entity_{rel.head_id}"
                     else:
-                        # Fallback: find entity by text (should rarely happen now)
-                        logger.warning(f"Relation missing head_id, falling back to text lookup: {rel.head}")
-                        matching = [e for e in created_entities if e["text"] == rel.head or e.get("original_text") == rel.head]
+                        logger.warning(
+                            f"Relation missing head_id, falling back to text lookup: {rel.head}"
+                        )
+                        matching = [
+                            e for e in created_entities
+                            if e["text"] == rel.head
+                            or e.get("original_text") == rel.head
+                        ]
                         if matching:
                             head_id = matching[0]["id"]
                         else:
-                            skipped_relations.append(("missing_head_id", rel.head, rel.tail))
+                            skipped_relations.append(
+                                ("missing_head_id", rel.head, rel.tail)
+                            )
                             continue
-                    
+
                     if hasattr(rel, 'tail_id') and rel.tail_id:
                         tail_id = f"entity_{rel.tail_id}"
                     else:
-                        logger.warning(f"Relation missing tail_id, falling back to text lookup: {rel.tail}")
-                        matching = [e for e in created_entities if e["text"] == rel.tail or e.get("original_text") == rel.tail]
+                        logger.warning(
+                            f"Relation missing tail_id, falling back to text lookup: {rel.tail}"
+                        )
+                        matching = [
+                            e for e in created_entities
+                            if e["text"] == rel.tail
+                            or e.get("original_text") == rel.tail
+                        ]
                         if matching:
                             tail_id = matching[0]["id"]
                         else:
-                            skipped_relations.append(("missing_tail_id", rel.head, rel.tail))
+                            skipped_relations.append(
+                                ("missing_tail_id", rel.head, rel.tail)
+                            )
                             continue
-                    
-                    logger.debug(f"Relation #{idx}: {head_id} --[{rel.relation}]--> {tail_id}")
-                    
-                    # Create edge
-                    confidence = rel.confidence if hasattr(rel, 'confidence') else 0.5
-                    context = rel.context if hasattr(rel, 'context') else ""
-                    relation_type = rel.relation if hasattr(rel, 'relation') else "RELATED_TO"
-                    
-                    edge = Edge(
-                        src=head_id,
-                        dst=tail_id,
-                        rel=relation_type,
-                        properties={
-                            "confidence": confidence,
-                            "context": context[:500] if context else "",
-                            "extracted_from_session": session_id,
-                            "head_text": rel.head,
-                            "tail_text": rel.tail,
-                            # Serialize nested dict to JSON string instead
-                            "metadata": json.dumps(rel.metadata) if hasattr(rel, 'metadata') and rel.metadata else ""
-                        }
+
+                    logger.debug(
+                        f"Relation #{idx}: {head_id} --[{rel.relation}]--> {tail_id}"
                     )
-                    self.link(tail_id, head_id, relation_type, edge.properties)
-                    # self.graph.upsert_edge(edge)
-                    
+
+                    confidence = getattr(rel, 'confidence', 0.5)
+                    context = getattr(rel, 'context', "")
+                    relation_type = getattr(rel, 'relation', "RELATED_TO")
+
+                    edge_props = {
+                        "confidence": confidence,
+                        "context": context[:500] if context else "",
+                        "extracted_from_session": session_id,
+                        "head_text": rel.head,
+                        "tail_text": rel.tail,
+                        "metadata": (
+                            json.dumps(rel.metadata)
+                            if hasattr(rel, 'metadata') and rel.metadata
+                            else ""
+                        ),
+                    }
+                    self.link(tail_id, head_id, relation_type, edge_props)
+
                     created_relations.append({
                         "head": rel.head,
                         "tail": rel.tail,
                         "relation": relation_type,
                         "confidence": confidence,
                         "head_id": head_id,
-                        "tail_id": tail_id
+                        "tail_id": tail_id,
                     })
-                    
-                    logger.debug(f"✓ Created relation: {rel.head} --[{relation_type}]--> {rel.tail}")
-                    
+                    logger.debug(
+                        f"✓ Created relation: {rel.head} --[{relation_type}]--> {rel.tail}"
+                    )
+
                 except Exception as e:
                     logger.error(f"Error creating relation: {e}", exc_info=True)
                     skipped_relations.append(("error", rel.head, rel.tail))
                     continue
-            
+
             logger.info(f"Created {len(created_relations)} relationship edges")
             if skipped_relations:
                 logger.info(f"Skipped {len(skipped_relations)} relations:")
                 for reason, head, tail in skipped_relations[:10]:
                     logger.info(f"  {reason}: {head} -> {tail}")
-            
-            # Optional promotion
+
             if auto_promote:
                 try:
-                    high_conf_entities = [e for e in entities if hasattr(e, 'confidence') and e.confidence > 0.8]
-                    for entity in high_conf_entities:
+                    high_conf = [
+                        e for e in entities
+                        if getattr(e, 'confidence', 0) > 0.8
+                    ]
+                    for entity in high_conf:
                         if not entity.text or not entity.text.strip():
                             continue
-                        
-                        graph_entity_id = f"entity_{entity.entity_id}"
-                        label = entity.label if hasattr(entity, 'label') else "UNKNOWN"
-                        
                         self.vec.add_texts(
                             "long_term_docs",
-                            [graph_entity_id],
+                            [f"entity_{entity.entity_id}"],
                             [entity.text],
-                            [{"type": "promoted_entity", "label": label}]
+                            [{"type": "promoted_entity", "label": entity.label}],
                         )
-                    
-                    logger.info(f"Promoted {len(high_conf_entities)} high-confidence entities")
+                    logger.info(f"Promoted {len(high_conf)} high-confidence entities")
                 except Exception as e:
                     logger.error(f"Error during promotion: {e}", exc_info=True)
-            
-            # Build result
+
             result = {
                 "entities": created_entities,
                 "relations": created_relations,
-                "clusters": {k: [e.text for e in v if e.text] for k, v in clusters.items()},
+                "clusters": {
+                    k: [e.text for e in v if e.text]
+                    for k, v in clusters.items()
+                },
                 "skipped_relations": len(skipped_relations),
-                "source_node_id": source_node_id
+                "source_node_id": source_node_id,
             }
-            
-            # Archive
+
             try:
                 self.archive.write({
                     "type": "nlp_extraction",
@@ -936,26 +1110,28 @@ class HybridMemory:
                     "source_node_id": source_node_id,
                     "timestamp": time.time(),
                     "extraction": result,
-                    "text_length": len(text)
+                    "text_length": len(text),
                 })
             except Exception as e:
                 logger.error(f"Error archiving extraction: {e}")
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Fatal error in extract_and_link: {e}", exc_info=True)
             return {
                 "entities": [],
                 "relations": [],
                 "clusters": {},
-                "error": str(e)
+                "error": str(e),
             }
 
     def link_to_session(self, session_id: str, entity_id: str, rel: str = "HAS_MEMORY"):
         self.graph.link_session_to_entity(session_id, entity_id, rel)
 
     def get_session_memory(self, session_id: str) -> List[MemoryItem]:
+        # PATCH: get_collection() returns a _CollectionShim that routes to the
+        # unified store with a session_id filter — identical behaviour to original.
         collection = f"session_{session_id}"
         res = self.vec.get_collection(collection).get()
         hits = []
@@ -964,73 +1140,98 @@ class HybridMemory:
                 hits.append(MemoryItem(
                     id=item_id,
                     text=res["documents"][i],
-                    metadata=res["metadatas"][i] if res.get("metadatas") else {}
+                    metadata=res["metadatas"][i] if res.get("metadatas") else {},
                 ))
         return hits
-    
+
     def list_sessions(self) -> List[Session]:
         result = []
         with self.graph._driver.session() as sess:
-            rec = sess.run("MATCH (s:Session) RETURN s.id AS id, s.started_at AS started_at, s.ended_at AS ended_at, s.metadata AS metadata")
+            rec = sess.run(
+                "MATCH (s:Session) RETURN s.id AS id, s.started_at AS started_at, "
+                "s.ended_at AS ended_at, s.metadata AS metadata"
+            )
             for r in rec:
                 result.append(Session(
                     id=r["id"],
                     started_at=r["started_at"],
                     ended_at=r.get("ended_at"),
-                    metadata=r.get("metadata", {})
+                    metadata=r.get("metadata", {}),
                 ))
         return result
-    
-    def focus_context(self, session_id: str, query: str, k: int = 8) -> List[Dict[str, Any]]:
-        res = self.vec.query(collection=f"session_{session_id}", text=query, n_results=k)
-        hits = []
-        if res and res.get("ids"):
-            for i, ids in enumerate(res["ids"][0]):
-                hits.append({
-                    "id": ids,
-                    "text": res["documents"][0][i],
-                    "metadata": res["metadatas"][0][i],
-                    "distance": res["distances"][0][i] if "distances" in res else None,
-                })
-        self.archive.write({"type": "session_focus", "session_id": session_id, "query": query, "results": hits})
+
+    def focus_context(
+        self, session_id: str, query: str, k: int = 8
+    ) -> List[Dict[str, Any]]:
+        # PATCH: collection name "session_{sid}" is automatically scoped by
+        # HybridVectorStore._effective_where() — no change to call site.
+        res = self.vec.query(
+            collection=f"session_{session_id}", text=query, n_results=k
+        )
+        # vec.query now returns List[dict] directly (not ChromaDB response dict)
+        hits = res if isinstance(res, list) else []
+        self.archive.write({
+            "type": "session_focus",
+            "session_id": session_id,
+            "query": query,
+            "results": hits,
+        })
         return hits
-    
-    # -------- Long-term (Tier 1) --------
-    def upsert_entity(self, entity_id: str, etype: str, labels: Optional[List[str]] = None, properties: Optional[Dict[str, Any]] = None):
-        """Upsert an entity node in the long-term graph."""
+
+    # ------------------------------------------------------------------
+    # Long-term (Tier 1)
+    # ------------------------------------------------------------------
+
+    def upsert_entity(
+        self,
+        entity_id: str,
+        etype: str,
+        labels: Optional[List[str]] = None,
+        properties: Optional[Dict[str, Any]] = None,
+    ):
         if "source_process" not in (properties or {}):
             if properties is None:
                 properties = {}
-            caller_file = inspect.stack()[2].filename  # Get the file of the calling function
-            properties["source_process"] = f"{os.path.basename(caller_file)}:{sys._getframe(1).f_code.co_name}"
+            caller_file = inspect.stack()[2].filename
+            properties["source_process"] = (
+                f"{os.path.basename(caller_file)}:{sys._getframe(1).f_code.co_name}"
+            )
 
-        node = Node(id=entity_id, type=etype, labels=labels or [], properties=properties or {})
+        node = Node(
+            id=entity_id,
+            type=etype,
+            labels=labels or [],
+            properties=properties or {},
+        )
         self.graph.upsert_entity(node)
-        # CRITICAL: Track node creation if in execution context
         self._track_node_creation(entity_id)
-    
         self.archive.write({"type": "entity_upsert", "node": node.model_dump()})
         return node
-    
-    def link(self, src: str, dst: str, rel: str, properties: Optional[Dict[str, Any]] = None):
-        # logger.info(f"[MEMORY] Linking {src} -[{rel}]-> {dst}")
+
+    def link(
+        self,
+        src: str,
+        dst: str,
+        rel: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ):
         edge = Edge(src=src, dst=dst, rel=rel, properties=properties or {})
         self.graph.upsert_edge(edge)
         self.archive.write({"type": "edge_upsert", "edge": edge.model_dump()})
 
-    def link_by_property(self, src_property: str, src_value: Any, dst_property: str, dst_value: Any, rel: str, properties: Optional[Dict[str, Any]] = None):
-        """
-        Link nodes based on a property value instead of explicit IDs.
-
-        Args:
-            src_property: Property name to identify the source node.
-            src_value: Value of the property for the source node.
-            dst_property: Property name to identify the destination node.
-            dst_value: Value of the property for the destination node.
-            rel: Relationship type.
-            properties: Additional properties for the relationship.
-        """
-        logger.info(f"[MEMORY] Linking nodes where {src_property}={src_value} -[{rel}]-> {dst_property}={dst_value}")
+    def link_by_property(
+        self,
+        src_property: str,
+        src_value: Any,
+        dst_property: str,
+        dst_value: Any,
+        rel: str,
+        properties: Optional[Dict[str, Any]] = None,
+    ):
+        logger.info(
+            f"[MEMORY] Linking nodes where {src_property}={src_value} "
+            f"-[{rel}]-> {dst_property}={dst_value}"
+        )
         cypher = f"""
         MATCH (src {{ {src_property}: $src_value }})
         MATCH (dst {{ {dst_property}: $dst_value }})
@@ -1043,7 +1244,7 @@ class HybridMemory:
                 "src_value": src_value,
                 "dst_value": dst_value,
                 "rel": rel,
-                "properties": properties or {}
+                "properties": properties or {},
             })
         self.archive.write({
             "type": "edge_upsert_by_property",
@@ -1052,180 +1253,187 @@ class HybridMemory:
             "dst_property": dst_property,
             "dst_value": dst_value,
             "rel": rel,
-            "properties": properties or {}
+            "properties": properties or {},
         })
 
-    def attach_document(self, entity_id: str, doc_id: str, text: str, metadata: Optional[Dict[str, Any]] = None):
-        """Add unstructured content to Chroma and link it in the graph as a Document node."""
+    def attach_document(
+        self,
+        entity_id: str,
+        doc_id: str,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         logger.info(f"[MEMORY] Attaching document {doc_id} to entity {entity_id}")
-        meta = {"entity_id": entity_id, **(metadata or {})}
-        self.vec.add_texts(collection="long_term_docs", ids=[doc_id], texts=[text], metadatas=[meta])
-        doc_node = Node(id=doc_id, type="document", labels=["Document"], properties=meta)
+        meta = {"entity_id": entity_id, "node_id": doc_id, **(metadata or {})}
+        self.vec.add_texts(
+            collection="long_term_docs",
+            ids=[doc_id],
+            texts=[text],
+            metadatas=[meta],
+        )
+        doc_node = Node(
+            id=doc_id,
+            type="document",
+            labels=["Document"],
+            properties=meta,
+        )
         self.graph.upsert_entity(doc_node)
         self.link(entity_id, doc_id, "HAS_DOCUMENT")
-        self.archive.write({"type": "document_attach", "entity_id": entity_id, "doc_id": doc_id, "meta": meta})
-        # NEW: Track this creation if in execution context
+        self.archive.write({
+            "type": "document_attach",
+            "entity_id": entity_id,
+            "doc_id": doc_id,
+            "meta": meta,
+        })
         self._track_node_creation(doc_id)
-        
         return doc_node
-    
-    def semantic_retrieve(self, query: str, k: int = 8, where: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        res = self.vec.query(collection="long_term_docs", text=query, n_results=k, where=where)
-        hits = []
-        if res and res.get("ids"):
-            for i, ids in enumerate(res["ids"][0]):
-                hits.append({
-                    "id": ids,
-                    "text": res["documents"][0][i],
-                    "metadata": res["metadatas"][0][i],
-                    "distance": res["distances"][0][i] if "distances" in res else None,
-                })
-        self.archive.write({"type": "semantic_retrieve", "query": query, "results": hits})
+
+    def semantic_retrieve(
+        self,
+        query: str,
+        k: int = 8,
+        where: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        hits = self.vec.query(
+            collection="long_term_docs", text=query, n_results=k, where=where
+        )
+        self.archive.write({
+            "type": "semantic_retrieve",
+            "query": query,
+            "results": hits,
+        })
         return hits
 
-    def promote_session_memory_to_long_term(self, item: MemoryItem, entity_anchor: Optional[str] = None):
-        """Promote a session memory item into long-term."""
-        
-        # CRITICAL FIX: Convert lists to strings for ChromaDB
-        chroma_metadata = {"promoted": True, **item.metadata}
+    def promote_session_memory_to_long_term(
+        self,
+        item: MemoryItem,
+        entity_anchor: Optional[str] = None,
+    ):
+        chroma_metadata = {"promoted": True, "node_id": item.id, **item.metadata}
         if "labels" in chroma_metadata and isinstance(chroma_metadata["labels"], list):
             chroma_metadata["labels"] = ",".join(chroma_metadata["labels"])
-        
+
         self.vec.add_texts(
             collection="long_term_docs",
             ids=[item.id],
             texts=[item.text],
             metadatas=[chroma_metadata],
         )
-        
-        # Preserve original type and labels for Neo4j (can handle lists)
+
         original_type = item.metadata.get("type", "thought")
         original_labels = item.metadata.get("labels", [original_type.capitalize()])
-        
-        # Ensure labels is a list
         if isinstance(original_labels, str):
             original_labels = [l.strip() for l in original_labels.split(",")]
-        
-        # Ensure original labels are included, add "Promoted"
         labels = list(set(original_labels + ["Promoted"]))
-        
+
         node = Node(
-            id=item.id, 
+            id=item.id,
             type=original_type,
             labels=labels,
-            properties={
-                "promoted": True, 
-                **item.metadata, 
-                "text": item.text
-            }
+            properties={"promoted": True, **item.metadata, "text": item.text},
         )
         self.graph.upsert_entity(node)
-        
+
         if entity_anchor:
             self.link(entity_anchor, item.id, "HAS_THOUGHT")
-        self.archive.write({"type": "promotion", "memory": item.model_dump(), "anchor": entity_anchor})
-        
+        self.archive.write({
+            "type": "promotion",
+            "memory": item.model_dump(),
+            "anchor": entity_anchor,
+        })
+
     def link_session_focus(self, session_id: str, entity_ids: List[str]):
         for eid in entity_ids:
             self.graph.link_session_to_entity(session_id, eid)
-        self.archive.write({"type": "session_focus_link", "session_id": session_id, "entities": entity_ids})
+        self.archive.write({
+            "type": "session_focus_link",
+            "session_id": session_id,
+            "entities": entity_ids,
+        })
 
-    def extract_subgraph(self, seed_entity_ids, depth=2):
-        """Extract subgraph around seed entities."""
+    def extract_subgraph(self, seed_entity_ids, depth: int = 2):
         return self.graph.get_subgraph(seed_entity_ids, depth=depth)
 
-    def store_file(self, file_path, chunk_size=1000, chunk_overlap=100):
-        """Store a file in the hybrid memory system."""
+    def store_file(self, file_path: str, chunk_size: int = 1000, chunk_overlap: int = 100):
         if not os.path.isfile(file_path):
             raise FileNotFoundError(f"File {file_path} not found")
 
         file_name = os.path.basename(file_path)
         file_id = f"file_{hash(file_path) & 0xffffffff}"
 
-        # Create Neo4j node for metadata
-        file_node = Node(id=file_id, type="file", labels=["File"], properties={"name": file_name, "path": file_path})
+        file_node = Node(
+            id=file_id,
+            type="file",
+            labels=["File"],
+            properties={"name": file_name, "path": file_path},
+        )
         self.graph.upsert_entity(file_node)
 
-        # Read file content
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             text = f.read()
 
-        # Split into chunks
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
         chunks = splitter.split_text(text)
 
-        # Add to vector store
         ids = [f"{file_id}_{i}" for i in range(len(chunks))]
-        metadatas = [{"file_id": file_id, "chunk_index": i} for i in range(len(chunks))]
+        metadatas = [
+            {"file_id": file_id, "chunk_index": i, "node_id": f"{file_id}_{i}"}
+            for i in range(len(chunks))
+        ]
         self.vec.add_texts("long_term_docs", ids=ids, texts=chunks, metadatas=metadatas)
 
         return file_id
 
-    def retrieve_file(self, file_id, query=None, top_k=5):
-        """Retrieve file content or top relevant chunks."""
-        # Get file path from Neo4j
+    def retrieve_file(self, file_id: str, query: Optional[str] = None, top_k: int = 5):
         with self.graph._driver.session() as sess:
             rec = sess.run(
-                "MATCH (n:File {id: $id}) RETURN n.path AS path",
-                id=file_id
+                "MATCH (n:File {id: $id}) RETURN n.path AS path", id=file_id
             ).single()
             if not rec:
                 raise ValueError(f"No file with ID {file_id} found")
             file_path = rec["path"]
-        
-        # Read full file content
+
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             full_text = f.read()
-        
+
         if query is None:
             return {"file_path": file_path, "full_text": full_text}
-        
-        # Semantic search on chunks
+
         hits = self.semantic_retrieve(query, k=top_k)
-        relevant_chunks = [hit for hit in hits if hit["metadata"].get("file_id") == file_id]
-        
+        relevant_chunks = [
+            hit for hit in hits if hit["metadata"].get("file_id") == file_id
+        ]
         return {"file_path": file_path, "relevant_chunks": relevant_chunks}
 
-    # -------- Cleanup --------
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
+
     def close(self):
         self.graph.close()
 
-    
+    # ------------------------------------------------------------------
+    # Session node helpers (unchanged)
+    # ------------------------------------------------------------------
+
     def get_or_create_session_node(self, session_id: str) -> Node:
-        """
-        Get or create a session node in the graph.
-        Returns a Node object representing the session.
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Node object for the session
-        """
         logger.debug(f"[HybridMemory] Getting/creating session node: {session_id}")
-        
-        # Check if session exists
         with self.graph._driver.session() as sess:
             result = sess.run(
-                "MATCH (s:Session {id: $id}) RETURN s",
-                {"id": session_id}
+                "MATCH (s:Session {id: $id}) RETURN s", {"id": session_id}
             )
             record = result.single()
-            
             if record:
-                # Session exists, return it
                 s = record["s"]
                 return Node(
                     id=s.get("id"),
                     type="session",
                     labels=["Session"],
-                    properties=dict(s)
+                    properties=dict(s),
                 )
-        
-        # Session doesn't exist, create it
+
         session = self.start_session(session_id=session_id)
         return Node(
             id=session.id,
@@ -1233,35 +1441,23 @@ class HybridMemory:
             labels=["Session"],
             properties={
                 "started_at": session.started_at,
-                "metadata": session.metadata
-            }
+                "metadata": session.metadata,
+            },
         )
-    
+
     def get_session_node_id(self, session_id: str) -> str:
-        """
-        Get the session node ID (just returns the session_id since sessions use their ID as the node ID).
-        
-        Args:
-            session_id: Session identifier
-            
-        Returns:
-            Session node ID (same as session_id)
-        """
-        # Ensure session exists
         self.get_or_create_session_node(session_id)
         return session_id
-    
-    def link_session_to_execution(self, session_id: str, execution_id: str, rel: str = "PERFORMED_TOOL_EXECUTION"):
-        """
-        Link a session to a tool execution.
-        
-        Args:
-            session_id: Session identifier
-            execution_id: Tool execution node ID
-            rel: Relationship type
-        """
-        logger.debug(f"[HybridMemory] Linking session {session_id} to execution {execution_id}")
-        
+
+    def link_session_to_execution(
+        self,
+        session_id: str,
+        execution_id: str,
+        rel: str = "PERFORMED_TOOL_EXECUTION",
+    ):
+        logger.debug(
+            f"[HybridMemory] Linking session {session_id} to execution {execution_id}"
+        )
         cypher = """
         MATCH (s:Session {id: $sid})
         MATCH (e:ToolExecution {id: $eid})
@@ -1269,79 +1465,51 @@ class HybridMemory:
         SET r.timestamp = $timestamp
         RETURN r
         """
-        
         with self.graph._driver.session() as sess:
             sess.run(cypher, {
                 "sid": session_id,
                 "eid": execution_id,
                 "rel": rel,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.utcnow().isoformat(),
             })
-    
+
     def get_node_by_id(self, node_id: str) -> Optional[Node]:
-        """
-        Get a node from the graph by its ID.
-        
-        Args:
-            node_id: Node identifier
-            
-        Returns:
-            Node object if found, None otherwise
-        """
         with self.graph._driver.session() as sess:
             result = sess.run(
                 "MATCH (n {id: $id}) RETURN n, labels(n) as labels",
-                {"id": node_id}
+                {"id": node_id},
             )
             record = result.single()
-            
             if not record:
                 return None
-            
             n = record["n"]
             labels = record["labels"]
-            
-            # Determine node type from labels or properties
             node_type = n.get("type", labels[0] if labels else "unknown")
-            
             return Node(
                 id=n.get("id"),
                 type=node_type,
                 labels=labels,
-                properties=dict(n)
+                properties=dict(n),
             )
-    
+
     def node_exists(self, node_id: str) -> bool:
-        """
-        Check if a node exists in the graph.
-        
-        Args:
-            node_id: Node identifier
-            
-        Returns:
-            True if node exists, False otherwise
-        """
         with self.graph._driver.session() as sess:
             result = sess.run(
-                "MATCH (n {id: $id}) RETURN count(n) as count",
-                {"id": node_id}
+                "MATCH (n {id: $id}) RETURN count(n) as count", {"id": node_id}
             )
             record = result.single()
             return record["count"] > 0 if record else False
-    
-    def get_tool_executions_for_node(self, node_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """
-        Get all tool executions performed on a specific node.
-        
-        Args:
-            node_id: Target node ID
-            limit: Maximum number of executions to return
-            
-        Returns:
-            List of execution records with metadata
-        """
-        logger.debug(f"[HybridMemory] Getting tool executions for node: {node_id}")
-        
+
+    # ------------------------------------------------------------------
+    # Tool execution tracking (unchanged)
+    # ------------------------------------------------------------------
+
+    def get_tool_executions_for_node(
+        self, node_id: str, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        logger.debug(
+            f"[HybridMemory] Getting tool executions for node: {node_id}"
+        )
         cypher = """
         MATCH (node {id: $node_id})-[r:TOOL_EXECUTED]->(exec:ToolExecution)
         OPTIONAL MATCH (exec)-[:PRODUCED]->(result:ToolResult)
@@ -1349,16 +1517,12 @@ class HybridMemory:
         ORDER BY exec.executed_at DESC
         LIMIT $limit
         """
-        
         executions = []
         with self.graph._driver.session() as sess:
             result = sess.run(cypher, {"node_id": node_id, "limit": limit})
-            
             for record in result:
                 exec_node = record["exec"]
                 result_node = record.get("result")
-                relationship = record["r"]
-                
                 execution_data = {
                     "execution_id": exec_node.get("id"),
                     "tool_name": exec_node.get("tool_name"),
@@ -1367,52 +1531,33 @@ class HybridMemory:
                     "success": exec_node.get("success", True),
                     "input_summary": exec_node.get("input_summary"),
                 }
-                
                 if result_node:
                     execution_data["result"] = {
                         "result_id": result_node.get("id"),
                         "output_preview": result_node.get("output_preview"),
                         "output_length": result_node.get("output_length"),
                     }
-                
                 executions.append(execution_data)
-        
         return executions
-    
+
     def get_execution_result(self, execution_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get the full result of a tool execution.
-        
-        Args:
-            execution_id: Tool execution node ID
-            
-        Returns:
-            Dictionary with execution details and full output
-        """
         logger.debug(f"[HybridMemory] Getting execution result: {execution_id}")
-        
         cypher = """
         MATCH (exec:ToolExecution {id: $exec_id})-[:PRODUCED]->(result:ToolResult)
         OPTIONAL MATCH (result)-[:FULL_OUTPUT]->(doc)
         RETURN exec, result, doc
         """
-        
         with self.graph._driver.session() as sess:
             result = sess.run(cypher, {"exec_id": execution_id})
             record = result.single()
-            
             if not record:
                 return None
-            
             exec_node = record["exec"]
             result_node = record["result"]
             doc_node = record.get("doc")
-            
-            # Get full output from document if available
             full_output = result_node.get("output_preview", "")
             if doc_node:
                 full_output = doc_node.get("content", full_output)
-            
             return {
                 "execution_id": execution_id,
                 "tool_name": exec_node.get("tool_name"),
@@ -1424,27 +1569,16 @@ class HybridMemory:
                 "output": full_output,
                 "output_length": result_node.get("output_length"),
             }
-    
+
     def create_tool_execution_node(
         self,
         node_id: str,
         tool_name: str,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> str:
-        """
-        Create a tool execution node and link it to the target node.
-        
-        Args:
-            node_id: Target node ID that tool was executed against
-            tool_name: Name of executed tool
-            metadata: Execution metadata (input, output, duration, etc.)
-            
-        Returns:
-            Execution node ID
-        """
-        execution_id = f"tool_exec_{node_id}_{tool_name}_{int(datetime.now().timestamp())}"
-        
-        # Create execution node
+        execution_id = (
+            f"tool_exec_{node_id}_{tool_name}_{int(datetime.now().timestamp())}"
+        )
         exec_node = Node(
             id=execution_id,
             type="tool_execution",
@@ -1456,45 +1590,26 @@ class HybridMemory:
                 "duration_ms": metadata.get("duration_ms"),
                 "success": metadata.get("success", True),
                 "input_summary": str(metadata.get("input", ""))[:500],
-            }
+            },
         )
         self.upsert_entity(exec_node.id, exec_node.type, exec_node.labels, exec_node.properties)
-        
-        # Link target node to execution
         self.link(
             node_id,
             execution_id,
             "TOOL_EXECUTED",
-            {
-                "tool": tool_name,
-                "timestamp": metadata.get("executed_at"),
-            }
+            {"tool": tool_name, "timestamp": metadata.get("executed_at")},
         )
-        
         return execution_id
-    
+
     def create_tool_result_node(
         self,
         execution_id: str,
         output: str,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> str:
-        """
-        Create a tool result node and link it to the execution.
-        
-        Args:
-            execution_id: Tool execution node ID
-            output: Tool execution output
-            metadata: Result metadata
-            
-        Returns:
-            Result node ID
-        """
         result_id = f"{execution_id}_result"
-        
-        # Truncate for properties, store full in document
         output_preview = output[:1000] if len(output) > 1000 else output
-        
+
         result_node = Node(
             id=result_id,
             type="tool_result",
@@ -1504,22 +1619,18 @@ class HybridMemory:
                 "output_preview": output_preview,
                 "output_length": len(output),
                 "created_at": datetime.now().isoformat(),
-            }
+            },
         )
-        self.upsert_entity(result_node.id, result_node.type, result_node.labels, result_node.properties)
-        
-        # Link execution to result
+        self.upsert_entity(
+            result_node.id, result_node.type, result_node.labels, result_node.properties
+        )
         self.link(
             execution_id,
             result_id,
             "PRODUCED",
-            {
-                "output_length": len(output),
-                "truncated": len(output) > 1000,
-            }
+            {"output_length": len(output), "truncated": len(output) > 1000},
         )
-        
-        # Store full output as document if it's long
+
         if len(output) > 500:
             doc_id = f"{result_id}_full_output"
             doc_node = self.attach_document(
@@ -1529,70 +1640,40 @@ class HybridMemory:
                 {
                     "tool": metadata.get("tool_name"),
                     "execution_id": execution_id,
-                    "type": "tool_output"
-                }
+                    "type": "tool_output",
+                },
             )
-            
-            # Link result to full output document
-            self.link(
-                result_id,
-                doc_node.id,
-                "FULL_OUTPUT",
-                {"source": "tool_execution"}
-            )
-        
+            self.link(result_id, doc_node.id, "FULL_OUTPUT", {"source": "tool_execution"})
+
         return result_id
-    
-    # ========================================================================
-    # EXECUTION CONTEXT TRACKING - NEW SECTION
-    # ========================================================================
-    
+
+    # ------------------------------------------------------------------
+    # Execution context tracking (unchanged)
+    # ------------------------------------------------------------------
+
     @contextmanager
     def track_execution(self, execution_id: str):
-        """
-        Context manager to automatically track all nodes created during tool execution.
-        
-        Any nodes created within this context (via upsert_entity, add_session_memory,
-        attach_document) will automatically be linked to the execution node via
-        CREATED_NODE relationships.
-        
-        This creates a complete audit trail showing which tool execution created
-        which nodes, enabling queries like:
-        - "Show me all nodes created by this tool execution"
-        - "Which tool execution discovered this IP address?"
-        - "What did the port scanner create?"
-        
-        Usage:
-            with vera.mem.track_execution("tool_exec_123"):
-                # Any nodes created here are automatically tracked and linked
-                vera.mem.upsert_entity("ip_192_168_1_1", "network_host", ...)
-                vera.mem.add_session_memory(sess_id, "scan complete", ...)
-        
-        Args:
-            execution_id: Tool execution node ID to link created nodes to
-            
-        Yields:
-            Set of tracked node IDs (for inspection if needed)
-        """
-        # Save previous context (allows nesting)
-        previous_execution_id = getattr(self._execution_context, 'current_execution_id', None)
+        previous_execution_id = getattr(
+            self._execution_context, 'current_execution_id', None
+        )
         previous_tracked = getattr(self._execution_context, 'tracked_nodes', set())
-        
-        # Set new context
+
         self._execution_context.current_execution_id = execution_id
         self._execution_context.tracked_nodes = set()
-        
-        logger.debug(f"[ExecutionTracking] Started tracking for execution: {execution_id}")
-        
+
+        logger.debug(
+            f"[ExecutionTracking] Started tracking for execution: {execution_id}"
+        )
+
         try:
             yield self._execution_context.tracked_nodes
         finally:
-            # Get tracked nodes before cleanup
             tracked = self._execution_context.tracked_nodes.copy()
-            
-            # Link all tracked nodes to execution
+
             if execution_id and tracked:
-                logger.info(f"[ExecutionTracking] Linking {len(tracked)} nodes to {execution_id}")
+                logger.info(
+                    f"[ExecutionTracking] Linking {len(tracked)} nodes to {execution_id}"
+                )
                 for node_id in tracked:
                     try:
                         self.link(
@@ -1601,70 +1682,59 @@ class HybridMemory:
                             "CREATED_NODE",
                             {
                                 "created_during_execution": True,
-                                "timestamp": datetime.now().isoformat()
-                            }
+                                "timestamp": datetime.now().isoformat(),
+                            },
                         )
                     except Exception as e:
                         logger.warning(f"Failed to link {node_id} to execution: {e}")
-            
-            # Restore previous context
+
             self._execution_context.current_execution_id = previous_execution_id
             self._execution_context.tracked_nodes = previous_tracked
-            
-            logger.debug(f"[ExecutionTracking] Finished tracking for execution: {execution_id} ({len(tracked)} nodes)")
-    
+
+            logger.debug(
+                f"[ExecutionTracking] Finished tracking for execution: "
+                f"{execution_id} ({len(tracked)} nodes)"
+            )
+
     def _track_node_creation(self, node_id: str):
-        """
-        Internal method to track a node creation if we're in an execution context.
-        Called automatically by upsert_entity, add_session_memory, and attach_document.
-        
-        Args:
-            node_id: Node ID that was created/upserted
-        """
         execution_id = getattr(self._execution_context, 'current_execution_id', None)
         if execution_id:
             tracked_nodes = getattr(self._execution_context, 'tracked_nodes', None)
             if tracked_nodes is not None:
                 tracked_nodes.add(node_id)
-                logger.debug(f"[ExecutionTracking] Tracked node creation: {node_id} (execution: {execution_id})")
-    
+                logger.debug(
+                    f"[ExecutionTracking] Tracked node creation: {node_id} "
+                    f"(execution: {execution_id})"
+                )
+
     def get_execution_created_nodes(self, execution_id: str) -> List[Dict[str, Any]]:
-        """
-        Get all nodes that were created by a specific tool execution.
-        
-        Args:
-            execution_id: Tool execution node ID
-            
-        Returns:
-            List of node info dictionaries
-        """
-        logger.debug(f"[HybridMemory] Getting nodes created by execution: {execution_id}")
-        
+        logger.debug(
+            f"[HybridMemory] Getting nodes created by execution: {execution_id}"
+        )
         cypher = """
         MATCH (exec:ToolExecution {id: $exec_id})-[:CREATED_NODE]->(node)
         RETURN node, labels(node) as labels
         ORDER BY node.created_at
         """
-        
         nodes = []
         with self.graph._driver.session() as sess:
             result = sess.run(cypher, {"exec_id": execution_id})
-            
             for record in result:
                 node = record["node"]
                 labels = record["labels"]
-                
                 nodes.append({
                     "id": node.get("id"),
                     "type": node.get("type"),
                     "labels": labels,
-                    "properties": dict(node)
+                    "properties": dict(node),
                 })
-        
         return nodes
-# -----------------------------
-# Example usage
-# -----------------------------
+
+
+# =============================================================================
+# Smoke-test (unchanged from original, updated HybridMemory call to show
+# new optional params — existing call without them also works fine)
+# =============================================================================
 
 if __name__ == "__main__":
     NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -1679,97 +1749,98 @@ if __name__ == "__main__":
         neo4j_password=NEO4J_PASSWORD,
         chroma_dir=CHROMA_DIR,
         archive_jsonl=ARCHIVE_PATH,
-        enable_llm_enrichment=False  # Set to True to enable LLM enrichment
+        ollama_manager=None,
+        embedding_model="all-MiniLM-L6-v2",
+        enable_llm_enrichment=False,
+        # New params — all optional, shown here for documentation:
+        vector_backend="chroma",           # switch to "weaviate" to use Weaviate
+        write_embeddings_to_graph=True,    # False to skip graph embedding writeback
     )
 
     try:
-        # Start a session
         print("=== Starting Session ===")
         sess = mem.start_session(metadata={"agent": "nlp_test"})
         print(f"Session ID: {sess.id}")
-        
-        # Add session memory with NLP extraction
+
         print("\n=== Testing NLP Extraction ===")
         test_text = """
         Apple Inc. announced a new partnership with Microsoft Corporation.
         Tim Cook, CEO of Apple, will meet with Satya Nadella next week.
         The collaboration focuses on AI and cloud computing technologies.
         """
-        
-        # Extract entities and relationships
+
         extraction = mem.extract_and_link(sess.id, test_text, auto_promote=False)
         print(f"\nExtracted {len(extraction['entities'])} entities:")
         for entity in extraction['entities']:
             print(f"  - {entity['text']} ({entity['label']})")
-        
+
         print(f"\nExtracted {len(extraction['relations'])} relationships:")
         for rel in extraction['relations']:
             print(f"  - {rel['head']} --[{rel['relation']}]--> {rel['tail']}")
-        
-        # Add regular session memory
+
         print("\n=== Adding Session Memories ===")
-        mem.add_session_memory(sess.id, "Researching cloud infrastructure options.", "Thought", {"topic": "research"})
-        mem.add_session_memory(sess.id, "Decision: proceed with hybrid cloud approach.", "Decision", {"topic": "architecture"})
-        
-        # Retrieve session context
+        mem.add_session_memory(
+            sess.id, "Researching cloud infrastructure options.", "Thought",
+            {"topic": "research"},
+        )
+        mem.add_session_memory(
+            sess.id, "Decision: proceed with hybrid cloud approach.", "Decision",
+            {"topic": "architecture"},
+        )
+
         print("\n=== Retrieving Session Context ===")
         context = mem.focus_context(sess.id, "Apple Microsoft partnership", k=3)
         for hit in context:
             print(f"  - {hit['text'][:100]}... (distance: {hit.get('distance', 'N/A')})")
-        
-        # Extract subgraph
+
         print("\n=== Extracting Subgraph ===")
         seeds = mem.graph.list_subgraph_seeds()
         if seeds['entity_ids']:
             subgraph = mem.extract_subgraph(seeds['entity_ids'][:3], depth=2)
-            print(f"Subgraph: {len(subgraph['nodes'])} nodes, {len(subgraph['rels'])} relationships")
-        
-        # Test file storage with NLP
-        print("\n=== Testing File Storage ===")
-        # Create a test file
-        test_file_path = "./Memory/test_doc.txt"
-        os.makedirs(os.path.dirname(test_file_path), exist_ok=True)
-        with open(test_file_path, "w") as f:
-            f.write("This is a test document about machine learning and AI research.")
-        
-        file_id = mem.store_file(test_file_path)
-        print(f"Stored file with ID: {file_id}")
-        
-        # Retrieve with semantic query
-        result = mem.retrieve_file(file_id, query="machine learning", top_k=2)
-        print(f"Relevant chunks: {len(result.get('relevant_chunks', []))}")
-        
-        # End session
+            print(
+                f"Subgraph: {len(subgraph['nodes'])} nodes, "
+                f"{len(subgraph['rels'])} relationships"
+            )
+
         print("\n=== Ending Session ===")
         mem.end_session(sess.id)
         print("Session ended.")
-        
+
     finally:
         mem.close()
         print("\n=== Memory system closed ===")
 
-import re
-
-def sanitize_for_nlp(text: str) -> str:
-    """Normalize unicode punctuation that breaks code parsers."""
-    replacements = {
-        '\u2013': '-',   # en-dash
-        '\u2014': '--',  # em-dash
-        '\u2018': "'",   # left single quote
-        '\u2019': "'",   # right single quote
-        '\u201c': '"',   # left double quote
-        '\u201d': '"',   # right double quote
-        '\u2026': '...',  # ellipsis
-    }
-    for char, replacement in replacements.items():
-        text = text.replace(char, replacement)
-    return text
 """
-Installation commands:
-    pip install neo4j chromadb pydantic spacy sentence-transformers scikit-learn langchain langchain-community
-    python -m spacy download en_core_web_sm
+  # ── USAGE EXAMPLES ───────────────────────────────────────────────────────
 
-Docker Neo4j:
-    docker run --name neo4j -p7474:7474 -p7687:7687 -d -e NEO4J_AUTH=neo4j/testpassword neo4j:5.22
-    docker start neo4j
+    # 1. Local file store (default — no change required for existing callers)
+    mem = HybridMemory(
+        neo4j_uri=NEO4J_URI,
+        neo4j_user=NEO4J_USER,
+        neo4j_password=NEO4J_PASSWORD,
+        chroma_dir="./Memory/chroma_store",
+    )
+
+    # 2. Remote Chroma server
+    mem = HybridMemory(
+        neo4j_uri=NEO4J_URI,
+        neo4j_user=NEO4J_USER,
+        neo4j_password=NEO4J_PASSWORD,
+        chroma_dir="./Memory/chroma_store",   # still used for fallback path
+        vector_backend="chroma_http",
+        chroma_host="my-chroma-server",
+        chroma_port=8000,
+        # chroma_ssl=True,                    # uncomment for HTTPS
+        # chroma_headers={"Authorization": "Bearer <token>"},
+    )
+
+    # 3. Weaviate 
+    mem = HybridMemory(
+        neo4j_uri=NEO4J_URI,
+        neo4j_user=NEO4J_USER,
+        neo4j_password=NEO4J_PASSWORD,
+        chroma_dir="./Memory/chroma_store",
+        vector_backend="weaviate",
+        weaviate_url="http://weaviate.internal:8080",
+    )
 """

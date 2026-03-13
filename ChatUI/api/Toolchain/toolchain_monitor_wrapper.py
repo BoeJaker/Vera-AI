@@ -14,6 +14,7 @@ WebSocket event catalogue
 execution_started   { execution_id, query, mode, strategy }
 plan                { plan, total_steps }              ← full plan (sequential/expert)
 step_discovered     { step_number, tool_name, input, mode:"adaptive" }  ← adaptive live step
+step_input_updated  { step_number, input, mode }       ← adaptive: real input resolved on separate line
 step_started        { step_number, tool_name, execution_id }
 step_output         { step_number, chunk }
 step_completed      { step_number, output }
@@ -115,12 +116,31 @@ _STEP_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Adaptive mode emits a planning line before each step execution.
-# e.g. "[Adaptive] Planning step 3: web_search"
+# Matches the planning announcement line:
+#   [Adaptive] Step 3: web_search
+#   [Adaptive] Planning step 3: web_search input: ...
 _ADAPTIVE_PLAN_RE = re.compile(
     r"\[Adaptive\]\s+(?:Planning\s+)?[Ss]tep\s+(\d+)\s*[→:]\s*([^\s({\n]+)"
     r"(?:\s+input:\s*(.+))?",
     re.IGNORECASE,
+)
+
+# Matches the SEPARATE input line that _execute_adaptive emits after the
+# step announcement:
+#   [Adaptive] Input: {"query": "..."}
+#   [Adaptive] Input: some string value
+_ADAPTIVE_INPUT_RE = re.compile(
+    r"\[Adaptive\]\s+Input:\s*(.+)",
+    re.IGNORECASE,
+)
+
+# Matches the output preview line that _execute_adaptive emits after
+# collecting tool output:
+#   [Adaptive] Output:\n<preview text>
+# The actual output content follows the header on the next line(s).
+_ADAPTIVE_OUTPUT_RE = re.compile(
+    r"^\[Adaptive\]\s+Output:\s*\n?(.*)",
+    re.IGNORECASE | re.DOTALL,
 )
 
 # Parallel mode emits branch grouping information.
@@ -159,6 +179,35 @@ def _parse_adaptive_plan_line(chunk: str) -> Optional[Tuple[int, str, str]]:
     return None
 
 
+def _parse_adaptive_input_line(chunk: str) -> Optional[Any]:
+    """
+    Return the parsed input value if this chunk is the separate
+    '[Adaptive] Input: ...' line, else None.
+    Attempts JSON decode; falls back to raw string.
+    """
+    m = _ADAPTIVE_INPUT_RE.search(chunk)
+    if not m:
+        return None
+    raw = m.group(1).strip()
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+
+
+def _parse_adaptive_output_line(chunk: str) -> Optional[str]:
+    """
+    Return the clean output content if this chunk is the
+    '[Adaptive] Output:\\n<preview>' line emitted by _execute_adaptive,
+    else None.  Strips the '[Adaptive] Output:' header so the JS
+    receives clean tool output without the label prefix.
+    """
+    m = _ADAPTIVE_OUTPUT_RE.match(chunk)
+    if not m:
+        return None
+    return m.group(1).strip()
+
+
 def _parse_parallel_branch(chunk: str) -> Optional[Tuple[int, List[int]]]:
     """Return (branch_num, [step_ids]) if chunk declares a parallel branch."""
     m = _PARALLEL_BRANCH_RE.search(chunk)
@@ -185,20 +234,18 @@ class MonitoredToolChainPlanner:
     """
     Transparent wrapper around the unified ToolChainPlanner.
 
-    Key additions over the previous version
-    ----------------------------------------
-    * **Adaptive mode** — instead of pre-planning the full graph we fire a
-      ``step_discovered`` event each time the adaptive planner decides on the
-      next tool.  The flowchart widget in the browser builds the graph
-      incrementally as these events arrive.
+    Key additions
+    -------------
+    * **Adaptive mode** — fires ``step_discovered`` for each new step, and
+      ``step_input_updated`` when the resolved input arrives on its own
+      ``[Adaptive] Input: ...`` line (which _execute_adaptive emits as a
+      separate chunk after the step announcement).
 
-    * **Parallel mode** — when the planner broadcasts branch groupings we relay
-      a ``parallel_branches`` event so the flowchart can render side-by-side
-      swim-lanes rather than a single vertical chain.
+    * **Parallel mode** — relays ``parallel_branches`` events for swim-lane
+      rendering.
 
-    * **Mode tag on every event** — the ``mode`` field is now included in
-      ``execution_started`` and every step event so the JS widget can switch
-      rendering strategy without guessing.
+    * **Mode tag on every event** — the ``mode`` field is included in every
+      event so the JS widget can switch rendering strategy without guessing.
     """
 
     def __init__(self, planner: Any, session_id: str) -> None:
@@ -263,23 +310,14 @@ class MonitoredToolChainPlanner:
                 strategy.lower(), "sequential"
             )
 
-        # ------------------------------------------------------------------
-        # ADAPTIVE — no pre-planning; discover steps one at a time
-        # ------------------------------------------------------------------
         if resolved_mode == "adaptive":
             yield from self._run_adaptive(query, **kwargs)
             return
 
-        # ------------------------------------------------------------------
-        # PARALLEL — pre-plan, detect branches, then execute
-        # ------------------------------------------------------------------
         if resolved_mode == "parallel":
             yield from self._run_parallel(query, plan=plan, **kwargs)
             return
 
-        # ------------------------------------------------------------------
-        # SEQUENTIAL / EXPERT / HYBRID — pre-plan, then execute
-        # ------------------------------------------------------------------
         yield from self._run_sequential(
             query, plan=plan, mode=mode,
             strategy=strategy, expert=expert, **kwargs,
@@ -291,15 +329,27 @@ class MonitoredToolChainPlanner:
 
     def _run_adaptive(self, query: str, max_steps: int = 20, **kwargs) -> Iterator[str]:
         """
-        Run the adaptive planner, firing ``step_discovered`` events
-        in real-time as each step is planned.
+        Run the adaptive planner, firing ``step_discovered`` events in
+        real-time as each step is planned.
+
+        _execute_adaptive() emits the step announcement and its resolved
+        input as TWO separate chunks:
+
+            "[Adaptive] Step 2: web_search\\n"
+            "[Adaptive] Input: {\"query\": \"...\"}\n"
+
+        We catch both.  The first fires ``step_discovered`` (input may be
+        empty at this point).  The second fires ``step_input_updated`` so
+        the JS can retroactively patch the already-rendered node and detail
+        panel entry.
         """
         schedule_broadcast(self.session_id, "status", {"status": "executing"})
 
-        current_step: Optional[int] = None
-        current_tool: Optional[str] = None
-        step_chunks:  List[str]     = []
-        discovered_steps: set       = set()
+        current_step: Optional[int]  = None
+        current_tool: Optional[str]  = None
+        step_chunks:  List[str]      = []
+        discovered_steps: set        = set()
+        _last_discovered_step: Optional[int] = None   # tracks most recent step for Input line
 
         try:
             for chunk in self._planner.execute_tool_chain(
@@ -309,10 +359,10 @@ class MonitoredToolChainPlanner:
                 adaptive_info = _parse_adaptive_plan_line(chunk)
                 if adaptive_info:
                     step_num, tool_name, raw_input = adaptive_info
+                    _last_discovered_step = step_num
                     if step_num not in discovered_steps:
                         discovered_steps.add(step_num)
                         self._add_step(step_num, tool_name, raw_input)
-                        # Fire step_discovered so the JS can append a new node
                         schedule_broadcast(
                             self.session_id, "step_discovered",
                             {
@@ -322,6 +372,21 @@ class MonitoredToolChainPlanner:
                                 "mode":        "adaptive",
                             },
                         )
+                    yield chunk
+                    continue
+
+                # ── Detect the separate "[Adaptive] Input: ..." line ───────
+                input_val = _parse_adaptive_input_line(chunk)
+                if input_val is not None and _last_discovered_step is not None:
+                    self._patch_step_input(_last_discovered_step, input_val)
+                    schedule_broadcast(
+                        self.session_id, "step_input_updated",
+                        {
+                            "step_number": _last_discovered_step,
+                            "input":       input_val,
+                            "mode":        "adaptive",
+                        },
+                    )
                     yield chunk
                     continue
 
@@ -341,6 +406,7 @@ class MonitoredToolChainPlanner:
                             },
                         )
                     current_step, current_tool = step_info
+                    _last_discovered_step = current_step
                     step_chunks = []
                     # Ensure step record exists (may already exist from step_discovered)
                     if current_step not in discovered_steps:
@@ -383,6 +449,47 @@ class MonitoredToolChainPlanner:
                     current_step = None
                     current_tool = None
                     step_chunks  = []
+                    yield chunk
+                    continue
+
+                # ── Detect "[Adaptive] Output:\n<preview>" ────────────────
+                # _execute_adaptive collects all tool output then emits it as
+                # one chunk with this header.  We strip the header, broadcast
+                # the clean output, and complete the step right here — the
+                # output div must be shown BEFORE writing (step_started may
+                # not have fired if the step was very fast), so we call
+                # updateStepStatus-equivalent ordering: started → output → completed.
+                output_text = _parse_adaptive_output_line(chunk)
+                if output_text is not None and current_step is not None:
+                    # Ensure the output div is visible by firing step_started
+                    # if it hasn't been fired yet for this step
+                    schedule_broadcast(
+                        self.session_id, "step_started",
+                        {
+                            "step_number":  current_step,
+                            "tool_name":    current_tool or "",
+                            "execution_id": self.execution_id,
+                            "mode":         "adaptive",
+                        },
+                    )
+                    # Broadcast the clean output (no "[Adaptive] Output:" prefix)
+                    schedule_broadcast(
+                        self.session_id, "step_output",
+                        {"step_number": current_step, "chunk": output_text, "mode": "adaptive"},
+                    )
+                    # Complete the step with the clean output
+                    self._complete_step(current_step, output_text)
+                    schedule_broadcast(
+                        self.session_id, "step_completed",
+                        {
+                            "step_number": current_step,
+                            "output":      output_text[:500],
+                            "mode":        "adaptive",
+                        },
+                    )
+                    step_chunks  = []
+                    current_step = None
+                    current_tool = None
                     yield chunk
                     continue
 
@@ -741,26 +848,47 @@ class MonitoredToolChainPlanner:
             rec["total_steps"] = len(plan)
             rec["status"]      = "executing"
 
-    def _add_step(self, step_num: int, tool_name: str, tool_input: str) -> None:
+    def _add_step(self, step_num: int, tool_name: str, tool_input: Any) -> None:
         rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
         if rec is None:
             return
         # Don't duplicate
-        existing = [s for s in rec["steps"] if s["step_number"] == step_num]
-        if existing:
+        if any(s["step_number"] == step_num for s in rec["steps"]):
             return
+        input_str = (
+            json.dumps(tool_input, indent=2)
+            if isinstance(tool_input, dict)
+            else str(tool_input)
+        )
         rec["steps"].append({
             "step_number": step_num,
             "tool_name":   tool_name,
-            "tool_input":  tool_input,
+            "tool_input":  input_str,
             "tool_output": None,
             "status":      "running",
             "start_time":  datetime.utcnow().isoformat(),
             "end_time":    None,
             "error":       None,
         })
-        # Update total_steps for adaptive mode
         rec["total_steps"] = max(rec["total_steps"], step_num)
+
+    def _patch_step_input(self, step_num: int, input_val: Any) -> None:
+        """
+        Retroactively update the tool_input field for a step that was
+        initially discovered with an empty input because the resolved
+        input arrived on a separate '[Adaptive] Input: ...' line.
+        """
+        rec = toolchain_executions.get(self.session_id, {}).get(self.execution_id)
+        if rec is None:
+            return
+        for step in rec["steps"]:
+            if step["step_number"] == step_num:
+                step["tool_input"] = (
+                    json.dumps(input_val, indent=2)
+                    if isinstance(input_val, dict)
+                    else str(input_val)
+                )
+                break
 
     def _complete_step(self, step_num: int, output: str) -> None:
         self._update_step(step_num, output=output, status="completed")

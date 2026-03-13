@@ -68,72 +68,10 @@ from Vera.Toolchain.ToolFramework.ui import (
 )
 from Vera.Toolchain.ToolFramework.loader import register_enhanced_tools
 
+from Vera.Toolchain.schemas import NetworkMonitorInput, NetworkScanInput, HostScanInput
+
 import logging
 log = logging.getLogger("vera.tools.network_monitor")
-
-
-# ============================================================================
-# INPUT SCHEMAS
-# ============================================================================
-
-class NetworkMonitorInput(BaseModel):
-    targets: str = Field(
-        default="192.168.1.0/24",
-        description="CIDR range(s) to monitor, comma-separated. E.g. '192.168.1.0/24,10.0.0.0/24'",
-    )
-    interval: int = Field(
-        default=60,
-        ge=10,
-        description="Seconds between full sweeps (minimum 10)",
-    )
-    port_check: str = Field(
-        default="22,80,443,8080,3306,5432",
-        description="Comma-separated ports to probe on each discovered host",
-    )
-    alert_on_new: bool = Field(
-        default=True,
-        description="Emit alert event when a new host is discovered",
-    )
-    alert_on_down: bool = Field(
-        default=True,
-        description="Emit alert event when a previously-up host goes down",
-    )
-
-
-class NetworkScanInput(BaseModel):
-    target: str = Field(
-        ...,
-        description="Target CIDR (e.g. '192.168.1.0/24') or single IP",
-    )
-    ports: str = Field(
-        default="21,22,23,25,53,80,110,143,443,445,3306,3389,5432,6379,8080,8443,27017",
-        description="Comma-separated ports or ranges (e.g. '1-1024,3306,5432')",
-    )
-    timeout: float = Field(
-        default=0.5,
-        ge=0.1,
-        le=5.0,
-        description="Connection timeout per port in seconds",
-    )
-    max_threads: int = Field(
-        default=50,
-        ge=1,
-        le=200,
-        description="Parallel threads for port scanning",
-    )
-
-
-class HostScanInput(BaseModel):
-    host: str = Field(..., description="Single IP or hostname to scan in detail")
-    ports: str = Field(
-        default="1-1024",
-        description="Port range to scan",
-    )
-    grab_banners: bool = Field(
-        default=True,
-        description="Attempt to grab service banners from open ports",
-    )
-    timeout: float = Field(default=1.0, ge=0.1, le=10.0)
 
 
 # ============================================================================

@@ -1,0 +1,1 @@
+Detect being over the token limit and implement compaction or chunking

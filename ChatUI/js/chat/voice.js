@@ -69,6 +69,12 @@ class DuplexVoiceController {
         this.backend = { stt: false, tts: false, checked: false };
         this._checkBackend();
 
+        // toolchain — suppress streaming TTS during toolchain execution
+        // and instead speak structured narration from toolchain events
+        this.toolchainActive = false;      // true while a toolchain is running
+        this.toolchainJustFinished = false; // true after completion, until LLM response finishes
+        this.toolchainStepCount = 0;        // total steps in current plan
+
         console.log('[Voice] Ready');
     }
 
@@ -571,6 +577,89 @@ class DuplexVoiceController {
         }
     }
 
+    // ── Toolchain narration ─────────────────────────────────────────────────
+
+    /**
+     * Called by the VeraChat.handleToolchainEvent override below.
+     * Speaks structured narration based on the event type, completely
+     * ignoring raw tool output chunks that would otherwise be unreadable.
+     */
+    handleToolchainEvent(data) {
+        if (!this.ttsActive) return;
+
+        const type = data.type;
+        const d    = data.data || {};
+
+        switch (type) {
+
+            case 'plan': {
+                // Announce the plan: how many steps and what tools
+                this.toolchainActive    = true;
+                this.toolchainStepCount = (d.plan || []).length;
+                const tools = (d.plan || [])
+                    .map(s => s.tool || 'unknown')
+                    .filter((v, i, a) => a.indexOf(v) === i)  // unique
+                    .join(', ');
+                const stepWord = this.toolchainStepCount === 1 ? 'step' : 'steps';
+                this.speakFull(
+                    `Running toolchain: ${this.toolchainStepCount} ${stepWord}. ` +
+                    `Tools: ${tools}.`
+                );
+                break;
+            }
+
+            case 'step_started': {
+                // Say which step and tool is running — keep it brief
+                const tool = (d.tool_name || 'unknown').replace(/_/g, ' ');
+                this.speakFull(`Step ${d.step_number}: ${tool}.`);
+                break;
+            }
+
+            case 'step_completed': {
+                // Only speak short, human-readable results — skip JSON/code/URLs
+                const raw = (d.output || '').trim();
+                const looksReadable = raw.length > 0
+                    && raw.length < 140
+                    && raw[0] !== '{'
+                    && raw[0] !== '['
+                    && !raw.startsWith('http')
+                    && !/^\d+$/.test(raw);   // skip bare numbers
+                if (looksReadable) {
+                    const cleaned = this._clean(raw);
+                    if (cleaned) this.speakFull(`Done. ${cleaned}`);
+                }
+                break;
+            }
+
+            case 'step_failed': {
+                const err = (d.error || 'unknown error').slice(0, 100);
+                this.speakFull(`Step ${d.step_number} failed. ${err}`);
+                break;
+            }
+
+            case 'execution_completed': {
+                // Keep toolchainActive=true so the LLM synthesis that follows
+                // is still suppressed. finalizeTTS will clear both flags and
+                // speak the final response itself.
+                this.toolchainJustFinished = true;
+                this.speakFull('Toolchain complete.');
+                break;
+            }
+
+            case 'execution_failed': {
+                this.toolchainActive = false;
+                this.toolchainJustFinished = false;
+                const err = (d.error || 'unknown error').slice(0, 100);
+                this.speakFull(`Toolchain failed. ${err}`);
+                break;
+            }
+
+            // step_discovered, step_output, parallel_branches, plan_chunk — silent
+            default:
+                break;
+        }
+    }
+
     // called when the module is being replaced / page unloads
     destroy() {
         this.stopSTT(false);
@@ -603,6 +692,8 @@ VeraChat.prototype.initModernFeatures = function() {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
 
     this._voice = new DuplexVoiceController(this);
+    // Install instance-level toolchain hook (safe regardless of script load order)
+    this._installInstanceToolchainHook();
     setTimeout(() => this._addVoiceBar(), 150);
     console.log('[Voice] Module installed');
 };
@@ -618,11 +709,25 @@ VeraChat.prototype.toggleSTT = function() {
 };
 
 VeraChat.prototype.speakStreamingText = function(fullText) {
-    this._voice?.onStreamChunk(fullText);
+    const v = this._voice;
+    if (!v) return;
+    // Suppress all streaming chunks during and immediately after a toolchain —
+    // voice narration comes from handleToolchainEvent instead
+    if (v.toolchainActive || v.toolchainJustFinished) return;
+    v.onStreamChunk(fullText);
 };
 
 VeraChat.prototype.finalizeTTS = function(fullText) {
-    this._voice?.onStreamEnd(fullText);
+    const v = this._voice;
+    if (!v) return;
+    if (v.toolchainActive || v.toolchainJustFinished) {
+        // This is the LLM synthesis after the toolchain — suppress it,
+        // then clear flags so future responses are spoken normally
+        v.toolchainActive = false;
+        v.toolchainJustFinished = false;
+        return;
+    }
+    v.onStreamEnd(fullText);
 };
 
 VeraChat.prototype.speakText = function(text) {
@@ -631,6 +736,31 @@ VeraChat.prototype.speakText = function(text) {
 
 VeraChat.prototype.openVoiceSettings = function() {
     if (this._voice) _openSettings(this._voice);
+};
+
+// DO NOT wrap handleToolchainEvent on the prototype — that races with the
+// flowchart module which does the same thing and the chain breaks.
+//
+// Instead: patch initModernFeatures (already done above) to mark instances
+// with a flag, and intercept at the INSTANCE level via a one-time override
+// called from inside initModernFeatures after this._voice is set.
+// See _installInstanceToolchainHook below.
+
+VeraChat.prototype._installInstanceToolchainHook = function() {
+    // The flowchart module patches VeraChat.prototype.handleToolchainEvent.
+    // We don't touch the prototype at all — instead we shadow it on THIS
+    // instance only. The instance method takes priority over prototype, so
+    // the prototype chain (flowchart handler) still runs via explicit call.
+    const self = this;
+    this.handleToolchainEvent = function(data) {
+        // 1. Run whatever is on the prototype RIGHT NOW (flowchart module,
+        //    original handler, etc.) — evaluated lazily so load order doesn't matter
+        const protoFn = Object.getPrototypeOf(self).handleToolchainEvent;
+        if (protoFn) protoFn.call(self, data);
+        // 2. Voice narration on top
+        self._voice?.handleToolchainEvent(data);
+    };
+    console.log('[Voice] Instance-level toolchain hook installed');
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

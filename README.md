@@ -54,12 +54,14 @@ Core Mechanisms: Self-Modification Engine, Multi Agent Congnition, Proactive Ref
 
 >[!WARNING]
 >**Vera has high system requirements**  
-> At least 16Gb of idle system RAM, or A GPU with 12Gb+ VRAM and 12 real cores (24 hyperthreaded) running at 3Ghz+.
->Please check the **[System Requirements](#system-requirements)** section for more info
+> To run a single sequential worker a minimum of 16Gb idle system RAM, 6 cores (12 hyperthreaded) running at 3Ghz+. 
+> For optimal personal each worker requires 64GB of RAM, 6 cores (12 hyperthreaded) running at 3Ghz+, and at least one worker in the pool should have a 12Gb+ GPU. 
+A minimum of 3 workers is recommended  (192gb total RAM) (18 total cores).
+>Please check the **[System Requirements](#system-requirements)** section for more info.
 
 >[!NOTE]  
 >**Vera utilises the [Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC) repository**  
-> To bootstrap the various services required for vera we have built an AI development framework called **[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC)** its not required but recommended
+> To bootstrap the various services required for vera we have built an AI development framework called **[Agentic-Stack-POC](https://github.com/BoeJaker/AgenticStack-POC)** its not required but recommended.
 
 ---
 
@@ -279,51 +281,42 @@ The key value proposition of Vera is not mere context persistence, but its found
 
 ## System Requirements
 
+
+### Understanding the Requirements
+
+These requirements can apply to a single worker machine running in sequential mode, or to participants of a worker pool operating in parallel. Where cores are specified the figure is hyperthreaded.
+
+- **RAM:** Determines how many models can be loaded simultaneously into CPU worker memory.
+- **CPU Cores:** Increasing cores does not mean an increase in performance Each worker typically requires 12 cores. 
+- **CPU Core Speed:** Determines how fast models can run on CPU workers
+- **VRAM:** GPU workers allow models to run much faster but they cant 
+- **Storage:** Accommodates Neo4j database, ChromaDB vector store, and model weights.
+
 ### Minimum Recommended Hardware
 
 **CPU Build (Linux)**
-- CPU: 12+ cores (24 hyperthreaded) @ 3GHz+
-- RAM: 16GB–32GB (or up to 150GB for large deployments)
+- CPU: 12+ cores @ 3GHz+
+- RAM: 16GB–64GB (or up to 150GB for large deployments)
 - HDD: 100GB
 - GPU: None
 
 **GPU Build (Linux)**
-- CPU: Varies by workload
-- RAM: 8GB system + 16–150GB VRAM
+- CPU: 12 cores @ 3GHz+
+- RAM: 16GB system + 16–150GB VRAM
 - HDD: 100GB
-- GPU: 14–150GB VRAM (NVIDIA recommended)
+- GPU: 12–150GB VRAM (NVIDIA recommended)
 
-### Understanding the Requirements
 
-- **RAM:** Determines how many models can be loaded simultaneously into system memory. and how many can be run simultaneously in CPU builds.
-- **CPU cores:** Determines how many models can run in CPU builds Each agent requires ~12 cores. In GPU builds Each agent takes 1-2 cores.
-- **VRAM:** GPU builds allow running larger models (20B–70B parameters). CPU-only builds use quantized models (3B–13B).
-- **Storage:** Accommodates Neo4j database, ChromaDB vector store, and model weights.
-
-### Model Tier Recommendations
+### Requirement Recommendation Tiers
 
 | Tier | CPU | RAM | Storage | VRAM | Use Case |
 |------|-----|-----|---------|------|----------|
-| **Basic** | 12 cores | 16GB | 100GB | — | Development & testing |
-| **Standard** | 12+ cores | 32GB | 100GB | — | Production (CPU-only) |
-| **Advanced** | 16+ cores | 64GB | 200GB | 16GB+ | GPU-accelerated |
-| **Enterprise** | 24+ cores | 150GB+ | 500GB+ | 80GB+ | Large-scale deployment |
+| **CPU Minimum** | 12 cores | 16GB | 100GB | — | Development & testing |
+| **CPU Standard** | 12 cores | 64GB | 500GB | — |Light Production (CPU-only) |
+| **GPU Standard** | 12 cores | 64GB | 500GB | 12GB+ | GPU-accelerated |
+| **GPU Advanced** | 24 cores | 150GB+ | 500GB+ | 80GB+ | Advanced deployment |
 
-<!-- ### Supported LLM Models
 
-| Model Type | Examples | Memory | Use Case |
-|-----------|----------|--------|----------|
-| **Fast LLM** | Mistral 7B, Gemma2 2B | 4–8GB | Triage, quick tasks |
-| **Intermediate** | Gemma2 9B, Llama 8B | 8–16GB | Tool execution |
-| **Deep LLM** | Gemma3 27B, GPT-OSS 20B | 16–32GB | Complex reasoning |
-| **Specialized** | CodeLlama, Math models | Varies | Domain-specific | -->
-
-### Minimum Viable Setup
-
-If you have fewer resources, Vera runs with reduced capability:
-- **8GB idle RAM + CPU only:** Single fast model, no parallelism
-- **8+ physical cores:** Suitable for background processing, not real-time queries
-- **Smaller SSD:** Start with one small model (3–7B parameters)
 
 > [!NOTE]
 > Vera is compatible with Windows; however, detailed configuration instructions are provided only for Linux, WSL, and macOS. Windows users may need to adapt the setup process accordingly.
@@ -355,6 +348,11 @@ This starts:
 **Option B: Manual Setup**
 
 Install required services individually:
+
+Ollama
+Neo4j
+Chroma (optional, Vera will use local chroma storage if not setup).
+
 
 ```bash
 # Install Ollama
@@ -437,6 +435,8 @@ cp .env.example .env
 
 ### Makefile Installation Commands
 
+Alternatively you can use the Makefile commands to automate the install.
+
 **Complete Installation:**
 ```bash
 make full-install                    # One-command full installation
@@ -463,6 +463,8 @@ make verify-install                 # Check all components
 make check-services                # Verify required services
 make install-fix-permissions       # Fix file permissions if needed
 ```
+
+## Post Install - Configuration
 
 ### Environment Configuration
 

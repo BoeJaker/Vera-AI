@@ -124,7 +124,17 @@ async def get_tool_schema(session_id: str, tool_name: str):
     
     # Get args_schema if available
     if hasattr(tool, "args_schema") and tool.args_schema:
-        schema = tool.args_schema.schema()
+        args_schema = tool.args_schema
+        if isinstance(args_schema, dict):
+            schema = args_schema
+        elif args_schema is not None:
+            schema = (
+                args_schema.model_json_schema()
+                if hasattr(args_schema, "model_json_schema")
+                else args_schema.schema()
+            )
+        else:
+            schema = {}
         
         for field_name, field_info in schema.get("properties", {}).items():
             param = {

@@ -7,7 +7,7 @@
 
         // Make sure handleWebSocketMessage uses the correct function
         VeraChat.prototype.handleWebSocketMessage = function(data) {
-            this.veraRobot.setState('thinking');
+            // this.veraRobot.setState('thinking');
             
             if (data.type === 'chunk') {
                 if (!this.currentStreamingMessageId) {
@@ -31,7 +31,7 @@
                     }
                 }
             } else if (data.type === 'complete') {
-                this.veraRobot.setState('idle');
+                // this.veraRobot.setState('idle');
                 
                 if (this.currentStreamingMessageId) {
                     const message = this.messages.find(m => m.id === this.currentStreamingMessageId);
@@ -91,7 +91,7 @@
                     }, 100);
                 }
             } else if (data.type === 'error') {
-                this.veraRobot.setState('error');
+                // this.veraRobot.setState('error');
                 this.addSystemMessage(`Error: ${data.error}`);
                 
                 if (this.currentStreamingMessageId) {
@@ -357,7 +357,7 @@
         };
 
         VeraChat.prototype.sendMessageViaWebSocket = async function(message) {
-            this.veraRobot.setState('thinking');
+            // this.veraRobot.setState('thinking');
             if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
                 return false;
             }
@@ -436,7 +436,7 @@
             
             // NEW: Check if we should use WebSocket with routing
             if (this.useWebSocket) {
-                this.veraRobot.setState('thinking');
+                // this.veraRobot.setState('thinking');
                 
                 if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
                     try {
@@ -453,7 +453,8 @@
                         
                         // Show routing indicator
                         if (routingConfig.mode !== 'auto' && typeof this.setControlStatus === 'function') {
-                            this.setControlStatus(`🎯 Using ${this.getRoutingDisplayName(routingConfig.mode)} mode`);
+                            const _modeNames = { auto: 'Auto', fast: 'Fast', intermediate: 'Balanced', deep: 'Deep', reasoning: 'Reasoning', counsel: 'Counsel' };
+                            this.setControlStatus(`🎯 Using ${_modeNames[routingConfig.mode] || routingConfig.mode} mode`);
                         }
                         
                         return; // Exit early - WebSocket will handle response
@@ -1727,6 +1728,7 @@
     
     // NEW: Detect if content has elements that need full width
     VeraChat.prototype.hasWideContent = function(content) {
+        if (!content || typeof content !== 'string') return false;
         return content.includes('```') || 
                content.includes('graph ') ||
                content.includes('sequenceDiagram') ||

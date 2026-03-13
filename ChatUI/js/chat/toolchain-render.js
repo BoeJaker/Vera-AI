@@ -1,26 +1,18 @@
 // =====================================================================
-// Toolchain Flowchart — v3
-// Supports three rendering modes driven by WebSocket events:
-//
-//   sequential  → full plan rendered upfront, statuses update in place
-//   adaptive    → nodes append one-by-one as step_discovered fires
-//   parallel    → nodes are reorganised into swim-lanes when
-//                 parallel_branches event arrives
-//
-// Event catalogue consumed:
-//   plan              { plan, total_steps, mode }
-//   step_discovered   { step_number, tool_name, input, mode:"adaptive" }
-//   step_started      { step_number, tool_name, execution_id, mode }
-//   step_output       { step_number, chunk, mode }
-//   step_completed    { step_number, output, mode }
-//   step_failed       { step_number, error, mode }
-//   parallel_branches { branches: [[stepId,...], ...], mode:"parallel" }
-//   execution_completed
-//   execution_failed
+// Toolchain Flowchart — v4
+// Fixes vs v3:
+//   1. Adaptive INPUT: a second regex captures the separate
+//      "[Adaptive] Input: ..." line and patches the already-rendered node.
+//   2. Adaptive OUTPUT: a live output preview is shown directly on the
+//      flow node so it's visible without opening the detail panel.
+//      The detail panel output div is also unhidden as soon as the first
+//      chunk arrives (not waiting for step_started to fire).
+//   3. step_input_updated event added so the monitor can push the
+//      resolved input after step_discovered fires.
 // =====================================================================
 
 (() => {
-    console.log('🔧 Loading Toolchain Flowchart (v3 — adaptive + parallel)...');
+    console.log('🔧 Loading Toolchain Flowchart (v4 — adaptive input+output fix)...');
 
     // =====================================================================
     // Wrap handleToolchainEvent
@@ -38,7 +30,7 @@
     };
 
     // =====================================================================
-    // Per-execution state  (keyed by execId)
+    // Per-execution state
     // =====================================================================
 
     VeraChat.prototype._fcState = VeraChat.prototype._fcState || {};
@@ -46,12 +38,12 @@
     function getState(self, execId) {
         if (!self._fcState[execId]) {
             self._fcState[execId] = {
-                mode:            'sequential',  // 'sequential' | 'adaptive' | 'parallel'
-                plan:            [],            // [{tool, input}, …]
-                discovered:      new Set(),     // step numbers seen via step_discovered
-                branches:        null,          // [[1,2],[3,4]] — parallel branches
-                branchApplied:   false,
-                stepCount:       0,
+                mode:          'sequential',
+                plan:          [],
+                discovered:    new Set(),
+                branches:      null,
+                branchApplied: false,
+                stepCount:     0,
             };
         }
         return self._fcState[execId];
@@ -69,21 +61,15 @@
 
         switch (data.type) {
 
-            // ------------------------------------------------------------------
-            // SEQUENTIAL / EXPERT / HYBRID  — full plan arrives at once
-            // ------------------------------------------------------------------
             case 'plan': {
-                st.mode  = mode;
-                st.plan  = data.data.plan || [];
+                st.mode = mode;
+                st.plan = data.data.plan || [];
                 if (mode !== 'adaptive') {
                     this.injectFlowchart(execId, st.plan, mode);
                 }
                 break;
             }
 
-            // ------------------------------------------------------------------
-            // ADAPTIVE  — one node at a time
-            // ------------------------------------------------------------------
             case 'step_discovered': {
                 st.mode = 'adaptive';
                 const stepNum = data.data.step_number;
@@ -95,20 +81,23 @@
                     tool:  data.data.tool_name || 'unknown',
                     input: data.data.input     || '',
                 };
-                st.plan.push(stepDef);  // keep plan in sync
+                st.plan.push(stepDef);
 
-                // Ensure the widget exists (create empty shell on first step)
                 if (!document.getElementById(`flowchart-${execId}`)) {
                     this.injectAdaptiveShell(execId);
                 }
-
                 this.appendAdaptiveStep(execId, stepNum, stepDef);
                 break;
             }
 
-            // ------------------------------------------------------------------
-            // PARALLEL  — re-layout into swim-lanes
-            // ------------------------------------------------------------------
+            // ★ NEW: monitor sends this after resolving the real input
+            case 'step_input_updated': {
+                const idx   = data.data.step_number - 1;
+                const input = data.data.input;
+                this.updateStepInput(execId, idx, input);
+                break;
+            }
+
             case 'parallel_branches': {
                 st.mode     = 'parallel';
                 st.branches = data.data.branches;
@@ -116,31 +105,31 @@
                     this.applyParallelLayout(execId, st.branches, st.plan);
                     st.branchApplied = true;
                 } else if (!st.branchApplied) {
-                    // Plan not injected yet — we'll apply layout after plan event
-                    // (parallel_branches may arrive before or after plan)
                     st._pendingBranches = true;
                 }
                 break;
             }
 
-            // ------------------------------------------------------------------
-            // Common step lifecycle events
-            // ------------------------------------------------------------------
             case 'step_started': {
                 const idx = data.data.step_number - 1;
                 this.updateStepStatus(execId, idx, 'running');
                 break;
             }
+
             case 'step_output': {
                 const idx = data.data.step_number - 1;
                 this.appendStepOutput(execId, idx, data.data.chunk);
                 break;
             }
+
             case 'step_completed': {
                 const idx = data.data.step_number - 1;
                 this.updateStepStatus(execId, idx, 'completed');
+                // Freeze the live preview text on the node
+                this._freezeNodePreview(execId, idx);
                 break;
             }
+
             case 'step_failed': {
                 const idx = data.data.step_number - 1;
                 this.updateStepStatus(execId, idx, 'failed');
@@ -149,6 +138,7 @@
                 }
                 break;
             }
+
             case 'execution_completed':
                 this.updateGlobalStatus(execId, 'completed');
                 break;
@@ -159,7 +149,7 @@
     };
 
     // =====================================================================
-    // Sequential injection  (renders full plan immediately)
+    // Sequential injection
     // =====================================================================
 
     VeraChat.prototype.injectFlowchart = function(execId, plan, mode) {
@@ -173,7 +163,6 @@
         contentDiv.insertAdjacentHTML('beforeend', '\n\n' + html);
         console.log(`✅ Flowchart injected [${mode}] — ${plan.length} steps`);
 
-        // If parallel branches arrived before the plan DOM was ready, apply now
         const st = getState(this, execId);
         if (st._pendingBranches && st.branches) {
             this.applyParallelLayout(execId, st.branches, plan);
@@ -182,7 +171,7 @@
     };
 
     // =====================================================================
-    // Adaptive shell  (empty container — nodes append as they are discovered)
+    // Adaptive shell
     // =====================================================================
 
     VeraChat.prototype.injectAdaptiveShell = function(execId) {
@@ -204,7 +193,6 @@
                         <div class="flow-row" id="start-arrow-${execId}">
                             <div class="flow-arrow flow-arrow-pulse">↓</div>
                         </div>
-                        <!-- adaptive nodes append here, before .flow-end -->
                         <div class="flow-row" id="end-row-${execId}" style="display:none">
                             <div class="flow-node flow-end">Complete</div>
                         </div>
@@ -228,7 +216,7 @@
     };
 
     // =====================================================================
-    // Append a single node to the adaptive flowchart
+    // Append a single adaptive step node
     // =====================================================================
 
     VeraChat.prototype.appendAdaptiveStep = function(execId, stepNum, stepDef) {
@@ -238,12 +226,12 @@
         const countEl      = document.getElementById(`count-${execId}`);
         if (!nodesEl) return;
 
-        const arrayIndex  = stepNum - 1;
-        const toolName    = this.escapeHtml(stepDef.tool || 'unknown');
+        const arrayIndex   = stepNum - 1;
+        const toolName     = this.escapeHtml(stepDef.tool || 'unknown');
         const inputPreview = this._inputPreview(stepDef.input);
         const inputDisplay = this._inputDisplay(stepDef.input);
 
-        // --- Flow node row + arrow ---
+        // ── Flow node ──────────────────────────────────────────────────
         const nodeHtml = `
             <div class="flow-row fc-adaptive-row" id="row-${execId}-${arrayIndex}"
                  style="animation: nodeSlideIn 0.35s ease forwards">
@@ -253,10 +241,15 @@
                      data-status="pending">
                     <div class="step-number">Step ${stepNum}</div>
                     <div class="step-tool">${toolName}</div>
-                    <div class="step-input">${inputPreview}</div>
+                    <div class="step-input-preview" id="node-input-${execId}-${arrayIndex}">${inputPreview}</div>
                     <div class="step-status" id="status-${execId}-${arrayIndex}">
                         <span class="status-icon">🔍</span>
                         <span class="status-text">Discovered</span>
+                    </div>
+                    <!-- ★ Live output preview shown directly on the node -->
+                    <div class="node-output-preview" id="node-output-${execId}-${arrayIndex}" style="display:none">
+                        <div class="node-output-label">Output</div>
+                        <pre class="node-output-pre"></pre>
                     </div>
                 </div>
             </div>
@@ -264,14 +257,13 @@
                 <div class="flow-arrow flow-arrow-pulse">↓</div>
             </div>`;
 
-        // Insert before the end-row
         if (endRowEl) {
             endRowEl.insertAdjacentHTML('beforebegin', nodeHtml);
         } else {
             nodesEl.insertAdjacentHTML('beforeend', nodeHtml);
         }
 
-        // --- Detail panel row ---
+        // ── Detail panel entry ─────────────────────────────────────────
         if (detailListEl) {
             const detailHtml = `
                 <div class="step-detail" id="detail-${execId}-${arrayIndex}">
@@ -280,9 +272,9 @@
                         <span class="detail-tool">${toolName}</span>
                         <span class="detail-badge detail-badge-adaptive">adaptive</span>
                     </div>
-                    <div class="detail-input">
+                    <div class="detail-input" id="detail-input-${execId}-${arrayIndex}">
                         <strong>Input:</strong>
-                        <pre>${this.escapeHtml(inputDisplay)}</pre>
+                        <pre id="detail-input-pre-${execId}-${arrayIndex}">${this.escapeHtml(inputDisplay)}</pre>
                     </div>
                     <div class="detail-output" id="output-${execId}-${arrayIndex}" style="display:none">
                         <strong>Output:</strong>
@@ -296,10 +288,8 @@
             detailListEl.insertAdjacentHTML('beforeend', detailHtml);
         }
 
-        // Update count badge
         if (countEl) countEl.textContent = `${stepNum} step${stepNum !== 1 ? 's' : ''}`;
 
-        // Keep start-arrow non-pulsing once first step is there
         const startArrow = document.getElementById(`start-arrow-${execId}`);
         if (startArrow) startArrow.querySelector('.flow-arrow').classList.remove('flow-arrow-pulse');
 
@@ -307,52 +297,85 @@
     };
 
     // =====================================================================
-    // Mark adaptive execution complete (show the end node)
+    // ★ NEW: patch the input on a node AFTER step_discovered
+    //   Called when step_input_updated arrives (monitor sends resolved input)
     // =====================================================================
 
-    VeraChat.prototype._showEndNode = function(execId) {
-        const endRow = document.getElementById(`end-row-${execId}`);
-        if (endRow) {
-            endRow.style.display = '';
-            endRow.style.animation = 'nodeSlideIn 0.35s ease forwards';
+    VeraChat.prototype.updateStepInput = function(execId, stepIndex, input) {
+        // Update the node's input preview chip
+        const nodeInputEl = document.getElementById(`node-input-${execId}-${stepIndex}`);
+        if (nodeInputEl) {
+            nodeInputEl.textContent = this._inputPreview(input);
         }
-        // Remove the last dangling pulse arrow
-        const adaptiveArrows = document.querySelectorAll(
-            `#nodes-${execId} .fc-adaptive-arrow-row`
-        );
-        const last = adaptiveArrows[adaptiveArrows.length - 1];
-        if (last) last.remove();
+        // Update the detail panel pre block
+        const detailInputPre = document.getElementById(`detail-input-pre-${execId}-${stepIndex}`);
+        if (detailInputPre) {
+            detailInputPre.textContent = this._inputDisplay(input);
+        }
     };
 
     // =====================================================================
-    // Parallel layout  — reorganise step nodes into horizontal swim-lanes
+    // appendStepOutput  ★ now also writes to the live node preview
+    // =====================================================================
+
+    VeraChat.prototype.appendStepOutput = function(execId, stepIndex, chunk) {
+        // ── Detail panel output (existing) ────────────────────────────
+        const outputSection = document.getElementById(`output-${execId}-${stepIndex}`);
+        if (outputSection) {
+            // Unhide as soon as first chunk arrives — don't wait for step_started
+            outputSection.style.display = 'block';
+            const outputPre = outputSection.querySelector('.output-pre');
+            if (outputPre) {
+                outputPre.textContent += chunk;
+                outputPre.scrollTop   = outputPre.scrollHeight;
+            }
+        }
+
+        // ── ★ Live node preview ────────────────────────────────────────
+        const nodeOutput = document.getElementById(`node-output-${execId}-${stepIndex}`);
+        if (nodeOutput) {
+            nodeOutput.style.display = 'block';
+            const pre = nodeOutput.querySelector('.node-output-pre');
+            if (pre) {
+                pre.textContent += chunk;
+                // Trim to last 300 chars so the node doesn't grow unbounded
+                if (pre.textContent.length > 300) {
+                    pre.textContent = '…' + pre.textContent.slice(-280);
+                }
+            }
+        }
+    };
+
+    // =====================================================================
+    // ★ Freeze node preview on completion (swap live pre for a clean summary)
+    // =====================================================================
+
+    VeraChat.prototype._freezeNodePreview = function(execId, stepIndex) {
+        const nodeOutput = document.getElementById(`node-output-${execId}-${stepIndex}`);
+        if (!nodeOutput) return;
+        const pre = nodeOutput.querySelector('.node-output-pre');
+        if (!pre || !pre.textContent) return;
+        // Add a "done" CSS class so we can dim the pulsing border
+        nodeOutput.classList.add('node-output-done');
+    };
+
+    // =====================================================================
+    // Parallel layout
     // =====================================================================
 
     VeraChat.prototype.applyParallelLayout = function(execId, branches, plan) {
         const nodesEl = document.getElementById(`nodes-${execId}`);
         if (!nodesEl) return;
 
-        // Build a flat map of stepIndex → branch index
-        const stepToBranch = {};
-        branches.forEach((branchSteps, bi) => {
-            branchSteps.forEach(sn => { stepToBranch[sn - 1] = bi; });
-        });
-
-        // Update the widget header badge
         const countEl = document.getElementById(`count-${execId}`);
-        if (countEl) {
-            countEl.textContent = `${plan.length} steps · ${branches.length} branches`;
-        }
+        if (countEl) countEl.textContent = `${plan.length} steps · ${branches.length} branches`;
 
-        // Update global status badge
         const statusEl = document.getElementById(`global-status-${execId}`);
         if (statusEl) {
             statusEl.textContent = 'PARALLEL';
             statusEl.className   = 'flowchart-status fc-status-parallel';
         }
 
-        // Replace the vertical flow-nodes area with a parallel swim-lane layout
-        // We keep the same node IDs so updateStepStatus() keeps working.
         let lanesHtml = `
             <div class="flow-row">
                 <div class="flow-node flow-start">Start</div>
@@ -364,9 +387,9 @@
             lanesHtml += `<div class="flow-lane">
                 <div class="flow-lane-header">Branch ${bi + 1}</div>`;
             branchSteps.forEach((sn, pos) => {
-                const arrayIndex  = sn - 1;
-                const step        = plan[arrayIndex] || {};
-                const toolName    = this.escapeHtml(step.tool || 'unknown');
+                const arrayIndex   = sn - 1;
+                const step         = plan[arrayIndex] || {};
+                const toolName     = this.escapeHtml(step.tool || 'unknown');
                 const inputPreview = this._inputPreview(step.input || '');
                 lanesHtml += `
                     <div class="flow-node flow-step"
@@ -375,21 +398,25 @@
                          data-status="pending">
                         <div class="step-number">Step ${sn}</div>
                         <div class="step-tool">${toolName}</div>
-                        <div class="step-input">${inputPreview}</div>
+                        <div class="step-input-preview" id="node-input-${execId}-${arrayIndex}">${inputPreview}</div>
                         <div class="step-status" id="status-${execId}-${arrayIndex}">
                             <span class="status-icon">⏸️</span>
                             <span class="status-text">Pending</span>
+                        </div>
+                        <div class="node-output-preview" id="node-output-${execId}-${arrayIndex}" style="display:none">
+                            <div class="node-output-label">Output</div>
+                            <pre class="node-output-pre"></pre>
                         </div>
                     </div>`;
                 if (pos < branchSteps.length - 1) {
                     lanesHtml += `<div class="flow-arrow">↓</div>`;
                 }
             });
-            lanesHtml += `</div>`; // .flow-lane
+            lanesHtml += `</div>`;
         });
 
-        lanesHtml += `</div>`; // .flow-parallel-container
-        lanesHtml += `<div class="flow-row"><div class="flow-arrow">↓</div></div>
+        lanesHtml += `</div>
+            <div class="flow-row"><div class="flow-arrow">↓</div></div>
             <div class="flow-row"><div class="flow-node flow-end">Complete</div></div>`;
 
         nodesEl.innerHTML = lanesHtml;
@@ -397,33 +424,24 @@
     };
 
     // =====================================================================
-    // Build sequential flowchart HTML
+    // Sequential flowchart HTML builder  ★ adds node-output-preview divs
     // =====================================================================
 
     VeraChat.prototype.buildFlowchartHTML = function(execId, plan, mode) {
         const modeBadgeLabel = {
-            sequential: 'SEQUENTIAL',
-            expert:     'EXPERT',
-            hybrid:     'HYBRID',
-            parallel:   'PARALLEL',
+            sequential: 'SEQUENTIAL', expert: 'EXPERT',
+            hybrid: 'HYBRID', parallel: 'PARALLEL',
         }[mode] || 'EXECUTING';
 
         const modeStatusClass = {
-            sequential: 'fc-status-sequential',
-            expert:     'fc-status-expert',
-            hybrid:     'fc-status-hybrid',
-            parallel:   'fc-status-parallel',
+            sequential: 'fc-status-sequential', expert: 'fc-status-expert',
+            hybrid: 'fc-status-hybrid', parallel: 'fc-status-parallel',
         }[mode] || 'fc-status-sequential';
 
-        const modeIcon = {
-            sequential: '🔧',
-            expert:     '🎓',
-            hybrid:     '⚡',
-            parallel:   '⚙️',
-        }[mode] || '🔧';
+        const modeIcon = { sequential: '🔧', expert: '🎓', hybrid: '⚡', parallel: '⚙️' }[mode] || '🔧';
 
         const stepsHtml = plan.map((step, index) => {
-            const toolName    = this.escapeHtml(step.tool || 'unknown');
+            const toolName     = this.escapeHtml(step.tool || 'unknown');
             const inputPreview = this._inputPreview(step.input);
             return `
                 <div class="flow-row">
@@ -433,10 +451,15 @@
                          data-status="pending">
                         <div class="step-number">Step ${index + 1}</div>
                         <div class="step-tool">${toolName}</div>
-                        <div class="step-input">${inputPreview}</div>
+                        <div class="step-input-preview" id="node-input-${execId}-${index}">${inputPreview}</div>
                         <div class="step-status" id="status-${execId}-${index}">
                             <span class="status-icon">⏸️</span>
                             <span class="status-text">Pending</span>
+                        </div>
+                        <!-- ★ Live output preview on the node -->
+                        <div class="node-output-preview" id="node-output-${execId}-${index}" style="display:none">
+                            <div class="node-output-label">Output</div>
+                            <pre class="node-output-pre"></pre>
                         </div>
                     </div>
                 </div>
@@ -456,7 +479,7 @@
                     </div>
                     <div class="detail-input">
                         <strong>Input:</strong>
-                        <pre>${this.escapeHtml(inputDisplay)}</pre>
+                        <pre id="detail-input-pre-${execId}-${index}">${this.escapeHtml(inputDisplay)}</pre>
                     </div>
                     <div class="detail-output" id="output-${execId}-${index}" style="display:none">
                         <strong>Output:</strong>
@@ -506,7 +529,7 @@
     };
 
     // =====================================================================
-    // updateStepStatus  (unchanged API — used by all modes)
+    // updateStepStatus  (output section unhidden here for step_started too)
     // =====================================================================
 
     VeraChat.prototype.updateStepStatus = function(execId, stepIndex, status) {
@@ -520,47 +543,30 @@
         const statusEl = document.getElementById(`status-${execId}-${stepIndex}`);
         if (statusEl) {
             const cfg = {
-                pending:    { icon: '⏸️', text: 'Pending' },
-                running:    { icon: '⏳', text: 'Running' },
-                completed:  { icon: '✅', text: 'Done' },
-                failed:     { icon: '❌', text: 'Failed' },
+                pending:   { icon: '⏸️', text: 'Pending' },
+                running:   { icon: '⏳', text: 'Running' },
+                completed: { icon: '✅', text: 'Done' },
+                failed:    { icon: '❌', text: 'Failed' },
             }[status] || { icon: '⏸️', text: 'Pending' };
             statusEl.innerHTML = `
                 <span class="status-icon">${cfg.icon}</span>
                 <span class="status-text">${cfg.text}</span>`;
         }
 
+        // Unhide detail-panel output section on running or completed
         if (status === 'running' || status === 'completed') {
             const outputSection = document.getElementById(`output-${execId}-${stepIndex}`);
             if (outputSection) outputSection.style.display = 'block';
         }
 
-        // For adaptive mode — show end node when last step completes
         if (status === 'completed' || status === 'failed') {
             const st = getState(this, execId);
             if (st && st.mode === 'adaptive') {
-                const allNodes = document.querySelectorAll(
-                    `#nodes-${execId} .flow-step`
-                );
-                const doneCount = Array.from(allNodes).filter(n =>
-                    n.dataset.status === 'completed' || n.dataset.status === 'failed'
-                ).length;
-                // If all discovered steps are done and execution is complete
                 const globalStatus = document.getElementById(`global-status-${execId}`);
                 if (globalStatus && globalStatus.textContent === 'COMPLETED') {
                     this._showEndNode(execId);
                 }
             }
-        }
-    };
-
-    VeraChat.prototype.appendStepOutput = function(execId, stepIndex, chunk) {
-        const outputPre = document.querySelector(
-            `#output-${execId}-${stepIndex} .output-pre`
-        );
-        if (outputPre) {
-            outputPre.textContent += chunk;
-            outputPre.scrollTop   = outputPre.scrollHeight;
         }
     };
 
@@ -579,12 +585,22 @@
             statusEl.textContent = status.toUpperCase();
             statusEl.className   = `flowchart-status status-${status}`;
         }
-        // Show end node for adaptive
         if (status === 'completed') this._showEndNode(execId);
     };
 
+    VeraChat.prototype._showEndNode = function(execId) {
+        const endRow = document.getElementById(`end-row-${execId}`);
+        if (endRow) {
+            endRow.style.display = '';
+            endRow.style.animation = 'nodeSlideIn 0.35s ease forwards';
+        }
+        const adaptiveArrows = document.querySelectorAll(`#nodes-${execId} .fc-adaptive-arrow-row`);
+        const last = adaptiveArrows[adaptiveArrows.length - 1];
+        if (last) last.remove();
+    };
+
     // =====================================================================
-    // Helper — find the current last assistant message content div
+    // Helper — find current assistant message content div
     // =====================================================================
 
     VeraChat.prototype._getContentDiv = function() {
@@ -605,7 +621,7 @@
     VeraChat.prototype._inputPreview = function(input) {
         if (typeof input === 'object' && input !== null) {
             const entries = Object.entries(input);
-            if (!entries.length)            return '{}';
+            if (!entries.length)    return '{}';
             if (entries.length === 1) {
                 const [k, v] = entries[0];
                 return this.escapeHtml(`${k}: ${this.truncate(String(v), 40)}`);
@@ -635,11 +651,11 @@
     };
 
     // =====================================================================
-    // Styles
+    // Styles  (adds node-output-preview styles)
     // =====================================================================
 
     const styles = `
-    /* ── Base widget ───────────────────────────────────────────────────── */
+    /* ── Base widget ─────────────────────────────────────────────────── */
     .toolchain-flowchart-widget {
         margin: 16px 0;
         background: var(--panel-bg, #1e293b);
@@ -649,11 +665,9 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
 
-    /* ── Header ────────────────────────────────────────────────────────── */
+    /* ── Header ──────────────────────────────────────────────────────── */
     .flowchart-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
+        display: flex; align-items: center; gap: 12px;
         padding: 12px 16px;
         background: linear-gradient(135deg, var(--panel-bg, #3b82f6), var(--bg));
         color: white;
@@ -665,8 +679,6 @@
         font-size: 11px; padding: 4px 10px; border-radius: 12px;
         font-weight: 600; text-transform: uppercase;
     }
-
-    /* Status colour variants */
     .fc-status-sequential { background: rgba(59,130,246,.35); }
     .fc-status-adaptive   { background: rgba(16,185,129,.35); animation: pulse 2s infinite; }
     .fc-status-parallel   { background: rgba(168,85,247,.35); }
@@ -677,40 +689,28 @@
 
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
 
-    /* ── Body / nodes ──────────────────────────────────────────────────── */
+    /* ── Body ────────────────────────────────────────────────────────── */
     .flowchart-body {
         padding: 24px 16px;
         background: var(--bg, #0f172a);
         overflow-x: auto;
-        max-width: 100%;
     }
     .flow-nodes {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0;
-        min-width: 0;
+        display: flex; flex-direction: column;
+        align-items: center; gap: 0; min-width: 0;
     }
     .flow-row { display: flex; justify-content: center; width: 100%; }
 
-    /* ── Individual nodes ──────────────────────────────────────────────── */
+    /* ── Nodes ───────────────────────────────────────────────────────── */
     .flow-node {
-        padding: 12px 20px;
-        border-radius: 8px;
-        text-align: center;
-        font-size: 14px;
-        box-shadow: 0 2px 8px rgba(0,0,0,.3);
-        min-width: 200px;
-        max-width: 560px;
-        transition: all .3s;
+        padding: 12px 20px; border-radius: 8px; text-align: center;
+        font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.3);
+        min-width: 200px; max-width: 560px; transition: all .3s;
     }
     .flow-start, .flow-end {
         background: linear-gradient(135deg,#10b981,#059669);
-        color: white;
-        padding: 10px 24px;
-        border-radius: 20px;
-        font-weight: 600;
-        min-width: 120px;
+        color: white; padding: 10px 24px; border-radius: 20px;
+        font-weight: 600; min-width: 120px;
     }
     .flow-step {
         background: var(--panel-bg, #1e293b);
@@ -737,63 +737,77 @@
         50%      { box-shadow:0 0 30px rgba(59,130,246,.8); }
     }
 
-    .step-number { font-size:10px; text-transform:uppercase; color:var(--accent,#3b82f6); font-weight:600; margin-bottom:4px; }
-    .step-tool   { font-size:16px; font-weight:600; margin-bottom:6px; font-family:monospace; }
-    .step-input  { font-size:12px; color:var(--text-muted,#94a3b8); margin-bottom:8px; }
-    .step-status { font-size:11px; padding:4px 8px; background:rgba(0,0,0,.3); border-radius:4px; display:inline-flex; align-items:center; gap:4px; }
-    .status-icon { font-size:13px; }
-    .status-text { font-weight:500; }
+    .step-number       { font-size:10px; text-transform:uppercase; color:var(--accent,#3b82f6); font-weight:600; margin-bottom:4px; }
+    .step-tool         { font-size:16px; font-weight:600; margin-bottom:6px; font-family:monospace; }
+    .step-input-preview { font-size:12px; color:var(--text-muted,#94a3b8); margin-bottom:8px; }
+    .step-status       { font-size:11px; padding:4px 8px; background:rgba(0,0,0,.3); border-radius:4px; display:inline-flex; align-items:center; gap:4px; }
+    .status-icon       { font-size:13px; }
+    .status-text       { font-weight:500; }
 
-    /* ── Arrows ────────────────────────────────────────────────────────── */
+    /* ── ★ Node live output preview ──────────────────────────────────── */
+    .node-output-preview {
+        margin-top: 10px;
+        border-top: 1px solid rgba(255,255,255,.1);
+        padding-top: 8px;
+        text-align: left;
+    }
+    .node-output-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        color: #10b981;
+        font-weight: 600;
+        margin-bottom: 4px;
+        letter-spacing: .04em;
+    }
+    .node-output-pre {
+        margin: 0;
+        font-family: monospace;
+        font-size: 11px;
+        color: #a7f3d0;
+        white-space: pre-wrap;
+        word-break: break-all;
+        max-height: 80px;
+        overflow-y: auto;
+        background: rgba(0,0,0,.25);
+        padding: 6px 8px;
+        border-radius: 4px;
+        border-left: 2px solid #10b981;
+    }
+    .node-output-done .node-output-pre {
+        border-left-color: #059669;
+        color: #6ee7b7;
+    }
+
+    /* ── Arrows ──────────────────────────────────────────────────────── */
     .flow-arrow { color:var(--accent,#3b82f6); font-size:24px; line-height:1; padding:4px 0; font-weight:bold; }
     .flow-arrow-pulse { animation:pulse 1.4s infinite; }
 
-    /* ── Adaptive: entry animation ─────────────────────────────────────── */
     @keyframes nodeSlideIn {
         from { opacity:0; transform:translateY(-12px); }
         to   { opacity:1; transform:translateY(0); }
     }
 
-    /* ── Parallel swim-lanes ────────────────────────────────────────────── */
+    /* ── Parallel swim-lanes ─────────────────────────────────────────── */
     .flow-parallel-container {
-        display: flex;
-        flex-direction: row;
-        gap: 16px;
-        justify-content: center;
-        align-items: flex-start;
-        width: 100%;
-        padding: 8px 0;
-        overflow-x: auto;
+        display: flex; flex-direction: row; gap: 16px;
+        justify-content: center; align-items: flex-start;
+        width: 100%; padding: 8px 0; overflow-x: auto;
     }
     .flow-lane {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 0;
-        flex: 1;
-        min-width: 160px;
-        max-width: 260px;
+        display: flex; flex-direction: column; align-items: center;
+        gap: 0; flex: 1; min-width: 160px; max-width: 260px;
         background: rgba(168,85,247,.06);
         border: 1px solid rgba(168,85,247,.25);
-        border-radius: 8px;
-        padding: 12px 8px;
+        border-radius: 8px; padding: 12px 8px;
     }
     .flow-lane-header {
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: rgba(168,85,247,.9);
-        letter-spacing: .06em;
-        margin-bottom: 10px;
+        font-size: 11px; font-weight: 700; text-transform: uppercase;
+        color: rgba(168,85,247,.9); letter-spacing: .06em; margin-bottom: 10px;
     }
-    .flow-lane .flow-node {
-        min-width: 140px;
-        max-width: 240px;
-        width: 100%;
-    }
+    .flow-lane .flow-node { min-width: 140px; max-width: 240px; width: 100%; }
     .flow-lane .flow-arrow { font-size: 18px; }
 
-    /* ── Detail panel ───────────────────────────────────────────────────── */
+    /* ── Detail panel ────────────────────────────────────────────────── */
     .flowchart-details        { border-top:1px solid var(--border,#334155); background:var(--panel-bg,#1e293b); }
     .flowchart-toggle-btn     {
         width:100%; padding:12px 16px; background:transparent; border:none;
@@ -856,6 +870,6 @@
         document.head.appendChild(style);
     }
 
-    console.log('✅ Toolchain Flowchart v3 loaded');
-    console.log('   modes: sequential | adaptive (live nodes) | parallel (swim-lanes)');
+    console.log('✅ Toolchain Flowchart v4 loaded');
+    console.log('   adaptive input+output fix applied');
 })();

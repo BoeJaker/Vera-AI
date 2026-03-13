@@ -1,772 +1,470 @@
-// =====================================================================
-// Chat Routing Controls - FIXED POSITIONING
-// Add to chat-modern-ui.js after the control bar section
-// =====================================================================
+// ============================================================
+// chat-routing-controls.js  — Vera Chat Routing Controls
+// ============================================================
 
 (() => {
-    console.log('🎛️ Loading Chat Routing Controls...');
+    'use strict';
 
-    // =====================================================================
-    // Routing Control Panel
-    // =====================================================================
-    
-    VeraChat.prototype.addRoutingControls = function() {
-        console.log('🔧 Adding routing controls...');
-        
-        // Check if already exists
-        if (document.getElementById('routing-controls')) {
-            console.log('⏭️ Routing controls already exist, removing old version');
-            document.getElementById('routing-controls').remove();
-        }
-        
-        // Find the input area container
-        const inputArea = document.querySelector('.input-area');
-        const messageInput = document.getElementById('messageInput');
-        
-        if (!inputArea && !messageInput) {
-            console.error('❌ Could not find input area or message input');
-            return;
-        }
-        
-        // Initialize state from localStorage
-        this.routingMode = localStorage.getItem('chat-routing-mode') || 'auto';
-        this.routingExpanded = localStorage.getItem('routing-expanded') === 'true';
-        this.forceRouting = localStorage.getItem('force-routing') === 'true';
-        
-        // Create routing controls container
-        const routingControls = document.createElement('div');
-        routingControls.id = 'routing-controls';
-        routingControls.className = 'routing-controls';
-        
-        routingControls.innerHTML = `
-            <div class="routing-header">
-                <span class="routing-label">Route:</span>
-                <select id="routing-mode-select" class="routing-select">
-                    <option value="auto">🤖 Auto (Triage)</option>
-                    <option value="simple">⚡ Simple (Fast)</option>
-                    <option value="reasoning">🧠 Reasoning</option>
-                    <option value="complex">🔬 Complex (Deep)</option>
-                    <option value="intermediate">📊 Intermediate</option>
-                    <option value="coding">💻 Coding</option>
-                    <option value="toolchain">🔧 Toolchain</option>
-                    <option value="toolchain-parallel">⚡🔧 Parallel Tools</option>
-                    <option value="toolchain-adaptive">🎯 Adaptive Tools</option>
-                    <option value="toolchain-stepbystep">📋 Step-by-Step</option>
-                    <option value="counsel">👥 Counsel (Vote)</option>
-                    <option value="counsel-debate">💬 Counsel (Debate)</option>
-                    <option value="counsel-synthesize">🔀 Counsel (Synthesize)</option>
+    const MODEL_ROLES = ['fast', 'intermediate', 'deep', 'reasoning'];
+
+    const ROUTE_DESCRIPTIONS = {
+        auto:                   '🤖 <b>Auto</b> — Triage classifies complexity and picks the best route.',
+        simple:                 '⚡ <b>Simple</b> — Fast model. Best for short questions and quick lookups.',
+        intermediate:           '📊 <b>Intermediate</b> — Balanced depth. Good for most queries.',
+        reasoning:              '🧠 <b>Reasoning</b> — Step-by-step logical analysis.',
+        complex:                '🔬 <b>Complex</b> — Deep model. Best for research and detailed explanations.',
+        coding:                 '💻 <b>Coding</b> — Optimised for code generation and debugging.',
+        toolchain:              '🔧 <b>Toolchain</b> — Execute tools and actions.',
+        'toolchain-parallel':   '⚡🔧 <b>Parallel Tools</b> — Run multiple tools simultaneously.',
+        'toolchain-adaptive':   '🎯 <b>Adaptive Tools</b> — Multi-step tool workflows, planned on the fly.',
+        'toolchain-stepbystep': '📋 <b>Step-by-Step</b> — Sequential tool execution with explicit steps.',
+        counsel:                '👥 <b>Counsel</b> — Multiple models deliberate on the same query.',
+    };
+
+    // ── State — always strings/booleans/arrays, never null/undefined ──
+    function safeMode() {
+        const v = localStorage.getItem('rc-mode');
+        // Guard against old key name ('chat-routing-mode') from previous version
+        const old = localStorage.getItem('chat-routing-mode');
+        return (v && v !== 'null') ? v : (old && old !== 'null') ? old : 'auto';
+    }
+
+    const State = {
+        mode:          safeMode(),
+        force:         localStorage.getItem('rc-force') === 'true',
+        expanded:      localStorage.getItem('rc-expanded') === 'true',
+        modelOverride: localStorage.getItem('rc-model-override') || '',
+        counselMode:   localStorage.getItem('rc-counsel-mode') || 'vote',
+        counselModels: (() => {
+            try { return JSON.parse(localStorage.getItem('rc-counsel-models')) || ['fast','intermediate','deep']; }
+            catch { return ['fast','intermediate','deep']; }
+        })(),
+    };
+
+    function save(key, val) {
+        State[key] = val;
+        localStorage.setItem('rc-' + key, typeof val === 'object' ? JSON.stringify(val) : String(val));
+    }
+
+    function isCounsel()   { return State.mode === 'counsel'; }
+    function isToolchain() { return typeof State.mode === 'string' && State.mode.startsWith('toolchain'); }
+
+    // ─────────────────────────────────────────────────────────────────
+    // HTML builders
+    // ─────────────────────────────────────────────────────────────────
+
+    function buildModelOptions(selected, includeAuto) {
+        selected = selected || '';
+        const opts = includeAuto ? [['', '— default —']] : [];
+        MODEL_ROLES.forEach(r => opts.push([r, r.charAt(0).toUpperCase() + r.slice(1)]));
+        return opts.map(([v, l]) =>
+            `<option value="${v}"${v === selected ? ' selected' : ''}>${l}</option>`
+        ).join('');
+    }
+
+    function buildCounselModelRows() {
+        return State.counselModels.map((role, i) => `
+            <div class="rc-counsel-row" data-idx="${i}">
+                <select class="rc-select rc-counsel-model" data-idx="${i}">
+                    ${MODEL_ROLES.map(r =>
+                        `<option value="${r}"${r === role ? ' selected' : ''}>${r}</option>`
+                    ).join('')}
                 </select>
-                
-                <button class="routing-info-btn" id="routing-info-btn" title="Routing info">
-                    ℹ️
-                </button>
-                
-                <button class="routing-toggle-btn" id="routing-toggle-btn" title="Toggle controls">
-                    ${this.routingExpanded ? '▼' : '▶'}
-                </button>
+                <button class="rc-icon-btn rc-remove-counsel" data-idx="${i}" title="Remove">✕</button>
             </div>
-            
-            <div class="routing-details" id="routing-details" style="display: ${this.routingExpanded ? 'block' : 'none'};">
-                <div class="routing-option-group">
-                    <label class="routing-option">
-                        <input type="checkbox" id="force-routing" ${this.forceRouting ? 'checked' : ''}>
-                        <span>Force routing (skip triage)</span>
-                    </label>
-                    
-                    <label class="routing-option" id="parallel-option" style="display: none;">
-                        <input type="checkbox" id="enable-parallel">
-                        <span>Enable parallel execution</span>
-                    </label>
-                    
-                    <label class="routing-option" id="counsel-models-option" style="display: none;">
-                        <span>Council models:</span>
-                        <input type="text" id="counsel-models" placeholder="fast,intermediate,deep" class="routing-input">
-                    </label>
+        `).join('');
+    }
+
+    function opt(val, label, cur) {
+        return `<option value="${val}"${cur === val ? ' selected' : ''}>${label}</option>`;
+    }
+
+    function buildPanel() {
+        const m = State.mode;
+        return `
+        <div class="rc-header">
+            <span class="rc-label">Route</span>
+            <select id="rc-mode" class="rc-select rc-mode-select">
+                <optgroup label="Auto">
+                    ${opt('auto',                   '🤖 Auto',         m)}
+                </optgroup>
+                <optgroup label="Direct">
+                    ${opt('simple',                 '⚡ Simple',        m)}
+                    ${opt('intermediate',           '📊 Intermediate',  m)}
+                    ${opt('reasoning',              '🧠 Reasoning',     m)}
+                    ${opt('complex',                '🔬 Complex',       m)}
+                    ${opt('coding',                 '💻 Coding',        m)}
+                </optgroup>
+                <optgroup label="Toolchain">
+                    ${opt('toolchain',              '🔧 Toolchain',       m)}
+                    ${opt('toolchain-parallel',     '⚡🔧 Parallel',      m)}
+                    ${opt('toolchain-adaptive',     '🎯 Adaptive',        m)}
+                    ${opt('toolchain-stepbystep',   '📋 Step-by-Step',    m)}
+                </optgroup>
+                <optgroup label="Counsel">
+                    ${opt('counsel',                '👥 Counsel',         m)}
+                </optgroup>
+            </select>
+            <button id="rc-toggle" class="rc-icon-btn" title="Options">${State.expanded ? '▼' : '▶'}</button>
+        </div>
+
+        <div id="rc-body" class="rc-body" style="display:${State.expanded ? 'block' : 'none'}">
+
+            <div class="rc-desc" id="rc-desc">${ROUTE_DESCRIPTIONS[m] || ''}</div>
+
+            <div class="rc-section">
+                <label class="rc-check-label">
+                    <input type="checkbox" id="rc-force"${State.force ? ' checked' : ''}>
+                    Force route (skip triage)
+                </label>
+            </div>
+
+            <!-- Model override — hidden for counsel (has its own per-participant selectors) -->
+            <div class="rc-section" id="rc-model-override-section" style="display:${isCounsel() ? 'none' : 'flex'}">
+                <label class="rc-field-label">Responding model</label>
+                <select id="rc-model-override" class="rc-select">
+                    ${buildModelOptions(State.modelOverride, true)}
+                </select>
+            </div>
+
+            <!-- Counsel config -->
+            <div id="rc-counsel-section" style="display:${isCounsel() ? 'block' : 'none'}">
+                <div class="rc-section">
+                    <label class="rc-field-label">Deliberation</label>
+                    <select id="rc-counsel-mode" class="rc-select">
+                        ${opt('vote',      '⚖️ Vote — judge picks best',     State.counselMode)}
+                        ${opt('synthesis', '🔀 Synthesis — combine all',      State.counselMode)}
+                        ${opt('debate',    '⚔️ Debate — rebut + moderate',    State.counselMode)}
+                        ${opt('race',      '🏁 Race — fastest wins',          State.counselMode)}
+                    </select>
                 </div>
-                
-                <div class="routing-description" id="routing-description">
-                    <strong>Auto Mode:</strong> Automatically selects the best routing based on query complexity.
+                <div class="rc-section" style="flex-direction:column; align-items:stretch;">
+                    <div class="rc-field-label-row">
+                        <label class="rc-field-label">Participants</label>
+                        <button id="rc-add-counsel" class="rc-text-btn">+ Add</button>
+                    </div>
+                    <div id="rc-counsel-models">${buildCounselModelRows()}</div>
                 </div>
             </div>
-        `;
-        
-        // Insert BEFORE the message input (not after)
+
+        </div>`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Events
+    // ─────────────────────────────────────────────────────────────────
+
+    function wireEvents(root) {
+        root.querySelector('#rc-mode').addEventListener('change', e => {
+            save('mode', e.target.value);
+            refreshBody(root);
+        });
+
+        root.querySelector('#rc-toggle').addEventListener('click', () => {
+            save('expanded', !State.expanded);
+            refreshBody(root);
+        });
+
+        root.querySelector('#rc-force').addEventListener('change', e => {
+            save('force', e.target.checked);
+        });
+
+        root.querySelector('#rc-model-override').addEventListener('change', e => {
+            save('modelOverride', e.target.value);
+        });
+
+        root.querySelector('#rc-counsel-mode').addEventListener('change', e => {
+            save('counselMode', e.target.value);
+        });
+
+        // Delegated: participant model change
+        root.querySelector('#rc-counsel-models').addEventListener('change', e => {
+            const el = e.target.closest('.rc-counsel-model');
+            if (!el) return;
+            const updated = [...State.counselModels];
+            updated[+el.dataset.idx] = el.value;
+            save('counselModels', updated);
+        });
+
+        // Delegated: remove participant
+        root.querySelector('#rc-counsel-models').addEventListener('click', e => {
+            const btn = e.target.closest('.rc-remove-counsel');
+            if (!btn) return;
+            if (State.counselModels.length <= 2) return;
+            const updated = State.counselModels.filter((_, i) => i !== +btn.dataset.idx);
+            save('counselModels', updated);
+            refreshCounselRows(root);
+        });
+
+        // Add participant
+        root.querySelector('#rc-add-counsel').addEventListener('click', () => {
+            if (State.counselModels.length >= 6) return;
+            save('counselModels', [...State.counselModels, 'fast']);
+            refreshCounselRows(root);
+        });
+    }
+
+    function refreshBody(root) {
+        root.querySelector('#rc-toggle').textContent = State.expanded ? '▼' : '▶';
+
+        const body = root.querySelector('#rc-body');
+        if (body) body.style.display = State.expanded ? 'block' : 'none';
+
+        const desc = root.querySelector('#rc-desc');
+        if (desc) desc.innerHTML = ROUTE_DESCRIPTIONS[State.mode] || '';
+
+        const overrideSection = root.querySelector('#rc-model-override-section');
+        const counselSection  = root.querySelector('#rc-counsel-section');
+        if (overrideSection) overrideSection.style.display = isCounsel() ? 'none' : 'flex';
+        if (counselSection)  counselSection.style.display  = isCounsel() ? 'block' : 'none';
+    }
+
+    function refreshCounselRows(root) {
+        const c = root.querySelector('#rc-counsel-models');
+        if (c) c.innerHTML = buildCounselModelRows();
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // getRoutingConfig  (consumed by sendMessageViaWebSocketWithRouting)
+    // ─────────────────────────────────────────────────────────────────
+
+    VeraChat.prototype.getRoutingConfig = function () {
+        const cfg = {
+            mode:  State.mode || 'auto',
+            force: !!State.force,
+        };
+
+        if (State.mode !== 'auto' && State.modelOverride && !isCounsel()) {
+            cfg.model_override = State.modelOverride;
+        }
+
+        if (isCounsel()) {
+            cfg.counsel_mode = State.counselMode || 'vote';
+            cfg.models       = Array.isArray(State.counselModels)
+                ? [...State.counselModels]
+                : ['fast', 'intermediate', 'deep'];
+        }
+
+        return cfg;
+    };
+
+    // Expose routingMode as a getter so any legacy code that reads
+    // this.routingMode still works instead of getting undefined.
+    Object.defineProperty(VeraChat.prototype, 'routingMode', {
+        get() { return State.mode || 'auto'; },
+        set(v) { save('mode', v || 'auto'); },
+        configurable: true,
+    });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Mount
+    // ─────────────────────────────────────────────────────────────────
+
+    VeraChat.prototype.addRoutingControls = function () {
+        document.getElementById('rc-panel')?.remove();
+        // Also remove old-version panel if present
+        document.getElementById('routing-controls')?.remove();
+
+        const panel = document.createElement('div');
+        panel.id        = 'rc-panel';
+        panel.className = 'rc-panel';
+        panel.innerHTML = buildPanel();
+
+        const messageInput = document.getElementById('messageInput');
+        const inputArea    = document.querySelector('.input-area');
+
         if (messageInput) {
-            // If there's a parent wrapper, insert before that wrapper
-            const inputWrapper = messageInput.closest('.message-input-wrapper') || messageInput.parentElement;
-            if (inputWrapper && inputWrapper.parentElement) {
-                inputWrapper.parentElement.insertBefore(routingControls, inputWrapper);
-                console.log('✅ Routing controls inserted before message input wrapper');
+            const wrapper = messageInput.closest('.message-input-wrapper') || messageInput.parentElement;
+            if (wrapper?.parentElement) {
+                wrapper.parentElement.insertBefore(panel, wrapper);
             } else {
-                messageInput.parentElement.insertBefore(routingControls, messageInput);
-                console.log('✅ Routing controls inserted before message input');
+                messageInput.parentElement.insertBefore(panel, messageInput);
             }
         } else if (inputArea) {
-            // Insert as first child of input area
-            inputArea.insertBefore(routingControls, inputArea.firstChild);
-            console.log('✅ Routing controls inserted as first child of input area');
+            inputArea.insertBefore(panel, inputArea.firstChild);
+        } else {
+            document.body.appendChild(panel);
         }
-        
-        // Set initial value
-        const select = document.getElementById('routing-mode-select');
-        if (select) {
-            select.value = this.routingMode;
-            console.log(`🎯 Initial routing mode: ${this.routingMode}`);
-        }
-        
-        // Wire up event handlers
-        this.initRoutingEventHandlers();
-        
-        // Update UI to match current mode
-        this.updateRoutingUI();
-        
-        console.log('✅ Routing controls fully initialized');
+
+        wireEvents(panel);
+        injectStyles();
+        console.log('✅ Routing controls mounted, mode:', State.mode);
     };
-    
-    // =====================================================================
-    // Event Handlers
-    // =====================================================================
-    
-    VeraChat.prototype.initRoutingEventHandlers = function() {
-        const select = document.getElementById('routing-mode-select');
-        const toggleBtn = document.getElementById('routing-toggle-btn');
-        const infoBtn = document.getElementById('routing-info-btn');
-        const forceRouting = document.getElementById('force-routing');
-        
-        // Mode selection
-        if (select) {
-            select.addEventListener('change', (e) => {
-                this.routingMode = e.target.value;
-                localStorage.setItem('chat-routing-mode', this.routingMode);
-                this.updateRoutingUI();
-                this.setControlStatus(`📍 Routing set to: ${this.getRoutingDisplayName(this.routingMode)}`);
-                console.log(`🎯 Routing mode changed to: ${this.routingMode}`);
-            });
+
+    // ─────────────────────────────────────────────────────────────────
+    // Init hook
+    // ─────────────────────────────────────────────────────────────────
+
+    if (!VeraChat.prototype._rcWrapped) {
+        const _orig = VeraChat.prototype.init;
+        if (_orig) {
+            VeraChat.prototype.init = async function (...args) {
+                const r = await _orig.apply(this, args);
+                setTimeout(() => this.addRoutingControls(), 400);
+                return r;
+            };
         }
-        
-        // Toggle details
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                this.routingExpanded = !this.routingExpanded;
-                const details = document.getElementById('routing-details');
-                if (details) {
-                    details.style.display = this.routingExpanded ? 'block' : 'none';
-                }
-                toggleBtn.textContent = this.routingExpanded ? '▼' : '▶';
-                localStorage.setItem('routing-expanded', this.routingExpanded);
-            });
-        }
-        
-        // Info button
-        if (infoBtn) {
-            infoBtn.addEventListener('click', () => {
-                this.showRoutingInfo();
-            });
-        }
-        
-        // Force routing checkbox
-        if (forceRouting) {
-            forceRouting.addEventListener('change', (e) => {
-                this.forceRouting = e.target.checked;
-                localStorage.setItem('force-routing', this.forceRouting);
-                
-                if (this.forceRouting) {
-                    this.setControlStatus('⚠️ Routing forced - triage bypassed');
-                } else {
-                    this.setControlStatus('✅ Auto-routing enabled');
-                }
-            });
-        }
-        
-        console.log('✅ Routing event handlers initialized');
-    };
-    
-    // =====================================================================
-    // UI Updates
-    // =====================================================================
-    
-    VeraChat.prototype.updateRoutingUI = function() {
-        const mode = this.routingMode;
-        const description = document.getElementById('routing-description');
-        const parallelOption = document.getElementById('parallel-option');
-        const counselModelsOption = document.getElementById('counsel-models-option');
-        
-        // Update description
-        if (description) {
-            description.innerHTML = this.getRoutingDescription(mode);
-        }
-        
-        // Show/hide mode-specific options
-        if (parallelOption) {
-            parallelOption.style.display = mode.includes('toolchain') ? 'block' : 'none';
-        }
-        
-        if (counselModelsOption) {
-            counselModelsOption.style.display = mode.startsWith('counsel') ? 'block' : 'none';
-        }
-    };
-    
-    VeraChat.prototype.getRoutingDisplayName = function(mode) {
-        const names = {
-            'auto': 'Auto (Triage)',
-            'simple': 'Simple (Fast)',
-            'reasoning': 'Reasoning',
-            'complex': 'Complex (Deep)',
-            'intermediate': 'Intermediate',
-            'coding': 'Coding',
-            'toolchain': 'Toolchain',
-            'toolchain-parallel': 'Parallel Tools',
-            'toolchain-adaptive': 'Adaptive Tools',
-            'toolchain-stepbystep': 'Step-by-Step',
-            'counsel': 'Counsel (Vote)',
-            'counsel-debate': 'Counsel (Debate)',
-            'counsel-synthesize': 'Counsel (Synthesize)'
-        };
-        return names[mode] || mode;
-    };
-    
-    VeraChat.prototype.getRoutingDescription = function(mode) {
-        const descriptions = {
-            'auto': '<strong>Auto Mode:</strong> Automatically selects the best routing based on query complexity using triage.',
-            'simple': '<strong>Simple/Fast:</strong> Quick responses using the fast model. Best for simple questions and casual chat.',
-            'reasoning': '<strong>Reasoning:</strong> Deep logical analysis with step-by-step thinking. Best for complex problems requiring careful thought.',
-            'complex': '<strong>Complex/Deep:</strong> Comprehensive analysis using the deep model. Best for research and detailed explanations.',
-            'intermediate': '<strong>Intermediate:</strong> Balanced responses with moderate depth. Good for most queries.',
-            'coding': '<strong>Coding:</strong> Specialized for code generation and debugging tasks.',
-            'toolchain': '<strong>Toolchain:</strong> Execute tools and actions automatically. Best for tasks requiring external data or actions.',
-            'toolchain-parallel': '<strong>Parallel Tools:</strong> Run multiple tools simultaneously for faster results.',
-            'toolchain-adaptive': '<strong>Adaptive Tools:</strong> Intelligently plan and execute multi-step tool workflows.',
-            'toolchain-stepbystep': '<strong>Step-by-Step:</strong> Execute tools sequentially with clear progression.',
-            'counsel': '<strong>Counsel (Vote):</strong> Multiple AI agents discuss and vote on the best response.',
-            'counsel-debate': '<strong>Counsel (Debate):</strong> Agents debate different perspectives before reaching consensus.',
-            'counsel-synthesize': '<strong>Counsel (Synthesize):</strong> Combine insights from multiple agents into a unified response.'
-        };
-        return descriptions[mode] || '<strong>Unknown mode</strong>';
-    };
-    
-    VeraChat.prototype.showRoutingInfo = function() {
-        const modal = document.createElement('div');
-        modal.className = 'routing-info-modal';
-        
-        modal.innerHTML = `
-            <div class="modal-overlay" onclick="this.parentElement.remove()"></div>
-            <div class="modal-content routing-info-content">
-                <div class="modal-header">
-                    <h3>🎛️ Routing Modes Guide</h3>
-                    <button class="modal-close" onclick="this.parentElement.parentElement.remove()">✕</button>
-                </div>
-                <div class="modal-body">
-                    <div class="routing-info-section">
-                        <h4>🤖 Auto Mode</h4>
-                        <p>Let Vera decide the best route based on your query. Uses intelligent triage to classify complexity.</p>
-                    </div>
-                    
-                    <div class="routing-info-section">
-                        <h4>⚡ Direct Modes</h4>
-                        <ul>
-                            <li><strong>Simple:</strong> Fast responses for quick questions</li>
-                            <li><strong>Intermediate:</strong> Balanced depth for general queries</li>
-                            <li><strong>Reasoning:</strong> Deep logical analysis with thinking process</li>
-                            <li><strong>Complex:</strong> Comprehensive research and explanation</li>
-                            <li><strong>Coding:</strong> Optimized for programming tasks</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="routing-info-section">
-                        <h4>🔧 Toolchain Modes</h4>
-                        <ul>
-                            <li><strong>Standard:</strong> Execute tools as needed</li>
-                            <li><strong>Parallel:</strong> Run multiple tools simultaneously</li>
-                            <li><strong>Adaptive:</strong> Plan and execute complex workflows</li>
-                            <li><strong>Step-by-Step:</strong> Sequential execution with clear steps</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="routing-info-section">
-                        <h4>👥 Counsel Modes</h4>
-                        <ul>
-                            <li><strong>Vote:</strong> Multiple agents vote on best answer</li>
-                            <li><strong>Debate:</strong> Agents discuss different perspectives</li>
-                            <li><strong>Synthesize:</strong> Combine multiple viewpoints</li>
-                        </ul>
-                    </div>
-                    
-                    <div class="routing-info-section">
-                        <h4>⚙️ Options</h4>
-                        <ul>
-                            <li><strong>Force routing:</strong> Skip triage and use selected mode directly</li>
-                            <li><strong>Parallel execution:</strong> Enable concurrent tool execution</li>
-                            <li><strong>Council models:</strong> Specify which models to use in counsel mode</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        setTimeout(() => modal.classList.add('visible'), 10);
-    };
-    
-    // =====================================================================
-    // Modified sendMessage to use routing
-    // =====================================================================
-    
-    if (!VeraChat.prototype._originalSendMessageRouting) {
-        VeraChat.prototype._originalSendMessageRouting = VeraChat.prototype.sendMessage;
+        VeraChat.prototype._rcWrapped = true;
     }
-    
-    VeraChat.prototype.sendMessage = async function() {
-        const input = document.getElementById('messageInput');
-        let message = input.value.trim();
-        
-        // Include attached pastes if present
-        if (this.attachedPastes && this.attachedPastes.length > 0) {
-            this.attachedPastes.forEach(attachment => {
-                message += '\n\n---\n**Attached Text:**\n```\n' + attachment.content + '\n```';
-            });
-            this.attachedPastes = [];
-            const container = document.getElementById('attachments-container');
-            if (container) container.innerHTML = '';
+
+    if (typeof app !== 'undefined' && app) {
+        setTimeout(() => app.addRoutingControls?.(), 800);
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Styles
+    // ─────────────────────────────────────────────────────────────────
+
+    function injectStyles() {
+        if (document.getElementById('rc-styles')) return;
+        const s = document.createElement('style');
+        s.id = 'rc-styles';
+        s.textContent = `
+        .rc-panel {
+            background: var(--panel-bg, #1a2235);
+            border: 1px solid var(--border, #2d3f5c);
+            border-radius: 10px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            color: var(--text, #d4dff0);
+            overflow: hidden;
         }
-        
-        if (!message || this.processing) return;
-        
-        this.processing = true;
-        document.getElementById('sendBtn').disabled = true;
-        input.disabled = true;
-        
-        this.addMessage('user', message);
-        input.value = '';
-        if (typeof this.resetTextareaHeight === 'function') {
-            this.resetTextareaHeight();
-        }
-        
-        // Check if we should use WebSocket with routing
-        if (this.useWebSocket) {
-            const sent = await this.sendMessageViaWebSocketWithRouting(message);
-            if (sent) return;
-        }
-        
-        // Fallback to original send
-        await this._originalSendMessageRouting.call(this);
-    };
-    
-    VeraChat.prototype.sendMessageViaWebSocketWithRouting = async function(message) {
-        this.veraRobot.setState('thinking');
-        
-        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
-            return false;
-        }
-        
-        try {
-            const routingConfig = this.getRoutingConfig();
-            
-            this.websocket.send(JSON.stringify({
-                message: message,
-                files: Object.keys(this.files || {}),
-                routing: routingConfig
-            }));
-            
-            // Show routing indicator
-            if (routingConfig.mode !== 'auto') {
-                this.setControlStatus(`🎯 Using ${this.getRoutingDisplayName(routingConfig.mode)} mode`);
-            }
-            
-            return true;
-        } catch (error) {
-            console.error('WebSocket send error:', error);
-            return false;
-        }
-    };
-    
-    VeraChat.prototype.getRoutingConfig = function() {
-        const mode = this.routingMode || 'auto';
-        const forceRouting = document.getElementById('force-routing')?.checked || false;
-        
-        const config = {
-            mode: mode,
-            force: forceRouting
-        };
-        
-        // Add mode-specific configuration
-        if (mode.includes('toolchain')) {
-            const enableParallel = document.getElementById('enable-parallel')?.checked;
-            if (enableParallel !== undefined) {
-                config.parallel = enableParallel;
-            }
-        }
-        
-        if (mode.startsWith('counsel')) {
-            const modelsInput = document.getElementById('counsel-models')?.value;
-            if (modelsInput) {
-                config.models = modelsInput.split(',').map(m => m.trim());
-            }
-            
-            // Extract counsel sub-mode
-            if (mode === 'counsel-debate') {
-                config.counsel_mode = 'debate';
-            } else if (mode === 'counsel-synthesize') {
-                config.counsel_mode = 'synthesize';
-            } else {
-                config.counsel_mode = 'vote';
-            }
-        }
-        
-        return config;
-    };
-    
-    // =====================================================================
-    // Styles - FIXED FOR PROPER VISIBILITY
-    // =====================================================================
-    
-    const routingStyles = `
-        /* Routing Controls - Fixed positioning */
-        .routing-controls {
-            background: var(--panel-bg, #1e293b);
-            border: 1px solid var(--border, #334155);
-            border-radius: 8px;
-            margin-bottom: 12px;
-            overflow: visible;
-            position: relative;
-            z-index: 10;
-            width: 100%;
-        }
-        
-        .routing-header {
+        .rc-header {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 12px;
-            background: var(--bg, #0f172a);
-            border-radius: 8px 8px 0 0;
+            padding: 8px 12px;
+            background: var(--bg, #0f1a2e);
         }
-        
-        .routing-label {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-muted, #94a3b8);
+        .rc-label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            color: var(--text-muted, #6b7fa3);
             white-space: nowrap;
         }
-        
-        .routing-select {
-            flex: 1;
-            min-width: 0;
-            padding: 6px 10px;
-            background: var(--panel-bg, #1e293b);
-            border: 1px solid var(--border, #334155);
+        .rc-mode-select { flex: 1; }
+        .rc-select {
+            padding: 5px 28px 5px 9px;
+            background: var(--panel-bg, #1a2235);
+            border: 1px solid var(--border, #2d3f5c);
             border-radius: 6px;
-            color: var(--text, #e2e8f0);
+            color: var(--text, #d4dff0);
             font-size: 13px;
             cursor: pointer;
-            transition: all 0.2s;
             appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394a3b8' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%236b7fa3' d='M5 7L1 3h8z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 8px center;
-            padding-right: 28px;
+            width: 100%;
         }
-        
-        .routing-select:hover {
-            border-color: var(--accent, #3b82f6);
-            background-color: var(--bg, #0f172a);
-        }
-        
-        .routing-select:focus {
+        .rc-select:focus {
             outline: none;
             border-color: var(--accent, #3b82f6);
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 0 2px rgba(59,130,246,.15);
         }
-        
-        .routing-select option {
-            background: var(--panel-bg, #1e293b);
-            color: var(--text, #e2e8f0);
-            padding: 8px;
-        }
-        
-        .routing-info-btn, .routing-toggle-btn {
-            width: 32px;
-            height: 32px;
+        .rc-select option { background: var(--panel-bg, #1a2235); }
+        .rc-icon-btn {
             flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 28px; height: 28px;
+            display: flex; align-items: center; justify-content: center;
             background: transparent;
-            border: 1px solid var(--border, #334155);
+            border: 1px solid var(--border, #2d3f5c);
             border-radius: 6px;
-            color: var(--text-muted, #94a3b8);
+            color: var(--text-muted, #6b7fa3);
             cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s;
+            font-size: 12px;
+            transition: all .15s;
             padding: 0;
         }
-        
-        .routing-info-btn:hover, .routing-toggle-btn:hover {
-            background: var(--panel-bg, #1e293b);
+        .rc-icon-btn:hover {
             border-color: var(--accent, #3b82f6);
-            color: var(--text, #e2e8f0);
+            color: var(--text, #d4dff0);
+            background: var(--bg, #0f1a2e);
         }
-        
-        .routing-details {
-            padding: 12px;
-            border-top: 1px solid var(--border, #334155);
-            animation: slideDown 0.2s ease-out;
-            background: var(--panel-bg, #1e293b);
-            border-radius: 0 0 8px 8px;
+        .rc-text-btn {
+            background: transparent;
+            border: 1px dashed var(--border, #2d3f5c);
+            border-radius: 5px;
+            color: var(--accent, #3b82f6);
+            font-size: 12px;
+            padding: 3px 8px;
+            cursor: pointer;
+            transition: all .15s;
         }
-        
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .rc-text-btn:hover {
+            background: rgba(59,130,246,.08);
+            border-color: var(--accent, #3b82f6);
         }
-        
-        .routing-option-group {
+        .rc-body {
+            padding: 10px 12px 12px;
+            border-top: 1px solid var(--border, #2d3f5c);
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 12px;
+            gap: 10px;
         }
-        
-        .routing-option {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: var(--text, #e2e8f0);
-            cursor: pointer;
-            user-select: none;
-        }
-        
-        .routing-option input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-            flex-shrink: 0;
-        }
-        
-        .routing-option span {
-            flex: 1;
-        }
-        
-        .routing-input {
-            flex: 1;
-            min-width: 0;
-            padding: 6px 8px;
-            background: var(--bg, #0f172a);
-            border: 1px solid var(--border, #334155);
-            border-radius: 4px;
-            color: var(--text, #e2e8f0);
+        .rc-desc {
             font-size: 12px;
-        }
-        
-        .routing-input:focus {
-            outline: none;
-            border-color: var(--accent, #3b82f6);
-        }
-        
-        .routing-description {
-            padding: 10px;
-            background: var(--bg, #0f172a);
-            border: 1px solid var(--border, #334155);
+            color: var(--text-muted, #6b7fa3);
+            line-height: 1.5;
+            padding: 8px 10px;
+            background: var(--bg, #0f1a2e);
             border-radius: 6px;
-            font-size: 12px;
-            line-height: 1.6;
-            color: var(--text-muted, #94a3b8);
+            border-left: 3px solid var(--accent, #3b82f6);
         }
-        
-        .routing-description strong {
-            color: var(--accent, #3b82f6);
-        }
-        
-        /* Routing Info Modal */
-        .routing-info-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 100000;
+        .rc-desc b { color: var(--text, #d4dff0); }
+        .rc-section {
             display: flex;
             align-items: center;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
+            gap: 8px;
         }
-        
-        .routing-info-modal.visible {
-            opacity: 1;
+        .rc-field-label {
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            color: var(--text-muted, #6b7fa3);
+            white-space: nowrap;
+            flex-shrink: 0;
+            min-width: 100px;
         }
-        
-        .modal-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            cursor: pointer;
-        }
-        
-        .modal-content {
-            position: relative;
-            background: var(--panel-bg, #1e293b);
-            border: 1px solid var(--border, #334155);
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            z-index: 1;
-        }
-        
-        .routing-info-content {
-            max-width: 600px;
-            max-height: 80vh;
-            overflow-y: auto;
-            margin: 20px;
-        }
-        
-        .modal-header {
+        .rc-field-label-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border, #334155);
-            position: sticky;
-            top: 0;
-            background: var(--panel-bg, #1e293b);
-            z-index: 1;
-        }
-        
-        .modal-header h3 {
-            margin: 0;
-            font-size: 18px;
-            color: var(--text, #e2e8f0);
-        }
-        
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: transparent;
-            border: 1px solid var(--border, #334155);
-            border-radius: 6px;
-            color: var(--text-muted, #94a3b8);
-            cursor: pointer;
-            font-size: 18px;
-            transition: all 0.2s;
-            padding: 0;
-        }
-        
-        .modal-close:hover {
-            background: var(--bg, #0f172a);
-            border-color: var(--accent, #3b82f6);
-            color: var(--text, #e2e8f0);
-        }
-        
-        .modal-body {
-            padding: 20px;
-        }
-        
-        .routing-info-section {
-            margin-bottom: 20px;
-            padding: 16px;
-            background: var(--bg, #0f172a);
-            border: 1px solid var(--border, #334155);
-            border-radius: 8px;
-        }
-        
-        .routing-info-section:last-child {
-            margin-bottom: 0;
-        }
-        
-        .routing-info-section h4 {
-            margin: 0 0 12px 0;
-            color: var(--accent, #3b82f6);
-            font-size: 14px;
-            font-weight: 600;
-        }
-        
-        .routing-info-section p {
-            margin: 0;
-            color: var(--text-muted, #94a3b8);
-            font-size: 13px;
-            line-height: 1.6;
-        }
-        
-        .routing-info-section ul {
-            margin: 8px 0 0 0;
-            padding-left: 20px;
-            color: var(--text-muted, #94a3b8);
-            font-size: 13px;
-            line-height: 1.8;
-        }
-        
-        .routing-info-section li {
             margin-bottom: 6px;
         }
-        
-        .routing-info-section li strong {
-            color: var(--text, #e2e8f0);
+        .rc-check-label {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            cursor: pointer;
+            color: var(--text, #d4dff0);
+            font-size: 12px;
         }
-    `;
-    
-    // Inject styles
-    if (!document.getElementById('routing-controls-styles')) {
-        const style = document.createElement('style');
-        style.id = 'routing-controls-styles';
-        style.textContent = routingStyles;
-        document.head.appendChild(style);
-    }
-    
-    // =====================================================================
-    // Initialize on VeraChat
-    // =====================================================================
-    
-    if (!VeraChat.prototype._routingControlsWrapped) {
-        const originalInit = VeraChat.prototype.init || VeraChat.prototype._originalInit;
-        
-        if (originalInit) {
-            VeraChat.prototype.init = async function() {
-                console.log('🔄 VeraChat.init with routing controls');
-                
-                const result = await originalInit.call(this);
-                
-                // Initialize routing controls after a short delay to ensure DOM is ready
-                console.log('🎛️ Scheduling routing controls initialization...');
-                setTimeout(() => {
-                    this.addRoutingControls();
-                }, 500);
-                
-                return result;
-            };
-            
-            VeraChat.prototype._routingControlsWrapped = true;
-            console.log('✅ Routing controls wrapper installed');
-        } else {
-            console.warn('⚠️ Could not find VeraChat.init to wrap');
+        .rc-check-label input[type=checkbox] {
+            width: 14px; height: 14px;
+            accent-color: var(--accent, #3b82f6);
+            cursor: pointer;
         }
+        #rc-counsel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .rc-counsel-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 5px;
+        }
+        .rc-counsel-row .rc-select { flex: 1; }
+        .rc-remove-counsel { width: 24px; height: 24px; font-size: 10px; }
+        .rc-remove-counsel:hover { border-color: #ef4444; color: #ef4444; }
+        `;
+        document.head.appendChild(s);
     }
-    
-    // Also try immediate initialization if app instance exists
-    if (typeof app !== 'undefined' && app) {
-        console.log('🚀 Attempting immediate routing controls initialization');
-        setTimeout(() => {
-            if (typeof app.addRoutingControls === 'function') {
-                app.addRoutingControls();
-            } else {
-                console.warn('⚠️ app.addRoutingControls not available yet');
-            }
-        }, 1000);
-    }
-    
-    console.log('🚀 Chat Routing Controls module loaded');
+
+    console.log('🎛️ Vera Routing Controls loaded, initial mode:', State.mode);
 })();

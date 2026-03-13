@@ -19,7 +19,7 @@
             
             this.init();
             // this.initResize();
-            this.veraRobot = new VeraRobot('vera-robot');
+            // this.veraRobot = new VeraRobot('vera-robot');
             this.sessionHistory = null; 
             this.toolchainWebSocket = null;
             this.currentExecution = null;
@@ -52,11 +52,10 @@
                 { id: 'chat', label: 'Chat', columnId: 1 },
                 { id: 'chat-history', label: 'Chat History', columnId: 1 },
                 // { id: 'terminal', label: 'Terminal', columnId: 1 },
-                { id: 'agents', label: 'Agents', columnId: 1 },
                 { id: 'graph', label: 'Knowledge Graph', columnId: 2 },
                 { id: 'memory', label: 'Memory', columnId: 2 },
-                { id: 'organiser', label: 'Organiser', columnId: 2 },
-                { id: 'notebook', label: 'Notebook', columnId: 2 },
+                { id: 'organiser', label: 'Organiser', columnId: 1 },
+                { id: 'notebook', label: 'Notebook', columnId: 1 },
                 { id: 'canvas', label: 'Canvas', columnId: 2 },
                 // { id: 'visualiser', label: 'Visualiser', columnId: 2 },
                 { id: 'toolchain', label: 'Toolchain', columnId: 2 },
@@ -64,6 +63,7 @@
                 // { id: 'training', label: 'Training', columnId: 2 },
                 { id: 'orchestration', label: 'Orchestration', columnId: 2 },
                 { id: 'ollama', label: 'Ollama Manager', columnId: 2 },
+                { id: 'agents', label: 'Agents', columnId: 2 },
                 // { id: 'analytics', label: 'Analytics', columnId: 2 },                
                 { id: 'ml', label: 'Machine Learning', columnId: 2 },
                 { id: 'workspace', label: 'Workspace', columnId: 1 },
@@ -136,7 +136,7 @@
                 console.error('Init error:', error);
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>Offline';
                 this.addSystemMessage('Connection failed. Running in offline mode.');
-                this.veraRobot.setState('error');
+                // this.veraRobot.setState('error');
             }
             // VeraChat.prototype.initModernFeatures()
             // VeraChat.prototype.initOllama()
@@ -2776,7 +2776,7 @@
             this.websocket.onopen = () => {
                 console.log('WebSocket connected');
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator connected"></span>Connected (WS)';
-                this.veraRobot.setState('idle');
+                // this.veraRobot.setState('idle');
             };
             
             this.websocket.onmessage = (event) => {
@@ -2795,7 +2795,7 @@
             this.websocket.onclose = (event) => {
                 console.log('WebSocket disconnected');
                 document.getElementById('connectionStatus').innerHTML = '<span class="status-indicator disconnected"></span>Disconnected';
-                this.veraRobot.setState('error');
+                // this.veraRobot.setState('error');
                 if (event.code !== 1000 && this.sessionId) {
                     setTimeout(() => this.connectWebSocket(), 3000);
                 }

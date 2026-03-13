@@ -41,271 +41,660 @@ class InstanceStats:
     is_healthy: bool = True
     last_health_check: float = 0.0
 
-
 class OllamaInstancePool:
     """
-    Manages multiple Ollama instances with load balancing
+    Manages multiple Ollama instances with load balancing.
+
+    Key fix: selection + acquisition are now atomic under a single global lock,
+    eliminating the TOCTOU race where two concurrent callers both read load=0
+    on the same instance and both acquire it simultaneously.
     """
-    
-    def __init__(self, config: OllamaConfig, logger=None):
+
+    def __init__(self, config, logger=None):
         self.config = config
         self.logger = logger
-        
-        # Instance management
-        self.instances: Dict[str, OllamaInstanceConfig] = {}
-        self.stats: Dict[str, InstanceStats] = {}
-        self.locks: Dict[str, threading.Lock] = {}
-        
-        # Request queue
+
+        self.instances: Dict[str, Any] = {}
+        self.stats: Dict[str, Any] = {}
+
+        # ── Single global lock covers both selection AND acquisition ──────────
+        # Previously: per-instance locks only covered the increment, not the
+        # selection, so two threads could both pick the same "best" instance
+        # before either had incremented its counter.
+        self._global_lock = threading.Lock()
+
+        # Round-robin state — protected by _global_lock
+        self._round_robin_index: int = 0
+
         self.request_queue = queue.Queue(maxsize=config.max_queue_size)
         self.queue_enabled = config.enable_request_queue
-        
-        # Health monitoring
-        self.health_check_interval = 30.0  # seconds
+
+        self.health_check_interval = 30.0
         self.health_check_thread: Optional[threading.Thread] = None
         self.running = False
-        
-        # Initialize instances
+
         self._initialize_instances()
-        
-        # Start health monitoring
         self.start()
-        
+
         if self.logger:
-            self.logger.success(f"Initialized {len(self.instances)} Ollama instances")
+            self.logger.success(
+                f"Initialized {len(self.instances)} Ollama instances "
+                f"[strategy={self.config.load_balance_strategy}]"
+            )
 
     def _initialize_instances(self):
-        """Initialize all configured instances"""
         for instance_config in self.config.instances:
-            # Safety check - convert dict if needed
             if isinstance(instance_config, dict):
                 from Vera.Configuration.config_manager import OllamaInstanceConfig
                 instance_config = OllamaInstanceConfig.from_dict(instance_config)
-            
             if not instance_config.enabled:
                 continue
-            
             self.instances[instance_config.name] = instance_config
             self.stats[instance_config.name] = InstanceStats(name=instance_config.name)
-            self.locks[instance_config.name] = threading.Lock()
-            
             if self.logger:
                 self.logger.debug(
-                    f"Configured instance: {instance_config.name} @ {instance_config.api_url}"
+                    f"  Registered instance: '{instance_config.name}' "
+                    f"@ {instance_config.api_url} "
+                    f"(priority={instance_config.priority}, "
+                    f"max_concurrent={instance_config.max_concurrent})"
                 )
-                
+
     def start(self):
-        """Start health monitoring"""
         if self.running:
             return
-        
         self.running = True
         self.health_check_thread = threading.Thread(
-            target=self._health_check_loop,
-            daemon=True
+            target=self._health_check_loop, daemon=True
         )
         self.health_check_thread.start()
-        
         if self.logger:
             self.logger.debug("Health monitoring started")
-    
+
     def stop(self):
-        """Stop health monitoring"""
         self.running = False
         if self.health_check_thread:
             self.health_check_thread.join(timeout=5.0)
-    
+
+    # ── Health monitoring ─────────────────────────────────────────────────────
+
     def _health_check_loop(self):
-        """Background health check loop"""
         while self.running:
-            for name in self.instances.keys():
+            for name in list(self.instances.keys()):
                 self._check_instance_health(name)
-            
             time.sleep(self.health_check_interval)
-    
+
     def _check_instance_health(self, name: str):
-        """Check health of a single instance"""
         instance = self.instances[name]
-        stats = self.stats[name]
-        
+        stats    = self.stats[name]
         try:
-            response = requests.get(
-                f"{instance.api_url}/api/tags",
-                timeout=5
-            )
-            
-            was_unhealthy = not stats.is_healthy
+            response = requests.get(f"{instance.api_url}/api/tags", timeout=5)
+            was_unhealthy   = not stats.is_healthy
             stats.is_healthy = response.status_code == 200
             stats.last_health_check = time.time()
-            
-            if was_unhealthy and stats.is_healthy:
-                if self.logger:
-                    self.logger.success(f"Instance {name} recovered")
-            
+            if was_unhealthy and stats.is_healthy and self.logger:
+                self.logger.success(f"Instance '{name}' recovered")
         except Exception as e:
-            was_healthy = stats.is_healthy
+            was_healthy      = stats.is_healthy
             stats.is_healthy = False
             stats.last_health_check = time.time()
-            
-            if was_healthy:
-                if self.logger:
-                    self.logger.warning(f"Instance {name} unhealthy: {e}")
-    
-    def get_best_instance(self, allowed_instances: Optional[List[str]] = None) -> Optional[str]:
-        """
-        Select best instance based on load balancing strategy
-        
-        Args:
-            allowed_instances: If provided, only select from these instances
-        """
+            if was_healthy and self.logger:
+                self.logger.warning(f"Instance '{name}' went unhealthy: {e}")
+
+    # ── Instance selection (MUST be called while holding _global_lock) ────────
+
+    def _select_instance(self, candidates: List[str]) -> str:
         strategy = self.config.load_balance_strategy
-        
-        # Filter healthy instances
-        healthy = [
-            name for name, stats in self.stats.items()
-            if stats.is_healthy
-        ]
-        
-        # Further filter by allowed instances if specified
-        if allowed_instances is not None:
-            healthy = [name for name in healthy if name in allowed_instances]
-        
-        if not healthy:
-            if self.logger:
-                filter_msg = f" (filtered to: {allowed_instances})" if allowed_instances else ""
-                self.logger.error(f"No healthy Ollama instances available{filter_msg}!")
-            return None
-        
+
         if strategy == "round_robin":
-            return self._round_robin_select(healthy)
-        
+            selected = candidates[self._round_robin_index % len(candidates)]
+            self._round_robin_index += 1
+            return selected
+
         elif strategy == "least_loaded":
-            return self._least_loaded_select(healthy)
-        
+            def load_score(name: str):
+                inst  = self.instances[name]
+                s     = self.stats[name]
+                load  = s.active_requests / max(inst.max_concurrent, 1)
+                return (load, -inst.priority)
+            return min(candidates, key=load_score)
+
         elif strategy == "priority":
-            return self._priority_select(healthy)
-        
+            with_capacity = [
+                n for n in candidates
+                if self.stats[n].active_requests < self.instances[n].max_concurrent
+            ]
+            pool = with_capacity if with_capacity else candidates
+            return max(pool, key=lambda n: self.instances[n].priority)
+
         else:
-            return healthy[0]
-    
-    def _round_robin_select(self, healthy: List[str]) -> str:
-        """Round-robin selection"""
-        if not hasattr(self, '_round_robin_index'):
-            self._round_robin_index = 0
-        
-        selected = healthy[self._round_robin_index % len(healthy)]
-        self._round_robin_index += 1
-        
-        return selected
-    
-    def _least_loaded_select(self, healthy: List[str]) -> str:
-        """Select instance with least active requests"""
-        def load_score(name: str) -> tuple:
-            instance = self.instances[name]
-            stats = self.stats[name]
-            
-            # Calculate load (active / max)
-            load = stats.active_requests / instance.max_concurrent
-            
-            # Return (load, -priority) for sorting
-            return (load, -instance.priority)
-        
-        return min(healthy, key=load_score)
-    
-    def _priority_select(self, healthy: List[str]) -> str:
-        """Select highest priority instance with capacity"""
-        available = [
-            name for name in healthy
-            if self.stats[name].active_requests < self.instances[name].max_concurrent
-        ]
-        
-        if not available:
-            # All at capacity, pick highest priority
-            return max(healthy, key=lambda n: self.instances[n].priority)
-        
-        return max(available, key=lambda n: self.instances[n].priority)
-    
+            return candidates[0]
+
+    # ── Atomic acquire ────────────────────────────────────────────────────────
+
     def acquire_instance(
-        self, 
+        self,
         timeout: float = 30.0,
-        allowed_instances: Optional[List[str]] = None
+        allowed_instances: Optional[List[str]] = None,
+        caller_hint: str = "",
     ) -> Optional[tuple]:
         """
-        Acquire an instance for a request
-        
+        Atomically select and acquire an instance.
+
+        Selection and active_requests increment happen inside the same lock,
+        preventing two concurrent callers from both reading load=0 on the same
+        instance before either has incremented the counter.
+
         Args:
-            timeout: How long to wait for an available instance
-            allowed_instances: If provided, only acquire from these instances
-        
-        Returns: (instance_name, instance_config, release_func) or None
+            timeout:           Seconds to wait for a free slot.
+            allowed_instances: Whitelist of instance names (None = all healthy).
+            caller_hint:       Label for log messages (e.g. "triage", "preamble").
+
+        Returns:
+            (instance_name, instance_config, release_fn)  or  None on timeout.
         """
-        start_time = time.time()
-        
+        start_time    = time.time()
+        hint          = f"[{caller_hint}] " if caller_hint else ""
+        waited_logged = False
+
         while time.time() - start_time < timeout:
-            instance_name = self.get_best_instance(allowed_instances)
-            
-            if not instance_name:
-                time.sleep(0.5)
-                continue
-            
-            instance = self.instances[instance_name]
-            stats = self.stats[instance_name]
-            lock = self.locks[instance_name]
-            
-            # Try to acquire
-            with lock:
-                if stats.active_requests < instance.max_concurrent:
-                    stats.active_requests += 1
-                    stats.total_requests += 1
-                    stats.last_request_time = time.time()
-                    
-                    if self.logger:
-                        self.logger.trace(
-                            f"Acquired {instance_name}: {stats.active_requests}/{instance.max_concurrent} active"
+
+            with self._global_lock:
+                healthy = [
+                    name for name, s in self.stats.items()
+                    if s.is_healthy and (
+                        allowed_instances is None or name in allowed_instances
+                    )
+                ]
+
+                if not healthy:
+                    if not waited_logged and self.logger:
+                        filter_note = (
+                            f" (restricted to: {allowed_instances})"
+                            if allowed_instances else ""
                         )
-                    
-                    # Create release function
-                    def release():
-                        with lock:
-                            stats.active_requests = max(0, stats.active_requests - 1)
+                        self.logger.warning(
+                            f"{hint}No healthy instances available{filter_note}"
+                        )
+                        waited_logged = True
+
+                else:
+                    name  = self._select_instance(healthy)
+                    inst  = self.instances[name]
+                    stats = self.stats[name]
+
+                    if stats.active_requests < inst.max_concurrent:
+                        # ── ATOMIC: select + increment in one critical section ──
+                        stats.active_requests   += 1
+                        stats.total_requests    += 1
+                        stats.last_request_time  = time.time()
+
+                        active   = stats.active_requests
+                        max_c    = inst.max_concurrent
+                        load_pct = int((active / max_c) * 100)
+
+                        if self.logger:
+                            # Full cluster snapshot so routing decisions are visible
+                            cluster = ", ".join(
+                                f"{n}={self.stats[n].active_requests}"
+                                f"/{self.instances[n].max_concurrent}"
+                                for n in sorted(self.instances)
+                                if self.stats[n].is_healthy
+                            )
+                            self.logger.info(
+                                f"{hint}→ acquired '{name}' "
+                                f"({active}/{max_c}, {load_pct}% load) "
+                                f"| cluster: [{cluster}]"
+                            )
+
+                        _name  = name
+                        _stats = stats
+                        _lock  = self._global_lock
+                        _hint  = hint
+
+                        def release(_n=_name, _s=_stats, _l=_lock, _h=_hint):
+                            with _l:
+                                _s.active_requests = max(0, _s.active_requests - 1)
                             if self.logger:
-                                self.logger.trace(
-                                    f"Released {instance_name}: {stats.active_requests}/{instance.max_concurrent} active"
+                                self.logger.debug(
+                                    f"{_h}released '{_n}' "
+                                    f"(now {_s.active_requests}"
+                                    f"/{self.instances[_n].max_concurrent})"
                                 )
-                    
-                    return (instance_name, instance, release)
-            
-            # No capacity, wait a bit
+
+                        return (name, inst, release)
+
+                    else:
+                        if not waited_logged and self.logger:
+                            at_cap = {
+                                n: f"{self.stats[n].active_requests}"
+                                   f"/{self.instances[n].max_concurrent}"
+                                for n in healthy
+                            }
+                            self.logger.debug(
+                                f"{hint}All instances at capacity: {at_cap} — waiting…"
+                            )
+                            waited_logged = True
+
             time.sleep(0.1)
-        
+            waited_logged = False
+
         # Timeout
         if self.logger:
-            filter_msg = f" (filtered to: {allowed_instances})" if allowed_instances else ""
-            self.logger.warning(f"Failed to acquire instance within {timeout}s{filter_msg}")
-        
+            filter_note = (
+                f" (restricted to: {allowed_instances})"
+                if allowed_instances else ""
+            )
+            state = ", ".join(
+                f"{n}={self.stats[n].active_requests}/{self.instances[n].max_concurrent}"
+                f"{'[UNHEALTHY]' if not self.stats[n].is_healthy else ''}"
+                for n in sorted(self.instances)
+            )
+            self.logger.warning(
+                f"{hint}acquire_instance timed out after {timeout:.1f}s"
+                f"{filter_note} | state: [{state}]"
+            )
         return None
-    
-    def get_stats(self) -> Dict[str, Dict[str, Any]]:
-        """Get statistics for all instances"""
-        result = {}
-        
-        for name, stats in self.stats.items():
-            instance = self.instances[name]
-            
-            result[name] = {
-                "api_url": instance.api_url,
-                "priority": instance.priority,
-                "max_concurrent": instance.max_concurrent,
-                "active_requests": stats.active_requests,
-                "total_requests": stats.total_requests,
-                "total_failures": stats.total_failures,
-                "avg_duration": stats.total_duration / max(stats.total_requests, 1),
-                "is_healthy": stats.is_healthy,
-                "last_health_check": stats.last_health_check
-            }
-        
-        return result
 
+    # ── Non-atomic peek (kept for compatibility) ───────────────────────────────
+
+    def get_best_instance(
+        self, allowed_instances: Optional[List[str]] = None
+    ) -> Optional[str]:
+        """
+        Non-atomic peek at the best instance.
+        Use acquire_instance() when you actually intend to USE the instance.
+        """
+        with self._global_lock:
+            healthy = [
+                name for name, s in self.stats.items()
+                if s.is_healthy and (
+                    allowed_instances is None or name in allowed_instances
+                )
+            ]
+            return self._select_instance(healthy) if healthy else None
+
+    def get_stats(self) -> Dict[str, Dict[str, Any]]:
+        with self._global_lock:
+            result = {}
+            for name, stats in self.stats.items():
+                inst = self.instances[name]
+                result[name] = {
+                    "api_url":           inst.api_url,
+                    "priority":          inst.priority,
+                    "max_concurrent":    inst.max_concurrent,
+                    "active_requests":   stats.active_requests,
+                    "total_requests":    stats.total_requests,
+                    "total_failures":    stats.total_failures,
+                    "avg_duration":      stats.total_duration / max(stats.total_requests, 1),
+                    "is_healthy":        stats.is_healthy,
+                    "last_health_check": stats.last_health_check,
+                }
+            return result
+
+
+# ---------------------------------------------------------------------------
+# PooledOllamaLLM  (three method replacements)
+# ---------------------------------------------------------------------------
+
+    def _acquire_with_gpu_preference(
+        self,
+        timeout: float,
+        caller_hint: str = "",
+    ) -> Optional[tuple]:
+        """Acquire an instance, preferring GPU for heavy models."""
+        if not self.gpu_preferred_instances or self.model_classification != "heavy":
+            return self.pool.acquire_instance(
+                timeout=timeout,
+                allowed_instances=self.allowed_instances,
+                caller_hint=caller_hint,
+            )
+
+        gpu_timeout = timeout * 0.6
+        cpu_timeout = timeout * 0.4
+
+        if self.logger:
+            self.logger.debug(
+                f"[{caller_hint}] Heavy model — trying GPU first "
+                f"({gpu_timeout:.1f}s): {self.gpu_preferred_instances}"
+            )
+
+        acquisition = self.pool.acquire_instance(
+            timeout=gpu_timeout,
+            allowed_instances=self.gpu_preferred_instances,
+            caller_hint=f"{caller_hint}/gpu",
+        )
+        if acquisition:
+            if self.logger:
+                self.logger.success(
+                    f"[{caller_hint}] Acquired GPU instance: '{acquisition[0]}'"
+                )
+            return acquisition
+
+        if self.logger:
+            self.logger.info(
+                f"[{caller_hint}] GPU busy — falling back to CPU "
+                f"({cpu_timeout:.1f}s remaining)"
+            )
+
+        acquisition = self.pool.acquire_instance(
+            timeout=cpu_timeout,
+            allowed_instances=self.allowed_instances,
+            caller_hint=f"{caller_hint}/cpu-fallback",
+        )
+        if acquisition and self.logger:
+            self.logger.info(
+                f"[{caller_hint}] Fell back to CPU instance: '{acquisition[0]}'"
+            )
+        return acquisition
+
+    def _invoke_with_retry(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        caller_hint: str = "",
+        **kwargs,
+    ) -> str:
+        """Non-streaming generation with automatic failover."""
+        last_error   = None
+        attempts     = 0
+        available    = self.allowed_instances or list(self.pool.instances.keys())
+        max_attempts = min(self.max_retries, len(available))
+
+        if self.thought_capture:
+            self.thought_capture.reset()
+
+        while attempts < max_attempts:
+            attempts += 1
+
+            acquisition = self._acquire_with_gpu_preference(
+                timeout=self.acquire_timeout,
+                caller_hint=caller_hint or self.model,
+            )
+
+            if not acquisition:
+                if self.logger:
+                    self.logger.warning(
+                        f"[{caller_hint or self.model}] "
+                        f"Attempt {attempts}/{max_attempts}: no instances available"
+                    )
+                if attempts < max_attempts:
+                    time.sleep(1.0)
+                    continue
+                raise RuntimeError(
+                    f"No Ollama instances available after {max_attempts} attempts "
+                    f"(allowed: {self.allowed_instances})"
+                )
+
+            instance_name, instance, release = acquisition
+
+            try:
+                if self.logger:
+                    self.logger.debug(
+                        f"[{caller_hint or self.model}] "
+                        f"Invoking {self.model} on '{instance_name}' "
+                        f"(attempt {attempts}/{max_attempts})"
+                    )
+
+                start_time   = time.time()
+                request_data = {
+                    "model":       self.model,
+                    "prompt":      prompt,
+                    "temperature": self.temperature,
+                    "stream":      False,
+                    "top_k":       self.top_k,
+                    "top_p":       self.top_p,
+                    "num_predict": self.num_predict,
+                    **self.extra_kwargs,
+                }
+                if stop:
+                    request_data["stop"] = stop
+
+                response = requests.post(
+                    f"{instance.api_url}/api/generate",
+                    json=request_data,
+                    timeout=self.timeout,
+                )
+                duration = time.time() - start_time
+
+                if response.status_code == 200:
+                    data   = response.json()
+                    result = (
+                        self.thought_capture.process_chunk(data)
+                        if self.thought_capture
+                        else data.get("response", "")
+                    )
+                    if hasattr(self.pool, "stats") and instance_name in self.pool.stats:
+                        self.pool.stats[instance_name].total_duration += duration
+                    if self.logger:
+                        self.logger.success(
+                            f"[{caller_hint or self.model}] "
+                            f"Completed on '{instance_name}' in {duration:.2f}s"
+                        )
+                    return result
+
+                else:
+                    error_msg = f"HTTP {response.status_code}: {response.text[:200]}"
+                    if self.logger:
+                        self.logger.warning(
+                            f"[{caller_hint or self.model}] "
+                            f"'{instance_name}' returned {error_msg}"
+                        )
+                    if response.status_code >= 500:
+                        self.pool.stats[instance_name].is_healthy = False
+                    self.pool.stats[instance_name].total_failures += 1
+                    last_error = RuntimeError(error_msg)
+                    if attempts < max_attempts:
+                        continue
+
+            except requests.exceptions.Timeout as e:
+                if self.logger:
+                    self.logger.warning(
+                        f"[{caller_hint or self.model}] Timeout on '{instance_name}'"
+                    )
+                self.pool.stats[instance_name].is_healthy = False
+                self.pool.stats[instance_name].total_failures += 1
+                last_error = e
+                if attempts < max_attempts:
+                    continue
+
+            except Exception as e:
+                if self.logger:
+                    self.logger.error(
+                        f"[{caller_hint or self.model}] Error on '{instance_name}': {e}"
+                    )
+                self.pool.stats[instance_name].total_failures += 1
+                last_error = e
+                if attempts < max_attempts:
+                    continue
+
+            finally:
+                release()
+
+        if self.logger:
+            self.logger.error(
+                f"[{caller_hint or self.model}] All {attempts} attempts failed"
+            )
+        raise last_error or RuntimeError(
+            f"Generation failed after {attempts} attempts"
+        )
+
+    def _stream_with_retry(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        caller_hint: str = "",
+        **kwargs,
+    ) -> Iterator[str]:
+        """Streaming generation with automatic failover."""
+        last_error   = None
+        attempts     = 0
+        available    = self.allowed_instances or list(self.pool.instances.keys())
+        max_attempts = min(self.max_retries, len(available))
+        tried: set   = set()
+
+        if self.thought_capture:
+            self.thought_capture.reset()
+
+        while attempts < max_attempts:
+            attempts += 1
+
+            untried = [
+                i for i in available
+                if i not in tried and self.pool.stats[i].is_healthy
+            ]
+            if not untried and attempts < max_attempts:
+                tried.clear()
+                untried = [i for i in available if self.pool.stats[i].is_healthy]
+
+            if (
+                attempts == 1
+                and self.model_classification == "heavy"
+                and self.gpu_preferred_instances
+            ):
+                acquisition = self._acquire_with_gpu_preference(
+                    timeout=self.acquire_timeout,
+                    caller_hint=caller_hint or self.model,
+                )
+            else:
+                acquisition = self.pool.acquire_instance(
+                    timeout=self.acquire_timeout,
+                    allowed_instances=untried or self.allowed_instances,
+                    caller_hint=caller_hint or self.model,
+                )
+
+            if not acquisition:
+                if self.logger:
+                    self.logger.warning(
+                        f"[{caller_hint or self.model}] "
+                        f"Attempt {attempts}/{max_attempts}: no instances available"
+                    )
+                if attempts < max_attempts:
+                    time.sleep(1.0)
+                    continue
+                raise RuntimeError(
+                    f"No Ollama instances available after {max_attempts} attempts"
+                )
+
+            instance_name, instance, release = acquisition
+            tried.add(instance_name)
+
+            try:
+                if self.logger:
+                    self.logger.debug(
+                        f"[{caller_hint or self.model}] "
+                        f"Stream attempt {attempts}/{max_attempts} "
+                        f"on '{instance_name}'"
+                    )
+
+                request_data = {
+                    "model":       self.model,
+                    "prompt":      prompt,
+                    "temperature": self.temperature,
+                    "stream":      True,
+                    "top_k":       self.top_k,
+                    "top_p":       self.top_p,
+                    "num_predict": self.num_predict,
+                    **self.extra_kwargs,
+                }
+                if stop:
+                    request_data["stop"] = stop
+
+                response = requests.post(
+                    f"{instance.api_url}/api/generate",
+                    json=request_data,
+                    stream=True,
+                    timeout=self.timeout,
+                )
+
+                if response.status_code != 200:
+                    error_msg = f"HTTP {response.status_code}"
+                    if self.logger:
+                        self.logger.warning(
+                            f"[{caller_hint or self.model}] "
+                            f"Stream failed on '{instance_name}': {error_msg}"
+                        )
+                    if response.status_code >= 500:
+                        self.pool.stats[instance_name].is_healthy = False
+                    self.pool.stats[instance_name].total_failures += 1
+                    last_error = RuntimeError(error_msg)
+                    release()
+                    if attempts < max_attempts:
+                        if self.logger:
+                            self.logger.info(
+                                f"[{caller_hint or self.model}] "
+                                f"Retrying on different instance "
+                                f"({attempts + 1}/{max_attempts})…"
+                            )
+                        continue
+                    raise last_error
+
+                # ── Consume stream ────────────────────────────────────────────
+                chunk_count      = 0
+                first_chunk_seen = False
+
+                try:
+                    for line in response.iter_lines():
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                chunk_text = (
+                                    self.thought_capture.process_chunk(data)
+                                    if self.thought_capture
+                                    else data.get("response", "")
+                                )
+                                if chunk_text:
+                                    if not first_chunk_seen:
+                                        first_chunk_seen = True
+                                        if self.logger:
+                                            self.logger.debug(
+                                                f"[{caller_hint or self.model}] "
+                                                f"First chunk received from '{instance_name}'"
+                                            )
+                                    chunk_count += 1
+                                    yield chunk_text
+                            except json.JSONDecodeError:
+                                continue
+
+                    if self.logger:
+                        self.logger.success(
+                            f"[{caller_hint or self.model}] "
+                            f"Stream complete: {chunk_count} chunks "
+                            f"from '{instance_name}'"
+                        )
+                    return  # success
+
+                except Exception as stream_err:
+                    if self.logger:
+                        self.logger.warning(
+                            f"[{caller_hint or self.model}] "
+                            f"Stream interrupted on '{instance_name}': {stream_err}"
+                        )
+                    last_error = stream_err
+                    if attempts < max_attempts:
+                        continue
+
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(
+                        f"[{caller_hint or self.model}] "
+                        f"Outer error on '{instance_name}': {e}"
+                    )
+                self.pool.stats[instance_name].total_failures += 1
+                last_error = e
+                if attempts < max_attempts:
+                    continue
+
+            finally:
+                release()
+
+        if self.logger:
+            self.logger.error(
+                f"[{caller_hint or self.model}] "
+                f"All {attempts} attempts failed across: {tried}"
+            )
+        raise last_error or RuntimeError(
+            f"Stream failed after {attempts} attempts"
+        )
 
 class MultiInstanceOllamaManager:
     """Ollama manager that uses multiple instances with load balancing"""

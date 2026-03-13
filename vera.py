@@ -103,7 +103,7 @@ from Vera.ProactiveFocus.stages import (
 
 from Vera.ProactiveFocus.schedule import CalendarScheduler, ProactiveThoughtEvent
 from Vera.ProactiveFocus.service import BackgroundService, ServiceConfig
-
+from Vera.EventBus.integration import setup_event_bus_sync
 import Vera.Orchestration.toolchain_tasks 
 
 #---- Constants ---
@@ -382,7 +382,19 @@ class Vera:
 
         self.orchestrator.start()
         self.logger.success("Orchestrator started")
-
+        # ── EVENT BUS ──────────────────────────────────────────────────────────
+        self.logger.info("Initialising event bus...")
+        try:
+            self.bus = setup_event_bus_sync(self)
+            if self.bus:
+                self.logger.success("Event bus online (Redis + Postgres).")
+            else:
+                self.logger.warning("Event bus failed to start — continuing without it.")
+                self.bus = None
+        except Exception as _bus_err:
+            self.logger.error(f"Event bus init error: {_bus_err}")
+            self.bus = None
+        # ───────────────────────────────────────────────────────────────────────
         if self.focus_manager:
             self.proactive_orchestrator = ProactiveFocusOrchestrator(
                 self.orchestrator, 
@@ -1318,6 +1330,16 @@ class Vera:
                 self.telegram_bot.queue_message(user_id, message)
             )
 
+    # async def emit(self, event_type: str, payload: dict, priority: bool = False, **meta):
+    #     \"\"\"Convenience: publish a bus event from anywhere that has a vera ref.\"\"\"
+    #     if not self.bus:
+    #         return
+    #     from Vera.EventBus.event_model import Event
+    #     meta.setdefault("session_id", self.sess.id if hasattr(self, "sess") else None)
+    #     await self.bus.publish(
+    #         Event(type=event_type, source="vera", payload=payload, meta=meta),
+    #         priority=priority,
+    #     )
 
 # --- Entry point ---
 if __name__ == "__main__":
@@ -1398,5 +1420,7 @@ if __name__ == "__main__":
             result += str(chunk)
         
         print()
+
+        
 
 # ジョセフ
