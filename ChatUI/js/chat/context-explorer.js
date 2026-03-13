@@ -103,7 +103,48 @@ const MG = {
     inContextIds: new Set(),
     // Whether we're in a live-typing preview (context is speculative)
     livePreview: false,
+
 };
+
+// ── Reuse frames + sessionId from a previous run of this bookmarklet ──
+// The IIFE re-executes on every open, so window._MG holds the previous
+// instance. Carry forward frames and session identity so the timeline
+// survives open/close cycles within the same page session.
+if (window._MG && Array.isArray(window._MG.frames) && window._MG.frames.length > 0) {
+    MG.frames    = window._MG.frames;
+    MG.sessionId = window._MG.sessionId || '';
+    console.log('[MG] Resumed ' + MG.frames.length + ' frames from previous instance');
+} else {
+    // Fresh page load — pull from localStorage immediately using the session pointer.
+    // We do this here rather than waiting for createWin so MG.frames is populated
+    // before any ingest fires (ingest triggers captureFrame which would set frames.length=1
+    // and cause loadFrames to bail with "already in memory").
+    (function() {
+        try {
+            var sid = window.app?.sessionId || '';
+            if (!sid) { console.log('[MG] Eager load: no session ID yet'); return; }
+            MG.sessionId = sid;
+            // Clean up frames from all other sessions
+            try {
+                var toDelete = [];
+                for (var k in localStorage) {
+                    if (k.startsWith('mg_frames_') && k !== 'mg_frames_' + sid) toDelete.push(k);
+                }
+                toDelete.forEach(function(k) { localStorage.removeItem(k); });
+                if (toDelete.length) console.log('[MG] Cleaned up ' + toDelete.length + ' old session frame keys');
+            } catch(_) {}
+            // Load this session's frames
+            var raw = localStorage.getItem('mg_frames_' + sid);
+            if (!raw) { console.log('[MG] Eager load: no frames for session', sid); return; }
+            var parsed = JSON.parse(raw);
+            if (!parsed || parsed.v !== 1 || !Array.isArray(parsed.frames) || !parsed.frames.length) return;
+            MG.frames = parsed.frames.map(function(f, i) { return Object.assign({}, f, {idx: i, rawData: null}); });
+            console.log('[MG] Eagerly loaded ' + MG.frames.length + ' frames for session', sid);
+        } catch(e) {
+            console.warn('[MG] Eager frame load failed:', e);
+        }
+    })();
+}
 
 // Frame schema:
 // { id, idx, label, query, ts, nodeSnap:[], edgeSnap:[], nodeCount, sessionId }
@@ -589,41 +630,29 @@ function ingestContext(raw, isCommit=false) {
         prevPositions.set(id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy, fx: n.fx, fy: n.fy });
     }
 
-    // ── Determine which nodes are pinned (user-pinned should survive eviction) ──
+    // ── Preserve pinned nodes across replacement ──
     const pinned = new Map();
     for (const [id, n] of MG.nodes) {
-        if (n.fx !== null) pinned.set(id, n); // pinned node — preserve across frames
+        if (n.fx !== null) pinned.set(id, n);
     }
 
-    // ── Full replacement: clear everything not in this batch ──
-    const incomingIds = new Set(batch.map(({id}) => id));
-
-    // Keep pinned nodes not in batch (user explicitly pinned them)
+    // ── Full replacement: clear and rebuild from this batch ──
     MG.nodes.clear();
     for (const [id, n] of pinned) {
-        if (!incomingIds.has(id)) MG.nodes.set(id, n);
+        if (!new Set(batch.map(({id})=>id)).has(id)) MG.nodes.set(id, n);
     }
-
-    // Build new node set from this batch only
     for (const {id, d} of batch) {
-        if (MG.nodes.has(id)) {
-            // Update score on pinned survivor
-            MG.nodes.get(id).score = d.score;
-            continue;
-        }
+        if (MG.nodes.has(id)) { MG.nodes.get(id).score = d.score; continue; }
         const n = new GNode(id, d);
-        // Reuse previous position if this node existed before (smooth transition)
         const prev = prevPositions.get(id);
         if (prev) {
             n.x = prev.x; n.y = prev.y;
-            n.vx = prev.vx * 0.5; n.vy = prev.vy * 0.5; // dampen velocity
+            n.vx = prev.vx * 0.5; n.vy = prev.vy * 0.5;
             n.fx = prev.fx; n.fy = prev.fy;
-            n.alpha = 0.6; // already partially visible — skip fade-in flash
+            n.alpha = 0.6;
         }
         MG.nodes.set(id, n);
     }
-
-    // ── Clear edges — rebuild fresh for this batch ──
     MG.edges = [];
 
     // ── Compute in-context set: ranked_hits are what the LLM will actually see ──
@@ -1085,6 +1114,8 @@ function renderFrameBar() {
     const pf=MG.theme||{};
     const accent=pf.accentStage||'#3b82f6';
 
+    console.log('[MG] renderFrameBar: frames='+MG.frames.length+' open='+MG.frameBarOpen, new Error().stack.split('\n').slice(1,4).join(' | '));
+
     if(!MG.frameBarOpen||!MG.frames.length) {
         bar.innerHTML=`
           <div style="display:flex;align-items:center;gap:8px;padding:5px 12px">
@@ -1497,20 +1528,18 @@ function createWin() {
     rebuildLegend();
     // Seed session ID from the host app before attempting to load persisted frames.
     // MG.sessionId is normally set on first ingest, but on reopen we need it sooner.
-    if (!MG.sessionId) MG.sessionId = window.app?.sessionId || '';
+    // Always sync sessionId from host app — needed for saveFrames key resolution
+    MG.sessionId = window.app?.sessionId || MG.sessionId || '';
     // Always attempt to load frames — MG.frames may exist in memory from a previous
     // open in this page session, but on a fresh page load they'll be empty.
     // loadFrames merges/replaces from localStorage so calling it is always safe.
-    var hadFrames = MG.frames.length > 0;
     loadFrames();
-    // If we just loaded frames from storage (or already had them), restore the last
-    // frame so the graph is populated immediately without requiring "Capture Now".
-    if (MG.frames.length > 0 && !hadFrames) {
-        // Small defer so canvas dimensions are settled before activateFrame draws
+    if (MG.frames.length > 0) {
         setTimeout(function() {
             activateFrame(MG.frames.length - 1);
-            console.log('[MG] createWin: restored last frame (' + MG.frames.length + ' total)');
-        }, 50);
+            renderFrameBar();
+            console.log('[MG] createWin: activated last frame (' + MG.frames.length + ' total)');
+        }, 100);
     }
     renderFrameBar();
     loop();
@@ -1536,6 +1565,7 @@ function _frameKey(sid) {
 function saveFrames() {
     if (!MG.frames.length) return;
     var sid = MG.sessionId || window.app?.sessionId || '';
+    if (sid) MG.sessionId = sid; // keep it seeded for next call
     var key = _frameKey(sid);
     if (!key) { console.warn('[MG] saveFrames: no session ID, cannot persist'); return; }
     // Persist session pointer so loadFrames can find this key on reopen
@@ -1572,12 +1602,6 @@ function saveFrames() {
 }
 
 function loadFrames() {
-    // If frames are already in memory (same page session, window just closed & reopened),
-    // don't clobber them from storage — they're already the ground truth.
-    if (MG.frames.length > 0) {
-        console.log('[MG] loadFrames: ' + MG.frames.length + ' frames already in memory, skipping storage load');
-        return;
-    }
     // Resolve the key: prefer current session ID (or app's), fall back to stored pointer
     var sid = MG.sessionId || window.app?.sessionId || '';
     var key = _frameKey(sid);
@@ -1599,9 +1623,15 @@ function loadFrames() {
         if (!parsed || parsed.v !== MG_STORE_VER || !Array.isArray(parsed.frames) || !parsed.frames.length) {
             console.log('[MG] loadFrames: bad/empty data, clearing'); localStorage.removeItem(key); return;
         }
-        MG.frames = parsed.frames.map(function(f,i){ return Object.assign({},f,{idx:i,rawData:null}); });
-        console.log('[MG] Restored '+MG.frames.length+' frames from '+key);
-        showFrameToast('Restored '+MG.frames.length+' frame'+(MG.frames.length!==1?'s':'')+' from last session');
+        var stored = parsed.frames.map(function(f){ return Object.assign({},f,{rawData:null}); });
+        // Merge: stored frames are the base; in-memory frames not already present (by id) are appended
+        var storedIds = new Set(stored.map(function(f){ return f.id; }));
+        var newFromMemory = MG.frames.filter(function(f){ return !storedIds.has(f.id); });
+        var merged = stored.concat(newFromMemory);
+        merged.forEach(function(f, i){ f.idx = i; });
+        MG.frames = merged;
+        console.log('[MG] loadFrames: '+MG.frames.length+' frames ('+stored.length+' stored + '+newFromMemory.length+' in-memory) from '+key);
+        if (stored.length) showFrameToast('Restored '+MG.frames.length+' frame'+(MG.frames.length!==1?'s':'')+' from last session');
     } catch(e) {
         console.warn('[MG] loadFrames failed:', e);
     }
@@ -1858,8 +1888,20 @@ function rrect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r
 function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ─── Debug ─────────────────────────────────────────────────────────────
+// Trap any direct MG.frames = [] replacement so we can see the stack
+(function() {
+    var _frames = MG.frames;
+    Object.defineProperty(MG, 'frames', {
+        get: function() { return _frames; },
+        set: function(v) {
+            console.warn('[MG] MG.frames reassigned! length:', v ? v.length : 'null', new Error().stack.split('\n').slice(1,4).join(' | '));
+            _frames = v;
+        },
+        configurable: true
+    });
+})();
 window._MG=MG;
-window._MG.debugIngest=data=>{MG_clear();openWith(data);};
+window._MG.debugIngest=data=>{openWith(data);};
 window._MG.dump=()=>({
     nodes:[...MG.nodes.values()].map(n=>({id:n.id,text:n.text.slice(0,40),score:n.score,type:n.type,source:n.source})),
     edges:MG.edges.length,

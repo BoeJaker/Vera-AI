@@ -1,9 +1,9 @@
 name: "tool-agent"
 description: "Agent that interprets queries and dispatches tools."
 
-base_model: "qwen3:14b"
+base_model: "qwen3.5:9b"
 quantization: "Q5_K_M"
-num_ctx: 65536
+num_ctx: 250000
 # gpu_layers: 99
 
 parameters:

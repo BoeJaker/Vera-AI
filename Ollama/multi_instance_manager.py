@@ -726,13 +726,12 @@ class MultiInstanceOllamaManager:
         self.light_model_patterns: List[str] = getattr(
             config, 'light_model_patterns',
             [
-                "fast.llm",
                 "triage-agent",
                 "triage-agent:latest",
                 "gemma2", 
                 "gemma2:latest", 
                 "nomic-embed", 
-                "llm.fast"]  # Add embedding models
+                ]  # Add embedding models
         )
         
         # Heavy models: PREFER GPU, wait longer for GPU availability

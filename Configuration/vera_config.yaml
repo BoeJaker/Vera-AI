@@ -6,24 +6,20 @@
 
 models:
   embedding_model: "mistral:7b"
-  fast_llm: "gemma2:latest"
-  intermediate_llm: "gemma3:12b"
-  deep_llm: "gpt-oss:20b"
-  reasoning_llm: "gpt-oss:20b"
-  tool_llm: "gemma2:latest"
-  coding_llm: "codestral:latest"  # New coding-specific model
+  fast_llm: "qwen3.5:9b"
+  intermediate_llm: "qwen3.5:9b"
+  deep_llm: "qwen3.5:9b"
+  reasoning_llm: "qwen3.5:9b"
+  tool_llm: "qwen3.5:9b:latest"
+  coding_llm: "qwen3.5:9b:latest" 
   
   # Temperature settings
   fast_temperature: 0.6
-  intermediate_temperature: 0.4
+  intermediate_temperature: 0.6
   deep_temperature: 0.6
   reasoning_temperature: 0.7
   tool_temperature: 0.1
-  coding_temperature: 0.1
-  
-  # REMOVE these if present - they're invalid:
-  # fast_top_k: 40
-  # fast_top_p: 0.9
+  coding_temperature: 0.5
 
 ollama:
   api_url: "http://192.168.0.250:11435"
@@ -38,8 +34,7 @@ ollama:
   # Models that MUST run on GPU (will fail if no GPU available)
   gpu_only_models:
     - "llama3:70b"
-    - "mixtral:8x7b"
-    - "qwen:72b"
+    - "mixtral:7b"
     - "gpt-oss:20b"
   
   # Models that PREFER GPU but can fall back to CPU
@@ -47,7 +42,8 @@ ollama:
     - "gemma3:12b"
     - "mistral:7b"
     - "llama3.2:11b"
-  
+    - "qwen3.5:9b"
+
   # Model size thresholds (in billions of parameters)
   small_model_threshold: 5.0   # ≤5B can run on CPU
   large_model_threshold: 10.0  # ≥10B need GPU
@@ -64,8 +60,8 @@ ollama:
   # Legacy settings
   enable_thought_capture: true
   temperature: 0.7
-  top_k: 40
-  top_p: 0.9
+  # top_k: 40
+  # top_p: 0.9
   num_predict: -1
   
   instances:
@@ -212,10 +208,10 @@ ramp:
 counsel:
   mode: "race"
   instances:
-    - "local:qwen2.5:7b"
-    - "remote:qwen2.5:7b"
-    - "remote-b:qwen2.5:7b"
-    - "remote-c:qwen2.5:7b"
+    - "local:qwen3.5:9b"
+    - "remote:qwen3.5:9b"
+    - "remote-b:qwen3.5:9b"
+    - "remote-c:qwen3.5:9b"
   judge_model: "deep"  # 'fast', 'intermediate', 'deep', or 'reasoning'
 
 # ============================================================================
@@ -242,8 +238,8 @@ agents:
     triage: "triage-agent"           # Fast query classification
     tool_execution: "tool-agent"     # Precise tool execution
     reasoning: "reasoning-agent"     # Deep thinking
-    conversation: "gemma2:latest"           # General chat
-    coding: "codestral:latest"           # General chat
+    conversation: "qwen3.5:9b"           # General chat
+    coding: "qwen3.5-uncensored:9b"           # General chat
   
   # Agent-specific overrides (optional)
   agent_configs:
