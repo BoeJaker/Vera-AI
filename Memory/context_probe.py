@@ -3,72 +3,61 @@
 """
 ContextProbe — Intelligent memory querying for Vera's context system.
 
-v6 rewrite: advanced multi-strategy retrieval.
+v7 rewrite: diversity-first retrieval with convergence boosting.
 
-What was broken in v5 and why
-─────────────────────────────
-1.  Session vector query issued `where=None` — no session filter, so it pulled
-    from the entire vera_memory collection (mixed with long-term data) and then
-    separately queried with a session filter. Result: effectively only long-term
-    data got surfaced.  Fix: always query with a session filter first, then fall
-    back to cross-session for supplemental results.
+Key changes from v6
+───────────────────
+1.  CONVERGENCE BOOST (new)
+    Every hit is tracked by node_id across ALL retrieval strategies.
+    A hit that surfaces from N independent strategies gets a log-scaled
+    boost: +0.06 * log2(N).  This acts like citation counting — widely
+    corroborated memories are more likely to be relevant without needing
+    to be the top cosine match.
 
-2.  Pure cosine similarity only.  Related-but-not-similar content (e.g. asking
-    about a technique when the memory stores a result, or asking about a concept
-    when memory stores code using that concept) was invisible.  Fix: multi-query
-    expansion + BM25-style keyword search in Neo4j + fuzzy full-text matching.
+2.  SEMANTIC DIVERSITY ENFORCEMENT (replaces trigram-only dedup)
+    After dedup, remaining hits are re-scored by marginal novelty.
+    A hit whose content is already "covered" by a higher-ranked hit
+    (measured by unigram overlap ratio) is penalised rather than
+    dropped.  This ensures the final list provides the widest possible
+    unique coverage for the LLM.
 
-3.  Chunks returned instead of full blobs.  When a document was stored in chunks
-    (store_file), the top-k vector search returned one chunk rather than the
-    parent.  Fix: chunk-to-parent resolution that fetches and reassembles sibling
-    chunks from the same file_id.
+3.  GRAPH/VECTOR BALANCE FIX
+    Graph hits were over-ranking because _ensure_graph_hit_score()
+    applied a hard floor (GRAPH_HIT_SCORE_FLOOR=0.45) unconditionally.
+    v7 removes that floor and instead computes graph hit scores using
+    the same _score_hit() pipeline as vector hits, using graph_score as
+    the "raw" input.  The ALPHA blending constant is preserved for
+    reranked hits.
 
-4.  Graph traversal was limited to session anchor IDs (nodes linked TO the
-    current session).  For a fresh or sparse session this is just a handful of
-    nodes.  Fix: seed graph traversal from ALL vector-hit node IDs, not just
-    session anchors.
+4.  RESPONSE PAIRING PRIORITY
+    When a query-type hit is found and deduplicated away (it matched a
+    previous question too closely), the system now *specifically
+    retrieves the response node* via a FOLLOWS edge lookup rather than
+    a generic neighbour swap.  This means "what is my name?" won't pull
+    other instances of that question — it will pull the answer.
 
-New retrieval strategies in v6
-───────────────────────────────
-A.  Multi-query vector expansion
-    The original query is expanded into 2-3 variants (keyword-extracted
-    sub-queries) before any vector search.  Each sub-query targets a different
-    aspect of the question.  Results are merged by max score.
+5.  CONNECTEDNESS BOOST
+    After all hits are assembled, each hit's score is multiplied by
+    (1 + CONNECTIVITY_BOOST * log2(1 + degree)) where degree is the
+    node's in+out edge count fetched in a single batch Cypher query.
+    Well-connected nodes (mentioned by many other memories) are
+    promoted.
 
-B.  Neo4j full-text keyword search  (requires index, auto-created lazily)
-    `CALL db.index.fulltext.queryNodes(...)` — finds nodes whose `.text` property
-    contains ANY of the query's significant tokens.  Finds results that cosine
-    search misses because they are semantically distant but lexically relevant.
-
-C.  Entity-guided recall
-    Extracts named entities and key noun phrases from the query string.
-    Searches Neo4j for ExtractedEntity nodes matching those terms, then walks
-    their EXTRACTED_FROM/MENTIONS_ENTITY edges to find the originating memory
-    nodes.  Surfaces memories you asked about by name even if rephrased.
-
-D.  Chunk-to-parent reassembly
-    When a hit's metadata contains a `file_id` or `chunk_index`, fetch ALL
-    sibling chunks from Neo4j, sort by chunk_index, concatenate, and replace
-    the chunk with the full text up to MAX_REASSEMBLED_CHARS.
-
-E.  Session-vs-longterm balance
-    Separate quotas for session and long-term hits prevent long-term from
-    drowning out recent session context.
-
-F.  Temporal recency boost
-    Hits from the current session (matching `session_id`) get a small additive
-    boost so very recent context is preferred over older cross-session matches.
-
-All strategies contribute to a single merged, deduplicated, scored list.
-Dedup and neighbour-swap logic from v5 is preserved unchanged.
+6.  GRAPH NEIGHBOUR EXPANSION (refined)
+    The neighbour swap now runs for ANY near-duplicate (not just dupes
+    from vector search), targets RESPONSE and DOCUMENT type nodes only,
+    and prefers nodes along HIGH_SIGNAL_RELS edges.  The goal is always
+    to replace content-overlap with content-adjacent nodes.
 """
 
 from __future__ import annotations
 
 import logging
+import math
 import re
 import time
 import threading
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed, Future
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -80,7 +69,7 @@ logger = logging.getLogger(__name__)
 # Tuning constants
 # ─────────────────────────────────────────────────────────────────────────────
 
-ALPHA: float = 0.55
+ALPHA: float = 0.60          # vector weight in hybrid score (graph = 1-ALPHA)
 HOP_DECAY: float = 0.6
 MAX_HOPS: int = 2
 
@@ -93,27 +82,21 @@ GRAPH_HIT_MIN_SCORE: float = 0.12
 GRAPH_TRAVERSE_LIMIT: int = 60
 
 TYPE_SCORE_MULTIPLIER = {
-    # existing
-    "query":            0.65,
-    "response":         1.20,
-    "document":         1.10,
+    "query":            1,   
+    "response":         1,   
+    "document":         1.25,
     "tool_output":      1.15,
     "thought":          0.75,
-    # new — graph-typical node types
-    "entity":           0.90,
+    "entity":           0.85,
     "extractedentity":  0.00,
     "unknown":          0.85,
-    "session":          0.00,   # session nodes are structural, rarely useful verbatim
-    # keyword / entity-recall sources often surface short entity names —
-    # give them a slight boost so they're not penalised by length bonus
+    "session":          0.00,
     "keyword_neo4j":    0.95,
     "entity_recall":    0.95,
 }
 
-
-
 LENGTH_BONUS_PIVOT: int   = 30
-LENGTH_BONUS_MAX:   float = 0.30
+LENGTH_BONUS_MAX:   float = 0.25
 
 SESSION_VECTOR_TYPE_CAPS: Dict[str, int] = {
     "query":    2,
@@ -124,51 +107,61 @@ SESSION_VECTOR_TYPE_CAPS: Dict[str, int] = {
 TRIGRAM_THRESHOLD: float = 0.55
 TRIGRAM_MAX_LEN:   int   = 200
 
-NEIGHBOUR_SWAP_SCORE: float = 0.60
+NEIGHBOUR_SWAP_SCORE: float = 0.58
 NEIGHBOUR_SWAP_K:     int   = 4
 
 NEIGHBOUR_SWAP_TYPES = frozenset({
     "response", "Response", "document", "Document", "tool_output", "ToolOutput",
 })
 
-FOLLOWS_PAIR_BOOST: float = 1.25
+FOLLOWS_PAIR_BOOST: float = 1.30   # raised — responses paired with matched queries matter more
 
-# ── v6 new constants ──────────────────────────────────────────────────────────
+# ── v7 new constants ──────────────────────────────────────────────────────────
 
-# Maximum characters for chunk reassembly
+# Convergence boost: score += CONVERGENCE_BOOST_BASE * log2(N) where N = strategy count
+CONVERGENCE_BOOST_BASE: float = 0.06
+
+# Diversity penalty: reduce score of a hit whose unigram overlap with a
+# higher-ranked hit exceeds this threshold.
+DIVERSITY_OVERLAP_THRESHOLD: float = 0.55
+DIVERSITY_PENALTY: float = 0.35   # multiply score by this when overlap is too high
+
+# Connectedness boost multiplier: score *= (1 + CONNECTIVITY_BOOST * log2(1+degree))
+CONNECTIVITY_BOOST: float = 0.04
+CONNECTIVITY_BATCH_LIMIT: int = 60   # max nodes to batch-query for degree
+
+# Maximum chars for chunk reassembly
 MAX_REASSEMBLED_CHARS: int = 8000
 
-# Minimum token length to treat as a keyword (avoids stop-words)
+# Minimum token length to treat as a keyword
 MIN_KEYWORD_LEN: int = 4
 
 # How many keyword sub-queries to generate
 EXPAND_SUBQUERY_COUNT: int = 3
 
-# Score for full-text / keyword hits (before type+length adjustment)
-KEYWORD_HIT_BASE_SCORE: float = 0.70
+# Score for full-text / keyword hits
+KEYWORD_HIT_BASE_SCORE: float = 0.68
 
 # Score for entity-guided recall hits
-ENTITY_RECALL_BASE_SCORE: float = 0.65
+ENTITY_RECALL_BASE_SCORE: float = 0.63
 
 # Recency boost for hits in the current session
-RECENCY_BOOST: float = 0.12
+RECENCY_BOOST: float = 0.10
 
-# Max full-text keyword hits to fetch from Neo4j
+# Max full-text keyword hits
 FULLTEXT_LIMIT: int = 30
 
-# Max entity-guided hits to fetch
+# Max entity-guided hits
 ENTITY_RECALL_LIMIT: int = 20
 
-# BM25-like IDF cap — how much a rare keyword can boost a hit
-KEYWORD_BOOST_MAX: float = 0.25
+# BM25-like IDF cap
+KEYWORD_BOOST_MAX: float = 0.22
 
-# ── Session vs long-term quotas ────────────────────────────────────────────
-# These cap how many hits of each source end up in ranked_hits.
-# Ensures session memory isn't swamped by long-term docs.
+# Session vs long-term quotas
 SESSION_HIT_QUOTA:  int = 20
 LONGTERM_HIT_QUOTA: int = 10
 
-# Name of the Neo4j full-text index (created lazily)
+# Name of the Neo4j full-text index
 NEO4J_FULLTEXT_INDEX = "vera_memory_fulltext"
 
 
@@ -191,7 +184,6 @@ _WS_RE   = re.compile(r'\s+')
 
 
 def _normalise(text: str) -> str:
-    """Lowercase, strip punctuation, collapse whitespace."""
     t = _PUNC_RE.sub("", text.lower())
     return _WS_RE.sub(" ", t).strip()
 
@@ -207,12 +199,24 @@ def _trigrams(text: str) -> frozenset:
     return frozenset(t[i:i+3] for i in range(len(t) - 2))
 
 
+def _unigrams(text: str) -> frozenset:
+    """Word-level token set for diversity overlap calculation."""
+    return frozenset(w for w in _normalise(text).split() if w not in _STOP_WORDS and len(w) > 2)
+
+
+def _unigram_overlap(a: str, b: str) -> float:
+    """Jaccard overlap on word tokens (stops removed)."""
+    ua, ub = _unigrams(a), _unigrams(b)
+    if not ua or not ub:
+        return 0.0
+    return len(ua & ub) / len(ua | ub)
+
+
 def _word_count(text: str) -> int:
     return len(text.split()) if text else 0
 
 
 def _length_bonus(text: str) -> float:
-    import math
     wc = _word_count(text)
     if wc < 3:
         return -0.05
@@ -230,56 +234,12 @@ def _score_hit(raw_score: float, text: str, hit_type: str) -> float:
     bonus = _length_bonus(text)
     return min(1.0, max(0.0, typed + bonus))
 
-# Minimum score floor for graph-native hits so they survive quota sorting
-GRAPH_HIT_SCORE_FLOOR: float = 0.45
-
-# When a hit has no vector score, blend graph_score at full weight
-GRAPH_ONLY_ALPHA: float = 0.80   # weight on graph_score when vector_score == 0
-
-
-def _ensure_graph_hit_score(hit: "ScoredHit") -> "ScoredHit":
-    """
-    Re-compute the .score for a graph-native hit so it is competitive
-    with vector hits.
-
-    Logic:
-      - If vector_score > 0 the hit was already blended in _rerank_with_graph.
-      - If vector_score == 0 (pure graph hit): compute score from graph_score
-        alone, weighted by GRAPH_ONLY_ALPHA, with type multiplier + length bonus.
-      - Apply GRAPH_HIT_SCORE_FLOOR so the hit is never invisible.
-    """
-    if hit.vector_score > 0:
-        # Already has a vector component — just ensure the floor
-        hit.score = max(hit.score, GRAPH_HIT_SCORE_FLOOR * 0.85)
-        return hit
-
-    hit_type = hit.metadata.get("type", hit.source).lower()
-    mult = TYPE_SCORE_MULTIPLIER.get(hit_type, TYPE_SCORE_MULTIPLIER.get("unknown", 0.85))
-
-    import math
-    wc = len(hit.text.split()) if hit.text else 0
-    if wc < 3:
-        lb = -0.05
-    else:
-        raw = math.log2(max(1, wc) / max(1, 30))
-        lb = max(-0.10, min(0.30, raw * 0.12))
-
-    blended = min(1.0, GRAPH_ONLY_ALPHA * hit.graph_score * mult + lb)
-    hit.score = max(GRAPH_HIT_SCORE_FLOOR, blended)
-    return hit
-
-
 
 def _elapsed_ms(t0: float) -> float:
     return (time.monotonic() - t0) * 1000.0
 
 
 def _extract_keywords(query: str) -> List[str]:
-    """
-    Extract significant keywords from a query string.
-    Strips stop-words, keeps tokens >= MIN_KEYWORD_LEN.
-    Returns a de-duped ordered list, longest first.
-    """
     tokens = _normalise(query).split()
     seen: Set[str] = set()
     keywords: List[str] = []
@@ -287,35 +247,18 @@ def _extract_keywords(query: str) -> List[str]:
         if len(tok) >= MIN_KEYWORD_LEN and tok not in _STOP_WORDS and tok not in seen:
             keywords.append(tok)
             seen.add(tok)
-    # Sort longest first — longer tokens are more specific
     keywords.sort(key=len, reverse=True)
     return keywords[:12]
 
 
 def _expand_queries(query: str) -> List[str]:
-    """
-    Generate sub-queries that target different aspects of the original.
-
-    Strategy:
-    1. Original query (unchanged)
-    2. Keyword-only query (space-joined significant tokens)
-    3. First half of keywords (topic focus)
-    4. Second half of keywords (detail focus)
-
-    These target different points in embedding space and together cover
-    "related but not similar" content that a single query would miss.
-    """
     queries = [query]
     kws = _extract_keywords(query)
     if not kws:
         return queries
-
-    # Keyword-only variant
     kw_query = " ".join(kws)
     if kw_query and kw_query.lower() != query.lower()[:len(kw_query)]:
         queries.append(kw_query)
-
-    # Split halves for long keyword lists
     if len(kws) >= 4:
         half = len(kws) // 2
         q1 = " ".join(kws[:half])
@@ -324,7 +267,6 @@ def _expand_queries(query: str) -> List[str]:
             queries.append(q1)
         if q2 and q2 != kw_query:
             queries.append(q2)
-
     return list(dict.fromkeys(queries))[:EXPAND_SUBQUERY_COUNT + 1]
 
 
@@ -376,6 +318,8 @@ class ScoredHit:
         "recalled_exchange" — cross-session pair recalled via hybrid stack
         "neighbour_swap"    — graph neighbour injected in place of a near-dupe
         "chunk_reassembled" — chunk merged back into its parent document
+        "response_pair"     — response retrieved specifically because its
+                              query was a near-dupe of the current question
     """
     text: str
     score: float
@@ -384,6 +328,8 @@ class ScoredHit:
     graph_score:  float = 0.0
     vector_score: float = 0.0
     keyword_score: float = 0.0
+    # v7: tracks which strategies contributed to this hit (for convergence boost)
+    strategy_hits: int = 1
 
 
 @dataclass
@@ -425,9 +371,9 @@ class ContextProfile:
     graph_entities:   bool  = False
     graph_traverse:   bool  = False
     graph_rerank:     bool  = False
-    keyword_search:   bool  = False   # v6: Neo4j full-text search
-    entity_recall:    bool  = False   # v6: entity-guided recall
-    multi_query:      bool  = False   # v6: sub-query expansion
+    keyword_search:   bool  = False
+    entity_recall:    bool  = False
+    multi_query:      bool  = False
     include_focus:    bool  = False
     include_tools:    bool  = False
     vector_k:         int   = 3
@@ -520,22 +466,136 @@ PROFILES: Dict[str, ContextProfile] = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Convergence merge
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _merge_with_convergence(
+    lists: List[List[ScoredHit]],
+) -> List[ScoredHit]:
+    """
+    Merge multiple hit lists into one, applying a convergence boost to hits
+    that appear across multiple strategies.
+
+    Deduplication is by normalised-text fingerprint (exact match).
+    For each unique hit, keep the highest base score and add:
+        convergence_bonus = CONVERGENCE_BOOST_BASE * log2(strategy_count)
+
+    This rewards widely-corroborated memories without over-penalising single-
+    strategy hits that are legitimately unique.
+    """
+    # fp → (best_hit, strategy_count, sources_seen)
+    merged: Dict[str, Tuple[ScoredHit, int, Set[str]]] = {}
+
+    for hit_list in lists:
+        for h in hit_list:
+            if not h.text.strip():
+                continue
+            fp = _fingerprint(h.text)
+            if fp not in merged:
+                merged[fp] = (h, 1, {h.source})
+            else:
+                existing, count, sources = merged[fp]
+                sources.add(h.source)
+                new_count = len(sources)
+                # Keep the hit with the higher base score
+                best = h if h.score > existing.score else existing
+                merged[fp] = (best, new_count, sources)
+
+    result: List[ScoredHit] = []
+    for fp, (hit, strategy_count, sources) in merged.items():
+        if strategy_count > 1:
+            boost = CONVERGENCE_BOOST_BASE * math.log2(strategy_count)
+            hit = ScoredHit(
+                text=hit.text,
+                score=min(1.0, hit.score + boost),
+                source=hit.source,
+                metadata={**hit.metadata, "_strategy_count": strategy_count},
+                graph_score=hit.graph_score,
+                vector_score=hit.vector_score,
+                keyword_score=hit.keyword_score,
+                strategy_hits=strategy_count,
+            )
+        result.append(hit)
+
+    result.sort(key=lambda h: h.score, reverse=True)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Diversity re-ranking
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _apply_diversity_rerank(hits: List[ScoredHit]) -> List[ScoredHit]:
+    """
+    Penalise hits whose content overlaps significantly with a higher-ranked hit.
+
+    Rather than dropping near-dupes (which the trigram dedup already handles for
+    short texts), this pass *reduces* the score of hits that are semantically
+    covered by something already in the result set.  This keeps them available
+    but ranks truly novel content higher.
+
+    Only operates on hits with content < 600 chars to keep runtime manageable.
+    """
+    accepted_texts: List[str] = []
+    result: List[ScoredHit] = []
+
+    for h in hits:
+        if len(h.text) > 600:
+            # Long-form content: skip diversity check, always include
+            accepted_texts.append(h.text)
+            result.append(h)
+            continue
+
+        max_overlap = max(
+            (_unigram_overlap(h.text, at) for at in accepted_texts),
+            default=0.0,
+        )
+
+        if max_overlap >= DIVERSITY_OVERLAP_THRESHOLD:
+            # Content substantially covered — penalise score
+            penalised = ScoredHit(
+                text=h.text,
+                score=h.score * DIVERSITY_PENALTY,
+                source=h.source,
+                metadata={**h.metadata, "_diversity_penalised": True,
+                           "_overlap": round(max_overlap, 2)},
+                graph_score=h.graph_score,
+                vector_score=h.vector_score,
+                keyword_score=h.keyword_score,
+                strategy_hits=h.strategy_hits,
+            )
+            result.append(penalised)
+        else:
+            accepted_texts.append(h.text)
+            result.append(h)
+
+    # Re-sort after penalties applied
+    result.sort(key=lambda h: h.score, reverse=True)
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Dedup + merge
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _dedup_hits(
     hits: List[ScoredHit],
-) -> Tuple[List[ScoredHit], Set[str]]:
+) -> Tuple[List[ScoredHit], Set[str], Set[str]]:
     """
     Deduplicate a list of ScoredHit objects.
 
     Pass 1 — exact normalised-text dedup (keep highest-scored copy).
     Pass 2 — trigram near-dupe detection for short texts.
 
-    Returns (deduped_sorted, dupe_node_ids).
-    dupe_node_ids feeds the neighbour-swap mechanism.
+    Returns (deduped_sorted, dupe_node_ids, dupe_query_node_ids).
+
+    dupe_node_ids       — feeds generic neighbour swap.
+    dupe_query_node_ids — feeds response-pair retrieval (v7): when a
+                          query-type hit is dropped as a near-dupe,
+                          we want the *response* to that query instead.
     """
-    dupe_ids: Set[str] = set()
+    dupe_ids:       Set[str] = set()
+    dupe_query_ids: Set[str] = set()   # v7: query nodes dropped as dupes
 
     # Pass 1: exact dedup
     best: Dict[str, ScoredHit] = {}
@@ -549,6 +609,8 @@ def _dedup_hits(
                 nid = old.metadata.get("node_id") or old.metadata.get("id")
                 if nid:
                     dupe_ids.add(str(nid))
+                    if old.metadata.get("type", "").lower() == "query":
+                        dupe_query_ids.add(str(nid))
             best[key] = h
 
     # Pass 2: trigram near-dupe
@@ -571,11 +633,63 @@ def _dedup_hits(
             nid = h.metadata.get("node_id") or h.metadata.get("id")
             if nid:
                 dupe_ids.add(str(nid))
+                if h.metadata.get("type", "").lower() == "query":
+                    dupe_query_ids.add(str(nid))
         else:
             deduped.append(h)
             accepted_tgs.append(tg)
 
-    return deduped, dupe_ids
+    return deduped, dupe_ids, dupe_query_ids
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-strategy quotas
+# ─────────────────────────────────────────────────────────────────────────────
+
+_STRATEGY_QUOTAS = {
+    "vector_session":    16,
+    "vector_xsession":    6,
+    "graph_rerank":      12,
+    "vector_longterm":    8,
+    "chunk_reassembled":  4,
+    "graph_traverse":     6,
+    "keyword_neo4j":      6,
+    "entity_recall":      5,
+    "neighbour_swap":     4,
+    "recalled_exchange":  6,
+    "response_pair":      6,   # v7: dedicated quota for response-pair hits
+}
+
+_DEFAULT_QUOTA = 4
+
+
+def _apply_quotas_and_caps(
+    hits: List[ScoredHit], current_session_id: str
+) -> List[ScoredHit]:
+    """
+    Apply per-strategy quotas and per-type caps.
+    """
+    strategy_counts: Dict[str, int] = defaultdict(int)
+    type_counts:     Dict[str, int] = defaultdict(int)
+    result: List[ScoredHit] = []
+
+    for h in hits:
+        source   = h.source
+        hit_type = h.metadata.get("type", "").lower() or source
+
+        quota = _STRATEGY_QUOTAS.get(source, _DEFAULT_QUOTA)
+        if strategy_counts[source] >= quota:
+            continue
+
+        cap = SESSION_VECTOR_TYPE_CAPS.get(hit_type, 9999)
+        if type_counts[hit_type] >= cap:
+            continue
+
+        result.append(h)
+        strategy_counts[source] += 1
+        type_counts[hit_type] += 1
+
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -586,7 +700,7 @@ class ContextProbe:
     """
     Multi-strategy hybrid memory retrieval for Vera.
 
-    Strategies (v6):
+    Strategies (v7):
         Vector (session-filtered)   — cosine similarity within current session
         Vector (long-term)          — cosine similarity across promoted/long-term store
         Multi-query expansion       — 3 sub-queries covering different semantic facets
@@ -594,13 +708,17 @@ class ContextProbe:
         Entity-guided recall        — entity name → graph walk → originating memory
         Graph heat-map traversal    — hop-scored proximity from anchor nodes
         Graph rerank                — vector hits re-scored with graph proximity
-        Neighbour swap              — dupes replaced by their graph neighbours
+        Convergence boost           — hits appearing in N strategies get log-scaled boost
+        Diversity re-rank           — high-overlap hits penalised to maximise coverage
+        Response-pair retrieval     — dupe query nodes → fetch their response via FOLLOWS
+        Neighbour swap              — remaining dupes replaced by graph neighbours
+        Connectedness boost         — well-connected nodes promoted by degree
         Chunk reassembly            — file chunks merged back into full documents
     """
 
     def __init__(self, vera_instance):
         self.vera = vera_instance
-        self._fulltext_index_ok: Optional[bool] = None   # lazy check
+        self._fulltext_index_ok: Optional[bool] = None
 
     # ──────────────────────────────────────────────────────────────────────
     # Public API
@@ -640,11 +758,9 @@ class ContextProbe:
             ctx.elapsed_ms = _elapsed_ms(t0)
             return ctx
 
-        # Pre-compute keyword variants once — shared across strategies
         keywords    = _extract_keywords(query)
         sub_queries = _expand_queries(query) if profile.multi_query else [query]
 
-        # Anchor IDs for graph operations
         anchor_ids: List[str] = []
         needs_anchors = (
             profile.graph_rerank or profile.graph_traverse or profile.graph_entities
@@ -718,12 +834,12 @@ class ContextProbe:
                 )
 
             deadline = t0 + profile.budget_ms / 1000.0
-            session_vec_hits:  List[Dict[str, Any]] = []
-            longterm_vec_hits: List[Dict[str, Any]] = []
-            keyword_hits:      List[ScoredHit]      = []
-            entity_hits:       List[ScoredHit]      = []
-            graph_traverse_hits: List[ScoredHit]    = []
-            past_exchange_hits:  List[ScoredHit]    = []
+            session_vec_hits:    List[Dict[str, Any]] = []
+            longterm_vec_hits:   List[Dict[str, Any]] = []
+            keyword_hits:        List[ScoredHit]      = []
+            entity_hits:         List[ScoredHit]      = []
+            graph_traverse_hits: List[ScoredHit]      = []
+            past_exchange_hits:  List[ScoredHit]      = []
 
             for name, fut in futures.items():
                 remaining = max(0.0, deadline - time.monotonic())
@@ -752,9 +868,9 @@ class ContextProbe:
         ctx.vectors.session_hits  = session_vec_hits
         ctx.vectors.longterm_hits = longterm_vec_hits
 
-        # ── Build initial scored list ──────────────────────────────────────
-        all_vector_hits: List[ScoredHit] = []
-        raw_for_rerank  = session_vec_hits + longterm_vec_hits
+        # ── Build scored vector hits (with optional graph rerank) ──────────
+        raw_for_rerank = session_vec_hits + longterm_vec_hits
+        reranked_vec: List[ScoredHit] = []
 
         if (
             profile.graph_rerank
@@ -762,40 +878,63 @@ class ContextProbe:
             and raw_for_rerank
             and not self._over_budget(t0, profile.budget_ms, 100)
         ):
-            reranked = self._rerank_with_graph(
+            reranked_vec = self._rerank_with_graph(
                 hits=raw_for_rerank,
                 anchor_ids=anchor_ids,
                 query=query,
             )
-            all_vector_hits.extend(reranked)
         else:
-            all_vector_hits.extend(_raw_hits_to_scored(session_vec_hits,  "vector_session"))
-            all_vector_hits.extend(_raw_hits_to_scored(longterm_vec_hits, "vector_longterm"))
+            reranked_vec.extend(_raw_hits_to_scored(session_vec_hits,  "vector_session"))
+            reranked_vec.extend(_raw_hits_to_scored(longterm_vec_hits, "vector_longterm"))
 
-        # Merge all strategy results
-        all_vector_hits.extend(graph_traverse_hits)
-        all_vector_hits.extend(past_exchange_hits)
-        all_vector_hits.extend(keyword_hits)
-        all_vector_hits.extend(entity_hits)
-
-        # ── Chunk reassembly ───────────────────────────────────────────────
-        # Do this before dedup so sibling chunks don't survive
+        # ── Chunk reassembly (before merge so sibling chunks collapse) ─────
         if not self._over_budget(t0, profile.budget_ms, 200):
-            all_vector_hits = self._reassemble_chunks(all_vector_hits)
+            reranked_vec = self._reassemble_chunks(reranked_vec)
 
-        # ── Dedup ─────────────────────────────────────────────────────────
-        deduped, dupe_ids = _dedup_hits(all_vector_hits)
+        # ── CONVERGENCE MERGE: combine all strategy buckets ────────────────
+        # Each strategy's list is a separate input — convergence boost fires
+        # when the same node_id/fingerprint appears in multiple lists.
+        all_hits = _merge_with_convergence([
+            reranked_vec,
+            graph_traverse_hits,
+            past_exchange_hits,
+            keyword_hits,
+            entity_hits,
+        ])
 
-        # ── Neighbour swap ────────────────────────────────────────────────
+        # ── Dedup (trigram + exact) ────────────────────────────────────────
+        deduped, dupe_ids, dupe_query_ids = _dedup_hits(all_hits)
+
+        # ── v7: Response-pair retrieval for dupe query nodes ──────────────
+        # If a query node was dropped because it matched the current question
+        # too closely, fetch its corresponding RESPONSE node instead.
         already_seen = {h.text for h in deduped}
-        if dupe_ids and not self._over_budget(t0, profile.budget_ms, 150):
+        if dupe_query_ids and not self._over_budget(t0, profile.budget_ms, 200):
+            response_pair_hits = self._fetch_response_pairs(
+                query_node_ids=list(dupe_query_ids),
+                already_seen=already_seen,
+            )
+            if response_pair_hits:
+                deduped.extend(response_pair_hits)
+                already_seen.update(h.text for h in response_pair_hits)
+
+        # ── Neighbour swap for remaining non-query dupes ───────────────────
+        non_query_dupe_ids = dupe_ids - dupe_query_ids
+        if non_query_dupe_ids and not self._over_budget(t0, profile.budget_ms, 150):
             swap_hits = self._fetch_neighbours_for_dupes(
-                dupe_node_ids=dupe_ids,
+                dupe_node_ids=non_query_dupe_ids,
                 already_seen=already_seen,
             )
             if swap_hits:
-                combined, _ = _dedup_hits(deduped + swap_hits)
+                combined, _, _ = _dedup_hits(deduped + swap_hits)
                 deduped = combined
+
+        # ── Diversity re-rank ──────────────────────────────────────────────
+        deduped = _apply_diversity_rerank(deduped)
+
+        # ── Connectedness boost ────────────────────────────────────────────
+        if not self._over_budget(t0, profile.budget_ms, 150):
+            deduped = self._apply_connectedness_boost(deduped)
 
         # ── Apply source quotas + type caps ────────────────────────────────
         final = _apply_quotas_and_caps(deduped, ctx.session_id)
@@ -810,11 +949,170 @@ class ContextProbe:
             f"longterm_vec={len(longterm_vec_hits)} "
             f"keyword={len(keyword_hits)} entity={len(entity_hits)} "
             f"graph_trav={len(graph_traverse_hits)} "
+            f"dupe_query_ids={len(dupe_query_ids)} "
             f"ranked={len(final)} "
             f"entities={len(ctx.graph.entities)} "
             f"anchors={len(anchor_ids)} dupe_swapped={len(dupe_ids)}"
         )
         return ctx
+
+    # ──────────────────────────────────────────────────────────────────────
+    # v7: Response-pair retrieval
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _fetch_response_pairs(
+        self,
+        query_node_ids: List[str],
+        already_seen: Set[str],
+    ) -> List[ScoredHit]:
+        """
+        For each query node that was dropped as a near-duplicate of the current
+        question, fetch the response node that FOLLOWS it.
+
+        This is the core fix for "what is my name?" — the question matches
+        previous instances and is deduped away, but rather than just discarding
+        it we retrieve the ANSWER, which is the actually useful content.
+
+        Tries two edge patterns:
+          1. (response)-[:REL {rel: 'FOLLOWS'}]->(query)   — labelled rel
+          2. (query)-[:FOLLOWS]->(response)                — direct typed edge
+        """
+        if not query_node_ids:
+            return []
+        try:
+            cypher = """
+            UNWIND $q_ids AS qid
+            // Pattern 1: labelled rel
+            OPTIONAL MATCH (r1)-[:REL {rel: 'FOLLOWS'}]->(q1 {id: qid})
+            WHERE r1.type IN ['response', 'Response']
+              AND r1.text IS NOT NULL AND r1.text <> ''
+            // Pattern 2: direct typed edge
+            OPTIONAL MATCH (q2 {id: qid})-[:FOLLOWS]->(r2)
+            WHERE r2.type IN ['response', 'Response']
+              AND r2.text IS NOT NULL AND r2.text <> ''
+            WITH qid,
+                 coalesce(r1.id, r2.id)     AS resp_id,
+                 coalesce(r1.text, r2.text) AS resp_text,
+                 coalesce(r1.type, r2.type) AS resp_type,
+                 coalesce(r1.session_id, r2.session_id) AS resp_sess
+            WHERE resp_id IS NOT NULL
+            RETURN qid, resp_id, resp_text, resp_type, resp_sess
+            """
+            seen_fps = {_fingerprint(t) for t in already_seen}
+            hits: List[ScoredHit] = []
+
+            with self.vera.mem.graph._driver.session() as neo_sess:
+                rows = neo_sess.run(cypher, {"q_ids": query_node_ids})
+                for rec in rows:
+                    text = (rec["resp_text"] or "").strip()
+                    rid  = rec["resp_id"]
+                    if not text or not rid:
+                        continue
+                    fp = _fingerprint(text)
+                    if fp in seen_fps:
+                        continue
+                    seen_fps.add(fp)
+
+                    # Response pairs get a solid score — they are directly
+                    # answering the current question
+                    ntype = (rec["resp_type"] or "response").lower()
+                    score = _score_hit(0.82, text, ntype)
+
+                    hits.append(ScoredHit(
+                        text=text,
+                        score=score,
+                        vector_score=0.0,
+                        graph_score=0.82,
+                        source="response_pair",
+                        metadata={
+                            "node_id":      rid,
+                            "id":           rid,
+                            "type":         ntype,
+                            "session_id":   rec["resp_sess"] or "",
+                            "pair_of":      rec["qid"],
+                            "pair_role":    "response",
+                        },
+                        strategy_hits=2,  # give convergence credit: matched by vector + confirmed by graph
+                    ))
+
+            logger.debug(
+                f"[ContextProbe] response_pairs: {len(hits)} responses "
+                f"from {len(query_node_ids)} dupe query nodes"
+            )
+            return hits
+
+        except Exception as e:
+            logger.debug(f"[ContextProbe] _fetch_response_pairs failed: {e}")
+            return []
+
+    # ──────────────────────────────────────────────────────────────────────
+    # v7: Connectedness boost
+    # ──────────────────────────────────────────────────────────────────────
+
+    def _apply_connectedness_boost(self, hits: List[ScoredHit]) -> List[ScoredHit]:
+        """
+        Batch-fetch the degree (in+out edge count) for each hit's node_id,
+        then apply: score *= (1 + CONNECTIVITY_BOOST * log2(1 + degree)).
+
+        A node referenced by 10 other nodes gets ~+14% score boost.
+        A node referenced by 100 other nodes gets ~+27% score boost.
+        Isolated nodes get no boost.
+
+        We only fetch degrees for the top CONNECTIVITY_BATCH_LIMIT hits to
+        keep the Neo4j round-trip cheap.
+        """
+        # Collect node IDs for the top hits
+        id_to_idx: Dict[str, int] = {}
+        for i, h in enumerate(hits[:CONNECTIVITY_BATCH_LIMIT]):
+            nid = h.metadata.get("node_id") or h.metadata.get("id")
+            if nid:
+                id_to_idx[str(nid)] = i
+
+        if not id_to_idx:
+            return hits
+
+        try:
+            cypher = """
+            UNWIND $node_ids AS nid
+            MATCH (n {id: nid})
+            RETURN nid, size((n)--()) AS degree
+            """
+            degree_map: Dict[str, int] = {}
+            with self.vera.mem.graph._driver.session() as neo_sess:
+                rows = neo_sess.run(cypher, {"node_ids": list(id_to_idx.keys())})
+                for rec in rows:
+                    nid    = rec["nid"]
+                    degree = int(rec["degree"] or 0)
+                    if nid:
+                        degree_map[str(nid)] = degree
+
+            if not degree_map:
+                return hits
+
+            result = list(hits)
+            for nid, idx in id_to_idx.items():
+                degree = degree_map.get(nid, 0)
+                if degree < 2:
+                    continue  # isolated nodes get no boost
+                boost_mult = 1.0 + CONNECTIVITY_BOOST * math.log2(1 + degree)
+                h = result[idx]
+                result[idx] = ScoredHit(
+                    text=h.text,
+                    score=min(1.0, h.score * boost_mult),
+                    source=h.source,
+                    metadata={**h.metadata, "_degree": degree, "_conn_boost": round(boost_mult, 3)},
+                    graph_score=h.graph_score,
+                    vector_score=h.vector_score,
+                    keyword_score=h.keyword_score,
+                    strategy_hits=h.strategy_hits,
+                )
+
+            result.sort(key=lambda h: h.score, reverse=True)
+            return result
+
+        except Exception as e:
+            logger.debug(f"[ContextProbe] connectedness boost failed: {e}")
+            return hits
 
     # ──────────────────────────────────────────────────────────────────────
     # Anchor node discovery
@@ -841,7 +1139,7 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Session vector query — PRIMARY retrieval, session-scoped first
+    # Session vector query
     # ──────────────────────────────────────────────────────────────────────
 
     def _query_session_vectors(
@@ -850,21 +1148,11 @@ class ContextProbe:
         session_id: str,
         k: int,
     ) -> List[Dict[str, Any]]:
-        """
-        Session-scoped vector search with multi-query expansion.
-
-        FIXED in v6:
-          - Always queries with session_id filter FIRST (was missing in v5).
-          - Runs each sub-query variant and merges by max score.
-          - Applies recency boost for current-session hits.
-          - Chunk reassembly happens in the caller after merge.
-        """
         try:
             vec = self.vera.mem.vec
             id_to_hit: Dict[str, Dict[str, Any]] = {}
 
             for sq in sub_queries:
-                # Session-scoped search
                 session_hits = vec.query(
                     collection="vera_memory",
                     text=sq,
@@ -883,14 +1171,13 @@ class ContextProbe:
                     if hid not in id_to_hit or score > id_to_hit[hid]["score"]:
                         id_to_hit[hid] = {
                             **h,
-                            "text":         text,
-                            "score":        score,
-                            "_source":      "vector_session",
-                            "_recency":     True,
+                            "text":     text,
+                            "score":    score,
+                            "_source":  "vector_session",
+                            "_recency": True,
                         }
 
-                # Cross-session supplement (without session filter) — lower base score
-                if sq == sub_queries[0]:   # only for main query to avoid over-fetching
+                if sq == sub_queries[0]:
                     xsession_hits = vec.query(
                         collection="vera_memory",
                         text=sq,
@@ -900,7 +1187,7 @@ class ContextProbe:
                     for h in xsession_hits:
                         hid = h.get("id")
                         if not hid or hid in id_to_hit:
-                            continue   # already have this with recency boost
+                            continue
                         text     = (h.get("text") or "").strip()
                         hit_type = h.get("metadata", {}).get("type", "").lower()
                         raw_s    = 1.0 - (h.get("distance") or 0.5)
@@ -916,11 +1203,9 @@ class ContextProbe:
             if not id_to_hit:
                 return []
 
-            # Sort and return top results as plain dicts
             results = sorted(id_to_hit.values(), key=lambda x: x["score"], reverse=True)
             results = results[:k * 5]
 
-            # Convert to the standard hit format expected by callers
             final = []
             for h in results:
                 final.append({
@@ -946,16 +1231,12 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Long-term vector query with multi-query expansion
+    # Long-term vector query
     # ──────────────────────────────────────────────────────────────────────
 
     def _query_longterm_vectors(
         self, sub_queries: List[str], k: int
     ) -> List[Dict[str, Any]]:
-        """
-        Long-term semantic search across promoted/long-term docs.
-        All sub-query variants are run; results merged by max score.
-        """
         try:
             id_to_hit: Dict[str, Dict[str, Any]] = {}
 
@@ -985,14 +1266,10 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Neo4j full-text keyword search  (v6 NEW)
+    # Neo4j full-text keyword search
     # ──────────────────────────────────────────────────────────────────────
 
     def _ensure_fulltext_index(self) -> bool:
-        """
-        Lazily create the full-text index on Entity.text if it doesn't exist.
-        Returns True if index is usable.
-        """
         if self._fulltext_index_ok is True:
             return True
         if self._fulltext_index_ok is False:
@@ -1020,21 +1297,9 @@ class ContextProbe:
     def _query_neo4j_keywords(
         self, keywords: List[str], session_id: str
     ) -> List[ScoredHit]:
-        """
-        Neo4j full-text search for nodes whose .text contains query keywords.
-
-        Uses a Lucene query: individual keywords ORed together, with a
-        phrase-match bonus for the original query.  This surfaces nodes that
-        share lexical content with the query but are semantically distant from
-        it in embedding space (different phrasing, different domain context).
-
-        Falls back to a manual Cypher CONTAINS scan if full-text index is
-        unavailable.
-        """
         if not keywords:
             return []
 
-        # Sanitise keywords for Lucene
         safe_kws = [re.sub(r'[^a-z0-9_\-]', '', kw) for kw in keywords]
         safe_kws = [k for k in safe_kws if k]
         if not safe_kws:
@@ -1046,8 +1311,6 @@ class ContextProbe:
             hits: List[ScoredHit] = []
 
             if index_ok:
-                # Build a Lucene query: "keyword1 keyword2 keyword3" with AND for specificity
-                # when we have many keywords, OR when few
                 if len(safe_kws) >= 3:
                     lucene_query = " AND ".join(safe_kws[:6])
                 else:
@@ -1069,11 +1332,11 @@ class ContextProbe:
                 with self.vera.mem.graph._driver.session() as neo_sess:
                     rows = neo_sess.run(cypher, {"lq": lucene_query, "lim": FULLTEXT_LIMIT * 2})
                     for rec in rows:
-                        text     = (rec["node_text"] or "").strip()
-                        nid      = rec["node_id"]
-                        ntype    = (rec["node_type"] or "").lower()
-                        n_sess   = rec["node_session_id"] or ""
-                        ls       = float(rec["lucene_score"] or 1.0)
+                        text   = (rec["node_text"] or "").strip()
+                        nid    = rec["node_id"]
+                        ntype  = (rec["node_type"] or "").lower()
+                        n_sess = rec["node_session_id"] or ""
+                        ls     = float(rec["lucene_score"] or 1.0)
 
                         if not text or not nid:
                             continue
@@ -1082,19 +1345,14 @@ class ContextProbe:
                             continue
                         seen_fps.add(fp)
 
-                        # Normalise lucene score (often > 1.0) to [0,1]
                         norm_score = min(1.0, ls / 10.0)
-
-                        # Keyword coverage bonus: fraction of keywords appearing in text
                         text_lower = text.lower()
                         coverage   = sum(1 for kw in safe_kws if kw in text_lower) / len(safe_kws)
                         kw_bonus   = coverage * KEYWORD_BOOST_MAX
-
-                        # Recency bonus if current session
                         recency    = RECENCY_BOOST if n_sess == session_id else 0.0
 
-                        raw_s  = min(1.0, KEYWORD_HIT_BASE_SCORE * norm_score + kw_bonus + recency)
-                        score  = _score_hit(raw_s, text, ntype)
+                        raw_s = min(1.0, KEYWORD_HIT_BASE_SCORE * norm_score + kw_bonus + recency)
+                        score = _score_hit(raw_s, text, ntype)
 
                         hits.append(ScoredHit(
                             text=text,
@@ -1104,18 +1362,16 @@ class ContextProbe:
                             graph_score=0.0,
                             source="keyword_neo4j",
                             metadata={
-                                "node_id":    nid,
-                                "type":       ntype,
-                                "session_id": n_sess,
-                                "created_at": rec["created_at"] or "",
+                                "node_id":      nid,
+                                "type":         ntype,
+                                "session_id":   n_sess,
+                                "created_at":   rec["created_at"] or "",
                                 "lucene_score": ls,
                                 "kw_coverage":  round(coverage, 2),
                             },
                         ))
 
             else:
-                # Fallback: manual CONTAINS scan (slower but always works)
-                # Query for each keyword separately, merge
                 for kw in safe_kws[:4]:
                     cypher = """
                     MATCH (n:Entity)
@@ -1168,25 +1424,15 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Entity-guided recall  (v6 NEW)
+    # Entity-guided recall
     # ──────────────────────────────────────────────────────────────────────
 
     def _entity_guided_recall(
         self, keywords: List[str], session_id: str
     ) -> List[ScoredHit]:
-        """
-        Find ExtractedEntity nodes whose .text matches query keywords, then
-        walk their EXTRACTED_FROM / MENTIONS_ENTITY edges to the source
-        memory nodes (query/response/document).
-
-        This surfaces memories that contain relevant entities even when the
-        phrasing is completely different from the current query.
-        """
         if not keywords:
             return []
         try:
-            # Build an OR pattern for entity text matching
-            # CASE-INSENSITIVE partial matches
             cypher = """
             UNWIND $keywords AS kw
             MATCH (e:ExtractedEntity)
@@ -1194,7 +1440,6 @@ class ContextProbe:
               AND e.confidence >= 0.5
             WITH e, kw
 
-            // Walk to source memory nodes
             OPTIONAL MATCH (e)-[:EXTRACTED_FROM|MENTIONS_ENTITY*1..2]-(mem)
             WHERE mem.text IS NOT NULL
               AND coalesce(mem.type, '') IN
@@ -1230,9 +1475,7 @@ class ContextProbe:
                     nid     = rec["node_id"]
                     ntype   = (rec["node_type"] or "").lower()
                     n_sess  = rec["node_session_id"] or ""
-                    e_text  = rec["entity_text"] or ""
                     e_conf  = float(rec["entity_conf"] or 0.5)
-                    matched = rec["matched_keyword"] or ""
 
                     if not text or not nid:
                         continue
@@ -1254,10 +1497,10 @@ class ContextProbe:
                             "type":           ntype,
                             "session_id":     n_sess,
                             "created_at":     rec["created_at"] or "",
-                            "entity_text":    e_text,
+                            "entity_text":    rec["entity_text"] or "",
                             "entity_label":   rec["entity_label"] or "",
                             "entity_conf":    e_conf,
-                            "matched_kw":     matched,
+                            "matched_kw":     rec["matched_keyword"] or "",
                         },
                     ))
 
@@ -1270,22 +1513,11 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Chunk-to-parent reassembly  (v6 NEW)
+    # Chunk-to-parent reassembly
     # ──────────────────────────────────────────────────────────────────────
 
     def _reassemble_chunks(self, hits: List[ScoredHit]) -> List[ScoredHit]:
-        """
-        For hits that are chunks of a larger document (metadata contains
-        file_id + chunk_index), fetch all sibling chunks from Neo4j,
-        sort them by chunk_index, and concatenate into a single ScoredHit
-        of type "chunk_reassembled".
-
-        Chunks are deduplicated by file_id so we don't fetch the same
-        parent multiple times.  The reassembled hit inherits the highest
-        score among its contributing chunks.
-        """
-        # Collect chunk groups
-        chunk_groups: Dict[str, List[ScoredHit]] = {}  # file_id → hits
+        chunk_groups: Dict[str, List[ScoredHit]] = {}
         non_chunk: List[ScoredHit] = []
 
         for h in hits:
@@ -1328,7 +1560,6 @@ class ContextProbe:
                             s_ids.append(rec["session_id"])
 
                 if not all_chunks:
-                    # Fall back: just include the highest-scored chunk
                     best_chunk = max(chunk_hits, key=lambda h: h.score)
                     reassembled.append(best_chunk)
                     continue
@@ -1344,16 +1575,16 @@ class ContextProbe:
 
                 reassembled.append(ScoredHit(
                     text=full_text,
-                    score=min(1.0, best_score + 0.05),  # slight boost for full doc
+                    score=min(1.0, best_score + 0.05),
                     vector_score=best_score,
                     graph_score=0.0,
                     source="chunk_reassembled",
                     metadata={
-                        "file_id":     file_id,
-                        "chunk_count": len(all_chunks),
-                        "type":        "document",
-                        "session_id":  sess_id,
-                        "original_source": best_source,
+                        "file_id":          file_id,
+                        "chunk_count":      len(all_chunks),
+                        "type":             "document",
+                        "session_id":       sess_id,
+                        "original_source":  best_source,
                     },
                 ))
 
@@ -1365,7 +1596,7 @@ class ContextProbe:
         return reassembled
 
     # ──────────────────────────────────────────────────────────────────────
-    # Graph heat-map traversal  (unchanged from v5)
+    # Graph heat-map traversal
     # ──────────────────────────────────────────────────────────────────────
 
     def _graph_heat_map(
@@ -1432,7 +1663,9 @@ class ContextProbe:
                         continue
                     g_score    = float(rec["path_score"] or 0.0)
                     node_label = rec["node_label"] or ""
-                    final      = _score_hit(g_score, text, node_label.lower())
+                    # v7: graph hits scored through the same pipeline as vector hits
+                    # (no hard floor — let convergence boost and connectedness lift them)
+                    final = _score_hit(g_score, text, node_label.lower())
                     hits.append(ScoredHit(
                         text=text,
                         score=final,
@@ -1456,7 +1689,7 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Graph-proximity re-ranking of vector hits  (unchanged from v5)
+    # Graph-proximity re-ranking of vector hits
     # ──────────────────────────────────────────────────────────────────────
 
     def _rerank_with_graph(
@@ -1509,9 +1742,9 @@ class ContextProbe:
             g_prox     = proximity_map.get(hid, 0.0) if hid else 0.0
 
             typed_vscore = _score_hit(raw_vscore, text, hit_type)
-            combined     = ALPHA * typed_vscore + (1.0 - ALPHA) * g_prox
+            # v7: ALPHA raised to 0.60 so vector score has more weight in the blend
+            combined = ALPHA * typed_vscore + (1.0 - ALPHA) * g_prox
 
-            # Preserve source metadata
             orig_source = h.get("metadata", {}).get("_source", "")
             source = "graph_rerank" if g_prox > 0.0 else (
                 orig_source or (
@@ -1537,7 +1770,7 @@ class ContextProbe:
         return scored
 
     # ──────────────────────────────────────────────────────────────────────
-    # Cross-session recall  (updated for v6: also passes sub-queries)
+    # Cross-session recall
     # ──────────────────────────────────────────────────────────────────────
 
     def _recall_past_exchanges(
@@ -1546,9 +1779,6 @@ class ContextProbe:
         k: int,
         anchor_ids: List[str],
     ) -> List[ScoredHit]:
-        """
-        Cross-session Q&A recall with FOLLOWS pair resolution.
-        """
         try:
             vec = self.vera.mem.vec
             results: List[ScoredHit] = []
@@ -1682,7 +1912,7 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # Neighbour swap  (unchanged from v5)
+    # Neighbour swap (non-query dupes)
     # ──────────────────────────────────────────────────────────────────────
 
     def _fetch_neighbours_for_dupes(
@@ -1690,6 +1920,13 @@ class ContextProbe:
         dupe_node_ids: Set[str],
         already_seen: Set[str],
     ) -> List[ScoredHit]:
+        """
+        For non-query dupe nodes, fetch their graph neighbours (preferring
+        RESPONSE and DOCUMENT types along HIGH_SIGNAL_RELS edges).
+
+        v7: only called for non-query dupes — query dupes go to
+        _fetch_response_pairs() instead.
+        """
         if not dupe_node_ids:
             return []
         try:
@@ -1769,7 +2006,7 @@ class ContextProbe:
             return []
 
     # ──────────────────────────────────────────────────────────────────────
-    # FOLLOWS pair lookup helper  (unchanged from v5)
+    # FOLLOWS pair lookup helper
     # ──────────────────────────────────────────────────────────────────────
 
     def _fetch_follows_pairs(
@@ -1800,7 +2037,7 @@ class ContextProbe:
             return {}
 
     # ──────────────────────────────────────────────────────────────────────
-    # History retrieval  (unchanged from v5)
+    # History retrieval
     # ──────────────────────────────────────────────────────────────────────
 
     def _get_history(
@@ -1937,7 +2174,7 @@ class ContextProbe:
         return results
 
     # ──────────────────────────────────────────────────────────────────────
-    # Graph entity query  (enriched with session_id for Inspector)
+    # Graph entity query
     # ──────────────────────────────────────────────────────────────────────
 
     def _query_session_graph(self, query: str, session_id: str) -> GraphContext:
@@ -2016,72 +2253,3 @@ class ContextProbe:
     def _over_budget(t0: float, budget_ms: float, reserve_ms: float = 0) -> bool:
         elapsed = (time.monotonic() - t0) * 1000
         return elapsed + reserve_ms >= budget_ms
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Post-processing: source quotas + type caps
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Per-strategy quotas (independent buckets, not shared)
-_STRATEGY_QUOTAS = {
-    "vector_session":    16,
-    "vector_xsession":    6,
-    "graph_rerank":      12,   # reranked vector hits (hybrid)
-    "vector_longterm":    8,
-    "chunk_reassembled":  4,
-    "graph_traverse":     6,   # NEW — was sharing SESSION_HIT_QUOTA
-    "keyword_neo4j":      6,   # NEW — was sharing SESSION_HIT_QUOTA
-    "entity_recall":      5,   # NEW — was sharing SESSION_HIT_QUOTA
-    "neighbour_swap":     4,
-    "recalled_exchange":  6,
-}
-
-_DEFAULT_QUOTA = 4
-
-
-def _apply_quotas_and_caps(
-    hits: "list[ScoredHit]", current_session_id: str
-) -> "list[ScoredHit]":
-    """
-    Apply per-strategy quotas and per-type caps.
-
-    Key change from v1:
-      Each strategy has its OWN quota bucket (see _STRATEGY_QUOTAS).
-      This guarantees that graph_traverse / keyword_neo4j / entity_recall
-      hits always appear in the final list even when vector hits are plentiful.
-
-    Per-type caps (SESSION_VECTOR_TYPE_CAPS) are preserved unchanged to
-    prevent any single node type dominating.
-    """
-    from collections import defaultdict
-
-    SESSION_VECTOR_TYPE_CAPS = {
-        "query":    2,
-        "response": 16,
-        "document": 10,
-    }
-
-    strategy_counts: dict[str, int] = defaultdict(int)
-    type_counts:     dict[str, int] = defaultdict(int)
-    result: list = []
-
-    for h in hits:
-        source   = h.source
-        hit_type = h.metadata.get("type", "").lower() or source
-
-        # Per-strategy quota
-        quota = _STRATEGY_QUOTAS.get(source, _DEFAULT_QUOTA)
-        if strategy_counts[source] >= quota:
-            continue
-
-        # Per-type cap
-        cap = SESSION_VECTOR_TYPE_CAPS.get(hit_type, 9999)
-        if type_counts[hit_type] >= cap:
-            continue
-
-        result.append(h)
-        strategy_counts[source] += 1
-        type_counts[hit_type] += 1
-
-    return result
-

@@ -21,6 +21,14 @@ from typing import Dict, Any, List, Optional
 
 from Vera.vera import Vera
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env before anything else
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+
 class BotManager:
     """Manages multiple messaging platform bots"""
     
@@ -103,7 +111,7 @@ class BotManager:
         print("Starting Slack bot...")
         
         try:
-            from slack_bot import SlackBot
+            from Vera.ChatBots.slack_bot import SlackBot
             
             bot = SlackBot(self.vera, self.config['slack'])
             self.bots['slack'] = bot
@@ -112,8 +120,8 @@ class BotManager:
             asyncio.create_task(bot.start())
             print("✓ Slack bot started\n")
             
-        except ImportError:
-            print("❌ slack_sdk not installed. Install with: pip install slack_sdk")
+        except ImportError as e:
+            print(f"❌ slack_sdk not installed. Install with: pip install slack_sdk\n {e}")
         except Exception as e:
             print(f"❌ Failed to start Slack bot: {e}\n")
     

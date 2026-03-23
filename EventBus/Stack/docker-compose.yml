@@ -1,0 +1,326 @@
+version: "3.9"
+
+# ═══════════════════════════════════════════════════════════════
+#  WORLDVIEW STACK — Global Situational Awareness Platform
+# ═══════════════════════════════════════════════════════════════
+#  Services:
+#    - worldview-ui        → CesiumJS 3D globe frontend
+#    - data-broker         → FastAPI aggregation & WebSocket hub
+#    - tile-server         → Tegola vector tile server
+#    - terrain-server      → Cesium Terrain Builder tiles
+#    - redis               → Pub/sub + entity cache
+#    - postgres/postgis    → Spatial entity storage
+#    - nginx               → Reverse proxy + static assets
+#    - adsb-feeder         → ADS-B flight data (dump1090/FlightAware)
+#    - satellite-tracker   → TLE-based satellite position engine
+#    - news-geolocator     → RSS news → geolocation mapper
+#    - entity-manager      → Custom entity CRUD (cameras, sensors, etc.)
+
+networks:
+  worldview:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres_data:
+  redis_data:
+  tile_cache:
+  terrain_tiles:
+  cesium_assets:
+
+services:
+
+  # ─────────────────────────────────────────────
+  # NGINX — Reverse Proxy & Static Serving
+  # ─────────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: worldview-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - data-broker
+      - tile-server
+    networks:
+      - worldview
+    labels:
+      - "worldview.service=proxy"
+
+  # ─────────────────────────────────────────────
+  # DATA BROKER — FastAPI WebSocket Hub
+  # ─────────────────────────────────────────────
+  data-broker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.broker
+    container_name: worldview-broker
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://worldview:worldview@postgres:5432/worldview
+      - OPENSKY_ENABLED=true
+      - ADSB_EXCHANGE_API_KEY=${ADSB_EXCHANGE_API_KEY:-}
+      - NEWS_UPDATE_INTERVAL=300
+      - SATELLITE_UPDATE_INTERVAL=10
+      - CELESTRAK_BASE_URL=https://celestrak.org/SOCRATES
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY:-}
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - worldview
+    expose:
+      - "8000"
+    volumes:
+      - ./backend:/app
+      - ./configs:/app/configs
+    labels:
+      - "worldview.service=broker"
+
+  # ─────────────────────────────────────────────
+  # POSTGRES + POSTGIS — Spatial Entity Store
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: worldview-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: worldview
+      POSTGRES_USER: worldview
+      POSTGRES_PASSWORD: worldview
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./configs/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - worldview
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U worldview"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # REDIS — Pub/Sub + Live Entity Cache
+  # ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: worldview-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - worldview
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─────────────────────────────────────────────
+  # TEGOLA — Vector Tile Server (OpenStreetMap)
+  # ─────────────────────────────────────────────
+  tile-server:
+    image: gospatial/tegola:latest
+    container_name: worldview-tiles
+    restart: unless-stopped
+    command: serve --config /config/tegola.toml
+    volumes:
+      - ./configs/tegola.toml:/config/tegola.toml:ro
+      - tile_cache:/tmp/tegola_cache
+    networks:
+      - worldview
+    expose:
+      - "8085"
+    environment:
+      - TEGOLA_PORT=8085
+    depends_on:
+      - postgres
+    labels:
+      - "worldview.service=tiles"
+
+  # ─────────────────────────────────────────────
+  # MARTIN — Alternative PostGIS tile server
+  # (backup / MVT tiles from custom entity layers)
+  # ─────────────────────────────────────────────
+  martin:
+    image: ghcr.io/maplibre/martin:latest
+    container_name: worldview-martin
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://worldview:worldview@postgres:5432/worldview
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - worldview
+    expose:
+      - "3000"
+    labels:
+      - "worldview.service=mvt"
+
+  # ─────────────────────────────────────────────
+  # SATELLITE TRACKER — TLE orbit propagation
+  # ─────────────────────────────────────────────
+  satellite-tracker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.satellite
+    container_name: worldview-satellites
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - UPDATE_INTERVAL_SECONDS=10
+      - TLE_SOURCES=celestrak_active,celestrak_stations,celestrak_weather,celestrak_starlink
+      - TLE_REFRESH_HOURS=6
+      - MAX_SATELLITES=5000
+    depends_on:
+      - redis
+    networks:
+      - worldview
+    volumes:
+      - ./backend:/app
+      - ./configs/tle_sources.json:/app/configs/tle_sources.json:ro
+    labels:
+      - "worldview.service=satellites"
+
+  # ─────────────────────────────────────────────
+  # ADS-B / FLIGHT FEEDER
+  # Uses OpenSky Network free API (no key needed)
+  # Optional: point at local dump1090 for SDR
+  # ─────────────────────────────────────────────
+  flight-tracker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.flights
+    container_name: worldview-flights
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OPENSKY_USERNAME=${OPENSKY_USERNAME:-}
+      - OPENSKY_PASSWORD=${OPENSKY_PASSWORD:-}
+      - OPENSKY_UPDATE_INTERVAL=15
+      # Optionally point to local dump1090:
+      - DUMP1090_HOST=${DUMP1090_HOST:-}
+      - DUMP1090_PORT=${DUMP1090_PORT:-30003}
+      # ADS-B Exchange (free tier available)
+      - ADSB_EXCHANGE_API_KEY=${ADSB_EXCHANGE_API_KEY:-}
+      # ADSB.fi (free, no key needed)
+      - ADSBFI_ENABLED=true
+    depends_on:
+      - redis
+    networks:
+      - worldview
+    volumes:
+      - ./backend:/app
+    labels:
+      - "worldview.service=flights"
+
+  # ─────────────────────────────────────────────
+  # NEWS GEOLOCATOR — Maps news to globe
+  # Fetches RSS → NLP entity extract → geocode
+  # ─────────────────────────────────────────────
+  news-geolocator:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.news
+    container_name: worldview-news
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://worldview:worldview@postgres:5432/worldview
+      - UPDATE_INTERVAL=300
+      - GEOCODING_API=nominatim
+      - NOMINATIM_URL=http://nominatim-local:8080
+      - NEWS_SOURCES_CONFIG=/app/configs/news_sources.json
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - worldview
+    volumes:
+      - ./backend:/app
+      - ./configs:/app/configs
+    labels:
+      - "worldview.service=news"
+
+  # ─────────────────────────────────────────────
+  # ENTITY MANAGER — Custom geolocated entities
+  # IP cameras, sensors, assets, POIs, etc.
+  # ─────────────────────────────────────────────
+  entity-manager:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.entities
+    container_name: worldview-entities
+    restart: unless-stopped
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://worldview:worldview@postgres:5432/worldview
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - worldview
+    expose:
+      - "8002"
+    volumes:
+      - ./backend:/app
+    labels:
+      - "worldview.service=entities"
+
+  # ─────────────────────────────────────────────
+  # NOMINATIM — Local geocoding (OpenStreetMap)
+  # Heavy first-run import; optional but recommended
+  # for news geocoding offline
+  # ─────────────────────────────────────────────
+  nominatim-local:
+    image: mediagis/nominatim:4.4
+    container_name: worldview-nominatim
+    restart: unless-stopped
+    environment:
+      - PBF_URL=https://download.geofabrik.de/europe/great-britain-latest.osm.pbf
+      - REPLICATION_URL=https://download.geofabrik.de/europe/great-britain-updates/
+      - NOMINATIM_PASSWORD=nominatim
+      # For worldwide: use planet file (warning: 70GB+ import)
+      # - PBF_URL=https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf
+    volumes:
+      - ./data-feeds/nominatim:/var/lib/postgresql/14/main
+    networks:
+      - worldview
+    expose:
+      - "8080"
+    profiles:
+      - geocoding
+    labels:
+      - "worldview.service=geocoding"
+
+  # ─────────────────────────────────────────────
+  # WEATHER OVERLAY — OpenWeatherMap tiles
+  # ─────────────────────────────────────────────
+  weather-proxy:
+    image: nginx:alpine
+    container_name: worldview-weather
+    restart: unless-stopped
+    volumes:
+      - ./nginx/weather-proxy.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - worldview
+    expose:
+      - "80"
+    labels:
+      - "worldview.service=weather"

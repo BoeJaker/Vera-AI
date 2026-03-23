@@ -87,6 +87,7 @@ VERA_STYLE = (
     "- Use markdown only when it genuinely aids readability.\n"
     # "- If executing a task, confirm in one sentence then proceed.\n"
     "- If uncertain, say so briefly rather than speculating at length."
+    "- When thinking be careful not to get stuck in a loop thinking the same thing over and over."
 )
 
 VERA_CAPABILITIES = (
@@ -123,7 +124,7 @@ _S_FRAME        = "frame"
 STAGE_SECTIONS = {
     "triage": [
         _S_DATETIME,
-        _S_CAPABILITIES,
+        # _S_CAPABILITIES,
         # _S_FOCUS,
         # _S_TOOLS,
         _S_FRAME,

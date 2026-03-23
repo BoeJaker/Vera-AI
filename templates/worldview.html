@@ -784,17 +784,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   font-family:var(--mono);transition:all .1s;letter-spacing:.3px}
 .cam-source-pip:hover,.cam-source-pip.on{border-color:var(--apple-blue);
   color:var(--apple-blue);background:var(--accent-lo)}
-/* Camera source bar pills */
-.csb-item{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;
-  border:1px solid var(--border);border-radius:10px;cursor:pointer;
-  font-family:var(--mono);transition:all .12s;background:var(--bg)}
-.csb-item:hover{border-color:var(--border-hi);background:var(--panel)}
-.csb-item.on{border-color:var(--apple-blue);background:var(--accent-lo)}
-.csb-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.csb-label{font-size:7px;letter-spacing:.4px;text-transform:uppercase;
-  color:var(--text-dim);font-weight:600}
-.csb-count{font-size:7px;color:var(--text-faint);font-family:var(--mono)}
-
 .cam-lightbox-img{width:100%;max-height:70vh;object-fit:contain;background:#000;display:block}
 
 /* ── MODAL (id=modal uses .mbox classes) ── */
@@ -973,32 +962,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
   border-top:1px solid var(--border);background:var(--panel)}
 .cam-load-more:hover{background:var(--bg2)}
 
-
-/* Camera section — vertical sidebar layout */
-#cameras-wrap{position:absolute;inset:0;display:none;flex-direction:column;
-  background:var(--bg);overflow:hidden}
-.cam-layout{display:flex;flex:1;min-height:0;overflow:hidden}
-
-/* Vertical source nav */
-.cam-sidenav{width:72px;flex-shrink:0;background:var(--panel);
-  border-right:1px solid var(--border);display:flex;flex-direction:column;
-  overflow-y:auto;overflow-x:hidden}
-.cam-sidenav::-webkit-scrollbar{width:2px}
-.cam-sidenav-hd{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;
-  color:var(--text-faint);padding:8px 6px 4px;font-weight:600}
-.cam-sidetab{display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:8px 4px;border:none;background:transparent;cursor:pointer;
-  font-size:7px;font-family:var(--mono);letter-spacing:.5px;text-transform:uppercase;
-  color:var(--text-faint);transition:all .14s;width:100%;border-left:2px solid transparent;
-  white-space:nowrap;overflow:hidden;text-overflow:clip}
-.cam-sidetab:hover{color:var(--text);background:var(--bg2)}
-.cam-sidetab.on{color:var(--apple-orange);border-left-color:var(--apple-orange);
-  background:rgba(245,130,31,.08);font-weight:600}
-.cst-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-.cam-sidenav-spacer{flex:1}
-
-/* Main camera area */
-.cam-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
 /* ── LEAFLET OVERRIDES ── */
 .leaflet-container{background:var(--bg)!important}
 .leaflet-tile{filter:saturate(.5) contrast(1.05)}
@@ -1094,16 +1057,6 @@ input[type=range]{accent-color:var(--accent);cursor:pointer}
         <option value="EUR">EUR/USD</option>
         <option value="XAU">Gold</option>
         <option value="WTI">WTI Crude</option>
-        <option value="GAME_DOOM">DOOM (1993)</option>
-        <option value="GAME_QUAKE">Quake Series</option>
-        <option value="GAME_HALFLIFE">Half-Life Series</option>
-        <option value="GAME_MARIO64">Super Mario 64</option>
-        <option value="GAME_SONIC">Sonic Series</option>
-        <option value="GAME_DIABLO">Diablo Series</option>
-        <option value="GAME_MYST">Myst</option>
-        <option value="GAME_WARCRAFT">Warcraft Series</option>
-        <option value="GAME_DUKE3D">Duke Nukem 3D</option>
-        <option value="GAME_WOLFENSTEIN">Wolfenstein Series</option>
       </select>
       <div style="display:flex;gap:3px" id="tf-btns">
         <button class="chart-tf-btn" data-tf="1m" onclick="setTF(this)">1M</button>
@@ -1149,67 +1102,49 @@ input[type=range]{accent-color:var(--accent);cursor:pointer}
   </div>
   <!-- Cameras -->
   <div id="cameras-wrap">
-    <!-- Vertical source sidebar + main area -->
-    <div class="cam-layout">
-
-      <!-- Vertical source tabs -->
-      <div class="cam-sidenav" id="cam-sidenav">
-        <div class="cam-sidenav-hd">SOURCE</div>
-        <button class="cam-sidetab on" data-src="all"      onclick="camSetSource('all',this)">
-          <span class="cst-dot" style="background:var(--apple-blue)"></span>ALL
-        </button>
-        <button class="cam-sidetab" data-src="snapshot"   onclick="camSetSource('snapshot',this)">
-          <span class="cst-dot" style="background:var(--apple-green)"></span>SNAP
-        </button>
-        <button class="cam-sidetab" data-src="mjpeg"      onclick="camSetSource('mjpeg',this)">
-          <span class="cst-dot" style="background:var(--apple-blue)"></span>MJPEG
-        </button>
-        <button class="cam-sidetab" data-src="ip_direct"  onclick="camSetSource('ip_direct',this)">
-          <span class="cst-dot" style="background:var(--apple-orange)"></span>IP
-        </button>
-        <button class="cam-sidetab" data-src="windy"      onclick="camSetSource('windy',this)">
-          <span class="cst-dot" style="background:var(--apple-yellow)"></span>WINDY
-        </button>
-        <button class="cam-sidetab" data-src="drivebc"    onclick="camSetSource('drivebc',this)">
-          <span class="cst-dot" style="background:var(--apple-violet)"></span>BC HWY
-        </button>
-        <button class="cam-sidetab" data-src="manual"     onclick="camSetSource('manual',this)">
-          <span class="cst-dot" style="background:var(--text-faint)"></span>MANUAL
-        </button>
-        <button class="cam-sidetab" data-src="redis"      onclick="camSetSource('redis',this)">
-          <span class="cst-dot" style="background:var(--apple-red)"></span>REDIS
-        </button>
-        <div class="cam-sidenav-spacer"></div>
-        <button class="cam-act-btn" style="margin:4px 6px;width:calc(100% - 12px)" onclick="openAddCamModal()">+ ADD</button>
-        <button class="cam-act-btn" style="margin:0 6px 4px;width:calc(100% - 12px)" onclick="camProbeAll()">⚡ PROBE</button>
+    <div class="cam-toolbar">
+      <span class="cam-toolbar-title">CAMERA NETWORK</span>
+      <div class="cam-filter-row">
+        <select class="cam-sel" id="cam-filter-src" onchange="camApplyFilters()">
+          <option value="all">All Sources</option>
+          <option value="ip_direct">IP Direct</option>
+          <option value="mjpeg">MJPEG Stream</option>
+          <option value="snapshot">Snapshot</option>
+          <option value="windy">Windy API</option>
+          <option value="redis">Redis Feed</option>
+          <option value="manual">Manual Add</option>
+        </select>
+        <select class="cam-sel" id="cam-filter-type" onchange="camApplyFilters()">
+          <option value="all">All Types</option>
+          <option value="traffic">Traffic</option>
+          <option value="landmark">Landmark</option>
+          <option value="nature">Nature / Weather</option>
+          <option value="port">Port / Airport</option>
+          <option value="construction">Construction</option>
+          <option value="industrial">Industrial</option>
+          <option value="unknown">Unknown</option>
+        </select>
+        <select class="cam-sel" id="cam-filter-status" onchange="camApplyFilters()">
+          <option value="all">All Status</option>
+          <option value="live">Live</option>
+          <option value="offline">Offline</option>
+          <option value="unverified">Unverified</option>
+        </select>
+        <input class="cam-search-in" id="cam-search" type="text" placeholder="Search name, IP, location…" oninput="camApplyFilters()">
       </div>
-
-      <!-- Right: toolbar + grid -->
-      <div class="cam-main">
-        <div class="cam-toolbar">
-          <input class="cam-search-in" id="cam-search" type="text" placeholder="Search cameras…" oninput="camApplyFilters()">
-          <select class="cam-sel" id="cam-filter-type" onchange="camApplyFilters()">
-            <option value="all">All Types</option>
-            <option value="traffic">Traffic</option>
-            <option value="landmark">Landmark</option>
-            <option value="nature">Nature</option>
-            <option value="port">Port / Airport</option>
-            <option value="unknown">Other</option>
-          </select>
-          <select class="cam-sel" id="cam-filter-status" onchange="camApplyFilters()">
-            <option value="all">All Status</option>
-            <option value="live">Live</option>
-            <option value="offline">Offline</option>
-            <option value="unverified">Unverified</option>
-          </select>
-          <span id="cam-count" class="cam-count-lbl">0 cameras</span>
-        </div>
-        <div class="cam-grid" id="cam-grid"></div>
+      <div class="cam-toolbar-actions">
+        <button class="cam-act-btn" onclick="openAddCamModal()">+ ADD CAMERA</button>
+        <button class="cam-act-btn" onclick="camProbeAll()">⚡ PROBE ALL</button>
+        <button class="cam-act-btn" onclick="camRefreshFromRedis()">↻ REDIS PULL</button>
+        <button class="cam-act-btn" onclick="camPushToRedis()">↑ PUSH TO REDIS</button>
+        <span id="cam-count" class="cam-count-lbl">0 / 0</span>
       </div>
     </div>
+    <div class="cam-source-bar" id="cam-source-bar"></div>
+    <div class="cam-grid" id="cam-grid"></div>
   </div>
 
-    <!-- Stream Monitor Overlay -->
+  <!-- Stream Monitor Overlay -->
   <div id="stream-monitor" style="display:none">
     <div id="sm-header">
       <span id="sm-title">STREAM MONITOR</span>
@@ -2222,38 +2157,46 @@ const GLOBE_DOT_CONFIG={
   financial:  {size:0.006, opacity:0.7,  altScale:false, useIcon:false},
 };
 
-// Trails removed
+// Trail history: id -> [{lat,lon,alt,ts}]
+const TRAIL_HISTORY = new Map();
+const TRAIL_MESHES  = new Map();
+const TRAIL_CONFIG = {
+  flights:    {len:12, maxAge:120000, opacity:0.55, color:null},
+  satellites: {len:16, maxAge:180000, opacity:0.65, color:null},
+  ships:      {len:10, maxAge:240000, opacity:0.40, color:null},
+};
+let showTrails = true;
+
+function getTrailR(type, alt){
+  if(type==='satellites') return 1.0+Math.min((alt||400000)/40000000,0.15);
+  if(type==='flights')    return 1.012+(alt||8000)/2500000;
+  return 1.012;
+}
 
 function updateGlobeObjects(){
-  if(!groupObjs || !scene) return;
   const now=Date.now();
 
-  // Build the complete set of IDs that SHOULD have a dot right now
-  const wantedIds = new Set();
-  Object.entries(live).forEach(([type,map])=>{
-    if(!lVis[type]) return;
-    map.forEach((obj,id)=>{ if(obj.lat!=null&&obj.lon!=null) wantedIds.add(id); });
-  });
-
-  // Remove any dot whose ID is not in the wanted set (no trail left behind)
+  // Prune stale
   OBJ_MESHES.forEach((m,id)=>{
-    if(id.startsWith('gcam_')) return; // cameras handled separately
-    if(!wantedIds.has(id)){
-      groupObjs.remove(m);
-      if(m.geometry) m.geometry.dispose();
-      if(m.material) m.material.dispose();
-      OBJ_MESHES.delete(id);
+    if(id.startsWith('gcam_')) return;
+    const stale=id.startsWith('sat_')?300000:id.startsWith('ev_')?60000:180000;
+    if(now-m.userData.ts>stale){
+      groupObjs.remove(m); OBJ_MESHES.delete(id);
+      const tl=TRAIL_MESHES.get(id);
+      if(tl){groupObjs.remove(tl);TRAIL_MESHES.delete(id);}
+      TRAIL_HISTORY.delete(id);
     }
   });
 
   Object.entries(live).forEach(([type,map])=>{
     if(!lVis[type]) return;
     const cfg  = GLOBE_DOT_CONFIG[type]||{size:0.007,opacity:0.85,useIcon:false};
+    const tcfg = TRAIL_CONFIG[type];
     const col  = new THREE.Color(lCol[type]||'#4a8fd4');
 
     map.forEach((obj,id)=>{
       if(obj.lat==null||obj.lon==null) return;
-      const r   = 1.012;
+      const r   = getTrailR(type,obj.alt);
       const pos = latLonToVec3(obj.lat,obj.lon,r);
 
       // ── Update existing dot ──
@@ -2288,6 +2231,46 @@ function updateGlobeObjects(){
         OBJ_MESHES.set(id,dot);
       }
 
+      // ── Trail ──
+      if(!tcfg||!showTrails) return;
+      if(!TRAIL_HISTORY.has(id)) TRAIL_HISTORY.set(id,[]);
+      const hist=TRAIL_HISTORY.get(id);
+      const last=hist[hist.length-1];
+      if(!last||Math.abs(obj.lat-(last.lat||0))>0.04||Math.abs(obj.lon-(last.lon||0))>0.04){
+        hist.push({lat:obj.lat,lon:obj.lon,alt:obj.alt,ts:now});
+        if(hist.length>tcfg.len) hist.shift();
+      }
+      if(hist.length<2) return;
+      const nowMs=Date.now();
+      const pts=[],fadeVals=[];
+      hist.forEach(p=>{
+        const age=nowMs-(p.ts||nowMs);
+        const ageFade=Math.max(0,1-age/tcfg.maxAge);
+        if(ageFade<0.015) return;
+        pts.push(latLonToVec3(p.lat,p.lon,getTrailR(type,p.alt)));
+        fadeVals.push(ageFade);
+      });
+      if(pts.length<2) return;
+      const tgeo=new THREE.BufferGeometry().setFromPoints(pts);
+      const tcolors=[];
+      fadeVals.forEach((ageFade,i)=>{
+        const posBias=Math.pow((i+1)/fadeVals.length,1.6);
+        const combined=posBias*ageFade;
+        const tc=col.clone().multiplyScalar(0.1+0.9*combined);
+        tcolors.push(tc.r,tc.g,tc.b,combined*tcfg.opacity);
+      });
+      tgeo.setAttribute('color',new THREE.Float32BufferAttribute(tcolors,4));
+      const tmat=new THREE.LineBasicMaterial({
+        vertexColors:true,transparent:true,opacity:1.0,
+        depthWrite:false,blending:THREE.AdditiveBlending
+      });
+      const tline=new THREE.Line(tgeo,tmat);
+      if(TRAIL_MESHES.has(id)){
+        const old=TRAIL_MESHES.get(id);
+        groupObjs.remove(old); old.geometry.dispose(); old.material.dispose();
+      }
+      groupObjs.add(tline);
+      TRAIL_MESHES.set(id,tline);
     });
   });
   updateGlobeCameraObjects();
@@ -2653,27 +2636,8 @@ function initCharts(){
   loadChartSymbol('BTC');
 }
 
-// Retro game search terms for CheapShark
-const RETRO_GAME_SEARCHES = {
-  'GAME_DOOM':      'DOOM',
-  'GAME_QUAKE':     'Quake',
-  'GAME_HALFLIFE':  'Half-Life',
-  'GAME_MARIO64':   'Super Mario',
-  'GAME_SONIC':     'Sonic',
-  'GAME_DIABLO':    'Diablo',
-  'GAME_MYST':      'Myst',
-  'GAME_WARCRAFT':  'Warcraft',
-  'GAME_DUKE3D':    'Duke Nukem',
-  'GAME_WOLFENSTEIN':'Wolfenstein',
-};
-
 async function loadChartSymbol(sym){
   activeSym=sym;
-  // Handle retro game symbols
-  if(sym.startsWith('GAME_')){
-    loadRetroGameChart(sym);
-    return;
-  }
   if(!chartInst) return;
 
   // Clear existing series
@@ -2750,75 +2714,6 @@ function generateSimChartData(sym){
   document.getElementById('chart-stat').innerHTML=`<strong>${last.close.toLocaleString(undefined,{maximumFractionDigits:last.close>100?2:4})}</strong> <span class="${up?'up':'dn'}">${up?'▲':'▼'}${Math.abs(chg)}%</span>`;
 }
 
-async function loadRetroGameChart(sym){
-  const query = RETRO_GAME_SEARCHES[sym] || sym.replace('GAME_','');
-  const chartStat = document.getElementById('chart-stat');
-  if(chartStat) chartStat.innerHTML = `<strong>Loading ${query} prices…</strong>`;
-
-  // Fetch from CheapShark
-  try{
-    const searchRes = await fetch(`https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(query)}&limit=10`);
-    const games = await searchRes.json();
-    if(!games.length){ if(chartStat) chartStat.innerHTML='No results'; return; }
-
-    // Get deals for all matching games
-    const dealPromises = games.slice(0,6).map(g=>
-      fetch(`https://www.cheapshark.com/api/1.0/games?id=${g.gameID}`)
-        .then(r=>r.json()).catch(()=>null)
-    );
-    const details = (await Promise.all(dealPromises)).filter(Boolean);
-
-    // Build chart data — price history by store/deal
-    if(!chartInst){ initCharts(); await new Promise(r=>setTimeout(r,300)); }
-    if(!chartInst) return;
-
-    if(window._candleSeries){ try{chartInst.removeSeries(window._candleSeries);}catch(e){} window._candleSeries=null; }
-    if(window._volSeries){ try{volChartInst.removeSeries(window._volSeries);}catch(e){} window._volSeries=null; }
-
-    // Show game info card instead of candle chart
-    const mainWrap = document.getElementById('chart-main-wrap');
-    if(mainWrap){
-      const allDeals = details.flatMap(d=>(d.deals||[]).map(deal=>({
-        game: d.info?.title||query,
-        store: deal.storeID,
-        sale: +deal.price,
-        normal: +deal.retailPrice,
-        savings: +deal.savings,
-        thumb: d.info?.thumb||''
-      }))).sort((a,b)=>a.sale-b.sale);
-
-      const storeName = {1:'Steam',2:'GamersGate',3:'GreenManGaming',7:'GOG',8:'Origin',11:'Humble',15:'Fanatical',25:'Epic'};
-
-      mainWrap.innerHTML = `
-        <div style="padding:12px;font-family:var(--mono);font-size:9px;overflow-y:auto;height:100%">
-          <div style="font-family:var(--head);font-size:14px;color:var(--text);margin-bottom:10px;
-            background:var(--stripe);-webkit-background-clip:text;-webkit-text-fill-color:transparent"
-          >${query} — Best Prices</div>
-          ${allDeals.slice(0,12).map(d=>`
-            <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-              ${d.thumb?`<img src="${d.thumb}" style="width:40px;height:28px;object-fit:cover;border-radius:2px" onerror="this.style.display='none'">`:''}
-              <div style="flex:1;min-width:0">
-                <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.game}</div>
-                <div style="color:var(--text-faint)">${storeName[d.store]||'Store '+d.store}</div>
-              </div>
-              <div style="text-align:right">
-                <div style="color:var(--apple-green);font-size:12px;font-weight:600">$${d.sale.toFixed(2)}</div>
-                ${d.normal>d.sale?`<div style="color:var(--text-faint);text-decoration:line-through;font-size:8px">$${d.normal.toFixed(2)}</div>`:''}
-              </div>
-              <div style="color:var(--apple-orange);font-size:10px;font-weight:600;min-width:36px;text-align:right">
-                ${d.savings>0?'-'+Math.round(d.savings)+'%':''}
-              </div>
-            </div>`).join('')}
-          ${!allDeals.length?'<div style="color:var(--text-faint);padding:20px 0;text-align:center">No current deals found</div>':''}
-          <div style="margin-top:10px;color:var(--text-faint);font-size:7px">Data from CheapShark · Prices in USD</div>
-        </div>`;
-    }
-    if(chartStat) chartStat.innerHTML = `<strong>${query}</strong> <span style="color:var(--text-faint)">${allDeals.length} deals</span>`;
-  } catch(e){
-    if(chartStat) chartStat.innerHTML = `<span style="color:var(--apple-red)">Load failed</span>`;
-  }
-}
-
 function setTF(btn){
   document.querySelectorAll('.chart-tf-btn').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
@@ -2880,39 +2775,34 @@ async function fetchFlightsAdsbFi(){
   
   // airplanes.live — free, no key, no feeder needed
   // lat/lon bounding box endpoint
-  // Limit to 2 regions — airplanes.live rate-limits at 1 req/sec
-  // Always proxy since we're served from non-browser origin
   const sources = [
-    {url:'https://api.airplanes.live/v2/point/51.5/-0.1/300', name:'airplanes.live'},
-    {url:'https://api.airplanes.live/v2/point/40.7/-74.0/400', name:'airplanes.live'},
+    // airplanes.live bbox endpoint
+    {url:'https://api.airplanes.live/v2/point/51.5/-0.1/250', name:'airplanes.live'},
+    {url:'https://api.airplanes.live/v2/point/40.7/-74.0/500', name:'airplanes.live'},
+    {url:'https://api.airplanes.live/v2/point/35.7/139.7/500', name:'airplanes.live'},
+    {url:'https://api.airplanes.live/v2/point/1.3/103.8/400',  name:'airplanes.live'},
   ];
   
   let count = 0;
-  const seenIds = new Set();
   for(const src of sources){
     try{
       // Try direct first (CORS), then via proxy
-      let data;
-      // Try direct first (CORS), then proxy
-      for(const fetcher of [
-        ()=>fetch(src.url,{signal:AbortSignal.timeout(6000)}),
-        ()=>fetch(proxy+encodeURIComponent(src.url),{signal:AbortSignal.timeout(8000)}),
-        ()=>fetch(RSS_PROXIES_LIST[1](src.url),{signal:AbortSignal.timeout(8000)}),
-      ]){
+      let res, data;
+      try{
+        res = await fetch(src.url, {signal:AbortSignal.timeout(6000)});
+        if(res.ok) data = await res.json();
+      } catch(e){
         try{
-          const r=await fetcher();
-          if(r.ok){ data=await r.json(); break; }
-        }catch(e){}
+          res = await fetch(proxy + encodeURIComponent(src.url), {signal:AbortSignal.timeout(8000)});
+          if(res.ok) data = await res.json();
+        } catch(e2){}
       }
       if(!data) continue;
       
       const ac = data.ac || data.aircraft || [];
       ac.forEach(a => {
         if(a.lat==null || a.lon==null || a.alt_baro==='ground') return;
-        // Stable ID: prefer hex/icao, fallback to callsign, then lat/lon bucket (never random)
-        const _cs=(a.flight||a.callsign||'').trim();
-        const _latBucket=a.lat!=null?Math.round(+a.lat*10)+'_'+Math.round(+a.lon*10):'?';
-        const id = 'af_' + (a.hex||a.icao||_cs||_latBucket);
+        const id = 'af_' + (a.hex || a.icao || Math.random().toString(36).slice(2));
         const cs = (a.flight||a.callsign||a.hex||'?').trim();
         const alt = a.alt_baro!=null ? +a.alt_baro*0.3048 : a.alt_geom!=null ? +a.alt_geom*0.3048 : null;
         const norm = normalise({
@@ -2922,25 +2812,15 @@ async function fetchFlightsAdsbFi(){
           body:`${cs} · ${a.t||'?'} · FL${alt?Math.round(alt/30.48):'?'}`,
           meta:{hex:a.hex, type:a.t, squawk:a.squawk, reg:a.r}
         });
-        seenIds.add(id);
         live.flights.set(id, norm);
         addMapMarker(id, norm, 'flight');
+        OBJ_MESHES.delete(id);
         count++;
       });
       _adsbLastOk = Date.now();
     } catch(e){}
   }
-
-  // Remove flights from live map that weren't in this fetch batch
-  // (they've landed or left coverage) — prevents ghost icons
-  if(count > 0){
-    live.flights.forEach((f,fid)=>{
-      if(!seenIds.has(fid) && fid.startsWith('af_')){
-        live.flights.delete(fid);
-      }
-    });
-  }
-
+  
   if(count>0 && Math.random()<0.05){
     const sample=[...live.flights.values()].slice(-1)[0];
     if(sample) pushFeed(sample);
@@ -3035,7 +2915,6 @@ function propagateSatPos(sat, t){
 }
 
 async function fetchSatellites(){
-  live.satellites.clear(); // reset before each fetch to avoid ghost icons
   // 1. Real ISS position from Open Notify (free, no key, CORS ok)
   try{
     // ISS position — try multiple free endpoints
@@ -3060,7 +2939,7 @@ async function fetchSatellites(){
         const norm=normalise({id,type:'satellite',label:'ISS',
           lat,lon,alt:408000,source:'Open Notify',
           body:`ISS (ZARYA)  ${lat.toFixed(2)}°  ${lon.toFixed(2)}°  408km`});
-        live.satellites.set(id,norm);
+        live.satellites.set(id,norm); OBJ_MESHES.delete(id);
         // Update SAT_CATALOG phase so propagation matches real position
         const issEntry=SAT_CATALOG.find(s=>s.name==='ISS');
         if(issEntry){ issEntry._realLat=lat; issEntry._realLon=lon; }
@@ -3104,7 +2983,7 @@ async function fetchSatellites(){
       body:`${sat.name}  ${pos.lat.toFixed(1)}°  ${pos.lon.toFixed(1)}°  ${Math.round(pos.alt/1000)}km`,
       meta:{inc:sat.inc,period:sat.period,alt_km:sat.alt}
     });
-    live.satellites.set(id,norm);
+    live.satellites.set(id,norm); OBJ_MESHES.delete(id);
   });
   setStat('sv-sa',live.satellites.size);
 }
@@ -3131,17 +3010,13 @@ const WX_CITIES=[
 const wxData={};
 
 // Batch fetch weather for all cities using Open-Meteo's multi-location support
-let _wxFetching=false, _wxLastOk=0;
 async function fetchWeather(){
-  // Debounce — open-meteo has strict rate limits, don't fire twice at boot
-  if(_wxFetching) return;
-  if(Date.now()-_wxLastOk < 60000) return; // min 1 min between fetches
-  _wxFetching=true;
+  // Open-Meteo supports up to 1000 locations in one request using arrays!
   try{
     const lats=WX_CITIES.map(c=>c.lat).join(',');
     const lons=WX_CITIES.map(c=>c.lon).join(',');
-    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,relative_humidity_2m&wind_speed_unit=kn&timezone=auto`;
-    const res=await fetch(url,{signal:AbortSignal.timeout(15000)});
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code,relative_humidity_2m&wind_speed_unit=kn&timezone=auto&models=best_match`;
+    const res=await fetch(url,{signal:AbortSignal.timeout(12000)});
     if(!res.ok) throw new Error('Weather API '+res.status);
     const d=await res.json();
     // Multi-location response is an array
@@ -3182,9 +3057,6 @@ async function fetchWeather(){
     }
     updateWeatherOverlay();
     if(currentView==='weather') renderWeatherPanel();
-  } finally{
-    _wxFetching=false;
-    _wxLastOk=Date.now();
   }
 }
 
@@ -3202,6 +3074,16 @@ function wxCodeEmoji(code){
   if(code<=82) return '🌦️';
   return '⛈️';
 }
+
+// ── Crypto Prices — Binance (proper CORS headers, no key) ─────────────────
+// Binance public API has Access-Control-Allow-Origin: * so works from file://
+let cryptoPrices={};
+const BINANCE_SYMBOLS=[
+  {sym:'BTCUSDT', tk:'BTC/USD'}, {sym:'ETHUSDT', tk:'ETH/USD'},
+  {sym:'XRPUSDT', tk:'XRP/USD'}, {sym:'SOLUSDT', tk:'SOL/USD'},
+  {sym:'ADAUSDT', tk:'ADA/USD'}, {sym:'BNBUSDT', tk:'BNB/USD'},
+];
+// Also try CoinGecko as secondary (works when served from HTTP server)
 async function fetchCryptoPrices(){
   // Primary: Binance 24hr ticker (reliable CORS)
   try{
@@ -3308,6 +3190,7 @@ function connectAISStream(apiKey){
         });
         live.ships.set(id,norm);
         addMapMarker(id,norm,'ship');
+        OBJ_MESHES.delete(id);
         if(Math.random()<0.02) pushFeed(norm);
         if(live.ships.size>500){const k=[...live.ships.keys()][0];live.ships.delete(k);}
         setStat('sv-sh',live.ships.size);
@@ -3346,14 +3229,9 @@ function startSimulation(){
     const norm=normalise({id:'sf_'+cs, type:'flight', label:cs, lat, lon, alt, speed:spd, source:'Sim', body:`${cs}  FL${Math.floor(alt/30.48)}  ${lat.toFixed(1)}°N`});
     live.flights.set(norm.id,norm); _simCt.fl++;
     addMapMarker(norm.id,norm,'flight');
+    OBJ_MESHES.delete(norm.id);
     if(Math.random()<0.04) pushFeed(norm);
-    if(live.flights.size>400){
-      const k=[...live.flights.keys()][0];
-      live.flights.delete(k);
-      const om=OBJ_MESHES.get(k);
-      if(om&&groupObjs){ groupObjs.remove(om); if(om.geometry)om.geometry.dispose(); if(om.material)om.material.dispose(); }
-      OBJ_MESHES.delete(k);
-    }
+    if(live.flights.size>400){const k=[...live.flights.keys()][0];live.flights.delete(k);OBJ_MESHES.delete(k);}
   },800);
 
   // Ships — follow realistic global trade routes
@@ -3402,6 +3280,7 @@ function startSimulation(){
         body:`${s.name}  ${lat.toFixed(2)}°  ${lon.toFixed(2)}°  ${s.spd.toFixed(0)}kt`});
       live.ships.set(s.id,norm);
       addMapMarker(s.id,norm,'ship');
+      OBJ_MESHES.delete(s.id);
     });
     if(Math.random()<0.04 && shipStates.length){
       const s=shipStates[Math.floor(Math.random()*shipStates.length)];
@@ -3420,6 +3299,7 @@ function startSimulation(){
       live.events.set(norm.id,norm);
       pushFeed(norm);
       addMapMarker(norm.id,norm,'events');
+      OBJ_MESHES.delete(norm.id);
       setTimeout(()=>{live.events.delete(norm.id);OBJ_MESHES.delete(norm.id);if(mapMarkers[norm.id]){mapMarkers[norm.id].remove();delete mapMarkers[norm.id];}},norm.ttl);
     }
     setStat('sv-ev',live.events.size);
@@ -3674,26 +3554,19 @@ function drawSparkline(container,norm){
 }
 
 
-function getTT(){ return document.getElementById('tt'); }
 function showTT(x,y,obj){
-  const el = getTT(); if(!el) return;
   const bx=Math.min(x+14,window.innerWidth-220);
-  const by=Math.min(y+14,window.innerHeight-160);
-  el.style.left=bx+'px'; el.style.top=by+'px';
-  const nm=el.querySelector('#tt-name'), bd=el.querySelector('#tt-body');
-  if(nm) nm.textContent=obj.label||obj.type||'';
-  if(bd){
-    const rows=Object.entries({
-      type: obj.type, src: obj.source,
-      alt: obj.alt?Math.round(obj.alt)+'m':null,
-      spd: obj.speed?obj.speed+'kt':null,
-      hdg: obj.heading!=null?Math.round(obj.heading)+'°':null,
-    }).filter(([,v])=>v!=null).map(([k,v])=>`<div class="ttr"><span class="ttk">${k}</span><span class="ttv">${v}</span></div>`).join('');
-    bd.innerHTML=rows||'<span style="font-size:9px;color:var(--text-faint)">'+(obj.body||'').substring(0,80)+'</span>';
-  }
-  el.classList.add('show');
+  const by=Math.min(y+14,window.innerHeight-140);
+  ttEl.style.left=bx+'px';ttEl.style.top=by+'px';
+  document.getElementById('tt-name').textContent=(obj.label||obj.type||'?').toUpperCase();
+  let h='';
+  [['TYPE',obj.type||'—'],['LAT',obj.lat!=null?(+obj.lat).toFixed(3)+'°':'—'],['LON',obj.lon!=null?(+obj.lon).toFixed(3)+'°':'—'],['SRC',obj.source||'—']].forEach(([k,v])=>{
+    h+=`<div class="ttr"><span class="ttk">${k}</span><span class="ttv">${v}</span></div>`;
+  });
+  document.getElementById('tt-body').innerHTML=h;
+  ttEl.classList.add('show');
 }
-function hideTT(){ const el=getTT(); if(el) el.classList.remove('show'); }
+function hideTT(){ttEl.classList.remove('show');}
 
 // ── CHANNELS UI ────────────────────────────────────────
 const CH_DEFS=[
@@ -3794,16 +3667,14 @@ const INTEL_CATEGORIES = [
   {
     id:'security', label:'Cybersecurity', color:'#c07070', catClass:'icat-security',
     feeds:[
-      {name:'NVD CVEs (7d)',         type:'cve'},
-      {name:'CISA KEV',              type:'cisa_kev'},
-      {name:'GitHub Advisories',     type:'ghsa'},
-      {name:'Krebs on Security',     type:'rss', url:'https://krebsonsecurity.com/feed/'},
-      {name:'The Hacker News',       type:'rss', url:'https://feeds.feedburner.com/TheHackersNews'},
-      {name:'Bleeping Computer',     type:'rss', url:'https://www.bleepingcomputer.com/feed/'},
-      {name:'Schneier Security',     type:'rss', url:'https://www.schneier.com/feed/atom/'},
-      {name:'SANS ISC Diary',        type:'rss', url:'https://isc.sans.edu/rssfeed_full.xml'},
-      {name:'Exploit-DB RSS',        type:'rss', url:'https://www.exploit-db.com/rss.xml'},
-      {name:'arXiv Security',        type:'arxiv', arxivCat:'cs.CR', arxivQuery:'cat:cs.CR'},
+      {name:'NVD CVEs (7d)',       type:'cve'},
+      {name:'Krebs on Security',   type:'rss', url:'https://krebsonsecurity.com/feed/'},
+      {name:'Schneier Security',   type:'rss', url:'https://www.schneier.com/feed/atom/'},
+      {name:'The Hacker News',     type:'rss', url:'https://feeds.feedburner.com/TheHackersNews'},
+      {name:'Bleeping Computer',   type:'rss', url:'https://www.bleepingcomputer.com/feed/'},
+      {name:'Dark Reading',        type:'rss', url:'https://www.darkreading.com/rss.xml'},
+      {name:'SANS ISC Diary',      type:'rss', url:'https://isc.sans.edu/rssfeed_full.xml'},
+      {name:'arXiv Security',      type:'arxiv', arxivCat:'cs.CR', arxivQuery:'cat:cs.CR'},
     ]
   },
   {
@@ -3928,31 +3799,14 @@ async function intelLoadCategory(cat){
   let added=0;
   results.forEach(r=>{ if(r.status==='fulfilled') added+=r.value; });
   intelLoadingTabs.delete(cat.id);
+  // Re-sort
   allIntelItems.sort((a,b)=>(b.pubDate||0)-(a.pubDate||0));
   intelRenderTabs();
   if(intelActiveTab===cat.id||intelActiveTab==='all') intelRender();
-
-  // Push fresh items to the live feed panel (max 3 per category load)
-  const freshCutoff = Date.now() - 48*3600*1000; // last 48h
-  let pushed = 0;
-  allIntelItems
-    .filter(it => it.catId===cat.id && (it.pubDate||0)>freshCutoff)
-    .slice(0, 3)
-    .forEach(it => {
-      const norm = normalise({
-        id: it.id, type: 'news', label: it.title.substring(0,60),
-        source: it.src, body: it.snip||it.title,
-        lat: null, lon: null,
-        meta: { link: it.link, cat: it.cat, catClass: it.catClass }
-      });
-      pushFeed(norm);
-    });
 }
 
 async function fetchIntelFeed(feed, cat){
-  if(feed.type==='cve')      return await fetchNVD();
-  if(feed.type==='cisa_kev') return await fetchCISAKEV();
-  if(feed.type==='ghsa')     return await fetchGHSA();
+  if(feed.type==='cve') return await fetchNVD();
   if(feed.type==='hn')  return await fetchHN(feed, cat);
   if(feed.type==='arxiv') return await fetchArxiv(feed, cat);
   return await fetchRSS(feed, cat);
@@ -3960,11 +3814,9 @@ async function fetchIntelFeed(feed, cat){
 
 // Multi-proxy RSS with 3 fallbacks + robust parsing
 const RSS_PROXIES_LIST = [
-  u=>`https://corsproxy.io/?${encodeURIComponent(u)}`,
   u=>`https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u=>`https://corsproxy.io/?${encodeURIComponent(u)}`,
   u=>`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  u=>`https://thingproxy.freeboard.io/fetch/${u}`,
-  u=>`https://proxy.cors.sh/${u}`,
 ];
 
 function cleanXml(s){
@@ -3988,20 +3840,12 @@ function xmlText(el, ...sels){
 }
 
 async function proxyFetch(url, timeout=12000){
-  // 1. Try direct (works when serving from same origin or CORS-enabled)
-  try{
-    const r=await fetch(url,{signal:AbortSignal.timeout(Math.min(timeout,8000))});
-    if(r.ok){ const t=await r.text(); if(t&&t.length>100) return t; }
-  }catch(e){}
-  // 2. Try proxies in order
-  const customProxy = document.getElementById('rss-proxy')?.value?.trim() || '';
-  const proxyFns = customProxy
-    ? [u=>customProxy+encodeURIComponent(u), ...RSS_PROXIES_LIST]
-    : RSS_PROXIES_LIST;
-  for(const fn of proxyFns){
+  const customProxy = document.getElementById('rss-proxy')?.value?.trim() || CFG.rssProxy;
+  const proxies = [customProxy+encodeURIComponent(url), ...RSS_PROXIES_LIST.slice(1).map(fn=>fn(url))];
+  for(const p of proxies){
     try{
-      const r=await fetch(fn(url),{signal:AbortSignal.timeout(timeout)});
-      if(r.ok){ const t=await r.text(); if(t&&t.length>100) return t; }
+      const r = await fetch(p, {signal:AbortSignal.timeout(timeout)});
+      if(r.ok){ const t=await r.text(); if(t&&t.length>200) return t; }
     }catch(e){}
   }
   return null;
@@ -4111,13 +3955,10 @@ async function fetchHN(feed, cat){
 async function fetchNVD(){
   try{
     const now=new Date(), week=new Date(now-7*24*3600*1000);
-    // NVD requires the + to be encoded as %2B in URL params
-    const fmt=d=>d.toISOString().slice(0,19)+'%2B00%3A00';
-    const url=`https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${fmt(week)}&pubEndDate=${fmt(now)}&resultsPerPage=40&noRejected`;
-    let r=null;
-    try{ r=await fetch(url,{signal:AbortSignal.timeout(15000),headers:{'Accept':'application/json'}}); }
-    catch(e){ return 0; }
-    if(!r||!r.ok) return 0;
+    const fmt=d=>d.toISOString().slice(0,19)+'+00:00';
+    const url=`https://services.nvd.nist.gov/rest/json/cves/2.0?pubStartDate=${fmt(week)}&pubEndDate=${fmt(now)}&resultsPerPage=30`;
+    const r=await fetch(url,{signal:AbortSignal.timeout(15000)});
+    if(!r.ok) return 0;
     const data=await r.json();
     let count=0;
     (data.vulnerabilities||[]).forEach(v=>{
@@ -4136,73 +3977,6 @@ async function fetchNVD(){
         catClass:'icat-security',catColor:'#c07070',
         type:'cve',authors:score?`CVSS ${score} ${sev}`:'',
         pubDate:new Date(cve.published||0).getTime(),dedupKey
-      });
-      count++;
-    });
-    return count;
-  }catch(e){ return 0; }
-}
-
-// ── CISA Known Exploited Vulnerabilities (KEV) ──────────
-async function fetchCISAKEV(){
-  try{
-    const url='https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json';
-    const proxy=document.getElementById('rss-proxy')?.value?.trim()||CFG.rssProxy;
-    let data=null;
-    // Try direct, then each proxy
-    for(const fn of [u=>u, u=>proxy+encodeURIComponent(u), ...RSS_PROXIES_LIST]){
-      try{
-        const r=await fetch(fn(url),{signal:AbortSignal.timeout(10000)});
-        if(r.ok){ const j=await r.json(); if(j?.vulnerabilities) { data=j; break; } }
-      }catch(e){}
-    }
-    if(!data) return 0;
-    let count=0;
-    // Sort by dateAdded descending, take most recent 40
-    const vulns=(data.vulnerabilities||[]).sort((a,b)=>new Date(b.dateAdded)-new Date(a.dateAdded)).slice(0,40);
-    vulns.forEach(v=>{
-      const id='cisa_'+v.cveID;
-      const dedupKey=v.cveID.toLowerCase();
-      if(allIntelItems.some(i=>i.dedupKey===dedupKey)) return;
-      allIntelItems.push({
-        id, title:`⚠ KEV: ${v.cveID} — ${v.vulnerabilityName}`,
-        snip:`${v.vendorProject} · ${v.product} · ${v.shortDescription||''} · Due: ${v.dueDate||'?'}`,
-        link:`https://nvd.nist.gov/vuln/detail/${v.cveID}`,
-        src:'CISA KEV', cat:'Cybersecurity', catId:'security',
-        catClass:'icat-security', catColor:'#c07070',
-        type:'cve', authors:`Added: ${v.dateAdded}`,
-        pubDate:new Date(v.dateAdded||0).getTime(), dedupKey
-      });
-      count++;
-    });
-    return count;
-  }catch(e){ return 0; }
-}
-
-// ── GitHub Security Advisories (GraphQL-free public feed) ──
-async function fetchGHSA(){
-  try{
-    // GHSA publishes an RSS feed and also advisory JSON files
-    const url='https://api.github.com/advisories?type=reviewed&per_page=40';
-    const proxy=document.getElementById('rss-proxy')?.value?.trim()||CFG.rssProxy;
-    let data=null;
-    try{ const r=await fetch(url,{headers:{'Accept':'application/vnd.github+json'},signal:AbortSignal.timeout(10000)}); if(r.ok) data=await r.json(); } catch(e){}
-    if(!data){ try{ const r=await fetch(proxy+encodeURIComponent(url),{signal:AbortSignal.timeout(12000)}); if(r.ok) data=await r.json(); }catch(e){} }
-    if(!Array.isArray(data)) return 0;
-    let count=0;
-    data.forEach(adv=>{
-      const id='ghsa_'+adv.ghsa_id;
-      const dedupKey=adv.ghsa_id?.toLowerCase()||id;
-      if(allIntelItems.some(i=>i.dedupKey===dedupKey)) return;
-      const cvss=adv.cvss?.score;
-      allIntelItems.push({
-        id, title:`${adv.severity?.toUpperCase()||'?'}: ${adv.summary||adv.ghsa_id}`,
-        snip:(adv.description||'').substring(0,200)+(cvss?` — CVSS ${cvss}`:''),
-        link:adv.html_url||`https://github.com/advisories/${adv.ghsa_id}`,
-        src:'GitHub GHSA', cat:'Cybersecurity', catId:'security',
-        catClass:'icat-security', catColor:'#c07070',
-        type:'cve', authors:adv.ghsa_id+(cvss?` · CVSS ${cvss}`:''),
-        pubDate:new Date(adv.published_at||0).getTime(), dedupKey
       });
       count++;
     });
@@ -4606,46 +4380,28 @@ function askVera(prompt){ veraQ2(prompt); }
 
 function buildContext(){
   const lines=[`Time: ${new Date().toUTCString()}`];
-
-  // Live object counts
-  lines.push(`Tracking: ${live.flights?.size||0} flights  ${live.satellites?.size||0} satellites  ${live.ships?.size||0} ships  ${live.events?.size||0} events`);
-
-  // Flights
-  const fls=[...(live.flights?.values()||[])].slice(0,6);
-  if(fls.length) lines.push('Flights: '+fls.map(f=>`${f.label}@FL${f.alt?Math.round(f.alt/30.48):'?'}(${f.source||'?'})`).join(', '));
-
-  // Financial markets
-  const fin=[...(live.financial?.values()||[])].slice(0,12);
-  if(fin.length) lines.push('Markets: '+fin.map(f=>{
-    const v=+(f.value||0); const ch=+(f.change||0);
-    return `${f.label}=${v>100?v.toFixed(0):v.toFixed(4)} (${ch>=0?'+':''}${ch.toFixed(2)}%)`;
-  }).join('  '));
-
+  // Counts
+  lines.push(`Tracking: ${live.flights.size} flights, ${live.satellites.size} satellites, ${live.ships.size} ships, ${live.events.size} events`);
+  // Recent flights
+  const flights=[...live.flights.values()].slice(0,5);
+  if(flights.length) lines.push('Recent flights: '+flights.map(f=>`${f.label}(${f.source})`).join(', '));
+  // Financial
+  const fin=[...live.financial.values()].slice(0,10);
+  if(fin.length) lines.push('Markets: '+fin.map(f=>`${f.label}=$${(f.value||0).toFixed?.(2)??f.value}(${f.change>0?'+':''}${(f.change||0).toFixed?.(1)??0}%)`).join(' '));
   // Weather
-  const wx=Object.values(wxData||{}).filter(w=>w.temp!=null).slice(0,8);
-  if(wx.length) lines.push('Weather: '+wx.map(w=>`${w.name}:${(+(w.temp||0)).toFixed(0)}°C wind:${(+(w.wind||0)).toFixed(0)}kt`).join('  '));
-
+  const wx=Object.values(wxData).slice(0,6);
+  if(wx.length) lines.push('Weather: '+wx.map(w=>`${w.name}:${(w.temp||0).toFixed(0)}°C`).join(', '));
   // Recent alerts/events
-  const evts=[...(live.events?.values()||[])].slice(-6);
-  if(evts.length) lines.push('Recent events: '+evts.map(e=>e.body||e.label||'').filter(Boolean).join(' | '));
-
+  const evts=[...live.events.values()].slice(-5);
+  if(evts.length) lines.push('Recent alerts: '+evts.map(e=>e.body||e.label).join(' | '));
   // Ships
-  const ships=[...(live.ships?.values()||[])].slice(0,5);
-  if(ships.length) lines.push('Ships: '+ships.map(s=>`${s.label}(${s.speed||0}kt heading:${s.heading||'?'}°)`).join(', '));
-
-  // Intel / news headlines (most recent 6)
-  if(typeof allIntelItems!=='undefined' && allIntelItems.length){
-    const headlines=allIntelItems.slice(0,6).map(it=>`[${it.cat||it.src}] ${it.title}`).join('\n');
-    lines.push(`Recent intelligence (${allIntelItems.length} items):\n${headlines}`);
-  }
-
-  // Selected object detail
-  if(selObj) lines.push(`Currently viewing: [${selObj.type}] ${selObj.label}\n${(selObj.body||'').substring(0,200)}`);
-
-  // User notes
-  if(typeof notes!=='undefined' && notes.length)
-    lines.push(`User notes (${notes.length}): `+notes.slice(0,4).map(n=>`${n.label}: ${(n.body||'').substring(0,80)}`).join(' | '));
-
+  const ships=[...live.ships.values()].slice(0,4);
+  if(ships.length) lines.push('Ships: '+ships.map(s=>`${s.label}(${s.speed||0}kt)`).join(', '));
+  // Selected object
+  if(selObj) lines.push(`Currently viewing: [${selObj.type}] ${selObj.label} — ${(selObj.body||'').substring(0,120)}`);
+  // Notes
+  if(typeof notes!=='undefined'&&notes.length)
+    lines.push(`User notes(${notes.length}): `+notes.slice(0,3).map(n=>n.label+':'+n.body.substring(0,60)).join(' | '));
   return lines.join('\n');
 }
 
@@ -4765,7 +4521,7 @@ function handleRedisEvent(p){
   if(p.cmd==='HGETALL_RESPONSE'||p.type==='hgetall_result') { camHandleRedisHgetall(p.pairs||p.data||[]); return; }
   const norm=normalise({...p,source:p.source||'Redis'});
   pushFeed(norm);
-  if(norm.lat!=null&&norm.type in live){live[norm.type].set(norm.id,norm);addMapMarker(norm.id,norm,norm.type);}
+  if(norm.lat!=null&&norm.type in live){live[norm.type].set(norm.id,norm);addMapMarker(norm.id,norm,norm.type);OBJ_MESHES.delete(norm.id);}
 }
 window.worldviewInject=function(raw){pushFeed(normalise({...raw,source:raw.source||'inject'}));};
 
@@ -4855,7 +4611,7 @@ function smDrawLine(item, idx){
       blending:THREE.AdditiveBlending,depthWrite:false});
     const line=new THREE.Line(geo,mat);
     line.userData={smId:item.id};
-    if(groupObjs) groupObjs.add(line);
+    groupObjs.add(line);
     smLineObjs.push(line);
     // Cone at top
     const coneGeo=new THREE.ConeGeometry(0.005,0.015,6);
@@ -4866,7 +4622,7 @@ function smDrawLine(item, idx){
     cone.lookAt(new THREE.Vector3(0,0,0));
     cone.rotateX(Math.PI/2);
     cone.userData={smId:item.id};
-    if(groupObjs) groupObjs.add(cone);
+    groupObjs.add(cone);
     smLineObjs.push(cone);
   } catch(e){}
 }
@@ -5816,19 +5572,6 @@ async function camFetchBackendSource(sourceKey){
 }
 
 // ── FILTER & RENDER ───────────────────────────────────
-function camSetSource(src, btn){
-  document.querySelectorAll('.cam-sidetab').forEach(t=>t.classList.remove('on'));
-  if(btn) btn.classList.add('on');
-  // Set filter and apply
-  const el = document.getElementById('cam-filter-src');
-  if(el){ el.value=src; } else {
-    // Store directly since select is gone
-    window._camSrcFilter = src;
-  }
-  camPage=0;
-  camApplyFilters();
-}
-
 function camApplyFilters(){
   camPage = 0;
   const srcF = document.getElementById('cam-filter-src')?.value||'all';
@@ -5893,7 +5636,7 @@ function camRenderGrid(){
         <div class="cam-status-dot ${dotClass}" title="${cam.status}"></div>
       </div>`;
 
-    card.addEventListener('click', ()=>openCamLightbox(camPage*CAM_PAGE_SIZE+i));
+    card.addEventListener('click', ()=>openCamLightbox(i));
     grid.appendChild(card);
   });
 
@@ -6357,21 +6100,6 @@ function initCameras(){
 }
 
 // DriveBC open data CSV — 900+ BC highway cameras with lat/lon + snapshot URLs
-// ── RFC 4180 CSV row parser ──────────────────────────────
-function parseCSVRow(row){
-  const cols=[]; let cur='', inQ=false;
-  for(let i=0;i<row.length;i++){
-    const ch=row[i];
-    if(ch==='"'){
-      if(inQ && row[i+1]==='"'){ cur+='"'; i++; }
-      else inQ=!inQ;
-    } else if(ch===',' && !inQ){ cols.push(cur); cur=''; }
-    else cur+=ch;
-  }
-  cols.push(cur);
-  return cols;
-}
-
 async function fetchDriveBC(){
   try{
     // The official open data CSV from BC government
@@ -6397,16 +6125,11 @@ async function fetchDriveBC(){
     let added=0;
     rows.forEach(row=>{
       if(!row.trim()) return;
-      // RFC 4180 parse — highway_description can contain commas
-      const cols = parseCSVRow(row);
+      // CSV columns: webcam_id,name,highway_number,highway_description,lat,lon,elevation,image_url,update_frequency,is_on
+      const cols = row.split(',').map(c=>c.replace(/^"|"$/g,'').trim());
       if(cols.length < 8) return;
-      // CSV: webcam_id,name,highway_number,highway_description,lat,lon,elevation,image_url,...
-      const wcId=cols[0]?.trim(), name=cols[1]?.trim(), hwy=cols[2]?.trim();
-      const lat=cols[4]?.trim(), lon=cols[5]?.trim(), imageUrl=cols[7]?.trim();
-      if(!wcId||!lat||!lon||!imageUrl) return;
-      const latN=parseFloat(lat), lonN=parseFloat(lon);
-      // Sanity check: DriveBC cameras are in BC, Canada (lat 48-60, lon -139 to -114)
-      if(isNaN(latN)||isNaN(lonN)||latN<48||latN>60||lonN<-140||lonN>-113) return;
+      const [wcId,name,hwy,,lat,lon,,imageUrl,freq] = cols;
+      if(!lat||!lon||!imageUrl) return;
       const id = 'drivebc_'+wcId;
       if(existing.has(id)) return;
       const snapUrl = imageUrl.startsWith('http') ? imageUrl : 'https://images.drivebc.ca/bchighwaycam/pub/cameras/'+wcId+'/currentSnapshot.jpg';
@@ -6415,7 +6138,7 @@ async function fetchDriveBC(){
         url: snapUrl,
         feedType:'snapshot', category:'traffic',
         status:'unverified',
-        lat:latN, lon:lonN,
+        lat:+lat, lon:+lon,
         location:`BC Hwy ${hwy||'?'}`,
         tags:['traffic','drivebc','bc','canada'],
         source:'DriveBC', proxy:'',
@@ -6541,22 +6264,15 @@ function toggleTheme(){
 }
 
 (function boot(){
-  applyTheme();
+  applyTheme(); // apply saved theme immediately
   renderChannels();
   startFeeds();
   fetchWeather();
   initCameras();
   loadNotes();
   loadGameWatchlist();
-  // Auto-load intel feeds in background (no tab switch needed)
-  setTimeout(()=>{
-    intelRenderTabs();
-    // Load all intel categories silently in background
-    INTEL_CATEGORIES.filter(c=>c.id!=='all').forEach((cat,i)=>{
-      setTimeout(()=>intelLoadCategory(cat), i*2000); // stagger 2s apart to avoid rate limits
-    });
-  }, 5000); // wait 5s after startup
-  setTimeout(refreshGamePrices, 10000);
+  setTimeout(refreshGamePrices, 8000);
+  // Show globe as default view
   setView('globe');
 })();
 </script>

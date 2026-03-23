@@ -1,0 +1,1334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WORLDVIEW — Global Situational Awareness</title>
+
+<!-- CesiumJS — open source 3D globe (Apache 2.0) -->
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root {
+    --bg: #030a0f;
+    --surface: rgba(4, 20, 32, 0.92);
+    --border: rgba(0, 200, 255, 0.18);
+    --accent: #00c8ff;
+    --accent2: #00ff9d;
+    --warn: #ff6b2b;
+    --danger: #ff2b5e;
+    --text: #c8e8f0;
+    --muted: #4a7a90;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-ui: 'Exo 2', sans-serif;
+    --font-title: 'Orbitron', sans-serif;
+    --glow: 0 0 12px rgba(0,200,255,0.4);
+    --glow2: 0 0 12px rgba(0,255,157,0.4);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+
+  /* ── Globe Container ── */
+  #cesiumContainer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+  }
+
+  /* ── HUD Overlay ── */
+  #hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  /* ── Header ── */
+  #header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 52px;
+    background: linear-gradient(180deg, rgba(3,10,15,0.97) 0%, transparent 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 24px;
+    pointer-events: all;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: var(--font-title);
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 6px;
+    color: var(--accent);
+    text-shadow: var(--glow);
+    flex-shrink: 0;
+  }
+
+  .logo span { color: var(--accent2); }
+
+  #clock {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--accent2);
+    text-shadow: var(--glow2);
+    letter-spacing: 2px;
+  }
+
+  .header-stats {
+    display: flex;
+    gap: 20px;
+    margin-left: auto;
+  }
+
+  .stat-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    transition: color 0.3s;
+  }
+
+  .stat-badge.active { color: var(--text); }
+
+  .stat-badge .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: pulse 2s infinite;
+  }
+
+  .stat-badge.active .dot { background: var(--accent2); }
+
+  /* ── Left Panel ── */
+  #left-panel {
+    position: absolute;
+    top: 64px; left: 16px;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: all;
+  }
+
+  .panel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    backdrop-filter: blur(12px);
+  }
+
+  .panel-title {
+    font-family: var(--font-title);
+    font-size: 9px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Layer toggles */
+  .layer-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+    cursor: pointer;
+    border-radius: 3px;
+    padding-left: 4px;
+    transition: background 0.2s;
+  }
+
+  .layer-toggle:hover { background: rgba(0,200,255,0.06); }
+
+  .layer-label {
+    font-size: 12px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .layer-icon { font-size: 14px; }
+
+  /* Toggle switch */
+  .toggle-switch {
+    position: relative;
+    width: 32px; height: 16px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.1);
+    border-radius: 16px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .toggle-track::after {
+    content: '';
+    position: absolute;
+    left: 2px; top: 2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.2s;
+  }
+
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(0,200,255,0.3);
+  }
+
+  .toggle-switch input:checked + .toggle-track::after {
+    left: 18px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  /* ── Right Panel ── */
+  #right-panel {
+    position: absolute;
+    top: 64px; right: 16px;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: all;
+    max-height: calc(100vh - 80px);
+  }
+
+  /* ── Live Feed ── */
+  #live-feed {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #feed-list {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 280px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .feed-item {
+    padding: 8px;
+    border-bottom: 1px solid rgba(0,200,255,0.06);
+    cursor: pointer;
+    transition: background 0.2s;
+    animation: slideIn 0.3s ease;
+  }
+
+  .feed-item:hover { background: rgba(0,200,255,0.04); }
+
+  .feed-source {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+  }
+
+  .feed-headline {
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .feed-location {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+
+  /* ── Bottom Stats Bar ── */
+  #bottom-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 36px;
+    background: linear-gradient(0deg, rgba(3,10,15,0.97) 0%, transparent 100%);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 32px;
+    pointer-events: all;
+    border-top: 1px solid var(--border);
+  }
+
+  .bottom-stat {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .bottom-stat .val {
+    color: var(--accent2);
+    font-weight: bold;
+  }
+
+  /* ── Entity Add Button ── */
+  #add-entity-btn {
+    position: absolute;
+    bottom: 52px;
+    right: 16px;
+    background: rgba(0,200,255,0.12);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-title);
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 3px;
+    pointer-events: all;
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  #add-entity-btn:hover {
+    background: rgba(0,200,255,0.25);
+    box-shadow: var(--glow);
+  }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(3,10,15,0.85);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  .modal-overlay.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 24px;
+    width: 400px;
+    box-shadow: 0 0 40px rgba(0,200,255,0.1);
+  }
+
+  .modal h2 {
+    font-family: var(--font-title);
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    margin-bottom: 20px;
+    text-transform: uppercase;
+  }
+
+  .form-group {
+    margin-bottom: 14px;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    background: rgba(0,200,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    border-radius: 3px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .form-group input:focus,
+  .form-group select:focus {
+    border-color: var(--accent);
+  }
+
+  .form-group select option { background: #030a0f; }
+
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    justify-content: flex-end;
+  }
+
+  .btn {
+    padding: 8px 20px;
+    font-family: var(--font-title);
+    font-size: 10px;
+    letter-spacing: 2px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: rgba(0,200,255,0.15);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-primary:hover {
+    background: rgba(0,200,255,0.3);
+    box-shadow: var(--glow);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+
+  /* ── Scanning line effect ── */
+  #scan-line {
+    position: fixed;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0,200,255,0.3), transparent);
+    animation: scan 8s linear infinite;
+    pointer-events: none;
+    z-index: 5;
+    opacity: 0.5;
+  }
+
+  /* ── Corner decorations ── */
+  .corner {
+    position: absolute;
+    width: 20px; height: 20px;
+    pointer-events: none;
+  }
+
+  .corner-tl { top: 60px; left: 8px; border-top: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner-tr { top: 60px; right: 8px; border-top: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+  .corner-bl { bottom: 44px; left: 8px; border-bottom: 1px solid var(--accent); border-left: 1px solid var(--accent); }
+  .corner-br { bottom: 44px; right: 8px; border-bottom: 1px solid var(--accent); border-right: 1px solid var(--accent); }
+
+  /* ── Info popup ── */
+  #info-popup {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    max-width: 280px;
+    pointer-events: all;
+    display: none;
+    backdrop-filter: blur(12px);
+    box-shadow: var(--glow);
+    z-index: 20;
+  }
+
+  #info-popup h3 {
+    font-family: var(--font-title);
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  #info-popup .info-row {
+    display: flex;
+    gap: 8px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    margin-bottom: 3px;
+  }
+
+  #info-popup .info-key { color: var(--muted); min-width: 80px; }
+  #info-popup .info-val { color: var(--text); }
+
+  #info-popup-close {
+    position: absolute;
+    top: 6px; right: 8px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  /* ── Animations ── */
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes scan {
+    0% { top: -2px; }
+    100% { top: 100vh; }
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(10px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  /* Hide Cesium attribution bar (keep credit intact via Ion token) */
+  .cesium-widget-credits { display: none !important; }
+  .cesium-viewer-bottom { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Globe -->
+<div id="cesiumContainer"></div>
+
+<!-- HUD -->
+<div id="hud">
+
+  <!-- Scan line -->
+  <div id="scan-line"></div>
+
+  <!-- Corner deco -->
+  <div class="corner corner-tl"></div>
+  <div class="corner corner-tr"></div>
+  <div class="corner corner-bl"></div>
+  <div class="corner corner-br"></div>
+
+  <!-- Header -->
+  <div id="header">
+    <div class="logo">WORLD<span>VIEW</span></div>
+    <div id="clock">--:--:-- UTC</div>
+    <div class="header-stats">
+      <div class="stat-badge" id="badge-flights">
+        <div class="dot"></div>
+        <span>✈ <span id="count-flights">0</span> AIRCRAFT</span>
+      </div>
+      <div class="stat-badge" id="badge-sats">
+        <div class="dot"></div>
+        <span>🛰 <span id="count-sats">0</span> SATELLITES</span>
+      </div>
+      <div class="stat-badge" id="badge-news">
+        <div class="dot"></div>
+        <span>📡 <span id="count-news">0</span> NEWS</span>
+      </div>
+      <div class="stat-badge" id="badge-entities">
+        <div class="dot"></div>
+        <span>📍 <span id="count-entities">0</span> ENTITIES</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Left Panel -->
+  <div id="left-panel">
+
+    <!-- Layer Control -->
+    <div class="panel-card">
+      <div class="panel-title">Data Layers</div>
+
+      <div class="layer-toggle" onclick="toggleLayer('flights')">
+        <div class="layer-label"><span class="layer-icon">✈</span> Live Flights</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-flights" checked onchange="toggleLayer('flights', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+
+      <div class="layer-toggle" onclick="toggleLayer('satellites')">
+        <div class="layer-label"><span class="layer-icon">🛰</span> Satellites</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-satellites" checked onchange="toggleLayer('satellites', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+
+      <div class="layer-toggle" onclick="toggleLayer('news')">
+        <div class="layer-label"><span class="layer-icon">📡</span> News Events</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-news" checked onchange="toggleLayer('news', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+
+      <div class="layer-toggle" onclick="toggleLayer('entities')">
+        <div class="layer-label"><span class="layer-icon">📍</span> Custom Entities</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-entities" checked onchange="toggleLayer('entities', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+
+      <div class="layer-toggle" onclick="toggleLayer('weather')">
+        <div class="layer-label"><span class="layer-icon">🌩</span> Weather</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-weather" onchange="toggleLayer('weather', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+
+      <div class="layer-toggle">
+        <div class="layer-label"><span class="layer-icon">🌍</span> OSM Tiles</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-osm" checked onchange="toggleBaseLayer('osm', this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    </div>
+
+    <!-- Globe Settings -->
+    <div class="panel-card">
+      <div class="panel-title">View</div>
+      <div class="layer-toggle">
+        <div class="layer-label"><span class="layer-icon">🌑</span> Dark Side</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-nightside" checked onchange="toggleNightSide(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div class="layer-toggle">
+        <div class="layer-label"><span class="layer-icon">🌤</span> Atmosphere</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-atmo" checked onchange="toggleAtmosphere(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+      <div class="layer-toggle">
+        <div class="layer-label"><span class="layer-icon">🌊</span> Ocean Depth</div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-terrain" onchange="toggleTerrain(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="right-panel">
+    <div class="panel-card" id="live-feed">
+      <div class="panel-title">Live Intel Feed</div>
+      <div id="feed-list"></div>
+    </div>
+  </div>
+
+  <!-- Add Entity Button -->
+  <button id="add-entity-btn" onclick="openAddEntityModal()">+ Add Entity</button>
+
+  <!-- Bottom Bar -->
+  <div id="bottom-bar">
+    <div class="bottom-stat">CONN <span class="val" id="ws-status">OFFLINE</span></div>
+    <div class="bottom-stat">LAT <span class="val" id="cam-lat">--</span></div>
+    <div class="bottom-stat">LON <span class="val" id="cam-lon">--</span></div>
+    <div class="bottom-stat">ALT <span class="val" id="cam-alt">--</span></div>
+    <div class="bottom-stat" style="margin-left:auto; font-size:9px; color: var(--muted)">
+      DATA: OpenSky · CelesTrak · OSM · BBC/Reuters/AP
+    </div>
+  </div>
+
+  <!-- Info Popup -->
+  <div id="info-popup">
+    <span id="info-popup-close" onclick="closeInfoPopup()">✕</span>
+    <h3 id="info-title">—</h3>
+    <div id="info-body"></div>
+  </div>
+
+</div>
+
+<!-- Add Entity Modal -->
+<div class="modal-overlay" id="add-entity-modal">
+  <div class="modal">
+    <h2>Add Custom Entity</h2>
+    <div class="form-group">
+      <label>Entity Type</label>
+      <select id="entity-type">
+        <option value="camera">IP Camera</option>
+        <option value="sensor">IoT Sensor</option>
+        <option value="asset">Asset / Vehicle</option>
+        <option value="poi">Point of Interest</option>
+        <option value="alert">Alert Zone</option>
+        <option value="custom">Custom</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Label</label>
+      <input type="text" id="entity-label" placeholder="Camera #1 — Main Entrance" />
+    </div>
+    <div class="form-group">
+      <label>Latitude</label>
+      <input type="number" id="entity-lat" step="0.0001" placeholder="51.5074" />
+    </div>
+    <div class="form-group">
+      <label>Longitude</label>
+      <input type="number" id="entity-lon" step="0.0001" placeholder="-0.1278" />
+    </div>
+    <div class="form-group">
+      <label>Altitude (m)</label>
+      <input type="number" id="entity-alt" value="0" min="0" />
+    </div>
+    <div class="form-group">
+      <label>Notes / URL</label>
+      <input type="text" id="entity-notes" placeholder="rtsp://192.168.1.100:554/stream" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeAddEntityModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEntity()">Deploy</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ═══════════════════════════════════════════════════
+//  WORLDVIEW GLOBE CLIENT
+//  CesiumJS + WebSocket live data integration
+// ═══════════════════════════════════════════════════
+
+// ── Cesium Setup ─────────────────────────────────
+// Use free CesiumIon token (get one at cesium.com/ion)
+// or use empty string to use only open tile sources
+Cesium.Ion.defaultAccessToken = window.CESIUM_ION_TOKEN || '';
+
+const viewer = new Cesium.Viewer('cesiumContainer', {
+  // Use OSM Buildings (free) for 3D tiles if Ion token available
+  // terrain: Cesium.Terrain.fromWorldTerrain(), // needs Ion token
+  
+  // Base imagery: Open Street Map (free, no key)
+  baseLayer: Cesium.ImageryLayer.fromProviderAsync(
+    Cesium.OpenStreetMapImageryProvider.fromUrl('https://tile.openstreetmap.org/', {
+      credit: 'OpenStreetMap contributors',
+    })
+  ),
+
+  animation: false,
+  baseLayerPicker: false,
+  geocoder: false,
+  homeButton: false,
+  infoBox: false,
+  sceneModePicker: false,
+  selectionIndicator: false,
+  timeline: false,
+  navigationHelpButton: false,
+  fullscreenButton: false,
+  skyAtmosphere: new Cesium.SkyAtmosphere(),
+  skyBox: new Cesium.SkyBox({
+    sources: {
+      positiveX: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_px.jpg',
+      negativeX: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_mx.jpg',
+      positiveY: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_py.jpg',
+      negativeY: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_my.jpg',
+      positiveZ: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_pz.jpg',
+      negativeZ: 'https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Assets/Textures/SkyBox/tycho2t3_80_mz.jpg',
+    },
+  }),
+});
+
+// Dark style scene
+const scene = viewer.scene;
+scene.backgroundColor = Cesium.Color.fromCssColorString('#030a0f');
+scene.globe.enableLighting = true;
+scene.globe.atmosphereLightIntensity = 10.0;
+scene.globe.showGroundAtmosphere = true;
+
+// Night-side darkness
+scene.globe.nightFadeInDistance = 1e7;
+scene.globe.nightFadeOutDistance = 1e8;
+
+// 3D Terrain (free from Cesium Ion default)
+try {
+  Cesium.Terrain.fromWorldTerrain().then(terrain => {
+    viewer.terrainProvider = terrain.provider;
+  });
+} catch(e) {
+  console.log('Terrain unavailable without Ion token');
+}
+
+// OSM Buildings 3D (free from Cesium Ion)
+let osmBuildings;
+try {
+  Cesium.createOsmBuildingsAsync().then(tileset => {
+    osmBuildings = viewer.scene.primitives.add(tileset);
+  }).catch(() => console.log('OSM buildings unavailable without Ion token'));
+} catch(e) {}
+
+// ── Entity Collections ────────────────────────────
+const flightLayer = new Cesium.CustomDataSource('flights');
+const satelliteLayer = new Cesium.CustomDataSource('satellites');
+const newsLayer = new Cesium.CustomDataSource('news');
+const entityLayer = new Cesium.CustomDataSource('entities');
+const weatherLayer = new Cesium.CustomDataSource('weather');
+
+viewer.dataSources.add(flightLayer);
+viewer.dataSources.add(satelliteLayer);
+viewer.dataSources.add(newsLayer);
+viewer.dataSources.add(entityLayer);
+viewer.dataSources.add(weatherLayer);
+
+// State
+const flightCache = new Map();
+const satCache = new Map();
+const entityCache = new Map();
+let newsCount = 0;
+
+// ── Layer Visibility ──────────────────────────────
+const layers = {
+  flights: flightLayer,
+  satellites: satelliteLayer,
+  news: newsLayer,
+  entities: entityLayer,
+  weather: weatherLayer,
+};
+
+function toggleLayer(name, show) {
+  if (layers[name]) layers[name].show = (show !== undefined) ? show : !layers[name].show;
+  document.getElementById(`toggle-${name}`) && 
+    (document.getElementById(`toggle-${name}`).checked = layers[name]?.show);
+}
+
+function toggleBaseLayer(name, show) { /* handled by Cesium */ }
+
+function toggleNightSide(on) {
+  scene.globe.enableLighting = on;
+}
+
+function toggleAtmosphere(on) {
+  scene.globe.showGroundAtmosphere = on;
+}
+
+function toggleTerrain(on) {
+  // Toggle between flat and terrain
+}
+
+// ── Realtime Clock ────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('clock').textContent =
+    `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Camera Position Display ───────────────────────
+setInterval(() => {
+  const cam = viewer.camera;
+  const cart = Cesium.Cartographic.fromCartesian(cam.positionWC);
+  if (cart) {
+    document.getElementById('cam-lat').textContent =
+      Cesium.Math.toDegrees(cart.latitude).toFixed(3) + '°';
+    document.getElementById('cam-lon').textContent =
+      Cesium.Math.toDegrees(cart.longitude).toFixed(3) + '°';
+    document.getElementById('cam-alt').textContent =
+      (cart.height / 1000).toFixed(0) + ' km';
+  }
+}, 500);
+
+// ── Entity Icons ──────────────────────────────────
+const ENTITY_ICONS = {
+  camera:  '📷',
+  sensor:  '📡',
+  asset:   '🚗',
+  poi:     '📍',
+  alert:   '⚠️',
+  custom:  '⬡',
+};
+
+function entityColor(type) {
+  const colors = {
+    camera:  Cesium.Color.fromCssColorString('#00c8ff'),
+    sensor:  Cesium.Color.fromCssColorString('#00ff9d'),
+    asset:   Cesium.Color.fromCssColorString('#ffcc00'),
+    poi:     Cesium.Color.fromCssColorString('#ff6b2b'),
+    alert:   Cesium.Color.fromCssColorString('#ff2b5e'),
+    custom:  Cesium.Color.fromCssColorString('#cc88ff'),
+  };
+  return colors[type] || colors.custom;
+}
+
+// ── Flight Update ─────────────────────────────────
+function updateFlights(aircraft) {
+  const active = new Set();
+
+  for (const ac of aircraft) {
+    if (!ac.lat || !ac.lon) continue;
+    active.add(ac.id);
+
+    const pos = Cesium.Cartesian3.fromDegrees(
+      ac.lon, ac.lat,
+      (ac.baro_altitude || ac.geo_altitude || 10000)
+    );
+
+    if (flightCache.has(ac.id)) {
+      const ent = flightCache.get(ac.id);
+      ent.position = pos;
+      // Rotate model to heading
+      if (ac.heading != null) {
+        const hpr = new Cesium.HeadingPitchRoll(
+          Cesium.Math.toRadians(ac.heading), 0, 0
+        );
+        ent.orientation = Cesium.Transforms.headingPitchRollQuaternion(pos, hpr);
+      }
+    } else {
+      const ent = flightLayer.entities.add({
+        id: ac.id,
+        name: ac.callsign || ac.icao24,
+        position: pos,
+        orientation: ac.heading != null
+          ? Cesium.Transforms.headingPitchRollQuaternion(pos,
+              new Cesium.HeadingPitchRoll(Cesium.Math.toRadians(ac.heading), 0, 0))
+          : undefined,
+        billboard: {
+          image: createFlightIcon(ac.on_ground),
+          width: 24,
+          height: 24,
+          verticalOrigin: Cesium.VerticalOrigin.CENTER,
+          scaleByDistance: new Cesium.NearFarScalar(1e5, 1.2, 8e6, 0.3),
+        },
+        properties: ac,
+        description: buildFlightDescription(ac),
+      });
+      flightCache.set(ac.id, ent);
+    }
+  }
+
+  // Remove stale
+  for (const [id, ent] of flightCache) {
+    if (!active.has(id)) {
+      flightLayer.entities.remove(ent);
+      flightCache.delete(id);
+    }
+  }
+
+  document.getElementById('count-flights').textContent = flightCache.size;
+  document.getElementById('badge-flights').classList.add('active');
+}
+
+function createFlightIcon(onGround) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = onGround ? '#ffcc00' : '#00c8ff';
+  ctx.font = '20px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('✈', 16, 16);
+  return canvas;
+}
+
+function buildFlightDescription(ac) {
+  return `
+    <b>${ac.callsign || ac.icao24}</b><br/>
+    Origin: ${ac.origin_country || 'Unknown'}<br/>
+    Alt: ${ac.baro_altitude ? Math.round(ac.baro_altitude) + 'm' : 'N/A'}<br/>
+    Speed: ${ac.velocity ? Math.round(ac.velocity * 3.6) + ' km/h' : 'N/A'}<br/>
+    Source: ${ac.source}
+  `;
+}
+
+// ── Satellite Update ──────────────────────────────
+function updateSatellites(satellites) {
+  for (const sat of satellites) {
+    const pos = Cesium.Cartesian3.fromDegrees(
+      sat.lon, sat.lat, sat.alt_km * 1000
+    );
+
+    if (satCache.has(sat.id)) {
+      satCache.get(sat.id).position = pos;
+    } else {
+      const color = sat.group === 'starlink' 
+        ? Cesium.Color.fromCssColorString('#8b5cf6')
+        : sat.group === 'stations'
+        ? Cesium.Color.fromCssColorString('#00ff9d')
+        : Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.7);
+
+      const ent = satelliteLayer.entities.add({
+        id: sat.id,
+        name: sat.name,
+        position: pos,
+        point: {
+          pixelSize: sat.group === 'stations' ? 5 : 2,
+          color: color,
+          outlineColor: color.withAlpha(0.3),
+          outlineWidth: 1,
+          scaleByDistance: new Cesium.NearFarScalar(1e6, 2, 1e8, 0.5),
+        },
+        properties: sat,
+      });
+      satCache.set(sat.id, ent);
+    }
+  }
+
+  document.getElementById('count-sats').textContent = satCache.size;
+  document.getElementById('badge-sats').classList.add('active');
+}
+
+// ── News Update ───────────────────────────────────
+function addNewsItems(items) {
+  for (const item of items) {
+    if (!item.lat || !item.lon) continue;
+
+    newsLayer.entities.add({
+      id: `news_${item.id}`,
+      name: item.title,
+      position: Cesium.Cartesian3.fromDegrees(item.lon, item.lat, 0),
+      billboard: {
+        image: createNewsIcon(),
+        width: 20,
+        height: 20,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        scaleByDistance: new Cesium.NearFarScalar(1e4, 1.5, 1e7, 0.5),
+      },
+      properties: item,
+    });
+
+    addToFeed(item);
+    newsCount++;
+  }
+
+  document.getElementById('count-news').textContent = newsCount;
+  document.getElementById('badge-news').classList.add('active');
+}
+
+function createNewsIcon() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 24; canvas.height = 24;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ff6b2b';
+  ctx.beginPath();
+  ctx.arc(12, 10, 8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#030a0f';
+  ctx.font = 'bold 11px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('!', 12, 10);
+  // Pin
+  ctx.fillStyle = '#ff6b2b';
+  ctx.beginPath();
+  ctx.moveTo(9, 16); ctx.lineTo(12, 24); ctx.lineTo(15, 16);
+  ctx.fill();
+  return canvas;
+}
+
+function addToFeed(item) {
+  const feedList = document.getElementById('feed-list');
+  const el = document.createElement('div');
+  el.className = 'feed-item';
+  el.innerHTML = `
+    <div class="feed-source">${item.source}</div>
+    <div class="feed-headline">${item.title}</div>
+    <div class="feed-location">📍 ${item.lat.toFixed(2)}, ${item.lon.toFixed(2)}</div>
+  `;
+  el.onclick = () => flyTo(item.lon, item.lat, 2e6);
+  feedList.prepend(el);
+
+  // Keep feed trimmed
+  while (feedList.children.length > 50) {
+    feedList.removeChild(feedList.lastChild);
+  }
+}
+
+// ── Custom Entity ─────────────────────────────────
+function addCustomEntity(entity) {
+  const pos = Cesium.Cartesian3.fromDegrees(
+    entity.lon, entity.lat, entity.alt || 0
+  );
+
+  const ent = entityLayer.entities.add({
+    id: `entity_${entity.id}`,
+    name: entity.label,
+    position: pos,
+    billboard: {
+      image: createEntityIcon(entity.type),
+      width: 28,
+      height: 28,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+    },
+    label: {
+      text: entity.label,
+      font: '10px "Exo 2", sans-serif',
+      fillColor: Cesium.Color.fromCssColorString('#c8e8f0'),
+      outlineColor: Cesium.Color.fromCssColorString('#030a0f'),
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      pixelOffset: new Cesium.Cartesian2(0, -32),
+      scaleByDistance: new Cesium.NearFarScalar(1e4, 1, 5e6, 0),
+    },
+    properties: entity,
+  });
+
+  entityCache.set(entity.id, ent);
+  document.getElementById('count-entities').textContent = entityCache.size;
+  document.getElementById('badge-entities').classList.add('active');
+}
+
+function createEntityIcon(type) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 32; canvas.height = 32;
+  const ctx = canvas.getContext('2d');
+  const color = entityColor(type).toCssColorString();
+  
+  // Background circle
+  ctx.fillStyle = 'rgba(3,10,15,0.8)';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(16, 16, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Icon
+  ctx.font = '16px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ENTITY_ICONS[type] || '⬡', 16, 16);
+  return canvas;
+}
+
+// ── Camera Flight ─────────────────────────────────
+function flyTo(lon, lat, alt = 5e5, duration = 2) {
+  viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, alt),
+    duration: duration,
+  });
+}
+
+// ── Click Handler ─────────────────────────────────
+const handler = new Cesium.ScreenSpaceEventHandler(scene.canvas);
+handler.setInputAction(e => {
+  const picked = viewer.scene.pick(e.position);
+  if (picked && picked.id && picked.id.properties) {
+    showInfoPopup(picked.id, e.position);
+  } else {
+    closeInfoPopup();
+  }
+}, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+function showInfoPopup(entity, screenPos) {
+  const popup = document.getElementById('info-popup');
+  const props = entity.properties;
+
+  document.getElementById('info-title').textContent = entity.name || 'Unknown';
+
+  let rows = '';
+  if (props) {
+    const data = props.getValue ? props.getValue(Cesium.JulianDate.now()) : {};
+    const fields = ['callsign','icao24','origin_country','baro_altitude','velocity',
+                    'heading','source','norad_id','group','alt_km','speed_kms',
+                    'type','notes','url'];
+    for (const f of fields) {
+      if (data[f] != null) {
+        rows += `<div class="info-row">
+          <span class="info-key">${f}</span>
+          <span class="info-val">${data[f]}</span>
+        </div>`;
+      }
+    }
+  }
+
+  document.getElementById('info-body').innerHTML = rows || '<div class="info-row"><span class="info-key">No details</span></div>';
+
+  popup.style.display = 'block';
+  popup.style.left = Math.min(screenPos.x + 12, window.innerWidth - 300) + 'px';
+  popup.style.top = Math.min(screenPos.y - 20, window.innerHeight - 200) + 'px';
+}
+
+function closeInfoPopup() {
+  document.getElementById('info-popup').style.display = 'none';
+}
+
+// ── Add Entity Modal ──────────────────────────────
+function openAddEntityModal() {
+  document.getElementById('add-entity-modal').classList.add('open');
+}
+
+function closeAddEntityModal() {
+  document.getElementById('add-entity-modal').classList.remove('open');
+}
+
+async function submitEntity() {
+  const entity = {
+    type: document.getElementById('entity-type').value,
+    label: document.getElementById('entity-label').value || 'Unnamed',
+    lat: parseFloat(document.getElementById('entity-lat').value),
+    lon: parseFloat(document.getElementById('entity-lon').value),
+    alt: parseFloat(document.getElementById('entity-alt').value) || 0,
+    notes: document.getElementById('entity-notes').value,
+  };
+
+  if (isNaN(entity.lat) || isNaN(entity.lon)) {
+    alert('Please enter valid coordinates');
+    return;
+  }
+
+  // Post to backend
+  try {
+    const resp = await fetch('/api/entities', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(entity),
+    });
+    const result = await resp.json();
+    entity.id = result.id;
+    addCustomEntity(entity);
+    closeAddEntityModal();
+    flyTo(entity.lon, entity.lat, 5e5);
+  } catch (e) {
+    // If API unavailable, add locally
+    entity.id = Date.now().toString();
+    addCustomEntity(entity);
+    closeAddEntityModal();
+  }
+}
+
+// ── WebSocket Connection ──────────────────────────
+const WS_URL = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/globe`;
+let ws;
+let reconnectDelay = 2000;
+
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => {
+    document.getElementById('ws-status').textContent = 'LIVE';
+    document.getElementById('ws-status').style.color = 'var(--accent2)';
+    reconnectDelay = 2000;
+    
+    // Subscribe to all channels
+    ws.send(JSON.stringify({
+      type: 'subscribe',
+      channels: ['flights', 'satellites', 'news', 'entities'],
+    }));
+  };
+
+  ws.onmessage = e => {
+    try {
+      const msg = JSON.parse(e.data);
+      const { channel, data } = msg;
+
+      if (!data) return;
+
+      switch (channel) {
+        case 'flights':
+          if (data.aircraft) updateFlights(data.aircraft);
+          break;
+        case 'satellites':
+          if (data.satellites) updateSatellites(data.satellites);
+          break;
+        case 'news':
+          if (data.new_items) addNewsItems(data.new_items);
+          break;
+        case 'entities':
+          if (data.lat && data.lon) addCustomEntity(data);
+          break;
+      }
+    } catch (err) {
+      console.error('WS parse error', err);
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('ws-status').textContent = 'RECONNECTING';
+    document.getElementById('ws-status').style.color = 'var(--warn)';
+    setTimeout(connectWS, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+  };
+
+  ws.onerror = () => {
+    document.getElementById('ws-status').textContent = 'ERROR';
+    document.getElementById('ws-status').style.color = 'var(--danger)';
+  };
+}
+
+// ── Initial Data Load (REST snapshot) ────────────
+async function loadInitialData() {
+  try {
+    const [flights, sats, news, entities] = await Promise.allSettled([
+      fetch('/api/state/flights').then(r => r.json()),
+      fetch('/api/state/satellites').then(r => r.json()),
+      fetch('/api/state/news').then(r => r.json()),
+      fetch('/api/state/entities').then(r => r.json()),
+    ]);
+
+    if (flights.status === 'fulfilled') updateFlights(flights.value.aircraft || []);
+    if (sats.status === 'fulfilled') updateSatellites(sats.value.satellites || []);
+    if (news.status === 'fulfilled') addNewsItems(news.value.items || []);
+    if (entities.status === 'fulfilled') {
+      (entities.value.entities || []).forEach(addCustomEntity);
+    }
+  } catch (e) {
+    console.warn('Initial data load failed, waiting for WebSocket', e);
+  }
+}
+
+// ── Weather Overlay (OpenWeatherMap tiles, free) ──
+function addWeatherLayer(apiKey) {
+  if (!apiKey) return;
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: `https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${apiKey}`,
+      maximumLevel: 9,
+      credit: 'OpenWeatherMap',
+    })
+  );
+}
+
+// ── Startup ───────────────────────────────────────
+(async () => {
+  // Fly to Earth overview
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(0, 20, 2e7),
+  });
+
+  await loadInitialData();
+  connectWS();
+
+  // Add weather if key configured
+  if (window.OWM_API_KEY) addWeatherLayer(window.OWM_API_KEY);
+
+  console.log('%cWORLDVIEW ACTIVE', 'color:#00c8ff;font-family:monospace;font-size:16px;font-weight:bold');
+})();
+</script>
+</body>
+</html>

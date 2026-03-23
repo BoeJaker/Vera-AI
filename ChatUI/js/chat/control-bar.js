@@ -110,7 +110,7 @@ VeraChat.prototype._buildUnifiedControlBar = function () {
                 <button class="ucb-btn ucb-btn--mg" id="ucb-mg-btn"
                         data-tooltip="Memory Graph Explorer"
                         onclick="app._ucbToggleMG()">
-                    ${icons.graphNode} <span class="ucb-label">Graph</span>
+                    ${icons.graphNode} <span class="ucb-label">Ctx Graph</span>
                 </button>
 
                 <span class="ucb-divider"></span>

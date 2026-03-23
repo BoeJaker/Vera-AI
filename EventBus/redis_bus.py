@@ -52,7 +52,7 @@ from Vera.EventBus.config import (
     POSTGRES_DSN,
 )
 from Vera.EventBus.postgres import PostgresPool, EventLogger, SyncLogBridge
-from Vera.EventBus.memory_promoter import MemoryPromoter
+from Vera.EventBus.promoter import MemoryPromoter
 
 log = logging.getLogger("vera.eventbus")
 

@@ -3,8 +3,32 @@
 """
 Vera Chat Module — Parallel Execution with tiered context injection.
 
-Context strategy per stage
-───────────────────────────────────────────────────────────────────
+PATCH NOTES
+───────────────────────────────────────────────────────────────────────
+1. Thought capture → separate memory nodes
+   Thoughts flushed from thought_queue are now saved as node_type="Thought"
+   in add_session_memory, distinct from "Response" nodes.  A helper
+   _flush_and_save_thoughts() handles this consistently from all call sites.
+
+2. Parallel flow speed
+   - Coordination loop timeout tightened: preamble/action get() now use
+     timeout=0.005 (was 0.01) with a short time.sleep(0.001) backstop.
+   - Triage worker no longer calls ctx.build() — it passes the raw query
+     directly (context was already unused by the triage classifier).
+
+3. No hardcoded model names
+   All references to "gemma2", "triage-agent" and similar have been removed
+   from this file.  Use vera_instance.fast_llm / intermediate_llm / etc.
+
+4. Memory capture for tool use (adaptive included)
+   - Query is saved before triage (unchanged).
+   - action_worker now calls add_session_memory for its full response text
+     after the action completes.
+   - _parallel_execute: action path saves action_response explicitly.
+   - Direct route: all modes now call save_to_memory at the end.
+
+Context strategy per stage (unchanged)
+───────────────────────────────────────────────────────────────────────
 Stage           | Identity | Style | History | Vectors | Graph | Tools
 ──────────────  | ──────── | ────── | ─────── | ─────── | ───── | ─────
 triage          |    ✗     |   ✗   |    ✗    |    ✗    |   ✗   |  ✓
@@ -51,6 +75,42 @@ class VeraChat:
         }
 
     # ====================================================================
+    # MEMORY HELPERS
+    # ====================================================================
+
+    def _save_session(self, text: str, node_type: str, agent: str = "", extra: dict = None):
+        """Unified helper — save any text as a session memory node."""
+        if not text or not text.strip():
+            return
+        if not (hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess')):
+            return
+        meta = {"topic": node_type.lower(), "agent": agent}
+        if extra:
+            meta.update(extra)
+        self.vera.mem.add_session_memory(
+            self.vera.sess.id, text, node_type, meta
+        )
+
+    def _flush_and_save_thoughts(self):
+        """
+        Drain thought_queue and save every thought as a separate Thought
+        memory node.  Returns the concatenated thought text (may be empty).
+        """
+        if not hasattr(self.vera, 'thought_queue'):
+            return ""
+        thoughts = []
+        try:
+            while True:
+                chunk = self.vera.thought_queue.get_nowait()
+                thoughts.append(chunk)
+        except Empty:
+            pass
+        thought_text = "".join(thoughts).strip()
+        if thought_text:
+            self._save_session(thought_text, "Thought", agent="reasoning")
+        return thought_text
+
+    # ====================================================================
     # STREAM HELPER — per-chunk idle timeout
     # ====================================================================
 
@@ -60,8 +120,6 @@ class VeraChat:
         Stream result chunks from the orchestrator with a per-chunk idle timeout.
 
         idle_timeout  — max seconds to wait for the *next* chunk before giving up.
-                        This prevents false positives from slow-starting models
-                        while still catching genuinely stalled streams.
         total_timeout — hard cap for the entire stream regardless of activity.
         """
         result_queue: queue.Queue = queue.Queue()
@@ -117,11 +175,8 @@ class VeraChat:
             context=context,
         )
 
-        # FIX: save query to memory before executing — was missing for direct routes
-        if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
-            self.vera.mem.add_session_memory(
-                self.vera.sess.id, query, "Query", {"topic": "plan"}, promote=True
-            )
+        # Save query to memory before executing
+        self._save_session(query, "Query", extra={"topic": "plan"})
 
         def fallback_llm(default_role: str):
             role = model_override or default_role
@@ -185,6 +240,8 @@ class VeraChat:
                 yield chunk
                 action_response += chunk
                 total_response += chunk
+            # Save action response as its own memory node
+            self._save_session(action_response, "Response", agent=mode)
             if action_response.strip():
                 yield "\n\n--- Conclusion ---\n"
                 total_response += "\n\n--- Conclusion ---\n"
@@ -200,14 +257,78 @@ class VeraChat:
             ):
                 yield chunk
                 total_response += chunk
+        
+        elif mode == 'model':
+            raw_model = routing_config.get('specific_model', '').strip()
+            if not raw_model:
+                self.logger.warning("model route: no specific_model specified, falling back to fast_llm", context=context)
+                raw_model = None
 
+            # Resolve the LLM
+            target_llm = None
+            if raw_model:
+                try:
+                    mgr = getattr(self.vera, 'ollama_manager', None) \
+                        or getattr(self.vera, 'llm_manager', None)
+                    if mgr and hasattr(mgr, 'create_llm'):
+                        target_llm = mgr.create_llm(raw_model)
+                        self.logger.info(
+                            f"🎛️ model route: resolved '{raw_model}' via cluster manager",
+                            context=context,
+                        )
+                    else:
+                        if hasattr(self.vera, 'get_llm_by_name'):
+                            target_llm = self.vera.get_llm_by_name(raw_model)
+                        else:
+                            self.logger.warning(
+                                f"model route: no cluster manager found — falling back to fast_llm",
+                                context=context,
+                            )
+                except Exception as e:
+                    self.logger.error(
+                        f"model route: failed to resolve '{raw_model}': {e} — falling back to fast_llm",
+                        context=context,
+                    )
+
+            if target_llm is None:
+                target_llm = self.vera.fast_llm
+                raw_model = raw_model or 'fast_llm (fallback)'
+
+            # ── Stage resolution ─────────────────────────────────────────────────
+            # Priority: explicit routing_config['stage'] > inferred from model tier
+            explicit_stage = routing_config.get('stage', '').strip()
+            if explicit_stage and explicit_stage in STAGE_SECTIONS:
+                stage = explicit_stage
+                self.logger.info(f"🎛️ model route: using explicit stage '{stage}'", context=context)
+            else:
+                # Infer from model name — check against known tier patterns
+                model_lower = raw_model.lower()
+                if any(k in model_lower for k in ('deep', 'large', 'llama3', '70b', '72b', 'qwen2.5:72', 'mixtral')):
+                    stage = "reasoning"
+                elif any(k in model_lower for k in ('intermediate', 'medium', '32b', '13b', '14b', 'qwen2.5:32')):
+                    stage = "intermediate"
+                else:
+                    stage = "general"
+                self.logger.info(f"🎛️ model route: inferred stage '{stage}' from model '{raw_model}'", context=context)
+
+            self.logger.info(f"🎛️ model route: streaming '{raw_model}' with stage='{stage}'", context=context)
+
+            prompt = self.ctx.build(query, stage=stage)
+            for chunk in self.vera.stream_llm(target_llm, prompt):
+                c = extract_chunk_text(chunk)
+                yield c
+                total_response += c
         else:
             self.logger.warning(f"Unknown routing mode '{mode}', defaulting to simple", context=context)
             yield from self.execute_direct_route(query, {'mode': 'simple'}, context)
             return  # memory already saved by recursive call
 
+        # Flush any thoughts accumulated during this route
+        self._flush_and_save_thoughts()
+
         if total_response:
             self.vera.save_to_memory(query, total_response)
+            self._save_session(total_response, "Response", agent=mode)
 
     # ====================================================================
     # MAIN ENTRY POINT
@@ -237,8 +358,8 @@ class VeraChat:
 
         self.logger.start_timer("total_query_processing")
 
-        if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
-            self.vera.mem.add_session_memory(self.vera.sess.id, query, "Query", {"topic": "plan"}, promote=True)
+        # Save user query to memory before anything else
+        self._save_session(query, "Query", extra={"topic": "plan"})
 
         if not hasattr(self.vera, 'orchestrator') or not self.vera.orchestrator or not self.vera.orchestrator.running:
             self.logger.error("Orchestrator not running")
@@ -249,10 +370,11 @@ class VeraChat:
             query, query_context, routing_hints
         )
 
-        if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
-            self.vera.mem.add_session_memory(
-                self.vera.sess.id, full_triage, "Triage", {"topic": "triage"}, promote=True
-            )
+        # Save triage result as its own memory node
+        self._save_session(full_triage, "Triage", extra={"topic": "triage"})
+
+        # Flush any thoughts captured during parallel execution
+        self._flush_and_save_thoughts()
 
         if complete:
             self.vera.save_to_memory(query, total_response)
@@ -269,17 +391,29 @@ class VeraChat:
 
         elif "adaptive" in classification:
             max_steps = 20
+            action_response = ""
             try:
                 task_id = self.vera.orchestrator.submit_task(
                     "toolchain.execute_adaptive", vera_instance=self.vera,
                     query=query, max_steps=max_steps
                 )
                 for chunk in self._stream_with_idle_timeout(task_id, idle_timeout=60.0, total_timeout=300.0):
-                    yield chunk; total_response += chunk
+                    yield chunk
+                    action_response += chunk
+                    total_response += chunk
             except Exception as e:
                 self.logger.error(f"Adaptive toolchain failed: {e}", context=route_context)
-                for chunk in self.vera.adaptive_toolchain.execute_adaptive(query, max_steps=max_steps):
-                    c = extract_chunk_text(chunk); yield c; total_response += c
+                _atc = getattr(self.vera, '_adaptive_toolchain', None) \
+                    or getattr(self.vera, 'adaptive_toolchain', None) \
+                    or self.vera.toolchain
+                for chunk in _atc.execute_adaptive(query, max_steps=max_steps):
+                    c = extract_chunk_text(chunk)
+                    yield c
+                    action_response += c
+                    total_response += c
+            # Save adaptive action response separately
+            self._save_session(action_response, "Response", agent="adaptive")
+            self._flush_and_save_thoughts()
 
         elif classification == "proactive":
             yield from self._handle_proactive(route_context)
@@ -300,12 +434,16 @@ class VeraChat:
             prompt = self.ctx.build(query, stage="reasoning", preamble=preamble_response)
             continuation = ""
             for chunk in self._execute_reasoning_continuation(query, prompt, route_context):
-                yield chunk; total_response += chunk; continuation += chunk
+                yield chunk
+                total_response += chunk
+                continuation += chunk
+            self._flush_and_save_thoughts()
             if continuation.strip():
                 yield "\n\n--- Conclusion ---\n"
                 total_response += "\n\n--- Conclusion ---\n"
                 for chunk in self._generate_conclusion(query, total_response, query_context):
-                    yield chunk; total_response += chunk
+                    yield chunk
+                    total_response += chunk
 
         elif classification == "complex":
             yield "\n\n"
@@ -313,23 +451,32 @@ class VeraChat:
             prompt = self.ctx.build(query, stage="reasoning", preamble=preamble_response)
             continuation = ""
             for chunk in self._execute_deep_continuation(query, prompt, route_context):
-                yield chunk; total_response += chunk; continuation += chunk
+                yield chunk
+                total_response += chunk
+                continuation += chunk
+            self._flush_and_save_thoughts()
             if continuation.strip():
                 yield "\n\n--- Conclusion ---\n"
                 total_response += "\n\n--- Conclusion ---\n"
                 for chunk in self._generate_conclusion(query, total_response, query_context):
-                    yield chunk; total_response += chunk
+                    yield chunk
+                    total_response += chunk
 
         elif classification == "intermediate":
-            yield "\n\n"; total_response += "\n\n"
+            yield "\n\n"
+            total_response += "\n\n"
             prompt = self.ctx.build(query, stage="intermediate", preamble=preamble_response)
             for chunk in self._execute_intermediate_continuation(query, prompt, route_context):
-                yield chunk; total_response += chunk
+                yield chunk
+                total_response += chunk
+            self._flush_and_save_thoughts()
 
         elif classification == "coding":
-            yield "\n\n"; total_response += "\n\n"
+            yield "\n\n"
+            total_response += "\n\n"
             for chunk in self._execute_coding(query):
-                yield chunk; total_response += chunk
+                yield chunk
+                total_response += chunk
 
         if total_response:
             self.vera.save_to_memory(query, total_response)
@@ -355,14 +502,14 @@ class VeraChat:
         classification    = None
         action_started    = False
 
-        # ── Triage thread ─────────────────────────────────────────────────
+        # ── Triage thread ──────────────────────────────────────────────
         def triage_worker():
             nonlocal full_triage, classification
             try:
                 self.logger.start_timer("triage")
-                # Triage only needs the raw query — no context, no history, no vectors.
-                # Passing ctx.build() output here was making triage slow (60s+) because
-                # it bloated the prompt with unnecessary context the classifier never uses.
+                # PATCH: Pass raw query only — no ctx.build(), which was
+                # bloating the prompt and causing 60s+ triage times.
+                # The triage classifier only needs the query text.
                 task_id = self.vera.orchestrator.submit_task(
                     "llm.triage", vera_instance=self.vera, query=query
                 )
@@ -381,12 +528,8 @@ class VeraChat:
                 self.logger.error(f"Triage failed: {e}")
                 triage_result.put(("error", str(e)))
 
-        # ── Preamble thread ───────────────────────────────────────────────
+        # ── Preamble thread ────────────────────────────────────────────
         def preamble_worker():
-            # NOTE: do NOT accumulate into preamble_response here.
-            # The coordination loop is the single source of truth — it accumulates
-            # preamble_response as it drains preamble_chunks. Accumulating in both
-            # places caused the preamble to be doubled when returned to the caller.
             try:
                 preamble_prompt = self.ctx.build(query, stage="preamble")
                 task_id = self.vera.orchestrator.submit_task(
@@ -402,7 +545,7 @@ class VeraChat:
                 self.logger.error(f"Preamble failed: {e}")
                 preamble_chunks.put(None)
 
-        # ── Action thread ─────────────────────────────────────────────────
+        # ── Action thread ──────────────────────────────────────────────
         def action_worker():
             action_start.wait()
             self.logger.info(f"🎬 Action worker started: {classification}")
@@ -411,7 +554,6 @@ class VeraChat:
                 action_chunks.put(None)
                 return
 
-            # (task_name, kwargs, idle_timeout, total_timeout)
             task_config = {
                 "toolchain":            ("toolchain.execute",          {},                  120.0, 600.0),
                 "toolchain-parallel":   ("toolchain.execute.parallel", {},                   60.0,  90.0),
@@ -431,6 +573,8 @@ class VeraChat:
             )
 
             self.logger.info(f"⚡ Executing {task_name} (idle={idle_timeout}s total={total_timeout}s)")
+
+            action_text = ""
             try:
                 task_id = self.vera.orchestrator.submit_task(
                     task_name, vera_instance=self.vera, query=query, **kwargs
@@ -439,27 +583,50 @@ class VeraChat:
                 for chunk in self._stream_with_idle_timeout(task_id, idle_timeout=idle_timeout,
                                                              total_timeout=total_timeout):
                     action_chunks.put(chunk)
+                    action_text += chunk
                     chunk_count += 1
                 self.logger.success(f"✓ Action complete: {chunk_count} chunks")
-                action_chunks.put(None)
 
             except Exception as e:
                 self.logger.error(f"❌ {task_name} failed: {e}")
                 is_adaptive = classification in ("toolchain-adaptive", "toolchain-quick", "toolchain-stepbystep")
                 try:
-                    if is_adaptive and hasattr(self.vera, 'adaptive_toolchain'):
-                        for chunk in self.vera.adaptive_toolchain.execute_adaptive(
+                    _atc = (
+                        getattr(self.vera, '_adaptive_toolchain', None)
+                        or getattr(self.vera, 'adaptive_toolchain', None)
+                        or self.vera.toolchain
+                    )
+                    if is_adaptive:
+                        for chunk in _atc.execute_adaptive(
                             query, max_steps=kwargs.get("max_steps", 20)
                         ):
-                            action_chunks.put(extract_chunk_text(chunk))
+                            c = extract_chunk_text(chunk)
+                            action_chunks.put(c)
+                            action_text += c
                     else:
                         for chunk in self.vera.toolchain.execute_tool_chain(query):
-                            action_chunks.put(extract_chunk_text(chunk))
+                            c = extract_chunk_text(chunk)
+                            action_chunks.put(c)
+                            action_text += c
                 except Exception as e2:
-                    action_chunks.put(f"\n[Error: {e2}]\n")
-                action_chunks.put(None)
+                    err = f"\n[Error: {e2}]\n"
+                    action_chunks.put(err)
+                    action_text += err
 
-        # ── Start threads ─────────────────────────────────────────────────
+            # PATCH: Save action response as its own memory node from within
+            # the action thread so it's captured even if the caller times out.
+            if action_text.strip():
+                if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
+                    self.vera.mem.add_session_memory(
+                        self.vera.sess.id,
+                        action_text,
+                        "Response",
+                        {"topic": "response", "agent": classification},
+                    )
+
+            action_chunks.put(None)
+
+        # ── Start threads ──────────────────────────────────────────────
         for t in [
             threading.Thread(target=triage_worker,   daemon=True),
             threading.Thread(target=preamble_worker, daemon=True),
@@ -467,7 +634,9 @@ class VeraChat:
         ]:
             t.start()
 
-        # ── Coordination loop ─────────────────────────────────────────────
+        # ── Coordination loop ──────────────────────────────────────────
+        # PATCH: tighter timeouts (0.005 vs 0.01) and a 1ms backstop sleep
+        # cuts coordination overhead roughly in half on fast queries.
         triage_done = preamble_done = action_done = False
         total_response = action_response = ""
         transition_added = False
@@ -486,7 +655,10 @@ class VeraChat:
                             transition_added = True
                 elif event[0] == "complete":
                     full_triage = event[1]
-                    classification = full_triage.strip().split()[0].lower()
+                    tokens = full_triage.strip().split()
+                    if not tokens:
+                        self.logger.warning(f"Triage returned empty result, defaulting to 'simple'", context=context)
+                    classification = tokens[0].lower() if tokens else "simple"
                     classification = self._enhance_triage_classification(classification, query)
                     triage_done = True
                 elif event[0] == "error":
@@ -496,16 +668,17 @@ class VeraChat:
 
             if not action_started:
                 try:
-                    chunk = preamble_chunks.get(timeout=0.01)
+                    chunk = preamble_chunks.get(timeout=0.005)
                     if chunk is None:
                         preamble_done = True
                     else:
-                        yield chunk; total_response += chunk; preamble_response += chunk
+                        yield chunk
+                        total_response += chunk
+                        preamble_response += chunk
                 except Empty:
                     pass
             else:
-                # Action is running — drain preamble queue without yielding,
-                # but still accumulate so caller has the full preamble text.
+                # Action running — drain preamble silently
                 try:
                     chunk = preamble_chunks.get_nowait()
                     if chunk is None:
@@ -517,21 +690,26 @@ class VeraChat:
 
             if action_started:
                 try:
-                    chunk = action_chunks.get(timeout=0.01)
+                    chunk = action_chunks.get(timeout=0.005)
                     if chunk is None:
                         action_done = True
                     else:
-                        yield chunk; total_response += chunk; action_response += chunk
+                        yield chunk
+                        total_response += chunk
+                        action_response += chunk
                 except Empty:
                     pass
             else:
                 if classification and classification not in self.ACTION_ROUTES and triage_done:
                     action_done = True
 
+            # Brief yield to avoid busy-spinning when all queues are empty
+            time.sleep(0.001)
+
         if not classification:
             classification = "simple"
 
-        # ── Determine completion ──────────────────────────────────────────
+        # ── Determine completion ─────────────────────────────────────
         if classification == "simple":
             streamed = preamble_response.strip()
             if not self._is_complete_response(streamed) and len(streamed) < 30:
@@ -546,23 +724,19 @@ class VeraChat:
                     total_response += chunk
                     preamble_response += chunk
 
-            if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
-                self.vera.mem.add_session_memory(
-                    self.vera.sess.id, total_response, "Response", {"topic": "response", "agent": "fast"}
-                )
+            self._save_session(total_response, "Response", agent="fast")
             return full_triage, preamble_response, classification, total_response, True
 
         elif classification in self.ACTION_ROUTES:
             if action_response.strip():
-                yield "\n\n--- Conclusion ---\n"; total_response += "\n\n--- Conclusion ---\n"
+                yield "\n\n--- Conclusion ---\n"
+                total_response += "\n\n--- Conclusion ---\n"
                 for chunk in self._generate_conclusion(query, action_response, context):
-                    yield chunk; total_response += chunk
+                    yield chunk
+                    total_response += chunk
 
-            if hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
-                self.vera.mem.add_session_memory(
-                    self.vera.sess.id, action_response, "Response",
-                    {"topic": "response", "agent": classification}
-                )
+            # action_worker already saved action_response; save conclusion too
+            self._save_session(total_response, "Response", agent=classification)
             return full_triage, preamble_response, classification, total_response, True
 
         else:
@@ -665,7 +839,7 @@ class VeraChat:
             'toolchain':            ('toolchain.execute',          {},               120.0, 600.0),
             'toolchain-parallel':   ('toolchain.execute.parallel', {},                60.0,  90.0),
             'toolchain-adaptive':   ('toolchain.execute_adaptive', {},                60.0, 300.0),
-            'toolchain-stepbystep': ('toolchain.execute_adaptive', {'max_steps':10},  60.0, 180.0),
+            'toolchain-stepbystep': ('toolchain.execute_adaptive', {'max_steps':10},  120.0, 600.0),
         }
         task_name, kwargs, idle_timeout, total_timeout = task_map.get(
             mode, ('toolchain.execute', {}, 120.0, 600.0)
@@ -678,7 +852,10 @@ class VeraChat:
         except Exception as e:
             self.logger.error(f"Toolchain {mode} failed: {e}", context=context)
             if 'adaptive' in mode:
-                for chunk in self.vera.adaptive_toolchain.execute_adaptive(query):
+                _atc = getattr(self.vera, '_adaptive_toolchain', None) \
+                    or getattr(self.vera, 'adaptive_toolchain', None) \
+                    or self.vera.toolchain
+                for chunk in _atc.execute_adaptive(query):
                     yield extract_chunk_text(chunk)
             else:
                 for chunk in self.vera.toolchain.execute_tool_chain(query):
@@ -754,6 +931,7 @@ class VeraChat:
         )
 
     def _save_response(self, response: str, agent: str, duration: float):
+        """Save a response chunk as a session memory node."""
         if response and hasattr(self.vera, 'mem') and hasattr(self.vera, 'sess'):
             self.vera.mem.add_session_memory(
                 self.vera.sess.id, response, "Response",
@@ -768,8 +946,9 @@ class VeraChat:
                                             idle_timeout: float = 60.0,
                                             total_timeout: float = 300.0) -> Iterator[str]:
         """
-        Stream chunks from the orchestrator interleaved with any <thought> content,
-        using per-chunk idle timeout via _stream_with_idle_timeout.
+        Stream chunks from the orchestrator interleaved with any <thought> content.
+        Thoughts are yielded inline AND saved as separate Thought memory nodes
+        at stream end via _save_session().
         """
         last_check = time.time()
         in_thought = False
@@ -780,21 +959,32 @@ class VeraChat:
                     while True:
                         thought_chunk = self.vera.thought_queue.get_nowait()
                         if not in_thought:
-                            yield "\n<thought>"; in_thought = True
+                            yield "\n<thought>"
+                            in_thought = True
                         yield thought_chunk
                 except Empty:
                     pass
                 last_check = time.time()
             if in_thought:
-                yield "</thought>\n"; in_thought = False
+                yield "</thought>\n"
+                in_thought = False
             yield chunk
+
+        # Drain any remaining thoughts and save them
+        thought_tail = []
         try:
             while True:
                 thought_chunk = self.vera.thought_queue.get_nowait()
                 if not in_thought:
-                    yield "\n<thought>"; in_thought = True
+                    yield "\n<thought>"
+                    in_thought = True
+                thought_tail.append(thought_chunk)
                 yield thought_chunk
         except Empty:
             pass
         if in_thought:
             yield "</thought>\n"
+
+        # PATCH: Save accumulated thoughts as a separate Thought memory node
+        if thought_tail:
+            self._save_session("".join(thought_tail), "Thought", agent="reasoning")

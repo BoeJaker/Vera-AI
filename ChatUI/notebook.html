@@ -1,0 +1,1568 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="ash">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Vera / Notebooks</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<!-- CodeMirror 5 core -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/codemirror.min.js"></script>
+<!-- Language modes -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/python/python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/shell/shell.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/yaml/yaml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/xml/xml.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/htmlmixed/htmlmixed.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/css/css.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/markdown/markdown.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.17/mode/rust/rust.min.js"></script>
+<!-- marked.js for markdown preview -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+/* ── Themes ──────────────────────────────────────────────────────────────── */
+[data-theme="ash"]  {--bg:#f0ede8;--s1:#e8e5df;--s2:#dedbd4;--s3:#d4d1c8;--bd:rgba(0,0,0,.08);--bd2:rgba(0,0,0,.15);--t1:#1a1a18;--t2:#6a6860;--t3:#a8a69e;--ac:#2e6da4;--ac2:#228060;--ac3:#c47020;--ac4:#c03030;--ac5:#6040a0}
+[data-theme="dusk"] {--bg:#0e0f12;--s1:#13151a;--s2:#1a1d24;--s3:#222630;--bd:rgba(255,255,255,.07);--bd2:rgba(255,255,255,.14);--t1:#d4dae4;--t2:#6b7585;--t3:#3b4252;--ac:#6ea8d8;--ac2:#5ec9a0;--ac3:#e09a55;--ac4:#e06060;--ac5:#a78bfa}
+[data-theme="void"] {--bg:#000;--s1:#070707;--s2:#0d0d0d;--s3:#141414;--bd:rgba(255,255,255,.05);--bd2:rgba(255,255,255,.1);--t1:#e0e0e0;--t2:#484848;--t3:#282828;--ac:#9b8dfa;--ac2:#5ecab0;--ac3:#dba355;--ac4:#e06060;--ac5:#f472b6}
+[data-theme="chalk"]{--bg:#1c1c1e;--s1:#242428;--s2:#2c2c32;--s3:#34343c;--bd:rgba(255,255,255,.08);--bd2:rgba(255,255,255,.16);--t1:#e8e4d8;--t2:#7a7468;--t3:#3a3830;--ac:#d4a96a;--ac2:#80c090;--ac3:#c08878;--ac4:#e07070;--ac5:#9080c0}
+[data-theme="ice"]  {--bg:#090f18;--s1:#0d1620;--s2:#121e2c;--s3:#182638;--bd:rgba(80,160,255,.1);--bd2:rgba(80,160,255,.2);--t1:#c0d8f0;--t2:#406880;--t3:#1e3850;--ac:#5ab0f0;--ac2:#38d0b0;--ac3:#e0b060;--ac4:#e06868;--ac5:#8070e0}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--t1);font:13px/1.5 'ui-monospace','SFMono-Regular','Menlo',monospace;overflow:hidden}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font:inherit;color:inherit;background:none;border:none;outline:none}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:2px}
+
+/* ── Rainbow ─────────────────────────────────────────────────────────────── */
+#rainbow{height:3px;background:linear-gradient(90deg,#e03030 0%,#e06020 12%,#e0a020 24%,#50a830 36%,#2080c8 50%,#5040c0 62%,#9030a0 74%,#c02870 86%,#e03030 100%);opacity:.75;flex-shrink:0}
+
+/* ── Shell ───────────────────────────────────────────────────────────────── */
+#shell{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── Topbar ──────────────────────────────────────────────────────────────── */
+#topbar{height:44px;background:var(--s1);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
+.tb-logo{color:var(--ac);font-weight:500;font-size:13px;letter-spacing:.05em;cursor:pointer}
+.tb-sep{width:1px;height:20px;background:var(--bd)}
+#nb-title-input{flex:1;font-size:14px;font-weight:500;color:var(--t1);background:none;border:none;outline:none}
+#nb-title-input::placeholder{color:var(--t3)}
+.tbtn{display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;font-size:11px;color:var(--t2);transition:.12s;border:1px solid transparent;white-space:nowrap}
+.tbtn:hover{background:var(--bd);color:var(--t1)}
+.tbtn.primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.tbtn.primary:hover{opacity:.85}
+.tbtn svg{width:13px;height:13px;flex-shrink:0}
+/* theme pill */
+#theme-sel{background:var(--s2);border:1px solid var(--bd);border-radius:5px;padding:3px 7px;font-size:11px;color:var(--t2)}
+
+/* ── Body layout ─────────────────────────────────────────────────────────── */
+#body{display:grid;grid-template-columns:220px 180px 1fr;flex:1;overflow:hidden;min-height:0}
+
+/* ── Sidebar — notebook list ─────────────────────────────────────────────── */
+#sidebar{background:var(--s1);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden}
+#sidebar-head{padding:10px 12px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:7px;flex-shrink:0}
+#sidebar-head span{font-size:10px;color:var(--t3);letter-spacing:.1em;text-transform:uppercase;flex:1}
+.nb-list{flex:1;overflow-y:auto;padding:6px}
+.nb-item{padding:7px 9px;border-radius:6px;cursor:pointer;transition:.1s;border:1px solid transparent;margin-bottom:3px}
+.nb-item:hover{background:var(--s2);border-color:var(--bd)}
+.nb-item.active{background:var(--s2);border-color:var(--ac)}
+.nb-item-title{font-size:12px;color:var(--t1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nb-item-meta{font-size:10px;color:var(--t3);margin-top:2px}
+
+/* ── Main editor ─────────────────────────────────────────────────────────── */
+#editor{display:flex;flex-direction:column;overflow:hidden;min-height:0}
+#cell-scroll{flex:1;overflow-y:auto;padding:20px 0}
+#cells-container{max-width:840px;margin:0 auto;padding:0 20px}
+
+/* ── Cell ────────────────────────────────────────────────────────────────── */
+.cell{position:relative;margin-bottom:8px;border-radius:8px;border:2px solid transparent;transition:.15s;background:var(--s1)}
+.cell:hover{border-color:var(--bd)}
+.cell.focused{border-color:var(--ac)}
+.cell.generating{border-color:var(--ac3);animation:cellpulse 1.2s ease-in-out infinite}
+@keyframes cellpulse{0%,100%{border-color:var(--ac3)}50%{border-color:rgba(196,112,32,.3)}}
+
+/* Cell toolbar */
+.cell-bar{display:flex;align-items:center;gap:5px;padding:5px 10px 3px;border-bottom:1px solid var(--bd);background:var(--s2);border-radius:6px 6px 0 0}
+.cell-type-sel{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--s3);border:1px solid var(--bd);color:var(--t2)}
+.cell-lang-sel{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--s3);border:1px solid var(--bd);color:var(--t2)}
+.cell-tag-sel{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--s3);border:1px solid var(--bd);color:var(--t3)}
+.cell-tag-sel.flesh_out{color:var(--ac);border-color:rgba(46,109,164,.3)}
+.cell-tag-sel.to_code{color:var(--ac2);border-color:rgba(34,128,96,.3)}
+.cell-tag-sel.research{color:var(--ac5);border-color:rgba(96,64,160,.3)}
+.cell-tag-sel.summarise{color:var(--ac3);border-color:rgba(196,112,32,.3)}
+[data-theme="dusk"] .cell-tag-sel.flesh_out{color:var(--ac)}
+.cell-bar-spacer{flex:1}
+.cell-btn{width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--t3);transition:.1s;flex-shrink:0}
+.cell-btn:hover{background:var(--bd);color:var(--t1)}
+.cell-btn.run{color:var(--ac3)}
+.cell-btn.run:hover{background:rgba(196,112,32,.12);color:var(--ac3)}
+.cell-btn svg{width:12px;height:12px}
+.drag-handle{cursor:grab;color:var(--t3);padding:0 3px}
+.drag-handle:active{cursor:grabbing}
+
+/* Cell content areas */
+.cell-input{padding:10px 12px;min-height:48px}
+.cell-input textarea{width:100%;background:none;border:none;outline:none;color:var(--t1);resize:none;font-size:13px;line-height:1.6;font-family:inherit;min-height:40px}
+.cell-input textarea::placeholder{color:var(--t3)}
+
+/* CodeMirror override */
+.cell-code .CodeMirror{background:var(--s2)!important;border:none;font-size:12px;line-height:1.6;min-height:60px;max-height:600px}
+.cell-code .CodeMirror-scroll{padding:8px 12px}
+[data-theme="ash"] .cell-code .CodeMirror{background:#f8f6f0!important;color:#1a1a18!important}
+[data-theme="dusk"] .cell-code .CodeMirror,[data-theme="void"] .cell-code .CodeMirror,[data-theme="chalk"] .cell-code .CodeMirror,[data-theme="ice"] .cell-code .CodeMirror{background:var(--s2)!important;color:var(--t1)!important}
+
+/* Generated output */
+.cell-generated{border-top:1px solid var(--bd);padding:12px 14px;background:var(--bg)}
+.cell-generated-label{font-size:9px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+.cell-generated-label .gen-actions{display:flex;gap:4px;margin-left:auto}
+.gen-action-btn{font-size:10px;padding:1px 7px;border-radius:4px;background:var(--s2);border:1px solid var(--bd);color:var(--t2);transition:.1s}
+.gen-action-btn:hover{border-color:var(--bd2);color:var(--t1)}
+.gen-content{font-size:13px;line-height:1.7;color:var(--t2)}
+.gen-content h1{font-size:16px;font-weight:500;color:var(--t1);margin:.8em 0 .3em}
+.gen-content h2{font-size:14px;font-weight:500;color:var(--t1);margin:.7em 0 .3em}
+.gen-content h3{font-size:13px;font-weight:500;color:var(--t2);margin:.6em 0 .2em}
+.gen-content p{margin:.3em 0}
+.gen-content ul,.gen-content ol{margin:.3em 0;padding-left:1.4em}
+.gen-content li{margin:.15em 0}
+.gen-content strong{color:var(--t1);font-weight:500}
+.gen-content a{color:var(--ac)}
+.gen-content code{font:inherit;font-size:12px;background:var(--s2);border:1px solid var(--bd);border-radius:3px;padding:1px 4px;color:var(--ac)}
+.gen-content pre{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;overflow-x:auto;margin:.6em 0;font-size:12px}
+.gen-content pre code{background:none;border:none;padding:0;color:var(--t1)}
+.gen-content hr{border:none;border-top:1px solid var(--bd);margin:1em 0}
+.gen-content blockquote{border-left:2px solid var(--bd2);padding-left:10px;color:var(--t2);margin:.5em 0;font-style:italic}
+/* Streaming cursor in generated content */
+.gen-cursor{display:inline-block;width:2px;height:13px;background:var(--ac);margin-left:2px;vertical-align:middle;animation:blink .7s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── Thread / conversation ───────────────────────────────────────────────── */
+.cell-thread{border-top:1px solid var(--bd);background:var(--bg)}
+.thread-toggle{display:flex;align-items:center;gap:6px;padding:7px 14px;cursor:pointer;font-size:10px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;transition:.1s;user-select:none}
+.thread-toggle:hover{color:var(--t2)}
+.thread-toggle svg{width:10px;height:10px;transition:.15s}
+.thread-toggle.open svg{transform:rotate(90deg)}
+.thread-messages{display:none;padding:10px 14px;border-top:1px solid var(--bd)}
+.thread-toggle.open + .thread-messages{display:flex;flex-direction:column;gap:8px}
+.thread-msg{display:flex;flex-direction:column;gap:2px}
+.thread-msg-role{font-size:9px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase}
+.thread-msg-role.user{color:var(--ac)}
+.thread-msg-content{font-size:12px;color:var(--t2);line-height:1.55;background:var(--s1);border-radius:5px;padding:7px 10px}
+.thread-msg-content.user{background:rgba(46,109,164,.07)}
+[data-theme="dusk"] .thread-msg-content.user{background:rgba(110,168,216,.07)}
+.thread-input-row{display:flex;gap:7px;margin-top:6px;border-top:1px solid var(--bd);padding-top:8px}
+.thread-input{flex:1;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:6px 10px;font-size:12px;color:var(--t1);resize:none;line-height:1.4;min-height:32px;max-height:100px}
+.thread-input:focus{border-color:var(--bd2);outline:none}
+.thread-send{width:28px;height:28px;border-radius:5px;background:var(--ac);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;align-self:flex-end;transition:.1s}
+.thread-send:hover{opacity:.85}
+.thread-send:disabled{opacity:.3;cursor:not-allowed}
+.thread-send svg{width:11px;height:11px}
+.thread-mode-sel{font-size:10px;padding:1px 6px;border-radius:4px;background:var(--s2);border:1px solid var(--bd);color:var(--t2);align-self:flex-end}
+
+/* ── Add cell bar ────────────────────────────────────────────────────────── */
+.add-cell-row{display:flex;align-items:center;gap:8px;padding:6px 0;opacity:0;transition:opacity .15s}
+.add-cell-row:hover,.cells-container:hover .add-cell-row{opacity:1}
+.add-cell-line{flex:1;height:1px;background:var(--bd)}
+.add-cell-btn{font-size:10px;padding:3px 10px;border-radius:5px;background:var(--s2);border:1px solid var(--bd);color:var(--t2);display:flex;align-items:center;gap:4px;transition:.1s;white-space:nowrap}
+.add-cell-btn:hover{border-color:var(--ac);color:var(--ac)}
+.add-cell-btn svg{width:10px;height:10px}
+
+/* ── Bottom toolbar ──────────────────────────────────────────────────────── */
+#bottom-bar{height:38px;border-top:1px solid var(--bd);background:var(--s1);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;font-size:11px;color:var(--t3)}
+#cell-count{flex:1}
+.bbtn{padding:3px 10px;border-radius:5px;background:var(--s2);border:1px solid var(--bd);color:var(--t2);font-size:11px;transition:.1s;display:flex;align-items:center;gap:5px}
+.bbtn:hover{border-color:var(--bd2);color:var(--t1)}
+.bbtn svg{width:11px;height:11px}
+.bbtn.accent{border-color:var(--ac);color:var(--ac);background:rgba(46,109,164,.06)}
+[data-theme="dusk"] .bbtn.accent{background:rgba(110,168,216,.07)}
+
+/* Toast */
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--s3);border:1px solid var(--bd2);color:var(--t1);font-size:11px;padding:6px 14px;border-radius:6px;z-index:9999;pointer-events:none;transition:opacity .3s}
+
+/* Dragging */
+.cell.dragging{opacity:.4;border:2px dashed var(--ac)!important}
+.cell.drag-over{border-color:var(--ac3)!important;background:rgba(196,112,32,.05)}
+
+/* Empty state */
+#empty-nb{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;opacity:.25}
+#empty-nb svg{width:36px;height:36px}
+#empty-nb p{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3)}
+
+/* ── Pages ───────────────────────────────────────────────────────────────── */
+#pages-sidebar{width:180px;border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow:hidden;background:var(--s1);flex-shrink:0}
+#pages-head{height:36px;border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 8px;gap:5px;flex-shrink:0}
+#pages-head span{font-size:10px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;flex:1}
+#pages-list{flex:1;overflow-y:auto;padding:5px}
+.page-item{padding:5px 8px;border-radius:5px;cursor:pointer;border:1px solid transparent;margin-bottom:2px;display:flex;align-items:center;gap:5px}
+.page-item:hover{background:var(--s2);border-color:var(--bd)}
+.page-item.active{background:var(--s2);border-color:var(--ac)}
+.page-item-title{font-size:12px;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t2)}
+.page-item input{font:inherit;font-size:12px;background:none;border:none;outline:none;color:var(--t1);flex:1;min-width:0}
+.page-del{opacity:0;color:var(--ac4);font-size:11px;padding:0 2px;cursor:pointer}
+.page-item:hover .page-del{opacity:1}
+
+/* ── Cell title ──────────────────────────────────────────────────────────── */
+.cell-title-row{display:flex;align-items:center;gap:6px;padding:4px 10px 0;background:var(--s2);border-radius:6px 6px 0 0}
+.cell-title-input{font-size:11px;font-weight:500;color:var(--t2);background:none;border:none;outline:none;flex:1;font:inherit;padding:2px 0}
+.cell-title-input::placeholder{color:var(--t3)}
+.cell-title-input:focus{color:var(--t1)}
+.auto-name-btn{font-size:9px;padding:1px 5px;border-radius:3px;background:var(--s3);border:1px solid var(--bd);color:var(--t3);cursor:pointer;flex-shrink:0}
+.auto-name-btn:hover{color:var(--ac);border-color:var(--ac)}
+
+/* ── Image cell ──────────────────────────────────────────────────────────── */
+.cell-image{padding:10px}
+.cell-image img{max-width:100%;border-radius:5px;display:block;margin-bottom:8px;cursor:pointer}
+.cell-image-url{width:100%;background:var(--s3);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:11px;color:var(--t1);outline:none;font:inherit}
+.cell-image-url:focus{border-color:var(--bd2)}
+.cell-image-drop{border:2px dashed var(--bd2);border-radius:6px;padding:16px;text-align:center;font-size:11px;color:var(--t3);margin-bottom:8px;cursor:pointer;transition:.15s}
+.cell-image-drop.dragover{border-color:var(--ac);color:var(--ac);background:rgba(46,109,164,.04)}
+
+/* ── Code with line numbers ──────────────────────────────────────────────── */
+.nb-code-wrap{position:relative;background:var(--s1);border-radius:0 0 6px 6px;overflow:hidden}
+.nb-code-wrap pre{margin:0;border-radius:0;background:#282c34!important;font-size:12px;line-height:1.55;overflow-x:auto}
+.nb-code-wrap .hljs{padding:12px 12px 12px 50px;background:transparent}
+.nb-line-nums{position:absolute;left:0;top:0;bottom:0;width:38px;background:rgba(0,0,0,.2);padding:12px 6px 12px 4px;text-align:right;font-size:12px;line-height:1.55;color:rgba(255,255,255,.25);pointer-events:none;user-select:none;font-family:monospace;overflow:hidden}
+
+/* ── Insert citations ────────────────────────────────────────────────────── */
+.insert-panel{background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:8px;margin:4px 0;display:none}
+.insert-panel.open{display:block}
+.insert-cit-item{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:4px;cursor:pointer;transition:.1s;font-size:11px}
+.insert-cit-item:hover{background:var(--bd)}
+.insert-cit-thumb{width:40px;height:28px;object-fit:cover;border-radius:3px;background:var(--s3);flex-shrink:0}
+.insert-cit-info{flex:1;min-width:0}
+.insert-cit-title{color:var(--t1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insert-cit-domain{font-size:9px;color:var(--t3)}
+
+/* ── Gen to cell button ──────────────────────────────────────────────────── */
+.gen-to-cell-btn{font-size:10px;padding:2px 8px;border-radius:4px;background:var(--s2);border:1px solid rgba(34,128,96,.3);color:var(--ac2);cursor:pointer;margin:2px 0 6px 12px;display:inline-block}
+.gen-to-cell-btn:hover{background:rgba(34,128,96,.08)}
+</style>
+</head>
+<body>
+<div id="shell">
+<div id="rainbow"></div>
+
+<!-- Topbar -->
+<div id="topbar">
+  <span class="tb-logo" onclick="window.location.href='index.html'">⬡ Vera</span>
+  <div class="tb-sep"></div>
+  <input id="nb-title-input" placeholder="Notebook title…" value="Untitled Notebook"
+    onchange="saveNotebookMeta()" onblur="saveNotebookMeta()">
+  <div class="tb-sep"></div>
+  <button class="tbtn" onclick="runAllCells()" title="Generate all tagged cells">
+    <svg viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>Run all tagged
+  </button>
+  <button class="tbtn" onclick="exportNotebook('md')" title="Export as Markdown">
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 8v2h8V8"/><line x1="6" y1="1" x2="6" y2="7"/><polyline points="4,5 6,7 8,5"/></svg>Export MD
+  </button>
+  <button class="tbtn" onclick="exportNotebook('ipynb')" title="Export as Jupyter Notebook">
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="1" width="10" height="10" rx="2"/><line x1="4" y1="6" x2="8" y2="6"/></svg>Export .ipynb
+  </button>
+  <select id="theme-sel" onchange="setTheme(this.value)">
+    <option value="ash">Ash</option>
+    <option value="dusk">Dusk</option>
+    <option value="void">Void</option>
+    <option value="chalk">Chalk</option>
+    <option value="ice">Ice</option>
+  </select>
+</div>
+
+<div id="body">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-head">
+      <span>Notebooks</span>
+      <button class="tbtn" style="padding:2px 8px;font-size:10px" onclick="createNotebook()">+ New</button>
+    </div>
+    <div class="nb-list" id="nb-list"></div>
+  </div>
+
+  <!-- Pages sidebar -->
+  <div id="pages-sidebar">
+    <div id="pages-head">
+      <span>Pages</span>
+      <button style="width:20px;height:20px;border-radius:3px;background:var(--s2);border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;color:var(--t2);cursor:pointer" onclick="addPage()" title="New page">
+        <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="5" y1="2" x2="5" y2="8"/><line x1="2" y1="5" x2="8" y2="5"/></svg>
+      </button>
+    </div>
+    <div id="pages-list">
+      <div class="page-item active" id="page-all" onclick="selectPage(null)">
+        <span class="page-item-title">All cells</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div id="editor">
+    <div id="cell-scroll">
+      <div id="cells-container">
+        <div id="empty-nb" id="empty-nb-state">
+          <svg viewBox="0 0 36 36" fill="none" stroke="currentColor" stroke-width="1.1">
+            <rect x="4" y="4" width="28" height="28" rx="3"/>
+            <line x1="9" y1="13" x2="27" y2="13"/>
+            <line x1="9" y1="18" x2="21" y2="18"/>
+            <line x1="9" y1="23" x2="24" y2="23"/>
+          </svg>
+          <p>Select or create a notebook</p>
+        </div>
+        <div id="cells-list" style="display:none"></div>
+      </div>
+    </div>
+    <div id="bottom-bar">
+      <span id="cell-count">0 cells</span>
+      <button class="bbtn" onclick="addCell('markdown')">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>Markdown
+      </button>
+      <button class="bbtn" onclick="addCell('image')">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1" y="2" width="10" height="8" rx="1"/><circle cx="4" cy="5" r="1"/><polyline points="1,9 4,6 7,8 9,6 11,8"/></svg>Image
+      </button>
+      <button class="bbtn" onclick="addCell('code')">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><polyline points="3,4 1,6 3,8"/><polyline points="9,4 11,6 9,8"/><line x1="6" y1="2" x2="5" y2="10"/></svg>Code
+      </button>
+      <button class="bbtn" onclick="addCell('markdown','flesh_out')">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="6" cy="6" r="4"/><polyline points="4,6 6,4 8,6"/></svg>AI Cell
+      </button>
+      <div style="flex:1"></div>
+      <button class="bbtn" onclick="saveAllCells()">
+        <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M1 8v2h10V8"/><path d="M3 5l3 3 3-3"/><line x1="6" y1="1" x2="6" y2="8"/></svg>Save
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Dive Deeper panel — slides up from bottom -->
+<div id="dive-panel" style="position:fixed;bottom:0;left:0;right:0;background:var(--s1);border-top:2px solid var(--ac);z-index:400;transform:translateY(100%);transition:transform .25s;max-height:72vh;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--bd);flex-shrink:0">
+    <div style="font-size:11px;color:var(--ac);font-weight:500;flex:1">⊕ Dive Deeper</div>
+    <span id="dive-cell-ref" style="font-size:10px;color:var(--t3)"></span>
+    <button onclick="closeDivePanel()" style="color:var(--t3);font-size:14px;padding:2px 6px">✕</button>
+  </div>
+  <!-- Tabs: Chat / Research / Generate Variant -->
+  <div style="display:flex;border-bottom:1px solid var(--bd);flex-shrink:0">
+    <button id="dive-tab-chat"   onclick="setDiveTab('chat')"    style="flex:1;padding:7px;font-size:11px;color:var(--ac);border-bottom:2px solid var(--ac);transition:.1s">Chat</button>
+    <button id="dive-tab-research" onclick="setDiveTab('research')" style="flex:1;padding:7px;font-size:11px;color:var(--t3);border-bottom:2px solid transparent;transition:.1s">Research</button>
+    <button id="dive-tab-variant" onclick="setDiveTab('variant')" style="flex:1;padding:7px;font-size:11px;color:var(--t3);border-bottom:2px solid transparent;transition:.1s">Variant</button>
+  </div>
+  <!-- Conversation -->
+  <div id="dive-messages" style="flex:1;overflow-y:auto;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-height:0"></div>
+  <!-- Input -->
+  <div style="padding:10px 14px;border-top:1px solid var(--bd);flex-shrink:0;display:flex;gap:8px;align-items:flex-end">
+    <textarea id="dive-input" placeholder="Ask a question, request changes, or dig deeper…"
+      style="flex:1;background:var(--s2);border:1px solid var(--bd);border-radius:7px;padding:8px 11px;font-size:12px;color:var(--t1);resize:none;line-height:1.5;min-height:36px;max-height:120px;outline:none"
+      onkeydown="diveKeydown(event)" oninput="autoGrow(this)"
+      onfocus="this.style.borderColor='var(--bd2)'" onblur="this.style.borderColor='var(--bd)'"></textarea>
+    <button onclick="sendDiveMsg()" id="dive-send"
+      style="width:34px;height:34px;border-radius:6px;background:var(--ac);display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:.1s">
+      <svg viewBox="0 0 12 12" width="13" height="13" fill="currentColor"><path d="M1 1l10 5L1 11V7l7-1-7-1V1z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   State
+══════════════════════════════════════════════════════════════════════════ */
+const API = localStorage.getItem('cfg-url') || 'http://llm.int:8765';
+const WS_BASE = API.replace(/^http/, 'ws');
+
+let currentNb = null;  // {id, title, cells:[]}
+let cells = [];        // in-memory ordered cells
+let editors = {};      // cell_id → CodeMirror instance
+let cellWS = {};       // cell_id → WebSocket
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Init
+══════════════════════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  const t = localStorage.getItem('theme') || 'ash';
+  setTheme(t, false);
+  loadNotebooks();
+  // Check URL param for ?nb=id
+  const nbId = new URLSearchParams(location.search).get('nb');
+  if (nbId) openNotebook(nbId);
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Theme
+══════════════════════════════════════════════════════════════════════════ */
+function setTheme(t, save=true) {
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('theme-sel').value = t;
+  if (save) localStorage.setItem('theme', t);
+  // Update CodeMirror themes
+  Object.values(editors).forEach(cm => {
+    cm.setOption('theme', ['ash'].includes(t) ? 'default' : 'dracula');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Notebook list
+══════════════════════════════════════════════════════════════════════════ */
+async function loadNotebooks() {
+  try {
+    const r = await fetch(`${API}/api/notebooks`);
+    const nbs = await r.json();
+    const el = document.getElementById('nb-list');
+    if (!nbs.length) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--t3);padding:10px 8px">No notebooks yet</div>';
+      return;
+    }
+    el.innerHTML = nbs.map(nb => `
+      <div class="nb-item ${currentNb?.id === nb.id ? 'active' : ''}"
+           onclick="openNotebook('${nb.id}')">
+        <div class="nb-item-title">${esc(nb.title)}</div>
+        <div class="nb-item-meta">${formatAge((Date.now()/1000)-(nb.updated_at||nb.created_at))} ago</div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function createNotebook() {
+  const title = prompt('Notebook title:', 'Untitled Notebook');
+  if (!title) return;
+  try {
+    const r = await fetch(`${API}/api/notebooks`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({title, description: '', tags: []})
+    });
+    const nb = await r.json();
+    await loadNotebooks();
+    openNotebook(nb.id);
+  } catch(e) { toast('Error creating notebook'); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Open notebook
+══════════════════════════════════════════════════════════════════════════ */
+async function openNotebook(id) {
+  // Close existing WS connections
+  Object.values(cellWS).forEach(ws => { try { ws.close(); } catch(e){} });
+  cellWS = {}; editors = {};
+
+  try {
+    const r = await fetch(`${API}/api/notebooks/${id}`);
+    if (!r.ok) throw new Error('Not found');
+    currentNb = await r.json();
+    nbPages = (currentNb.pages || []).sort((a,b) => a.sort_order - b.sort_order);
+    cells = (currentNb.cells || []).sort((a,b) => a.sort_order - b.sort_order);
+    currentPage = null;
+
+    document.getElementById('nb-title-input').value = currentNb.title;
+    history.replaceState({}, '', `?nb=${id}`);
+    renderPages();
+    renderAllCells();
+    loadNotebooks(); // refresh sidebar active state
+    // Pass session citations from opener if available
+    try { if(window.opener&&window.opener.S) _sessionCits=window.opener.S.cits||[]; } catch(e){}
+  } catch(e) { toast('Failed to open notebook'); console.error(e); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Render cells
+══════════════════════════════════════════════════════════════════════════ */
+function renderAllCells() {
+  const empty = document.getElementById('empty-nb');
+  const list  = document.getElementById('cells-list');
+  empty.style.display = 'none';
+  list.style.display  = 'block';
+  list.innerHTML = '';
+  cells.forEach((cell, i) => {
+    list.appendChild(buildCellEl(cell, i));
+  });
+  list.appendChild(buildAddBar());
+  updateCellCount();
+  // Init CodeMirror for code cells
+  cells.forEach(cell => {
+    if (cell.cell_type === 'code') initCodeMirror(cell);
+  });
+  initDragDrop();
+}
+
+function buildCellEl(cell, idx) {
+  const el = document.createElement('div');
+  el.className = 'cell';
+  el.id = `cell-${cell.id}`;
+  el.dataset.id = cell.id;
+  el.draggable = true;
+  el.innerHTML = buildCellHTML(cell, idx);
+  return el;
+}
+
+function buildCellHTML(cell, idx) {
+  const isCode = cell.cell_type === 'code';
+  const tagColor = {flesh_out:'var(--ac)',to_code:'var(--ac2)',research:'var(--ac5)',summarise:'var(--ac3)',none:'var(--t3)'}[cell.tag||'none'];
+  const langOptions = ['python','javascript','typescript','bash','shell','sql','json','yaml','html','css','rust','go','java','cpp','text']
+    .map(l => `<option value="${l}" ${cell.lang===l?'selected':''}>${l}</option>`).join('');
+  const tagOptions = [
+    ['none','— no tag —'],['flesh_out','✦ Flesh out'],['to_code','{ } To code'],
+    ['research','⊕ Research'],['summarise','↓ Summarise']
+  ].map(([v,l])=>`<option value="${v}" ${cell.tag===v?'selected':''}>${l}</option>`).join('');
+
+  const genContent = cell.generated ? renderMD(cell.generated) : '';
+  const threadCount = (cell.thread||[]).filter(m=>m.role==='user').length;
+
+  const isImage = cell.cell_type === 'image';
+  return `
+  <div class="cell-title-row">
+    <input class="cell-title-input" placeholder="Cell title…" value="${esc(cell.title||'')}"
+      onblur="updateCellField('${cell.id}','title',this.value)"
+      onkeydown="if(event.key==='Enter')this.blur()">
+    <button class="auto-name-btn" onclick="autoNameCell('${cell.id}')" title="Auto-name with AI">✦ Name</button>
+  </div>
+  <div class="cell-bar">
+    <span class="drag-handle" title="Drag to reorder">
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="3" cy="3" r="1.5"/><circle cx="7" cy="3" r="1.5"/><circle cx="3" cy="7" r="1.5"/><circle cx="7" cy="7" r="1.5"/><circle cx="3" cy="11" r="1.5"/><circle cx="7" cy="11" r="1.5"/></svg>
+    </span>
+    <select class="cell-type-sel" onchange="changeCellType('${cell.id}',this.value)">
+      <option value="markdown" ${!isCode&&!isImage?'selected':''}>MD</option>
+      <option value="code"     ${isCode?'selected':''}>Code</option>
+      <option value="image"    ${isImage?'selected':''}>Image</option>
+    </select>
+    ${isCode ? `<select class="cell-lang-sel" onchange="updateCellField('${cell.id}','lang',this.value)">${langOptions}</select>` : ''}
+    <select class="cell-tag-sel ${cell.tag||'none'}" onchange="updateCellField('${cell.id}','tag',this.value)" title="Agent tag">
+      ${tagOptions}
+    </select>
+    <div class="cell-bar-spacer"></div>
+    <button class="cell-btn run" onclick="runCell('${cell.id}')" title="Generate / flesh out">
+      <svg viewBox="0 0 12 12" fill="currentColor"><polygon points="2,1 11,6 2,11"/></svg>
+    </button>
+    <button class="cell-btn" onclick="deleteCell('${cell.id}')" title="Delete cell">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="2" y1="2" x2="10" y2="10"/><line x1="10" y1="2" x2="2" y2="10"/></svg>
+    </button>
+  </div>
+  <div class="${isCode ? 'cell-code' : 'cell-input'}" id="cell-input-${cell.id}">
+    ${isCode
+      ? `<textarea id="cell-ta-${cell.id}" style="display:none">${esc(cell.content)}</textarea>`
+      : `<textarea placeholder="${getPlaceholder(cell.tag)}" oninput="autoGrow(this);cellChanged('${cell.id}',this.value)"
+           onkeydown="cellKeydown(event,'${cell.id}')">${esc(cell.content)}</textarea>`
+    }
+  </div>
+  ${genContent ? `
+  <div class="cell-generated">
+    <div class="cell-generated-label">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="6" cy="6" r="4"/><line x1="6" y1="4" x2="6" y2="6.5"/><line x1="6" y1="7.5" x2="6" y2="8"/></svg>
+      Generated
+      <div class="gen-actions">
+        <button class="gen-action-btn" onclick="acceptGenerated('${cell.id}')" title="Accept — replace cell content">Accept ↑</button>
+        <button class="gen-action-btn" onclick="regenCell('${cell.id}')" title="Regenerate">↺ Regen</button>
+        <button class="gen-action-btn" onclick="openDivePanel('${cell.id}')" title="Dive deeper" style="color:var(--ac)">⊕ Dive</button>
+        <button class="gen-action-btn" onclick="genToCell('${cell.id}')" title="Save as new cell below" style="color:var(--ac2)">↓ Cell</button>
+        <button class="gen-action-btn" onclick="clearGenerated('${cell.id}')" title="Discard">✕</button>
+      </div>
+    </div>
+    <div class="gen-content" id="gen-${cell.id}">${genContent}</div>
+  </div>` : `<div class="cell-generated" id="gen-wrap-${cell.id}" style="display:none">
+    <div class="cell-generated-label">
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="6" cy="6" r="4"/><line x1="6" y1="4" x2="6" y2="6.5"/><line x1="6" y1="7.5" x2="6" y2="8"/></svg>
+      Generated
+      <div class="gen-actions">
+        <button class="gen-action-btn" onclick="acceptGenerated('${cell.id}')">Accept ↑</button>
+        <button class="gen-action-btn" onclick="regenCell('${cell.id}')">↺ Regen</button>
+        <button class="gen-action-btn" onclick="clearGenerated('${cell.id}')">✕</button>
+      </div>
+    </div>
+    <div class="gen-content" id="gen-${cell.id}"></div>
+  </div>`}
+  <div class="cell-thread">
+    <div class="thread-toggle ${threadCount?'':''}${threadCount?' open':''}" onclick="toggleThread(this)">
+      <svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><polyline points="3,2 6,5 3,8"/></svg>
+      ${threadCount ? `${threadCount} message${threadCount!==1?'s':''}` : 'Chat about this cell'}
+    </div>
+    <div class="thread-messages" id="thread-${cell.id}">
+      ${(cell.thread||[]).filter(m=>m.role!=='system').map(m=>`
+        <div class="thread-msg">
+          <div class="thread-msg-role ${m.role}">${m.role}</div>
+          <div class="thread-msg-content ${m.role}">${m.role==='assistant'?renderMD(m.content):esc(m.content)}</div>
+        </div>`).join('')}
+      <div class="thread-input-row">
+        <textarea class="thread-input" id="thread-ta-${cell.id}"
+          placeholder="Ask about this cell, request changes, iterate…"
+          onkeydown="threadKeydown(event,'${cell.id}')" rows="1" oninput="autoGrow(this)"></textarea>
+        <select class="thread-mode-sel" id="thread-mode-${cell.id}">
+          <option value="chat">Chat</option>
+          <option value="research">Research</option>
+        </select>
+        <button class="thread-send" id="thread-send-${cell.id}" onclick="sendThreadMsg('${cell.id}')">
+          <svg viewBox="0 0 12 12" fill="currentColor"><path d="M1 1l10 5L1 11V7l7-1-7-1V1z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="insert-panel" id="ins-${cell.id}"></div>`;
+}
+
+function buildAddBar() {
+  const el = document.createElement('div');
+  el.className = 'add-cell-row';
+  el.innerHTML = `
+    <div class="add-cell-line"></div>
+    <button class="add-cell-btn" onclick="addCell('markdown')">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/></svg>
+      Markdown
+    </button>
+    <button class="add-cell-btn" onclick="addCell('code')">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><polyline points="3,4 1,6 3,8"/><polyline points="9,4 11,6 9,8"/></svg>
+      Code
+    </button>
+    <button class="add-cell-btn" onclick="addCell('markdown','flesh_out')">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="6" cy="6" r="4"/><polyline points="4,6 6,4 8,6"/></svg>
+      AI
+    </button>
+    <div class="add-cell-line"></div>`;
+  return el;
+}
+
+function getPlaceholder(tag) {
+  const map = {
+    flesh_out: 'Write a brief note — press ▶ to have the AI flesh it out…',
+    to_code:   'Describe what the code should do — press ▶ to generate…',
+    research:  'Research topic or question — press ▶ to investigate…',
+    summarise: 'Paste content to summarise — press ▶ to condense…',
+    none:      'Write markdown here…',
+  };
+  return map[tag||'none'];
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   CodeMirror
+══════════════════════════════════════════════════════════════════════════ */
+function initCodeMirror(cell) {
+  const ta = document.getElementById(`cell-ta-${cell.id}`);
+  if (!ta || editors[cell.id]) return;
+  const t = localStorage.getItem('theme') || 'ash';
+  const cm = CodeMirror.fromTextArea(ta, {
+    mode: langToMode(cell.lang),
+    theme: ['ash'].includes(t) ? 'default' : 'dracula',
+    lineNumbers: true,
+    lineWrapping: false,
+    indentUnit: 2,
+    tabSize: 2,
+    indentWithTabs: false,
+    extraKeys: {
+      'Shift-Enter': () => runCell(cell.id),
+      Tab: cm => cm.execCommand('indentMore'),
+    },
+  });
+  cm.on('change', () => cellChanged(cell.id, cm.getValue()));
+  editors[cell.id] = cm;
+  // Adjust height
+  cm.setSize(null, 'auto');
+}
+
+function langToMode(lang) {
+  const m = {python:'python',javascript:'javascript',typescript:'javascript',
+    bash:'shell',shell:'shell',sql:'sql',json:'javascript',yaml:'yaml',
+    html:'htmlmixed',css:'css',rust:'rust',go:'go',java:'clike',cpp:'clike'};
+  return m[lang] || 'text/plain';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Cell operations
+══════════════════════════════════════════════════════════════════════════ */
+function cellChanged(id, value) {
+  const cell = cells.find(c => c.id === id);
+  if (cell) { cell.content = value; cell._dirty = true; }
+}
+
+function updateCellField(id, field, value) {
+  const cell = cells.find(c => c.id === id);
+  if (!cell) return;
+  cell[field] = value; cell._dirty = true;
+  // Update tag select styling
+  if (field === 'tag') {
+    const sel = document.querySelector(`#cell-${id} .cell-tag-sel`);
+    if (sel) sel.className = `cell-tag-sel ${value}`;
+    const ta = document.querySelector(`#cell-input-${id} textarea`);
+    if (ta) ta.placeholder = getPlaceholder(value);
+  }
+  if (field === 'lang' && editors[id]) {
+    editors[id].setOption('mode', langToMode(value));
+  }
+}
+
+function changeCellType(id, newType) {
+  const cell = cells.find(c => c.id === id);
+  if (!cell) return;
+  cell.cell_type = newType; cell._dirty = true;
+  // Re-render this cell
+  const el = document.getElementById(`cell-${id}`);
+  const idx = cells.indexOf(cell);
+  if (el) {
+    el.innerHTML = buildCellHTML(cell, idx);
+    if (newType === 'code') initCodeMirror(cell);
+  }
+}
+
+async function addCell(type='markdown', tag='none') {
+  if (!currentNb) { toast('Open a notebook first'); return; }
+  const maxOrder = cells.reduce((m,c) => Math.max(m, c.sort_order||0), -1);
+  try {
+    const r = await fetch(`${API}/api/notebooks/${currentNb.id}/cells`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({cell_type:type, lang:'python', tag, content:'', sort_order:maxOrder+1, page_id:currentPage||undefined, title:''})
+    });
+    const cell = await r.json();
+    cells.push(cell);
+    // Append to list
+    const list = document.getElementById('cells-list');
+    const addBar = list.querySelector('.add-cell-row');
+    const el = buildCellEl(cell, cells.length-1);
+    list.insertBefore(el, addBar);
+    if (type === 'code') initCodeMirror(cell);
+    updateCellCount();
+    // Focus the new cell's textarea
+    setTimeout(() => {
+      const ta = document.querySelector(`#cell-input-${cell.id} textarea`);
+      if (ta) ta.focus();
+    }, 50);
+  } catch(e) { toast('Error adding cell'); }
+}
+
+async function deleteCell(id) {
+  if (!confirm('Delete this cell?')) return;
+  try {
+    await fetch(`${API}/api/notebooks/${currentNb.id}/cells/${id}`, {method:'DELETE'});
+    cells = cells.filter(c => c.id !== id);
+    document.getElementById(`cell-${id}`)?.remove();
+    if (editors[id]) { editors[id] = null; delete editors[id]; }
+    if (cellWS[id]) { cellWS[id].close(); delete cellWS[id]; }
+    updateCellCount();
+  } catch(e) { toast('Error deleting cell'); }
+}
+
+function cellKeydown(e, id) {
+  if (e.key === 'Enter' && e.shiftKey) { e.preventDefault(); runCell(id); }
+  if (e.key === 'Enter' && e.ctrlKey)  { e.preventDefault(); addCell(); }
+}
+
+function toggleThread(btn) {
+  btn.classList.toggle('open');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Agent generation
+══════════════════════════════════════════════════════════════════════════ */
+function getCellWS(cellId) {
+  if (cellWS[cellId] && cellWS[cellId].readyState <= 1) return cellWS[cellId];
+  const ws = new WebSocket(`${WS_BASE}/ws/notebook/${currentNb.id}/cell/${cellId}`);
+  cellWS[cellId] = ws;
+  let genBuf = '';
+  let genTimer = null;
+  const BATCH = 40;
+
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'token') {
+      genBuf += m.text;
+      if (genTimer) return;
+      genTimer = setTimeout(() => {
+        genTimer = null;
+        updateGenContent(cellId, genBuf, false);
+      }, BATCH);
+    } else if (m.type === 'done') {
+      clearTimeout(genTimer); genTimer = null;
+      const cell = cells.find(c => c.id === cellId);
+      if (cell) {
+        cell.generated = m.generated || m.response || genBuf;
+        cell._dirty = false;
+      }
+      updateGenContent(cellId, m.generated || m.response || genBuf, true);
+      if (m.thread) updateThread(cellId, m.thread);
+      setGenerating(cellId, false);
+      genBuf = '';
+    } else if (m.type === 'status') {
+      addStepToCell(cellId, m.text);
+    } else if (m.type === 'error') {
+      toast('Error: ' + m.text);
+      setGenerating(cellId, false);
+    }
+  };
+  ws.onerror = () => { toast('WebSocket error'); setGenerating(cellId, false); };
+  return ws;
+}
+
+function runCell(id) {
+  const cell = cells.find(c => c.id === id);
+  if (!cell) return;
+  setGenerating(id, true);
+  const content = editors[id] ? editors[id].getValue() : cell.content;
+  cell.content = content;
+  const ws = getCellWS(id);
+  const action = cell.tag === 'research' ? 'research' : 'generate';
+  const send = () => ws.send(JSON.stringify({action, message: content}));
+  if (ws.readyState === 1) send();
+  else ws.onopen = send;
+}
+
+function regenCell(id) { runCell(id); }
+
+async function runAllCells() {
+  const tagged = cells.filter(c => c.tag && c.tag !== 'none');
+  for (const cell of tagged) {
+    await new Promise(resolve => {
+      const ws = getCellWS(cell.id);
+      const orig = ws.onmessage;
+      ws.onmessage = e => {
+        const m = JSON.parse(e.data);
+        if (orig) orig({data:e.data});
+        if (m.type === 'done') resolve();
+      };
+      setGenerating(cell.id, true);
+      const send = () => ws.send(JSON.stringify({action:'generate',message:cell.content}));
+      if (ws.readyState === 1) send(); else ws.onopen = send;
+    });
+  }
+}
+
+function setGenerating(id, on) {
+  const el = document.getElementById(`cell-${id}`);
+  if (el) el.classList.toggle('generating', on);
+  const btn = el?.querySelector('.cell-btn.run');
+  if (btn) btn.style.opacity = on ? '0.4' : '1';
+}
+
+function updateGenContent(cellId, content, final) {
+  let wrap = document.querySelector(`#gen-wrap-${cellId}`);
+  if (!wrap) wrap = document.querySelector(`#cell-${cellId} .cell-generated`);
+  if (!wrap) return;
+  wrap.style.display = '';
+  const el = document.getElementById(`gen-${cellId}`);
+  if (!el) return;
+  if (final) {
+    el.innerHTML = renderMD(content);
+  } else {
+    el.innerHTML = renderMD(content) + '<span class="gen-cursor"></span>';
+  }
+}
+
+function addStepToCell(cellId, text) {
+  let wrap = document.querySelector(`#gen-wrap-${cellId}`);
+  if (!wrap) wrap = document.querySelector(`#cell-${cellId} .cell-generated`);
+  if (wrap) wrap.style.display = '';
+  const el = document.getElementById(`gen-${cellId}`);
+  if (el) el.innerHTML += `<div style="font-size:10px;color:var(--t3);margin:3px 0">${esc(text)}</div>`;
+}
+
+async function acceptGenerated(id) {
+  const cell = cells.find(c => c.id === id);
+  if (!cell || !cell.generated) return;
+  cell.content = cell.generated; cell._dirty = true;
+  // Update input
+  const ta = document.querySelector(`#cell-input-${id} textarea`);
+  if (ta) { ta.value = cell.generated; autoGrow(ta); }
+  if (editors[id]) editors[id].setValue(cell.generated);
+  // Clear generated
+  cell.generated = ''; cell._dirty = true;
+  let wrap = document.querySelector(`#gen-wrap-${id}`);
+  if (!wrap) wrap = document.querySelector(`#cell-${id} .cell-generated`);
+  if (wrap) wrap.style.display = 'none';
+  await saveSingleCell(cell);
+  toast('Content accepted');
+}
+
+async function clearGenerated(id) {
+  const cell = cells.find(c => c.id === id);
+  if (!cell) return;
+  cell.generated = ''; cell._dirty = true;
+  let wrap = document.querySelector(`#gen-wrap-${id}`);
+  if (!wrap) wrap = document.querySelector(`#cell-${id} .cell-generated`);
+  if (wrap) wrap.style.display = 'none';
+  await saveSingleCell(cell);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Thread / conversation
+══════════════════════════════════════════════════════════════════════════ */
+function threadKeydown(e, id) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendThreadMsg(id); }
+}
+
+function sendThreadMsg(id) {
+  const ta = document.getElementById(`thread-ta-${id}`);
+  const msg = ta?.value?.trim();
+  if (!msg) return;
+  ta.value = ''; ta.style.height = 'auto';
+
+  const mode = document.getElementById(`thread-mode-${id}`)?.value || 'chat';
+  const sendBtn = document.getElementById(`thread-send-${id}`);
+  if (sendBtn) sendBtn.disabled = true;
+
+  // Add user message to UI immediately
+  appendThreadMsg(id, {role:'user', content:msg});
+
+  const ws = getCellWS(id);
+  let respBuf = '';
+
+  const origOnMsg = ws.onmessage;
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'token') { respBuf += m.text; updateLastThreadMsg(id, respBuf); }
+    else if (m.type === 'done') {
+      const finalResp = m.response || respBuf;
+      finaliseLastThreadMsg(id, finalResp);
+      const cell = cells.find(c => c.id === id);
+      if (cell && m.thread) cell.thread = m.thread;
+      if (sendBtn) sendBtn.disabled = false;
+      respBuf = '';
+      ws.onmessage = origOnMsg;
+    } else if (origOnMsg) origOnMsg(e);
+  };
+
+  // Add streaming placeholder for assistant
+  appendThreadMsg(id, {role:'assistant', content:''});
+
+  const send = () => ws.send(JSON.stringify({action:mode, message:msg}));
+  if (ws.readyState === 1) send(); else ws.onopen = send;
+}
+
+function appendThreadMsg(cellId, msg) {
+  const el = document.getElementById(`thread-${cellId}`);
+  if (!el) return;
+  const inputRow = el.querySelector('.thread-input-row');
+  const div = document.createElement('div');
+  div.className = 'thread-msg';
+  div.dataset.role = msg.role;
+  div.innerHTML = `
+    <div class="thread-msg-role ${msg.role}">${msg.role}</div>
+    <div class="thread-msg-content ${msg.role}">${msg.role==='assistant'?renderMD(msg.content):esc(msg.content)}</div>`;
+  el.insertBefore(div, inputRow);
+  // Ensure thread is open
+  const toggle = el.previousElementSibling;
+  if (toggle && !toggle.classList.contains('open')) toggle.classList.add('open');
+  el.style.display = 'flex';
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateLastThreadMsg(cellId, content) {
+  const el = document.getElementById(`thread-${cellId}`);
+  if (!el) return;
+  const msgs = el.querySelectorAll('.thread-msg[data-role="assistant"]');
+  const last = msgs[msgs.length - 1];
+  if (last) last.querySelector('.thread-msg-content').innerHTML = renderMD(content) + '<span class="gen-cursor"></span>';
+}
+
+function finaliseLastThreadMsg(cellId, content) {
+  const el = document.getElementById(`thread-${cellId}`);
+  if (!el) return;
+  const msgs = el.querySelectorAll('.thread-msg[data-role="assistant"]');
+  const last = msgs[msgs.length - 1];
+  if (last) last.querySelector('.thread-msg-content').innerHTML = renderMD(content);
+}
+
+function updateThread(cellId, thread) {
+  const toggle = document.querySelector(`#cell-${cellId} .thread-toggle`);
+  const count = thread.filter(m=>m.role==='user').length;
+  if (toggle && count > 0) {
+    toggle.innerHTML = `<svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3"><polyline points="3,2 6,5 3,8"/></svg>${count} message${count!==1?'s':''}`;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Save
+══════════════════════════════════════════════════════════════════════════ */
+async function saveSingleCell(cell) {
+  const content = editors[cell.id] ? editors[cell.id].getValue() : cell.content;
+  try {
+    await fetch(`${API}/api/notebooks/${currentNb.id}/cells/${cell.id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        content, generated:cell.generated||'', tag:cell.tag,
+        cell_type:cell.cell_type, lang:cell.lang,
+        sort_order:cell.sort_order||0,
+        title:cell.title||'', page_id:cell.page_id||null,
+        citations:cell.citations||[], parse_mode:cell.parse_mode||'whole',
+        agent_mode:cell.agent_mode||'single'
+      })
+    });
+    cell._dirty = false;
+  } catch(e) { toast('Save failed'); }
+}
+
+async function saveAllCells() {
+  const dirty = cells.filter(c => c._dirty);
+  for (const cell of dirty) await saveSingleCell(cell);
+  if (dirty.length) toast(`Saved ${dirty.length} cell${dirty.length!==1?'s':''}`);
+  else toast('All cells up to date');
+}
+
+async function saveNotebookMeta() {
+  if (!currentNb) return;
+  const title = document.getElementById('nb-title-input').value.trim() || 'Untitled';
+  currentNb.title = title;
+  try {
+    await fetch(`${API}/api/notebooks/${currentNb.id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({title})
+    });
+    loadNotebooks();
+  } catch(e) {}
+}
+
+// Auto-save every 30s
+setInterval(() => { if (currentNb) saveAllCells(); }, 30000);
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Export
+══════════════════════════════════════════════════════════════════════════ */
+function exportNotebook(format) {
+  if (!currentNb) { toast('No notebook open'); return; }
+  if (format === 'md') {
+    let md = `# ${currentNb.title}\n\n`;
+    cells.forEach(cell => {
+      const content = editors[cell.id] ? editors[cell.id].getValue() : cell.content;
+      if (cell.cell_type === 'code') {
+        md += `\`\`\`${cell.lang}\n${content}\n\`\`\`\n\n`;
+      } else {
+        md += content + '\n\n';
+      }
+      if (cell.generated) md += '> *AI output:*\n>\n> ' + cell.generated.replace(/\n/g,'\n> ') + '\n\n';
+    });
+    download(md, `${currentNb.title}.md`, 'text/markdown');
+  } else if (format === 'ipynb') {
+    const nb = {
+      nbformat: 4, nbformat_minor: 5,
+      metadata: {kernelspec:{display_name:'Python 3',language:'python',name:'python3'},language_info:{name:'python'}},
+      cells: cells.map(cell => {
+        const content = editors[cell.id] ? editors[cell.id].getValue() : cell.content;
+        if (cell.cell_type === 'code') {
+          return {cell_type:'code',metadata:{},source:content.split('\n').map((l,i,a)=>i<a.length-1?l+'\n':l),outputs:[],execution_count:null};
+        } else {
+          let src = content;
+          if (cell.generated) src += '\n\n---\n*AI generated:*\n\n' + cell.generated;
+          return {cell_type:'markdown',metadata:{},source:src.split('\n').map((l,i,a)=>i<a.length-1?l+'\n':l)};
+        }
+      })
+    };
+    download(JSON.stringify(nb,null,2), `${currentNb.title}.ipynb`, 'application/json');
+  }
+}
+
+function download(content, filename, type) {
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Drag & drop reorder
+══════════════════════════════════════════════════════════════════════════ */
+function initDragDrop() {
+  const list = document.getElementById('cells-list');
+  let dragEl = null;
+
+  list.addEventListener('dragstart', e => {
+    const cell = e.target.closest('.cell');
+    if (!cell) return;
+    dragEl = cell;
+    cell.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  list.addEventListener('dragend', e => {
+    if (dragEl) dragEl.classList.remove('dragging');
+    document.querySelectorAll('.cell.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    dragEl = null;
+    syncCellOrder();
+  });
+  list.addEventListener('dragover', e => {
+    e.preventDefault();
+    const target = e.target.closest('.cell');
+    if (!target || target === dragEl) return;
+    document.querySelectorAll('.cell.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    target.classList.add('drag-over');
+    const rect = target.getBoundingClientRect();
+    const after = e.clientY > rect.top + rect.height / 2;
+    if (after) target.after(dragEl); else target.before(dragEl);
+  });
+  list.addEventListener('drop', e => e.preventDefault());
+}
+
+async function syncCellOrder() {
+  if (!currentNb) return;
+  const order = [...document.querySelectorAll('.cell')].map(el=>el.dataset.id).filter(Boolean);
+  cells.sort((a,b) => order.indexOf(a.id) - order.indexOf(b.id));
+  cells.forEach((c,i) => { c.sort_order=i; c._dirty=true; });
+  try {
+    await fetch(`${API}/api/notebooks/${currentNb.id}/reorder`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({order})
+    });
+  } catch(e) {}
+  updateCellCount();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Markdown renderer (simple)
+══════════════════════════════════════════════════════════════════════════ */
+function _renderCodeBlock(lang, code) {
+  if (lang && typeof hljs !== 'undefined' && hljs.getLanguage(lang)) {
+    const hl = hljs.highlight(code, {language: lang}).value;
+    const lines = hl.split('\n');
+    const nums  = lines.map((_,i)=>i+1).join('\n');
+    return `<div class="nb-code-wrap"><div class="nb-line-nums">${nums}</div><pre><code class="hljs language-${lang}">${hl}</code></pre></div>`;
+  }
+  return `<pre><code>${esc(code)}</code></pre>`;
+}
+function renderMD(text) {
+  if (!text) return '';
+  // Always use our renderer (handles hljs); marked.js would bypass it
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n?([\s\S]*?)```/g,(_, lang, code)=>{
+      const raw = code.trim().replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+      return _renderCodeBlock(lang, raw);
+    })
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/^---+$/gm,'<hr>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\*([^*]+)\*/g,'<em>$1</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/^[*\-] (.+)$/gm,'<li>$1</li>').replace(/(<li>[\s\S]*?<\/li>\n*)+/g,s=>`<ul>${s}</ul>`)
+    .replace(/^(?!<[hupbol]|<pre|<hr|<div)(.+)$/gm,'<p>$1</p>');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Dive Deeper panel
+   Lets users iterate on any generated cell content via chat, research,
+   or variant generation — maintaining a persistent conversation thread.
+══════════════════════════════════════════════════════════════════════════ */
+const DIVE = {
+  cellId: null,
+  tab:    'chat',
+  ws:     null,
+  buf:    '',
+};
+
+function openDivePanel(cellId) {
+  DIVE.cellId = cellId;
+  DIVE.buf = '';
+  const cell = cells.find(c => c.id === cellId);
+  const panel = document.getElementById('dive-panel');
+  const ref = document.getElementById('dive-cell-ref');
+  if (ref) ref.textContent = cell ? cell.content.slice(0,40)+'…' : '';
+  // Restore existing thread
+  renderDiveThread(cell?.thread || []);
+  panel.style.transform = 'translateY(0)';
+  document.getElementById('dive-input')?.focus();
+}
+
+function closeDivePanel() {
+  document.getElementById('dive-panel').style.transform = 'translateY(100%)';
+  if (DIVE.ws) { try { DIVE.ws.close(); } catch(e){} DIVE.ws = null; }
+}
+
+function setDiveTab(tab) {
+  DIVE.tab = tab;
+  ['chat','research','variant'].forEach(t => {
+    const btn = document.getElementById(`dive-tab-${t}`);
+    if (!btn) return;
+    const active = t === tab;
+    btn.style.color = active ? 'var(--ac)' : 'var(--t3)';
+    btn.style.borderBottom = active ? '2px solid var(--ac)' : '2px solid transparent';
+  });
+  const ph = {
+    chat:     'Ask a question, request changes, or continue the conversation…',
+    research: 'Enter a research query to investigate further…',
+    variant:  'Describe a variation you want — different angle, style, or focus…',
+  };
+  const inp = document.getElementById('dive-input');
+  if (inp) inp.placeholder = ph[tab] || '';
+}
+
+function diveKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendDiveMsg(); }
+}
+
+function renderDiveThread(thread) {
+  const el = document.getElementById('dive-messages');
+  if (!el) return;
+  const filtered = thread.filter(m => m.role !== 'system');
+  if (!filtered.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--t3);padding:8px 0;text-align:center">Start a conversation about this cell\'s content</div>';
+    return;
+  }
+  el.innerHTML = filtered.map(m => `
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <div style="font-size:9px;color:${m.role==='user'?'var(--ac)':'var(--t3)'};letter-spacing:.07em;text-transform:uppercase">${m.role}</div>
+      <div style="font-size:12px;line-height:1.55;padding:8px 10px;border-radius:6px;background:${m.role==='user'?'rgba(46,109,164,.08)':'var(--s1)'}">
+        ${m.role==='assistant' ? renderMD(m.content) : esc(m.content)}
+      </div>
+    </div>`).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendDiveMsg() {
+  const inp = document.getElementById('dive-input');
+  const msg = inp?.value?.trim();
+  if (!msg || !DIVE.cellId || !currentNb) return;
+  inp.value = ''; inp.style.height = 'auto';
+
+  const tab = DIVE.tab;
+
+  // Append user message
+  const el = document.getElementById('dive-messages');
+  const addMsg = (role, content, streaming=false) => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;flex-direction:column;gap:3px';
+    div.dataset.role = role;
+    div.innerHTML = `
+      <div style="font-size:9px;color:${role==='user'?'var(--ac)':'var(--t3)'};letter-spacing:.07em;text-transform:uppercase">${role}</div>
+      <div class="dive-msg-content" style="font-size:12px;line-height:1.55;padding:8px 10px;border-radius:6px;background:${role==='user'?'rgba(46,109,164,.08)':'var(--s1)'}">
+        ${role==='assistant'?'<span style="color:var(--t3)">…</span>':esc(content)}
+      </div>`;
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+    return div;
+  };
+
+  addMsg('user', msg);
+  const assistDiv = addMsg('assistant', '', true);
+  const contentEl = assistDiv.querySelector('.dive-msg-content');
+
+  let buf = '';
+  let batchTimer = null;
+  const BATCH = 40;
+
+  const ws = getCellWS(DIVE.cellId);
+  DIVE.ws = ws;
+
+  const origOnMsg = ws.onmessage;
+  ws.onmessage = e => {
+    const m = JSON.parse(e.data);
+    if (m.type === 'token') {
+      buf += m.text;
+      if (batchTimer) return;
+      batchTimer = setTimeout(() => {
+        batchTimer = null;
+        contentEl.innerHTML = renderMD(buf) + '<span class="gen-cursor"></span>';
+        el.scrollTop = el.scrollHeight;
+      }, BATCH);
+    } else if (m.type === 'done') {
+      clearTimeout(batchTimer);
+      const resp = m.response || buf;
+      contentEl.innerHTML = renderMD(resp);
+      el.scrollTop = el.scrollHeight;
+      // Update cell thread
+      const cell = cells.find(c => c.id === DIVE.cellId);
+      if (cell && m.thread) cell.thread = m.thread;
+      // If variant: offer to accept into a new cell
+      if (tab === 'variant' && resp) {
+        const acceptBtn = document.createElement('button');
+        acceptBtn.style.cssText = 'margin-top:6px;font-size:10px;padding:2px 10px;border-radius:4px;background:var(--s2);border:1px solid var(--bd);color:var(--ac);cursor:pointer';
+        acceptBtn.textContent = '↑ Add as new cell';
+        acceptBtn.onclick = () => addCellWithContent(resp, cell?.cell_type || 'markdown', cell?.lang || 'python');
+        assistDiv.appendChild(acceptBtn);
+      }
+      ws.onmessage = origOnMsg;
+      buf = '';
+    } else if (m.type === 'status') {
+      contentEl.innerHTML = `<span style="color:var(--t3);font-size:10px">${esc(m.text)}</span>`;
+    } else if (origOnMsg) {
+      origOnMsg(e);
+    }
+  };
+
+  // Send action
+  const action = tab === 'research' ? 'research' : 'chat';
+  const variantMsg = tab === 'variant'
+    ? `Generate a variant of the cell content: ${msg}\n\nOriginal content:\n${cells.find(c=>c.id===DIVE.cellId)?.generated || ''}`
+    : msg;
+
+  const send = () => ws.send(JSON.stringify({action, message: variantMsg}));
+  if (ws.readyState === 1) send(); else ws.onopen = send;
+}
+
+async function addCellWithContent(content, type, lang) {
+  if (!currentNb) return;
+  const maxOrder = cells.reduce((m,c) => Math.max(m, c.sort_order||0), -1);
+  try {
+    const r = await fetch(`${API}/api/notebooks/${currentNb.id}/cells`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({cell_type:type, lang, tag:'none', content, sort_order:maxOrder+1})
+    });
+    const cell = await r.json();
+    cells.push(cell);
+    const list = document.getElementById('cells-list');
+    const addBar = list.querySelector('.add-cell-row');
+    const el = buildCellEl(cell, cells.length-1);
+    list.insertBefore(el, addBar);
+    if (type === 'code') initCodeMirror(cell);
+    updateCellCount();
+    toast('Added as new cell');
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+  } catch(e) { toast('Error adding cell'); }
+}
+
+function autoGrow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 400) + 'px';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Utilities
+══════════════════════════════════════════════════════════════════════════ */
+function updateCellCount() {
+  document.getElementById('cell-count').textContent = `${cells.length} cell${cells.length!==1?'s':''}`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Pages
+══════════════════════════════════════════════════════════════════════════ */
+var currentPage = null;
+var nbPages = [];
+
+function renderPages() {
+  var list = document.getElementById('pages-list');
+  if (!list) return;
+  list.innerHTML = '<div class="page-item'+(currentPage===null?' active':'')+'" id="page-all" onclick="selectPage(null)"><span class="page-item-title">All cells</span></div>';
+  nbPages.forEach(function(p) {
+    var div = document.createElement('div');
+    div.className = 'page-item' + (currentPage===p.id?' active':'');
+    div.dataset.pageId = p.id;
+    div.innerHTML = '<input class="page-item" style="flex:1;font-size:12px;background:none;border:none;outline:none;color:var(--t1)" value="'+esc(p.title)+'" onblur="renamePage(\''+p.id+'\',this.value)" onkeydown="if(event.key===\'Enter\')this.blur()" onclick="event.stopPropagation()">'
+      + '<span class="page-del" onclick="event.stopPropagation();deletePage(\''+p.id+'\')">✕</span>';
+    div.addEventListener('click', function() { selectPage(p.id); });
+    list.appendChild(div);
+  });
+}
+
+function selectPage(pageId) {
+  currentPage = pageId;
+  renderPages();
+  renderVisibleCells();
+}
+
+function renderVisibleCells() {
+  var visible = currentPage ? cells.filter(function(c){ return c.page_id===currentPage; }) : cells;
+  var list = document.getElementById('cells-list');
+  if (!list) return;
+  list.innerHTML = '';
+  visible.forEach(function(cell, i) { list.appendChild(buildCellEl(cell, i)); });
+  list.appendChild(buildAddBar());
+  updateCellCount();
+  visible.forEach(function(cell) { if (cell.cell_type==='code') initCodeMirror(cell); });
+  initDragDrop();
+}
+
+async function addPage() {
+  if (!currentNb) return;
+  try {
+    var r = await fetch(API+'/api/notebooks/'+currentNb.id+'/pages', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({title:'New Page', sort_order: nbPages.length})
+    });
+    var page = await r.json();
+    nbPages.push(page);
+    currentPage = page.id;
+    renderPages();
+    renderVisibleCells();
+    setTimeout(function(){
+      var inp = document.querySelector('[data-page-id="'+page.id+'"] input');
+      if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+  } catch(e) { toast('Error adding page'); }
+}
+
+async function renamePage(pageId, title) {
+  var page = nbPages.find(function(p){ return p.id===pageId; });
+  if (!page || !title.trim()) return;
+  page.title = title.trim();
+  try {
+    await fetch(API+'/api/notebooks/'+currentNb.id+'/pages/'+pageId, {
+      method:'PATCH', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({title: page.title})
+    });
+  } catch(e) {}
+  renderPages();
+}
+
+async function deletePage(pageId) {
+  if (!confirm('Delete this page? Cells will not be deleted.')) return;
+  await fetch(API+'/api/notebooks/'+currentNb.id+'/pages/'+pageId, {method:'DELETE'}).catch(function(){});
+  nbPages = nbPages.filter(function(p){ return p.id!==pageId; });
+  cells.forEach(function(c){ if(c.page_id===pageId) c.page_id=null; });
+  if (currentPage===pageId) currentPage=null;
+  renderPages();
+  renderVisibleCells();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Auto-name cell
+══════════════════════════════════════════════════════════════════════════ */
+async function autoNameCell(cellId) {
+  if (!currentNb) return;
+  try {
+    var r = await fetch(API+'/api/notebooks/'+currentNb.id+'/cells/'+cellId+'/name', {method:'POST'});
+    var d = await r.json();
+    if (d.title) {
+      var cell = cells.find(function(c){ return c.id===cellId; });
+      if (cell) cell.title = d.title;
+      var inp = document.querySelector('#cell-'+cellId+' .cell-title-input');
+      if (inp) inp.value = d.title;
+      toast('Named: "'+d.title+'"');
+    }
+  } catch(e) { toast('Auto-name failed'); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Image cell — file/paste/drop handling
+══════════════════════════════════════════════════════════════════════════ */
+function handleImageDrop(event, cellId) {
+  event.preventDefault();
+  var drop = document.getElementById('img-drop-'+cellId);
+  if (drop) drop.classList.remove('dragover');
+  var file = event.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    _readImageFile(file, cellId);
+  } else {
+    var url = event.dataTransfer.getData('text/plain') || event.dataTransfer.getData('text/uri-list');
+    if (url) _setImageUrl(cellId, url);
+  }
+}
+
+function handleImageFile(event, cellId) {
+  var file = event.target.files[0];
+  if (file) _readImageFile(file, cellId);
+}
+
+function _readImageFile(file, cellId) {
+  var reader = new FileReader();
+  reader.onload = function(e) { _setImageUrl(cellId, e.target.result); };
+  reader.readAsDataURL(file);
+}
+
+function _setImageUrl(cellId, url) {
+  updateCellField(cellId, 'content', url);
+  rerenderCell(cellId);
+}
+
+function rerenderCell(cellId) {
+  var cell = cells.find(function(c){ return c.id===cellId; });
+  if (!cell) return;
+  var el = document.getElementById('cell-'+cellId);
+  if (!el) return;
+  el.innerHTML = buildCellHTML(cell, cells.indexOf(cell));
+  if (cell.cell_type==='code') initCodeMirror(cell);
+}
+
+// Global paste handler for image cells
+document.addEventListener('paste', function(e) {
+  var focused = document.activeElement;
+  if (!focused) return;
+  var cellEl = focused.closest ? focused.closest('.cell') : null;
+  if (!cellEl) return;
+  var cellId = cellEl.dataset.id;
+  var cell = cells.find(function(c){ return c.id===cellId; });
+  if (!cell || cell.cell_type !== 'image') return;
+  var items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (var i=0; i<items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      e.preventDefault();
+      _readImageFile(items[i].getAsFile(), cellId);
+      break;
+    }
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Insert citations panel
+══════════════════════════════════════════════════════════════════════════ */
+var _sessionCits = [];  // populated from URL param or postMessage from research.html
+
+function toggleInsertPanel(cellId) {
+  var panel = document.getElementById('ins-'+cellId);
+  if (!panel) return;
+  var open = panel.classList.toggle('open');
+  if (!open) return;
+  if (!_sessionCits.length) {
+    panel.innerHTML = '<div style="font-size:11px;color:var(--t3);padding:6px">No sources loaded. Run a research query in the main UI first, then open notebooks from there.</div>';
+    return;
+  }
+  panel.innerHTML = '<div style="font-size:9px;color:var(--t3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:5px">Insert from sources</div>'
+    + _sessionCits.slice(0,8).map(function(c,i){
+      var shot = c.screenshot_url||'';
+      return '<div class="insert-cit-item" onclick="insertCitation(\''+cellId+'\','+i+')">'
+        +(shot?'<img class="insert-cit-thumb" src="'+esc(shot)+'" onerror="this.style.display=\'none\'">':'<div class="insert-cit-thumb"></div>')
+        +'<div class="insert-cit-info"><div class="insert-cit-title">'+esc(c.title||c.url)+'</div>'
+        +'<div class="insert-cit-domain">'+esc(c.domain||'')+'</div></div>'
+        +(shot?'<button onclick="event.stopPropagation();insertScreenshot(\''+cellId+'\','+i+')" title="Insert screenshot" style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--s3);border:1px solid var(--bd);color:var(--t3)">📷</button>':'')
+        +'</div>';
+    }).join('');
+}
+
+function insertCitation(cellId, idx) {
+  var c = _sessionCits[idx]; if(!c) return;
+  var cell = cells.find(function(x){ return x.id===cellId; });
+  var ta = document.querySelector('#cell-'+cellId+' textarea') || (editors[cellId] ? null : null);
+  var cur = editors[cellId] ? editors[cellId].getValue() : (ta ? ta.value : (cell?cell.content:''));
+  var insert = '> **['+esc(c.title)+']('+c.url+')**\n> *'+esc(c.domain||'')+'*\n> '+esc((c.snippet||'').slice(0,200));
+  var newVal = cur ? cur+'\n\n'+insert : insert;
+  if (editors[cellId]) editors[cellId].setValue(newVal);
+  else if (ta) { ta.value=newVal; autoGrow(ta); }
+  if (cell) { cell.content=newVal; cell._dirty=true; }
+  var p=document.getElementById('ins-'+cellId); if(p)p.classList.remove('open');
+  toast('Citation inserted');
+}
+
+function insertScreenshot(cellId, idx) {
+  var c = _sessionCits[idx]; if(!c||!c.screenshot_url) return;
+  addCellAfter(cellId, 'image', c.screenshot_url, c.title||'');
+  var p=document.getElementById('ins-'+cellId); if(p)p.classList.remove('open');
+}
+
+function addCellAfter(afterId, type, content, title) {
+  // Insert a new cell of given type after afterId
+  var afterCell = cells.find(function(c){ return c.id===afterId; });
+  var sort = afterCell ? afterCell.sort_order+0.5 : cells.length;
+  fetch(API+'/api/notebooks/'+currentNb.id+'/cells', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({cell_type:type||'markdown',lang:'python',tag:'none',
+      content:content||'',sort_order:sort,page_id:afterCell?afterCell.page_id:currentPage,title:title||''})
+  }).then(function(r){ return r.json(); }).then(function(cell){
+    var idx = cells.findIndex(function(c){ return c.id===afterId; });
+    if (idx>=0) cells.splice(idx+1,0,cell); else cells.push(cell);
+    cells.forEach(function(c,i){ c.sort_order=i; });
+    renderVisibleCells();
+    toast('Cell added');
+  }).catch(function(){ toast('Error adding cell'); });
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Save generated to new cell
+══════════════════════════════════════════════════════════════════════════ */
+function genToCell(cellId) {
+  var cell = cells.find(function(c){ return c.id===cellId; });
+  if (!cell || !cell.generated) return;
+  addCellAfter(cellId, 'markdown', cell.generated, '');
+  toast('Generated content saved as new cell');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Receive session citations from parent window (research.html)
+══════════════════════════════════════════════════════════════════════════ */
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'vera-citations') {
+    _sessionCits = e.data.citations || [];
+  }
+});
+// Also try to read from opener
+try {
+  if (window.opener && window.opener.S && window.opener.S.cits) {
+    _sessionCits = window.opener.S.cits;
+  }
+} catch(e) {}
+
+
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function formatAge(s){if(s<60)return Math.round(s)+'s';if(s<3600)return Math.round(s/60)+'m';if(s<86400)return Math.round(s/3600)+'h';return Math.round(s/86400)+'d';}
+function toast(msg){
+  const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},2200);
+}
+</script>
+</body>
+</html>

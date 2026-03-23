@@ -8,37 +8,39 @@
     const MODEL_ROLES = ['fast', 'intermediate', 'deep', 'reasoning'];
 
     const ROUTE_DESCRIPTIONS = {
-        auto:                   '🤖 <b>Auto</b> — Triage classifies complexity and picks the best route.',
-        simple:                 '⚡ <b>Simple</b> — Fast model. Best for short questions and quick lookups.',
-        intermediate:           '📊 <b>Intermediate</b> — Balanced depth. Good for most queries.',
-        reasoning:              '🧠 <b>Reasoning</b> — Step-by-step logical analysis.',
-        complex:                '🔬 <b>Complex</b> — Deep model. Best for research and detailed explanations.',
-        coding:                 '💻 <b>Coding</b> — Optimised for code generation and debugging.',
-        toolchain:              '🔧 <b>Toolchain</b> — Execute tools and actions.',
-        'toolchain-parallel':   '⚡🔧 <b>Parallel Tools</b> — Run multiple tools simultaneously.',
-        'toolchain-adaptive':   '🎯 <b>Adaptive Tools</b> — Multi-step tool workflows, planned on the fly.',
-        'toolchain-stepbystep': '📋 <b>Step-by-Step</b> — Sequential tool execution with explicit steps.',
-        counsel:                '👥 <b>Counsel</b> — Multiple models deliberate on the same query.',
+        auto:                   '<b>Auto</b> — Triage classifies complexity and picks the best route.',
+        simple:                 '<b>Simple</b> — Fast model. Best for short questions and quick lookups.',
+        intermediate:           '<b>Intermediate</b> — Balanced depth. Good for most queries.',
+        reasoning:              '<b>Reasoning</b> — Step-by-step logical analysis.',
+        complex:                '<b>Complex</b> — Deep model. Best for research and detailed explanations.',
+        coding:                 '<b>Coding</b> — Optimised for code generation and debugging.',
+        toolchain:              '<b>Toolchain</b> — Execute tools and actions.',
+        'toolchain-parallel':   '<b>Parallel Tools</b> — Run multiple tools simultaneously.',
+        'toolchain-adaptive':   '<b>Adaptive Tools</b> — Multi-step tool workflows, planned on the fly.',
+        'toolchain-stepbystep': '<b>Step-by-Step</b> — Sequential tool execution with explicit steps.',
+        counsel:                '<b>Counsel</b> — Multiple models deliberate on the same query.',
+        model:                  '<b>Specific model</b> — Send directly to any model on the cluster. Bypasses role-based routing.',
     };
 
-    // ── State — always strings/booleans/arrays, never null/undefined ──
+    // ── State ─────────────────────────────────────────────────────────
     function safeMode() {
-        const v = localStorage.getItem('rc-mode');
-        // Guard against old key name ('chat-routing-mode') from previous version
+        const v   = localStorage.getItem('rc-mode');
         const old = localStorage.getItem('chat-routing-mode');
         return (v && v !== 'null') ? v : (old && old !== 'null') ? old : 'auto';
     }
 
     const State = {
-        mode:          safeMode(),
-        force:         localStorage.getItem('rc-force') === 'true',
-        expanded:      localStorage.getItem('rc-expanded') === 'true',
-        modelOverride: localStorage.getItem('rc-model-override') || '',
-        counselMode:   localStorage.getItem('rc-counsel-mode') || 'vote',
-        counselModels: (() => {
+        mode:            safeMode(),
+        force:           localStorage.getItem('rc-force') === 'true',
+        expanded:        localStorage.getItem('rc-expanded') === 'true',
+        modelOverride:   localStorage.getItem('rc-model-override') || '',
+        counselMode:     localStorage.getItem('rc-counsel-mode') || 'vote',
+        counselModels:   (() => {
             try { return JSON.parse(localStorage.getItem('rc-counsel-models')) || ['fast','intermediate','deep']; }
             catch { return ['fast','intermediate','deep']; }
         })(),
+        // New: the raw Ollama model name chosen in "model" mode
+        specificModel:   localStorage.getItem('rc-specific-model') || '',
     };
 
     function save(key, val) {
@@ -46,12 +48,43 @@
         localStorage.setItem('rc-' + key, typeof val === 'object' ? JSON.stringify(val) : String(val));
     }
 
-    function isCounsel()   { return State.mode === 'counsel'; }
-    function isToolchain() { return typeof State.mode === 'string' && State.mode.startsWith('toolchain'); }
+    function isCounsel()       { return State.mode === 'counsel'; }
+    function isToolchain()     { return typeof State.mode === 'string' && State.mode.startsWith('toolchain'); }
+    function isSpecificModel() { return State.mode === 'model'; }
 
-    // ─────────────────────────────────────────────────────────────────
-    // HTML builders
-    // ─────────────────────────────────────────────────────────────────
+    // ── Cluster model cache ───────────────────────────────────────────
+    // Shape: [{ name, instance, size, quant, ctx }]
+    let _clusterModels    = [];
+    let _clusterFetched   = false;
+    let _clusterFetching  = false;
+
+    // Resolve the API base URL at runtime so the fetch works whether the page
+    // is loaded via http://, https://, or directly from disk (file://).
+    // Priority: explicit data-api-url attribute on the <script> tag that loaded
+    // this file, then a global VeraChatConfig.apiBase, then the page origin
+    // (works for http/https), then a hardcoded fallback for file:// dev loads.
+    function _apiBase() {
+        return 'http://llm.int:8888';
+    }
+
+    async function fetchClusterModels() {
+        if (_clusterFetched || _clusterFetching) return;
+        _clusterFetching = true;
+        try {
+            const res  = await fetch(_apiBase() + '/api/models/cluster');
+            const data = await res.json();
+            // data expected: { models: [{ name, instance, size, quant, ctx }] }
+            _clusterModels  = Array.isArray(data.models) ? data.models : [];
+            _clusterFetched = true;
+        } catch (err) {
+            console.warn('RC: could not fetch cluster models:', err);
+            _clusterModels = [];
+        } finally {
+            _clusterFetching = false;
+        }
+    }
+
+    // ── HTML builders ─────────────────────────────────────────────────
 
     function buildModelOptions(selected, includeAuto) {
         selected = selected || '';
@@ -75,6 +108,47 @@
         `).join('');
     }
 
+    function buildClusterModelOptions() {
+        if (!_clusterFetched) {
+            return `<option value="">Loading models…</option>`;
+        }
+        if (_clusterModels.length === 0) {
+            return `<option value="">No models found</option>`;
+        }
+        // Group by instance name
+        const groups = {};
+        _clusterModels.forEach(m => {
+            const inst = m.instance || 'unknown';
+            if (!groups[inst]) groups[inst] = [];
+            groups[inst].push(m);
+        });
+        return Object.entries(groups).map(([inst, models]) => `
+            <optgroup label="${inst}">
+                ${models.map(m => {
+                    const label = m.name + (m.size ? `  [${m.size}]` : '');
+                    const sel   = m.name === State.specificModel ? ' selected' : '';
+                    return `<option value="${m.name}"${sel}>${label}</option>`;
+                }).join('')}
+            </optgroup>
+        `).join('');
+    }
+
+    function buildSpecificModelMeta() {
+        if (!_clusterFetched || !State.specificModel) return '';
+        const m = _clusterModels.find(x => x.name === State.specificModel);
+        if (!m) return '';
+        const instClass = (m.instance === 'remote' || m.instance === 'gpu') ? 'rc-badge-gpu' : 'rc-badge-cpu';
+        return `
+            <div class="rc-section" id="rc-model-meta">
+                <span class="rc-field-label">Details</span>
+                <span class="rc-badge ${instClass}">${m.instance || '?'}</span>
+                ${m.size  ? `<span class="rc-badge rc-badge-neutral">${m.size}</span>` : ''}
+                ${m.quant ? `<span class="rc-badge rc-badge-neutral">${m.quant}</span>` : ''}
+                ${m.ctx   ? `<span class="rc-badge rc-badge-neutral">${m.ctx} ctx</span>` : ''}
+            </div>
+        `;
+    }
+
     function opt(val, label, cur) {
         return `<option value="${val}"${cur === val ? ' selected' : ''}>${label}</option>`;
     }
@@ -86,23 +160,26 @@
             <span class="rc-label">Route</span>
             <select id="rc-mode" class="rc-select rc-mode-select">
                 <optgroup label="Auto">
-                    ${opt('auto',                   '🤖 Auto',         m)}
+                    ${opt('auto',                   'Auto',         m)}
                 </optgroup>
                 <optgroup label="Direct">
-                    ${opt('simple',                 '⚡ Simple',        m)}
-                    ${opt('intermediate',           '📊 Intermediate',  m)}
-                    ${opt('reasoning',              '🧠 Reasoning',     m)}
-                    ${opt('complex',                '🔬 Complex',       m)}
-                    ${opt('coding',                 '💻 Coding',        m)}
+                    ${opt('simple',                 'Simple',        m)}
+                    ${opt('intermediate',           'Intermediate',  m)}
+                    ${opt('reasoning',              'Reasoning',     m)}
+                    ${opt('complex',                'Complex',       m)}
+                    ${opt('coding',                 'Coding',        m)}
                 </optgroup>
                 <optgroup label="Toolchain">
-                    ${opt('toolchain',              '🔧 Toolchain',       m)}
-                    ${opt('toolchain-parallel',     '⚡🔧 Parallel',      m)}
-                    ${opt('toolchain-adaptive',     '🎯 Adaptive',        m)}
-                    ${opt('toolchain-stepbystep',   '📋 Step-by-Step',    m)}
+                    ${opt('toolchain',              'Toolchain',       m)}
+                    ${opt('toolchain-parallel',     'Parallel',      m)}
+                    ${opt('toolchain-adaptive',     'Adaptive',        m)}
+                    ${opt('toolchain-stepbystep',   'Step-by-Step',    m)}
+                </optgroup>
+                <optgroup label="Model">
+                    ${opt('model',                  'Specific model',  m)}
                 </optgroup>
                 <optgroup label="Counsel">
-                    ${opt('counsel',                '👥 Counsel',         m)}
+                    ${opt('counsel',                'Counsel',         m)}
                 </optgroup>
             </select>
             <button id="rc-toggle" class="rc-icon-btn" title="Options">${State.expanded ? '▼' : '▶'}</button>
@@ -119,12 +196,25 @@
                 </label>
             </div>
 
-            <!-- Model override — hidden for counsel (has its own per-participant selectors) -->
-            <div class="rc-section" id="rc-model-override-section" style="display:${isCounsel() ? 'none' : 'flex'}">
+            <!-- Model override — hidden for counsel and specific-model modes -->
+            <div class="rc-section" id="rc-model-override-section"
+                 style="display:${isCounsel() || isSpecificModel() ? 'none' : 'flex'}">
                 <label class="rc-field-label">Responding model</label>
                 <select id="rc-model-override" class="rc-select">
                     ${buildModelOptions(State.modelOverride, true)}
                 </select>
+            </div>
+
+            <!-- Specific model picker -->
+            <div id="rc-specific-model-section"
+                 style="display:${isSpecificModel() ? 'flex' : 'none'};flex-direction:column;gap:8px;">
+                <div class="rc-section">
+                    <label class="rc-field-label">Model</label>
+                    <select id="rc-specific-model" class="rc-select">
+                        ${buildClusterModelOptions()}
+                    </select>
+                </div>
+                ${buildSpecificModelMeta()}
             </div>
 
             <!-- Counsel config -->
@@ -132,10 +222,10 @@
                 <div class="rc-section">
                     <label class="rc-field-label">Deliberation</label>
                     <select id="rc-counsel-mode" class="rc-select">
-                        ${opt('vote',      '⚖️ Vote — judge picks best',     State.counselMode)}
-                        ${opt('synthesis', '🔀 Synthesis — combine all',      State.counselMode)}
-                        ${opt('debate',    '⚔️ Debate — rebut + moderate',    State.counselMode)}
-                        ${opt('race',      '🏁 Race — fastest wins',          State.counselMode)}
+                        ${opt('vote',      'Vote — judge picks best',     State.counselMode)}
+                        ${opt('synthesis', 'Synthesis — combine all',      State.counselMode)}
+                        ${opt('debate',    'Debate — rebut + moderate',    State.counselMode)}
+                        ${opt('race',      'Race — fastest wins',          State.counselMode)}
                     </select>
                 </div>
                 <div class="rc-section" style="flex-direction:column; align-items:stretch;">
@@ -150,13 +240,15 @@
         </div>`;
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Events
-    // ─────────────────────────────────────────────────────────────────
+    // ── Events ────────────────────────────────────────────────────────
 
     function wireEvents(root) {
         root.querySelector('#rc-mode').addEventListener('change', e => {
             save('mode', e.target.value);
+            if (isSpecificModel() && !_clusterFetched) {
+                // Kick off fetch and repopulate when done
+                fetchClusterModels().then(() => refreshSpecificModelPicker(root));
+            }
             refreshBody(root);
         });
 
@@ -173,11 +265,16 @@
             save('modelOverride', e.target.value);
         });
 
+        // Specific model selection
+        root.querySelector('#rc-specific-model').addEventListener('change', e => {
+            save('specificModel', e.target.value);
+            refreshModelMeta(root);
+        });
+
         root.querySelector('#rc-counsel-mode').addEventListener('change', e => {
             save('counselMode', e.target.value);
         });
 
-        // Delegated: participant model change
         root.querySelector('#rc-counsel-models').addEventListener('change', e => {
             const el = e.target.closest('.rc-counsel-model');
             if (!el) return;
@@ -186,7 +283,6 @@
             save('counselModels', updated);
         });
 
-        // Delegated: remove participant
         root.querySelector('#rc-counsel-models').addEventListener('click', e => {
             const btn = e.target.closest('.rc-remove-counsel');
             if (!btn) return;
@@ -196,7 +292,6 @@
             refreshCounselRows(root);
         });
 
-        // Add participant
         root.querySelector('#rc-add-counsel').addEventListener('click', () => {
             if (State.counselModels.length >= 6) return;
             save('counselModels', [...State.counselModels, 'fast']);
@@ -213,10 +308,35 @@
         const desc = root.querySelector('#rc-desc');
         if (desc) desc.innerHTML = ROUTE_DESCRIPTIONS[State.mode] || '';
 
-        const overrideSection = root.querySelector('#rc-model-override-section');
-        const counselSection  = root.querySelector('#rc-counsel-section');
-        if (overrideSection) overrideSection.style.display = isCounsel() ? 'none' : 'flex';
-        if (counselSection)  counselSection.style.display  = isCounsel() ? 'block' : 'none';
+        const overrideSection      = root.querySelector('#rc-model-override-section');
+        const counselSection       = root.querySelector('#rc-counsel-section');
+        const specificModelSection = root.querySelector('#rc-specific-model-section');
+
+        if (overrideSection)      overrideSection.style.display      = (isCounsel() || isSpecificModel()) ? 'none' : 'flex';
+        if (counselSection)       counselSection.style.display        = isCounsel()       ? 'block' : 'none';
+        if (specificModelSection) specificModelSection.style.display  = isSpecificModel() ? 'flex'  : 'none';
+    }
+
+    function refreshSpecificModelPicker(root) {
+        const sel = root.querySelector('#rc-specific-model');
+        if (!sel) return;
+        sel.innerHTML = buildClusterModelOptions();
+        // If nothing selected yet, default to first model
+        if (!State.specificModel && _clusterModels.length > 0) {
+            save('specificModel', _clusterModels[0].name);
+            sel.value = State.specificModel;
+        }
+        refreshModelMeta(root);
+    }
+
+    function refreshModelMeta(root) {
+        // Remove old meta row if present
+        const old = root.querySelector('#rc-model-meta');
+        if (old) old.remove();
+        const section = root.querySelector('#rc-specific-model-section');
+        if (!section) return;
+        const html = buildSpecificModelMeta();
+        if (html) section.insertAdjacentHTML('beforeend', html);
     }
 
     function refreshCounselRows(root) {
@@ -224,9 +344,7 @@
         if (c) c.innerHTML = buildCounselModelRows();
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // getRoutingConfig  (consumed by sendMessageViaWebSocketWithRouting)
-    // ─────────────────────────────────────────────────────────────────
+    // ── getRoutingConfig ──────────────────────────────────────────────
 
     VeraChat.prototype.getRoutingConfig = function () {
         const cfg = {
@@ -234,7 +352,12 @@
             force: !!State.force,
         };
 
-        if (State.mode !== 'auto' && State.modelOverride && !isCounsel()) {
+        if (isSpecificModel()) {
+            // Tell the backend to use a raw model name
+            cfg.specific_model = State.specificModel || '';
+            // Always force when a specific model is chosen — triage is meaningless here
+            cfg.force = true;
+        } else if (State.mode !== 'auto' && State.modelOverride && !isCounsel()) {
             cfg.model_override = State.modelOverride;
         }
 
@@ -248,21 +371,16 @@
         return cfg;
     };
 
-    // Expose routingMode as a getter so any legacy code that reads
-    // this.routingMode still works instead of getting undefined.
     Object.defineProperty(VeraChat.prototype, 'routingMode', {
         get() { return State.mode || 'auto'; },
         set(v) { save('mode', v || 'auto'); },
         configurable: true,
     });
 
-    // ─────────────────────────────────────────────────────────────────
-    // Mount
-    // ─────────────────────────────────────────────────────────────────
+    // ── Mount ─────────────────────────────────────────────────────────
 
     VeraChat.prototype.addRoutingControls = function () {
         document.getElementById('rc-panel')?.remove();
-        // Also remove old-version panel if present
         document.getElementById('routing-controls')?.remove();
 
         const panel = document.createElement('div');
@@ -288,12 +406,16 @@
 
         wireEvents(panel);
         injectStyles();
+
+        // If we're already in model mode (persisted from last session), fetch now
+        if (isSpecificModel() && !_clusterFetched) {
+            fetchClusterModels().then(() => refreshSpecificModelPicker(panel));
+        }
+
         console.log('✅ Routing controls mounted, mode:', State.mode);
     };
 
-    // ─────────────────────────────────────────────────────────────────
-    // Init hook
-    // ─────────────────────────────────────────────────────────────────
+    // ── Init hook ─────────────────────────────────────────────────────
 
     if (!VeraChat.prototype._rcWrapped) {
         const _orig = VeraChat.prototype.init;
@@ -311,9 +433,7 @@
         setTimeout(() => app.addRoutingControls?.(), 800);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // Styles
-    // ─────────────────────────────────────────────────────────────────
+    // ── Styles ────────────────────────────────────────────────────────
 
     function injectStyles() {
         if (document.getElementById('rc-styles')) return;
@@ -462,6 +582,35 @@
         .rc-counsel-row .rc-select { flex: 1; }
         .rc-remove-counsel { width: 24px; height: 24px; font-size: 10px; }
         .rc-remove-counsel:hover { border-color: #ef4444; color: #ef4444; }
+
+        /* ── Specific-model mode ── */
+        #rc-specific-model-section {
+            flex-direction: column;
+            gap: 8px;
+        }
+        .rc-badge {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 4px;
+            white-space: nowrap;
+        }
+        .rc-badge-cpu {
+            background: rgba(29,158,117,.18);
+            color: #1d9e75;
+            border: 1px solid rgba(29,158,117,.3);
+        }
+        .rc-badge-gpu {
+            background: rgba(83,74,183,.18);
+            color: #8b82e8;
+            border: 1px solid rgba(83,74,183,.3);
+        }
+        .rc-badge-neutral {
+            background: var(--bg, #0f1a2e);
+            color: var(--text-muted, #6b7fa3);
+            border: 1px solid var(--border, #2d3f5c);
+        }
         `;
         document.head.appendChild(s);
     }

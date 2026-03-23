@@ -4,7 +4,7 @@ description: "Agent that interprets queries and dispatches tools."
 base_model: "qwen3.5:9b"
 quantization: "Q5_K_M"
 num_ctx: 250000
-# gpu_layers: 99
+gpu_layers: 99
 
 parameters:
   temperature: 0.65
@@ -19,8 +19,8 @@ memory:
 
 includes:
   - includes/tool_list.txt
-  - includes/capabilities.md
-  - includes/safety.md
+  # - includes/capabilities.md
+  # - includes/safety.md
 
 system_prompt:
   template: "prompt_template.j2"

@@ -1,0 +1,2405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vera IDE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg0: #0d0f12;
+  --bg1: #13161b;
+  --bg2: #1a1e25;
+  --bg3: #222730;
+  --bg4: #2c3240;
+  --border: #2e3542;
+  --border-hi: #3d4758;
+  --text0: #e8ecf2;
+  --text1: #a8b4c4;
+  --text2: #6b7a90;
+  --text3: #3d4a5c;
+  --accent: #00d4ff;
+  --accent2: #7c3aed;
+  --accent3: #10b981;
+  --accent4: #f59e0b;
+  --accent5: #ef4444;
+  --accent6: #ec4899;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --radius: 4px;
+  --scrollbar-w: 6px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg0); color: var(--text0); font-family: var(--sans); font-size: 13px; }
+
+::-webkit-scrollbar { width: var(--scrollbar-w); height: var(--scrollbar-w); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
+
+/* ── LAYOUT ── */
+#app { display: grid; grid-template-rows: 36px 1fr 28px; height: 100vh; }
+#titlebar { display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bg1); border-bottom: 1px solid var(--border); user-select: none; }
+#titlebar .logo { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; margin-right: 8px; }
+#titlebar .sep { width: 1px; height: 16px; background: var(--border); }
+.tb-btn { display: flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: var(--radius); border: none; background: transparent; color: var(--text1); cursor: pointer; font-size: 12px; font-family: var(--sans); transition: background .15s, color .15s; }
+.tb-btn:hover { background: var(--bg3); color: var(--text0); }
+.tb-btn.active { background: var(--bg3); color: var(--accent); }
+.tb-btn .icon { font-size: 14px; }
+#titlebar .spacer { flex: 1; }
+#model-badge { font-family: var(--mono); font-size: 10px; color: var(--text2); background: var(--bg3); padding: 2px 8px; border-radius: 10px; border: 1px solid var(--border); }
+
+#main { display: grid; grid-template-columns: 220px 1fr 340px; overflow: hidden; }
+
+/* ── SIDEBAR ── */
+#sidebar { display: flex; flex-direction: column; background: var(--bg1); border-right: 1px solid var(--border); overflow: hidden; }
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.sidebar-header span { font-family: var(--mono); font-size: 10px; font-weight: 500; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; }
+.sidebar-header .actions { display: flex; gap: 2px; }
+.icon-btn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text2); cursor: pointer; border-radius: var(--radius); font-size: 14px; transition: all .15s; }
+.icon-btn:hover { background: var(--bg3); color: var(--text0); }
+
+#file-tree { flex: 1; overflow-y: auto; padding: 4px 0; }
+.tree-item { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 0; cursor: pointer; border-radius: var(--radius); transition: background .1s; white-space: nowrap; overflow: hidden; position: relative; }
+.tree-item:hover { background: var(--bg3); }
+.tree-item.active { background: var(--bg2); }
+.tree-item.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); border-radius: 0 2px 2px 0; }
+.tree-item .indent { flex-shrink: 0; }
+.tree-item .fi { font-size: 13px; flex-shrink: 0; }
+.tree-item .name { font-family: var(--mono); font-size: 11.5px; color: var(--text1); overflow: hidden; text-overflow: ellipsis; }
+.tree-item.dir .name { color: var(--text0); font-weight: 500; }
+.tree-item.modified .name::after { content: '●'; color: var(--accent4); font-size: 8px; margin-left: 4px; vertical-align: middle; }
+.tree-item.new-file .name { color: var(--accent3); }
+.tree-item.context-checked { background: rgba(0,212,255,0.05); }
+.tree-item.context-checked::after { content: '✓'; position: absolute; right: 6px; color: var(--accent); font-size: 10px; }
+
+#sidebar-bottom { border-top: 1px solid var(--border); padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.ctx-info { font-family: var(--mono); font-size: 10px; color: var(--text2); padding: 3px 6px; }
+.ctx-bar { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin: 0 6px; }
+.ctx-bar-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; transition: width .3s; }
+
+/* ── EDITOR AREA ── */
+#editor-area { display: flex; flex-direction: column; background: var(--bg0); overflow: hidden; }
+#tabs-bar { display: flex; align-items: stretch; background: var(--bg1); border-bottom: 1px solid var(--border); overflow-x: auto; flex-shrink: 0; }
+#tabs-bar::-webkit-scrollbar { height: 3px; }
+.tab { display: flex; align-items: center; gap: 6px; padding: 0 14px; border-right: 1px solid var(--border); cursor: pointer; white-space: nowrap; font-family: var(--mono); font-size: 11.5px; color: var(--text2); transition: all .15s; min-height: 32px; position: relative; flex-shrink: 0; }
+.tab:hover { background: var(--bg2); color: var(--text1); }
+.tab.active { background: var(--bg0); color: var(--text0); border-bottom: 2px solid var(--accent); margin-bottom: -1px; }
+.tab .tab-close { opacity: 0; font-size: 14px; color: var(--text2); transition: opacity .15s; }
+.tab:hover .tab-close { opacity: 1; }
+.tab .tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent4); flex-shrink: 0; }
+
+#editor-view { flex: 1; display: flex; overflow: hidden; position: relative; }
+#editor-panels { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+/* CodeMirror-like editor */
+#code-editor-wrap { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
+#code-editor { flex: 1; width: 100%; background: var(--bg0); color: var(--text0); border: none; outline: none; resize: none; font-family: var(--mono); font-size: 13px; line-height: 1.65; padding: 16px 16px 16px 60px; tab-size: 2; white-space: pre; overflow-wrap: normal; overflow: auto; }
+#line-numbers { position: absolute; left: 0; top: 0; bottom: 0; width: 52px; padding: 16px 8px 16px 0; font-family: var(--mono); font-size: 13px; line-height: 1.65; color: var(--text3); text-align: right; pointer-events: none; overflow: hidden; background: var(--bg0); border-right: 1px solid var(--border); z-index: 1; }
+#editor-info-bar { display: flex; align-items: center; gap: 12px; padding: 3px 12px; background: var(--bg1); border-top: 1px solid var(--border); font-family: var(--mono); font-size: 10.5px; color: var(--text2); flex-shrink: 0; }
+#editor-info-bar .sep { width: 1px; height: 12px; background: var(--border); }
+#editor-info-bar .spacer { flex: 1; }
+
+/* Diff overlay */
+#diff-overlay { display: none; position: absolute; inset: 0; background: var(--bg0); overflow: auto; padding: 16px 16px 16px 60px; font-family: var(--mono); font-size: 13px; line-height: 1.65; z-index: 5; }
+#diff-overlay.visible { display: block; }
+.diff-line { display: flex; gap: 8px; }
+.diff-add { background: rgba(16,185,129,0.12); color: #6ee7b7; }
+.diff-add .diff-sym { color: var(--accent3); }
+.diff-remove { background: rgba(239,68,68,0.12); color: #fca5a5; }
+.diff-remove .diff-sym { color: var(--accent5); }
+.diff-ctx { color: var(--text2); }
+.diff-sym { width: 14px; flex-shrink: 0; }
+.diff-lnum { width: 40px; text-align: right; color: var(--text3); flex-shrink: 0; }
+
+/* Preview panel */
+#preview-panel { display: none; flex-direction: column; border-left: 1px solid var(--border); width: 50%; }
+#preview-panel.visible { display: flex; }
+#preview-toolbar { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--bg1); border-bottom: 1px solid var(--border); }
+#preview-frame { flex: 1; border: none; background: #fff; }
+#preview-console { height: 100px; border-top: 1px solid var(--border); background: var(--bg1); overflow-y: auto; font-family: var(--mono); font-size: 11px; padding: 6px 10px; }
+.console-line { line-height: 1.5; }
+.console-line.error { color: var(--accent5); }
+.console-line.warn { color: var(--accent4); }
+.console-line.info { color: var(--accent); }
+.console-line.log { color: var(--text1); }
+
+/* ── RIGHT PANEL ── */
+#right-panel { display: flex; flex-direction: column; background: var(--bg1); border-left: 1px solid var(--border); overflow: hidden; }
+#right-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.right-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 4px; cursor: pointer; font-size: 11px; color: var(--text2); border-bottom: 2px solid transparent; transition: all .15s; }
+.right-tab:hover { color: var(--text0); background: var(--bg2); }
+.right-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.right-tab .rt-icon { font-size: 14px; }
+
+.right-content { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.right-content.active { display: flex; }
+
+/* AI Chat */
+#chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.msg { display: flex; flex-direction: column; gap: 4px; }
+.msg-header { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text2); }
+.msg-avatar { width: 18px; height: 18px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+.msg.user .msg-avatar { background: var(--accent2); color: #fff; }
+.msg.assistant .msg-avatar { background: var(--accent); color: var(--bg0); }
+.msg-body { font-size: 12.5px; line-height: 1.6; color: var(--text0); padding-left: 24px; }
+.msg-body p { margin-bottom: 6px; }
+.msg-body p:last-child { margin-bottom: 0; }
+.msg-body code { font-family: var(--mono); font-size: 11px; background: var(--bg3); padding: 1px 4px; border-radius: 3px; color: var(--accent); }
+.msg-body pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin: 6px 0; overflow-x: auto; position: relative; }
+.msg-body pre code { background: none; padding: 0; color: var(--text0); font-size: 11.5px; }
+.apply-btn { position: absolute; top: 6px; right: 6px; padding: 2px 8px; background: var(--accent); color: var(--bg0); border: none; border-radius: var(--radius); font-size: 10px; font-family: var(--mono); cursor: pointer; font-weight: 600; transition: opacity .15s; }
+.apply-btn:hover { opacity: 0.85; }
+.patch-btn { background: var(--accent3); }
+.msg.thinking .msg-body { color: var(--text2); font-style: italic; }
+.msg.thinking .dots::after { content: '...'; animation: dots 1.2s infinite; }
+@keyframes dots { 0%,100% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
+
+#chat-input-area { border-top: 1px solid var(--border); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+#chat-context-chips { display: flex; flex-wrap: wrap; gap: 4px; min-height: 0; }
+.ctx-chip { display: flex; align-items: center; gap: 4px; padding: 2px 7px; background: var(--bg3); border: 1px solid var(--border); border-radius: 10px; font-family: var(--mono); font-size: 10px; color: var(--accent); cursor: pointer; transition: all .15s; }
+.ctx-chip:hover { background: var(--bg4); border-color: var(--accent); }
+.ctx-chip .remove { color: var(--text2); font-size: 12px; }
+.ctx-chip .remove:hover { color: var(--accent5); }
+
+#chat-input-row { display: flex; gap: 6px; align-items: flex-end; }
+#chat-input { flex: 1; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; color: var(--text0); font-family: var(--sans); font-size: 12.5px; resize: none; outline: none; min-height: 60px; max-height: 140px; line-height: 1.5; transition: border-color .15s; }
+#chat-input:focus { border-color: var(--accent); }
+#chat-send { width: 32px; height: 32px; background: var(--accent); border: none; border-radius: var(--radius); cursor: pointer; display: flex; align-items: center; justify-content: center; color: var(--bg0); font-size: 15px; transition: opacity .15s; flex-shrink: 0; }
+#chat-send:hover { opacity: 0.85; }
+#chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#chat-options { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chat-opt-btn { padding: 2px 8px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text2); font-size: 10.5px; cursor: pointer; transition: all .15s; font-family: var(--sans); }
+.chat-opt-btn:hover { border-color: var(--accent); color: var(--accent); }
+.chat-opt-btn.active { background: rgba(0,212,255,0.1); border-color: var(--accent); color: var(--accent); }
+#endpoint-select { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 10.5px; padding: 2px 6px; outline: none; font-family: var(--mono); cursor: pointer; }
+#model-select { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 10.5px; padding: 2px 6px; outline: none; font-family: var(--mono); cursor: pointer; }
+
+/* Docs Panel */
+#docs-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#docs-search-bar { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+#docs-query { flex: 1; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; color: var(--text0); font-family: var(--mono); font-size: 11.5px; outline: none; }
+#docs-query:focus { border-color: var(--accent); }
+#docs-go { padding: 5px 10px; background: var(--accent2); border: none; border-radius: var(--radius); color: #fff; font-size: 11px; cursor: pointer; font-family: var(--sans); }
+#docs-result { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; line-height: 1.7; color: var(--text1); }
+#docs-result h1, #docs-result h2, #docs-result h3 { color: var(--text0); margin: 10px 0 4px; }
+#docs-result code { font-family: var(--mono); background: var(--bg3); padding: 1px 4px; border-radius: 3px; color: var(--accent); font-size: 11px; }
+#docs-result pre { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; overflow-x: auto; margin: 6px 0; }
+#docs-result pre code { background: none; padding: 0; color: var(--text0); }
+.docs-source-tag { display: inline-block; padding: 1px 6px; background: var(--bg3); border-radius: 10px; font-size: 10px; color: var(--text2); margin-bottom: 8px; font-family: var(--mono); }
+
+/* Version Control */
+#vc-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#vc-header { padding: 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+#commit-msg { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; color: var(--text0); font-family: var(--sans); font-size: 12px; outline: none; width: 100%; }
+#commit-msg:focus { border-color: var(--accent3); }
+#vc-actions { display: flex; gap: 6px; }
+.vc-btn { flex: 1; padding: 5px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 11px; cursor: pointer; transition: all .15s; font-family: var(--sans); }
+.vc-btn:hover { border-color: var(--accent3); color: var(--accent3); }
+.vc-btn.primary { background: rgba(16,185,129,0.15); border-color: var(--accent3); color: var(--accent3); }
+#vc-list { flex: 1; overflow-y: auto; }
+.vc-entry { padding: 8px 10px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background .1s; }
+.vc-entry:hover { background: var(--bg2); }
+.vc-entry.current { background: rgba(0,212,255,0.06); }
+.vc-entry .vc-hash { font-family: var(--mono); font-size: 10px; color: var(--accent); }
+.vc-entry .vc-msg { font-size: 12px; color: var(--text0); margin-top: 2px; }
+.vc-entry .vc-meta { font-size: 10px; color: var(--text2); margin-top: 2px; display: flex; gap: 8px; }
+.vc-entry .vc-files { font-size: 10px; color: var(--accent3); margin-top: 2px; font-family: var(--mono); }
+.vc-restore-btn { float: right; padding: 1px 7px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); font-size: 10px; color: var(--text2); cursor: pointer; }
+.vc-restore-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Test Panel */
+#test-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#test-header { padding: 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+#test-desc { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 5px 8px; color: var(--text0); font-family: var(--sans); font-size: 12px; outline: none; width: 100%; }
+#test-actions { display: flex; gap: 6px; align-items: center; }
+.test-btn { padding: 5px 10px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 11px; cursor: pointer; font-family: var(--sans); transition: all .15s; }
+.test-btn:hover { border-color: var(--accent6); color: var(--accent6); }
+.test-btn.run { background: rgba(236,72,153,0.15); border-color: var(--accent6); color: var(--accent6); }
+#test-ep-select { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 10.5px; padding: 4px 6px; outline: none; font-family: var(--mono); }
+#test-output { flex: 1; overflow-y: auto; font-family: var(--mono); font-size: 11.5px; padding: 10px; line-height: 1.65; }
+.test-result { margin-bottom: 10px; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.test-result-head { padding: 6px 10px; display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.test-result-head.pass { background: rgba(16,185,129,0.12); color: var(--accent3); }
+.test-result-head.fail { background: rgba(239,68,68,0.12); color: var(--accent5); }
+.test-result-head.pending { background: rgba(245,158,11,0.12); color: var(--accent4); }
+.test-result-body { padding: 8px 10px; background: var(--bg2); color: var(--text1); font-size: 11px; border-top: 1px solid var(--border); }
+.test-score { font-family: var(--mono); font-size: 13px; padding: 6px 10px; color: var(--text0); }
+
+/* Status bar */
+#statusbar { display: flex; align-items: center; gap: 12px; padding: 0 10px; background: var(--accent); color: var(--bg0); font-family: var(--mono); font-size: 10.5px; }
+#statusbar .sb-item { display: flex; align-items: center; gap: 4px; }
+#statusbar .spacer { flex: 1; }
+#status-msg { font-weight: 500; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--bg0); opacity: 0.6; }
+.status-dot.pulse { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+/* Modal */
+#modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+#modal-overlay.visible { display: flex; }
+.modal { background: var(--bg2); border: 1px solid var(--border-hi); border-radius: 6px; padding: 20px; min-width: 360px; max-width: 560px; width: 100%; }
+.modal h3 { font-family: var(--mono); font-size: 13px; color: var(--text0); margin-bottom: 12px; }
+.modal-input { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; color: var(--text0); font-family: var(--mono); font-size: 12.5px; outline: none; margin-bottom: 10px; }
+.modal-input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+.modal-btn { padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg3); color: var(--text0); cursor: pointer; font-size: 12px; font-family: var(--sans); transition: all .15s; }
+.modal-btn.primary { background: var(--accent); color: var(--bg0); border-color: var(--accent); font-weight: 600; }
+.modal-btn:hover:not(.primary) { border-color: var(--accent); color: var(--accent); }
+
+/* Inline edit highlight */
+.inline-edit-target { background: rgba(124,58,237,0.2) !important; border-left: 3px solid var(--accent2) !important; }
+
+/* Endpoint status pills */
+#endpoint-status { display: flex; gap: 4px; }
+.ep-pill { display: flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 8px; font-size: 9px; font-family: var(--mono); border: 1px solid var(--border); color: var(--text2); }
+.ep-pill.ok { border-color: var(--accent3); color: var(--accent3); }
+.ep-pill.err { border-color: var(--accent5); color: var(--accent5); }
+.ep-pill .ep-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+/* Resize handle */
+.resize-handle { width: 4px; background: transparent; cursor: col-resize; transition: background .15s; flex-shrink: 0; }
+.resize-handle:hover { background: var(--accent); }
+
+/* Find/replace bar */
+#find-bar { display: none; padding: 5px 10px; background: var(--bg2); border-top: 1px solid var(--border); display: none; align-items: center; gap: 8px; }
+#find-bar.visible { display: flex; }
+#find-input, #replace-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 7px; color: var(--text0); font-family: var(--mono); font-size: 12px; outline: none; width: 150px; }
+#find-input:focus, #replace-input:focus { border-color: var(--accent); }
+.find-btn { padding: 3px 8px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text1); font-size: 11px; cursor: pointer; font-family: var(--sans); transition: all .15s; }
+.find-btn:hover { border-color: var(--accent); color: var(--accent); }
+.find-count { font-family: var(--mono); font-size: 10.5px; color: var(--text2); }
+
+/* Notification toast */
+#toast { position: fixed; bottom: 36px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--bg2); border: 1px solid var(--border-hi); border-radius: var(--radius); padding: 8px 14px; font-size: 12px; color: var(--text0); font-family: var(--mono); opacity: 0; transition: all .2s; pointer-events: none; z-index: 200; }
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.success { border-color: var(--accent3); color: var(--accent3); }
+#toast.error { border-color: var(--accent5); color: var(--accent5); }
+
+/* Streaming cursor */
+.stream-cursor::after { content: '▋'; animation: blink .7s infinite; color: var(--accent); }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+/* Empty state */
+.empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text2); padding: 20px; text-align: center; }
+.empty-state .es-icon { font-size: 32px; opacity: 0.4; }
+.empty-state p { font-size: 12px; line-height: 1.6; max-width: 220px; }
+
+/* Context selector popup */
+#ctx-popup { display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: var(--bg2); border: 1px solid var(--border-hi); border-radius: var(--radius); max-height: 200px; overflow-y: auto; z-index: 50; }
+#ctx-popup.visible { display: block; }
+.ctx-popup-item { padding: 5px 10px; cursor: pointer; font-family: var(--mono); font-size: 11px; color: var(--text1); transition: background .1s; display: flex; align-items: center; gap: 6px; }
+.ctx-popup-item:hover { background: var(--bg3); color: var(--text0); }
+
+/* ── Instance / endpoint UI ── */
+#chat-instance-row { display:flex; align-items:center; gap:6px; padding:4px 0 2px; }
+#chat-instance-row select { flex:1; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); color:var(--text0); font-size:11.5px; padding:4px 7px; outline:none; font-family:var(--mono); cursor:pointer; min-width:0; }
+#chat-instance-row select:focus { border-color:var(--accent); }
+#instance-tier-badge { font-family:var(--mono); font-size:9px; padding:2px 6px; border-radius:8px; border:1px solid var(--border); color:var(--text2); white-space:nowrap; flex-shrink:0; }
+#instance-tier-badge.tier-writer  { border-color:#00d4ff44; color:var(--accent);  background:rgba(0,212,255,.06); }
+#instance-tier-badge.tier-thinker { border-color:#7c3aed44; color:var(--accent2); background:rgba(124,58,237,.06); }
+#instance-tier-badge.tier-analyst { border-color:#10b98144; color:var(--accent3); background:rgba(16,185,129,.06); }
+#chat-toggle-row { display:flex; align-items:center; gap:4px; }
+#ctx-token-chip { font-size:9px !important; padding:1px 6px !important; color:var(--text2) !important; }
+
+/* Endpoint pills — colour by tier */
+.ep-pill { display:flex; align-items:center; gap:3px; padding:2px 7px; border-radius:8px; font-size:9px; font-family:var(--mono); border:1px solid var(--border); color:var(--text2); transition:all .2s; }
+.ep-pill .ep-dot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+.ep-pill.ok  { border-color:var(--accent3); color:var(--accent3); }
+.ep-pill.err { border-color:var(--accent5); color:var(--accent5); }
+.ep-pill.unknown { border-color:var(--border); color:var(--text3); }
+.ep-pill.tier-writer  { border-color:#00d4ff55; }
+.ep-pill.tier-thinker { border-color:#7c3aed55; }
+.ep-pill.tier-analyst { border-color:#10b98155; }
+.ep-pill.ok.tier-writer  { color:var(--accent);  border-color:var(--accent); }
+.ep-pill.ok.tier-thinker { color:var(--accent2); border-color:var(--accent2); }
+.ep-pill.ok.tier-analyst { color:var(--accent3); border-color:var(--accent3); }
+
+/* Model badge in titlebar */
+#model-badge { font-family:var(--mono); font-size:10px; color:var(--text1); background:var(--bg3); padding:3px 10px; border-radius:10px; border:1px solid var(--border); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* ── Folder browser modal ── */
+#folder-browser-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:150; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+#folder-browser-overlay.visible { display:flex; }
+#folder-browser { background:var(--bg2); border:1px solid var(--border-hi); border-radius:6px; width:600px; max-width:95vw; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; }
+#fb-header { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border); }
+#fb-header h3 { font-family:var(--mono); font-size:12px; color:var(--text0); flex:1; }
+#fb-crumbs { display:flex; align-items:center; gap:2px; padding:6px 14px; border-bottom:1px solid var(--border); flex-wrap:wrap; background:var(--bg1); }
+.fb-crumb { font-family:var(--mono); font-size:11px; color:var(--accent); cursor:pointer; padding:1px 4px; border-radius:3px; }
+.fb-crumb:hover { background:var(--bg3); }
+.fb-crumb-sep { color:var(--text3); font-size:11px; }
+#fb-tabs { display:flex; border-bottom:1px solid var(--border); }
+.fb-tab { flex:1; padding:7px; text-align:center; font-size:11px; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; font-family:var(--sans); }
+.fb-tab:hover { color:var(--text0); background:var(--bg3); }
+.fb-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+#fb-body { flex:1; overflow-y:auto; padding:6px; }
+.fb-entry { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:var(--radius); cursor:pointer; transition:background .1s; }
+.fb-entry:hover { background:var(--bg3); }
+.fb-entry.is-dir { color:var(--text0); }
+.fb-entry.is-file { color:var(--text2); }
+.fb-entry .fb-icon { font-size:15px; flex-shrink:0; }
+.fb-entry .fb-name { font-family:var(--mono); font-size:12px; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fb-entry .fb-meta { font-size:10px; color:var(--text3); flex-shrink:0; font-family:var(--mono); }
+.fb-entry .fb-open-btn { opacity:0; padding:2px 8px; background:var(--accent); color:var(--bg0); border:none; border-radius:var(--radius); font-size:10px; cursor:pointer; font-weight:600; flex-shrink:0; }
+.fb-entry:hover .fb-open-btn { opacity:1; }
+#fb-footer { display:flex; align-items:center; gap:8px; padding:10px 14px; border-top:1px solid var(--border); background:var(--bg1); }
+#fb-path-input { flex:1; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:5px 9px; color:var(--text0); font-family:var(--mono); font-size:12px; outline:none; }
+#fb-path-input:focus { border-color:var(--accent); }
+#fb-new-workspace { display:flex; gap:6px; padding:8px 14px; border-top:1px solid var(--border); }
+#fb-ws-name { flex:1; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:5px 9px; color:var(--text0); font-family:var(--mono); font-size:12px; outline:none; }
+#fb-ws-name:focus { border-color:var(--accent3); }
+#fb-ws-template { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:5px 8px; color:var(--text1); font-size:11.5px; outline:none; font-family:var(--mono); cursor:pointer; }
+.fb-ws-item { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:var(--radius); cursor:pointer; transition:background .1s; }
+.fb-ws-item:hover { background:var(--bg3); }
+.fb-ws-item .fb-ws-icon { font-size:15px; }
+.fb-ws-item .fb-ws-name-text { font-family:var(--mono); font-size:12px; color:var(--text0); flex:1; }
+.fb-ws-item .fb-ws-files { font-size:10px; color:var(--text2); font-family:var(--mono); }
+.fb-ws-item .fb-ws-open { opacity:0; padding:2px 8px; background:var(--accent3); color:var(--bg0); border:none; border-radius:var(--radius); font-size:10px; cursor:pointer; font-weight:600; }
+.fb-ws-item:hover .fb-ws-open { opacity:1; }
+.fb-empty { padding:20px; text-align:center; color:var(--text2); font-size:12px; font-family:var(--mono); }
+
+/* Scrollable code with syntax-ish coloring via CSS only */
+.sh-keyword { color: #c792ea; }
+.sh-string { color: #c3e88d; }
+.sh-comment { color: #546e7a; font-style: italic; }
+.sh-number { color: #f78c6c; }
+.sh-fn { color: #82aaff; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TITLE BAR -->
+  <div id="titlebar">
+    <span class="logo">⟨/⟩ Vera IDE</span>
+    <div class="sep"></div>
+    <button class="tb-btn" id="btn-open-folder"><span class="icon">📂</span> Open Folder</button>
+    <button class="tb-btn" id="btn-new-file"><span class="icon">+</span> New File</button>
+    <div class="sep"></div>
+    <button class="tb-btn" id="btn-save"><span class="icon">💾</span> Save</button>
+    <button class="tb-btn" id="btn-find"><span class="icon">🔍</span> Find</button>
+    <button class="tb-btn" id="btn-preview-toggle"><span class="icon">▶</span> Preview</button>
+    <button class="tb-btn" id="btn-diff-toggle"><span class="icon">⊟</span> Diff</button>
+    <div class="spacer"></div>
+    <div id="endpoint-status"></div>
+    <button class="tb-btn" id="btn-reload-instances" title="Reload instances from API" style="padding:3px 6px;font-size:13px;">↻</button>
+    <div id="model-badge" title="Active model">no model</div>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <!-- SIDEBAR -->
+    <div id="sidebar">
+      <div class="sidebar-header">
+        <span id="project-name">No Project</span>
+        <div class="actions">
+          <button class="icon-btn" id="btn-add-to-ctx" title="Add all to context">⊕</button>
+          <button class="icon-btn" id="btn-clear-ctx" title="Clear context">⊗</button>
+          <button class="icon-btn" id="btn-refresh-tree" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div id="file-tree">
+        <div class="empty-state">
+          <span class="es-icon">📁</span>
+          <p>Open a folder to get started</p>
+        </div>
+      </div>
+      <div id="sidebar-bottom">
+        <div class="ctx-info" id="ctx-info-text">Context: 0 / ~128k tokens</div>
+        <div class="ctx-bar"><div class="ctx-bar-fill" id="ctx-bar-fill" style="width:0%"></div></div>
+      </div>
+    </div>
+
+    <!-- EDITOR AREA -->
+    <div id="editor-area">
+      <div id="tabs-bar"></div>
+      <div id="editor-view">
+        <div id="editor-panels">
+          <div id="code-editor-wrap">
+            <div id="line-numbers"></div>
+            <textarea id="code-editor" spellcheck="false" placeholder="// Open a file to start editing..."></textarea>
+            <div id="diff-overlay"></div>
+          </div>
+          <div id="find-bar">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text2);">Find:</span>
+            <input id="find-input" placeholder="search...">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text2);">Replace:</span>
+            <input id="replace-input" placeholder="replace...">
+            <button class="find-btn" id="btn-find-prev">↑</button>
+            <button class="find-btn" id="btn-find-next">↓</button>
+            <button class="find-btn" id="btn-replace-one">Replace</button>
+            <button class="find-btn" id="btn-replace-all">All</button>
+            <span class="find-count" id="find-count"></span>
+            <div class="spacer"></div>
+            <button class="find-btn" id="btn-find-close">✕</button>
+          </div>
+          <div id="editor-info-bar">
+            <span id="info-cursor">Ln 1, Col 1</span>
+            <div class="sep"></div>
+            <span id="info-lang">Plain Text</span>
+            <div class="sep"></div>
+            <span id="info-size">0 bytes</span>
+            <div class="sep"></div>
+            <span id="info-tokens">0 tokens</span>
+            <div class="spacer"></div>
+            <span id="info-encoding">UTF-8</span>
+          </div>
+        </div>
+        <div class="resize-handle" id="preview-resize"></div>
+        <div id="preview-panel">
+          <div id="preview-toolbar">
+            <span style="font-family:var(--mono);font-size:11px;color:var(--text2);">Preview</span>
+            <div style="flex:1"></div>
+            <button class="icon-btn" id="btn-preview-refresh" title="Refresh">↻</button>
+            <button class="icon-btn" id="btn-preview-close" title="Close">✕</button>
+          </div>
+          <iframe id="preview-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+          <div id="preview-console"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div id="right-panel">
+      <div id="right-tabs">
+        <div class="right-tab active" data-panel="chat"><span class="rt-icon">💬</span> AI</div>
+        <div class="right-tab" data-panel="docs"><span class="rt-icon">📖</span> Docs</div>
+        <div class="right-tab" data-panel="vc"><span class="rt-icon">🔀</span> VCS</div>
+        <div class="right-tab" data-panel="test"><span class="rt-icon">🧪</span> Test</div>
+      </div>
+
+      <!-- CHAT PANEL -->
+      <div class="right-content active" id="panel-chat">
+        <div id="chat-messages">
+          <div class="msg assistant">
+            <div class="msg-header"><div class="msg-avatar">V</div><span>Vera IDE</span></div>
+            <div class="msg-body"><p>Open a project folder, then add files to context using the ⊕ button or by clicking files in the tree. Ask me to write, edit, explain, or refactor code.</p><p>Use <code>@filename</code> to reference specific files, or toggle options below to include the active file automatically.</p></div>
+          </div>
+        </div>
+        <div id="chat-input-area">
+          <div id="chat-context-chips" style="position:relative;">
+            <div id="ctx-popup"></div>
+          </div>
+          <div id="chat-options">
+            <div id="chat-instance-row">
+              <select id="endpoint-select"><option value="">Loading...</option></select>
+              <select id="model-select"><option value="">Loading...</option></select>
+              <span id="instance-tier-badge"></span>
+            </div>
+            <div id="chat-toggle-row">
+              <button class="chat-opt-btn active" id="opt-include-active" title="Auto-include active file">Active file</button>
+              <button class="chat-opt-btn" id="opt-inline-edit" title="Apply edits inline">Inline edit</button>
+              <button class="chat-opt-btn" id="opt-streaming" title="Stream response">Stream</button>
+              <div style="flex:1"></div>
+              <span id="ctx-token-chip" class="ctx-chip" style="cursor:default;font-size:9px;">0 tokens</span>
+            </div>
+          </div>
+          <div id="chat-input-row">
+            <textarea id="chat-input" placeholder="Ask anything about the code... (@file to reference, /docs to search docs)"></textarea>
+            <button id="chat-send">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- DOCS PANEL -->
+      <div class="right-content" id="panel-docs">
+        <div id="docs-panel">
+          <div id="docs-search-bar">
+            <input id="docs-query" placeholder="e.g. React useState hook, FastAPI routing...">
+            <button id="docs-go">Search</button>
+          </div>
+          <div id="docs-result">
+            <div class="empty-state">
+              <span class="es-icon">📖</span>
+              <p>Search documentation for any library, framework, or API. The AI will fetch and summarize the latest docs.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VERSION CONTROL -->
+      <div class="right-content" id="panel-vc">
+        <div id="vc-panel">
+          <div id="vc-header">
+            <input id="commit-msg" placeholder="Commit message...">
+            <div id="vc-actions">
+              <button class="vc-btn primary" id="btn-commit">Commit Snapshot</button>
+              <button class="vc-btn" id="btn-diff-head">Show Diff</button>
+            </div>
+          </div>
+          <div id="vc-list">
+            <div class="empty-state">
+              <span class="es-icon">🔀</span>
+              <p>No commits yet. Save a snapshot to start tracking changes.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TEST PANEL -->
+      <div class="right-content" id="panel-test">
+        <div id="test-panel">
+          <div id="test-header">
+            <input id="test-desc" placeholder="Describe what to test, or leave blank for auto...">
+            <div id="test-actions">
+              <button class="test-btn run" id="btn-run-tests">▶ Run Tests</button>
+              <button class="test-btn" id="btn-gen-tests">Generate</button>
+              <div style="display:flex;flex-direction:column;gap:2px;align-items:flex-end;">
+                <select id="test-ep-select" style="width:100%;"><option value="">Loading...</option></select>
+                <span id="test-ep-label" style="font-size:9px;color:var(--text2);font-family:var(--mono);">—</span>
+              </div>
+            </div>
+          </div>
+          <div id="test-output">
+            <div class="empty-state">
+              <span class="es-icon">🧪</span>
+              <p>Generate tests for the active file, then run them. The AI will self-evaluate the code.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div id="statusbar">
+    <div class="status-dot" id="status-dot"></div>
+    <span id="status-msg">Ready</span>
+    <div class="spacer"></div>
+    <span id="sb-tokens">0 ctx tokens</span>
+    <div class="sep" style="width:1px;height:14px;background:rgba(0,0,0,0.2)"></div>
+    <span id="sb-model" style="opacity:.7">—</span>
+    <div class="sep" style="width:1px;height:14px;background:rgba(0,0,0,0.2)"></div>
+    <span id="sb-endpoint">—</span>
+  </div>
+</div>
+
+<!-- FOLDER BROWSER -->
+<div id="folder-browser-overlay">
+  <div id="folder-browser">
+    <div id="fb-header">
+      <h3 id="fb-title">Open Project</h3>
+      <button class="icon-btn" id="fb-close">✕</button>
+    </div>
+    <div id="fb-tabs">
+      <div class="fb-tab active" data-fbtab="browse">📁 Browse</div>
+      <div class="fb-tab" data-fbtab="workspaces">🗂 Workspaces</div>
+      <div class="fb-tab" data-fbtab="new">✨ New Workspace</div>
+    </div>
+    <!-- Browse tab -->
+    <div id="fbt-browse" class="fb-tab-content">
+      <div id="fb-crumbs"></div>
+      <div id="fb-body"></div>
+      <div id="fb-footer">
+        <input id="fb-path-input" placeholder="Or type a path directly…">
+        <button class="modal-btn primary" id="fb-go-path">Go</button>
+        <button class="modal-btn" id="fb-close2">Cancel</button>
+      </div>
+    </div>
+    <!-- Workspaces tab -->
+    <div id="fbt-workspaces" class="fb-tab-content" style="display:none;">
+      <div id="fb-ws-list" style="flex:1;overflow-y:auto;padding:6px;"></div>
+    </div>
+    <!-- New workspace tab -->
+    <div id="fbt-new" class="fb-tab-content" style="display:none;">
+      <div style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+        <div style="font-size:12px;color:var(--text1);">Create a new blank working area:</div>
+        <input id="fb-ws-name" placeholder="Project name…">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span style="font-size:12px;color:var(--text2);font-family:var(--mono);">Template:</span>
+          <select id="fb-ws-template">
+            <option value="blank">Blank</option>
+            <option value="python">Python</option>
+            <option value="node">Node.js</option>
+            <option value="web">HTML/CSS/JS</option>
+            <option value="fastapi">FastAPI</option>
+          </select>
+        </div>
+        <button class="modal-btn primary" id="fb-create-ws" style="align-self:flex-start;padding:7px 18px;">Create &amp; Open</button>
+        <div id="fb-create-status" style="font-size:11px;color:var(--text2);font-family:var(--mono);"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">New File</h3>
+    <input class="modal-input" id="modal-input" placeholder="filename.js">
+    <div class="modal-actions">
+      <button class="modal-btn" id="modal-cancel">Cancel</button>
+      <button class="modal-btn primary" id="modal-confirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// VERA IDE — CORE STATE
+// ═══════════════════════════════════════════════════════════════
+const IDE = {
+  projectHandle: null,
+  projectName: '',
+  fileTree: [],         // flat list of {handle, path, name, kind, depth}
+  openTabs: [],         // {path, handle, content, modified, language}
+  activeTab: null,
+  contextFiles: new Set(), // paths in context
+  commits: [],
+  currentCommitIdx: -1,
+  opts: { includeActive: true, inlineEdit: false, streaming: true },
+  endpoints: {},      // populated from /api/models on init
+  activeEndpoint: '',
+  models: [],
+  activeModel: '',
+  testEndpoint: '',
+  findMatches: [], findIdx: 0,
+  lastDiff: null,
+  pendingPatch: null,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITY
+// ═══════════════════════════════════════════════════════════════
+function estimateTokens(text) { return Math.ceil((text||'').length / 3.8); }
+function formatBytes(b) { return b < 1024 ? b+'b' : b < 1048576 ? (b/1024).toFixed(1)+'KB' : (b/1048576).toFixed(2)+'MB'; }
+function langFromExt(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = { js:'JavaScript', ts:'TypeScript', py:'Python', html:'HTML', css:'CSS',
+    json:'JSON', md:'Markdown', sh:'Bash', yml:'YAML', yaml:'YAML', rs:'Rust',
+    go:'Go', java:'Java', cpp:'C++', c:'C', cs:'C#', rb:'Ruby', php:'PHP',
+    sql:'SQL', txt:'Plain Text', vue:'Vue', svelte:'Svelte', jsx:'JSX', tsx:'TSX' };
+  return map[ext] || 'Plain Text';
+}
+function fileIcon(name, kind) {
+  if (kind === 'directory') return '📁';
+  const ext = name.split('.').pop().toLowerCase();
+  const icons = { js:'🟨', ts:'🔷', py:'🐍', html:'🌐', css:'🎨', json:'{}',
+    md:'📝', sh:'⚙️', yml:'⚙️', yaml:'⚙️', rs:'🦀', go:'🐹', java:'☕',
+    cpp:'⚡', c:'⚡', cs:'🔷', rb:'💎', php:'🐘', sql:'🗃️', vue:'💚',
+    jsx:'⚛️', tsx:'⚛️', svg:'🖼️', png:'🖼️', jpg:'🖼️', gif:'🖼️', pdf:'📄' };
+  return icons[ext] || '📄';
+}
+function toast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show' + (type ? ' '+type : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>{ t.className=''; }, 2800);
+}
+function setStatus(msg, pulse=false) {
+  document.getElementById('status-msg').textContent = msg;
+  document.getElementById('status-dot').className = 'status-dot' + (pulse ? ' pulse' : '');
+}
+function genId() { return Math.random().toString(36).slice(2,9); }
+
+// ═══════════════════════════════════════════════════════════════
+// SERVER-SIDE FILE SYSTEM
+// ═══════════════════════════════════════════════════════════════
+const API = '/ide-api';
+
+async function apiFetch(path, opts={}) {
+  const r = await fetch(API + path, opts);
+  if (!r.ok) {
+    const err = await r.json().catch(()=>({ detail: r.statusText }));
+    throw new Error(err.detail || r.statusText);
+  }
+  return r.json();
+}
+
+// ── openFolder: show the full folder browser ─────────────────────
+function openFolder() {
+  showFolderBrowser();
+}
+
+async function loadProjectFromPath(serverPath) {
+  const name = serverPath.split('/').pop() || serverPath;
+  IDE.projectRoot = serverPath;
+  IDE.projectName = name;
+  IDE.openTabs = [];
+  IDE.activeTab = null;
+  IDE.contextFiles.clear();
+  renderContextChips();
+  document.getElementById('project-name').textContent = name;
+  await buildFileTree(serverPath);
+  renderTabs();
+  loadTab(null);
+  toast('Opened: ' + name, 'success');
+  setStatus('Project: ' + name);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FOLDER BROWSER
+// ══════════════════════════════════════════════════════════════════
+let _fbCurrentPath = null;
+
+function showFolderBrowser() {
+  document.getElementById('folder-browser-overlay').classList.add('visible');
+  _switchFbTab('browse');
+  _fbLoadRoots();
+  _fbLoadWorkspaces();
+}
+
+function hideFolderBrowser() {
+  document.getElementById('folder-browser-overlay').classList.remove('visible');
+}
+
+function _switchFbTab(tab) {
+  document.querySelectorAll('.fb-tab').forEach(t => t.classList.toggle('active', t.dataset.fbtab === tab));
+  document.querySelectorAll('.fb-tab-content').forEach(el => el.style.display = 'none');
+  const map = { browse:'fbt-browse', workspaces:'fbt-workspaces', new:'fbt-new' };
+  document.getElementById(map[tab]).style.display = '';
+}
+
+async function _fbLoadRoots() {
+  try {
+    const { roots } = await apiFetch('/fs/roots');
+    const body = document.getElementById('fb-body');
+    document.getElementById('fb-crumbs').innerHTML = '<span class="fb-crumb" style="color:var(--text2)">/ roots</span>';
+    body.innerHTML = '';
+    if (!roots.length) { body.innerHTML = '<div class="fb-empty">No roots configured</div>'; return; }
+    for (const r of roots) {
+      const el = document.createElement('div');
+      el.className = 'fb-entry is-dir';
+      el.innerHTML = `<span class="fb-icon">${r.kind === 'workspace' ? '🗂' : '📁'}</span>
+        <span class="fb-name">${r.name}</span>
+        <span class="fb-meta">${r.path}</span>
+        <button class="fb-open-btn">Open</button>`;
+      el.querySelector('.fb-open-btn').onclick = (e) => { e.stopPropagation(); loadProjectFromPath(r.path); hideFolderBrowser(); };
+      el.onclick = () => _fbNavigate(r.path);
+      body.appendChild(el);
+    }
+  } catch(e) { document.getElementById('fb-body').innerHTML = `<div class="fb-empty">Error: ${e.message}</div>`; }
+}
+
+async function _fbNavigate(path) {
+  _fbCurrentPath = path;
+  document.getElementById('fb-path-input').value = path;
+  try {
+    const data = await apiFetch('/fs/browse?path=' + encodeURIComponent(path));
+    _fbRenderEntries(data);
+  } catch(e) {
+    document.getElementById('fb-body').innerHTML = `<div class="fb-empty">Error: ${e.message}</div>`;
+  }
+}
+
+function _fbRenderEntries(data) {
+  // Crumbs
+  const crumbEl = document.getElementById('fb-crumbs');
+  crumbEl.innerHTML = '';
+  if (data.parent) {
+    const up = document.createElement('span');
+    up.className = 'fb-crumb'; up.textContent = '..';
+    up.onclick = () => _fbNavigate(data.parent);
+    crumbEl.appendChild(up);
+    const sep = document.createElement('span'); sep.className = 'fb-crumb-sep'; sep.textContent = ' / ';
+    crumbEl.appendChild(sep);
+  }
+  for (const crumb of (data.crumbs || [])) {
+    const span = document.createElement('span');
+    span.className = 'fb-crumb'; span.textContent = crumb.name;
+    span.onclick = () => _fbNavigate(crumb.path);
+    crumbEl.appendChild(span);
+    const sep = document.createElement('span'); sep.className = 'fb-crumb-sep'; sep.textContent = ' / ';
+    crumbEl.appendChild(sep);
+  }
+
+  // Entries
+  const body = document.getElementById('fb-body');
+  body.innerHTML = '';
+  if (!data.entries.length) { body.innerHTML = '<div class="fb-empty">Empty directory</div>'; return; }
+  for (const e of data.entries) {
+    const el = document.createElement('div');
+    el.className = 'fb-entry ' + (e.kind === 'directory' ? 'is-dir' : 'is-file');
+    const icon = e.kind === 'directory' ? '📁' : (e.readable ? '📄' : '⬜');
+    const meta = e.kind === 'directory'
+      ? `${e.child_count || 0} items`
+      : (e.size > 1048576 ? (e.size/1048576).toFixed(1)+'MB' : e.size > 1024 ? (e.size/1024).toFixed(0)+'KB' : e.size+'B');
+    el.innerHTML = `<span class="fb-icon">${icon}</span>
+      <span class="fb-name">${e.name}</span>
+      <span class="fb-meta">${meta}</span>
+      ${e.kind === 'directory' ? '<button class="fb-open-btn">Open</button>' : ''}`;
+    if (e.kind === 'directory') {
+      el.querySelector('.fb-open-btn').onclick = (ev) => { ev.stopPropagation(); loadProjectFromPath(e.path); hideFolderBrowser(); };
+      el.onclick = () => _fbNavigate(e.path);
+    }
+    body.appendChild(el);
+  }
+}
+
+async function _fbLoadWorkspaces() {
+  try {
+    const { workspaces } = await apiFetch('/workspace/list');
+    const list = document.getElementById('fb-ws-list');
+    list.innerHTML = '';
+    if (!workspaces.length) {
+      list.innerHTML = '<div class="fb-empty">No workspaces yet. Create one in the ✨ tab.</div>';
+      return;
+    }
+    for (const ws of workspaces) {
+      const el = document.createElement('div');
+      el.className = 'fb-ws-item';
+      el.innerHTML = `<span class="fb-ws-icon">🗂</span>
+        <div style="flex:1;min-width:0;">
+          <div class="fb-ws-name-text">${ws.name}</div>
+          <div class="fb-ws-files">${ws.files.join(', ') || 'empty'}</div>
+        </div>
+        <button class="fb-ws-open">Open</button>`;
+      el.querySelector('.fb-ws-open').onclick = () => { loadProjectFromPath(ws.path); hideFolderBrowser(); };
+      list.appendChild(el);
+    }
+  } catch(e) {
+    document.getElementById('fb-ws-list').innerHTML = `<div class="fb-empty">Error: ${e.message}</div>`;
+  }
+}
+
+// Wire folder browser events
+document.getElementById('fb-close').onclick  = hideFolderBrowser;
+document.getElementById('fb-close2').onclick = hideFolderBrowser;
+document.getElementById('folder-browser-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('folder-browser-overlay')) hideFolderBrowser();
+});
+document.querySelectorAll('.fb-tab').forEach(tab => {
+  tab.onclick = () => {
+    _switchFbTab(tab.dataset.fbtab);
+    if (tab.dataset.fbtab === 'workspaces') _fbLoadWorkspaces();
+  };
+});
+document.getElementById('fb-go-path').onclick = () => {
+  const p = document.getElementById('fb-path-input').value.trim();
+  if (p) _fbNavigate(p);
+};
+document.getElementById('fb-path-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { const p = e.target.value.trim(); if (p) _fbNavigate(p); }
+});
+document.getElementById('fb-create-ws').onclick = async () => {
+  const name = document.getElementById('fb-ws-name').value.trim();
+  const template = document.getElementById('fb-ws-template').value;
+  const status = document.getElementById('fb-create-status');
+  if (!name) { status.textContent = 'Enter a project name'; status.style.color='var(--accent5)'; return; }
+  status.textContent = 'Creating…'; status.style.color = 'var(--text2)';
+  try {
+    const result = await apiFetch('/workspace/create', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name, template }),
+    });
+    status.textContent = '✓ Created: ' + result.path;
+    status.style.color = 'var(--accent3)';
+    document.getElementById('fb-ws-name').value = '';
+    await loadProjectFromPath(result.path);
+    hideFolderBrowser();
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = 'var(--accent5)';
+  }
+};
+
+async function buildFileTree(serverDirPath, prefix='', depth=0) {
+  if (depth === 0) {
+    IDE.fileTree = [];
+    IDE._treeRoot = serverDirPath;
+  }
+  try {
+    const { entries } = await apiFetch('/fs/list?path=' + encodeURIComponent(serverDirPath));
+    for (const e of entries) {
+      const relPath = prefix ? prefix + '/' + e.name : e.name;
+      IDE.fileTree.push({
+        serverPath: e.path,   // absolute server path for API calls
+        path: relPath,        // relative display path
+        name: e.name,
+        kind: e.kind,
+        depth,
+        readable: e.readable,
+        collapsed: depth > 1,
+      });
+      if (e.kind === 'directory') {
+        await buildFileTree(e.path, relPath, depth + 1);
+      }
+    }
+  } catch(e) {
+    toast('Tree error: ' + e.message, 'error');
+  }
+  if (depth === 0) renderFileTree();
+}
+
+async function readFileFromServer(serverPath) {
+  const data = await apiFetch('/fs/read?path=' + encodeURIComponent(serverPath));
+  return data.content;
+}
+
+async function writeFile(relPath) {
+  const tab = IDE.openTabs.find(t => t.path === relPath);
+  if (!tab) return;
+  try {
+    await apiFetch('/fs/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: tab.serverPath, content: tab.content }),
+    });
+    tab.modified = false;
+    renderTabs();
+    renderFileTree();
+    toast('Saved: ' + relPath, 'success');
+  } catch(e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+async function createNewFile(filename) {
+  if (!IDE._treeRoot) { toast('Open a folder first', 'error'); return; }
+  // Resolve server path
+  const serverPath = IDE._treeRoot + '/' + filename;
+  const tab = {
+    path: filename,
+    serverPath,
+    content: getFileTemplate(filename),
+    modified: true,
+    language: langFromExt(filename),
+  };
+  // Write empty template immediately so it exists on disk
+  await apiFetch('/fs/write', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: serverPath, content: tab.content }),
+  }).catch(()=>{});
+  IDE.openTabs.push(tab);
+  IDE.fileTree.push({ serverPath, path: filename, name: filename, kind: 'file', depth: 0, readable: true, isNew: true });
+  openTab(tab.path);
+  renderFileTree();
+  toast('New file: ' + filename, 'success');
+}
+
+function getFileTemplate(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const templates = {
+    html: '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title></title>\n</head>\n<body>\n  \n</body>\n</html>',
+    py: '#!/usr/bin/env python3\n"""Module docstring."""\n\n\ndef main():\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
+    js: '// \n\n', ts: '// \n\n', css: '/* Styles */\n\n',
+    json: '{\n  \n}\n', md: '# \n\n',
+  };
+  return templates[ext] || '';
+}
+
+// showRootPicker replaced by folder browser UI
+
+function getFileTemplate(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const templates = {
+    html: '<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <title></title>\n</head>\n<body>\n  \n</body>\n</html>',
+    py: '#!/usr/bin/env python3\n"""Module docstring."""\n\n\ndef main():\n    pass\n\n\nif __name__ == "__main__":\n    main()\n',
+    js: '// \n\n',
+    ts: '// \n\n',
+    css: '/* Styles */\n\n',
+    json: '{\n  \n}\n',
+    md: '# \n\n',
+  };
+  return templates[ext] || '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER FILE TREE
+// ═══════════════════════════════════════════════════════════════
+function renderFileTree() {
+  const el = document.getElementById('file-tree');
+  if (!IDE.fileTree.length) {
+    el.innerHTML = '<div class="empty-state"><span class="es-icon">📁</span><p>Open a folder to get started</p></div>';
+    return;
+  }
+  el.innerHTML = '';
+  const collapsedDirs = new Set();
+
+  for (const item of IDE.fileTree) {
+    // skip if parent collapsed
+    const pathParts = item.path.split('/');
+    let skip = false;
+    for (let i=1; i<pathParts.length; i++) {
+      const parentPath = pathParts.slice(0,i).join('/');
+      if (collapsedDirs.has(parentPath)) { skip = true; break; }
+    }
+    if (skip) continue;
+    if (item.kind === 'directory' && item.collapsed) collapsedDirs.add(item.path);
+
+    const div = document.createElement('div');
+    div.className = 'tree-item' + (item.kind === 'directory' ? ' dir' : '') +
+      (IDE.activeTab === item.path ? ' active' : '') +
+      (IDE.openTabs.find(t=>t.path===item.path && t.modified) ? ' modified' : '') +
+      (item.isNew ? ' new-file' : '') +
+      (IDE.contextFiles.has(item.path) ? ' context-checked' : '');
+    div.dataset.path = item.path;
+    div.dataset.kind = item.kind;
+
+    const indent = document.createElement('span');
+    indent.className = 'indent';
+    indent.style.width = (item.depth * 14 + 8) + 'px';
+    indent.style.display = 'inline-block';
+    div.appendChild(indent);
+
+    const fi = document.createElement('span');
+    fi.className = 'fi';
+    fi.textContent = item.kind === 'directory' ? (item.collapsed ? '▶' : '▼') : fileIcon(item.name);
+    div.appendChild(fi);
+
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = item.name;
+    div.appendChild(name);
+
+    div.addEventListener('click', e => {
+      if (item.kind === 'directory') {
+        item.collapsed = !item.collapsed;
+        renderFileTree();
+      } else {
+        openFileFromTree(item);
+      }
+    });
+    div.addEventListener('contextmenu', e => { e.preventDefault(); showTreeContextMenu(e, item); });
+    el.appendChild(div);
+  }
+}
+
+async function openFileFromTree(item) {
+  if (!item.readable) { toast('Binary file — not editable as text', 'error'); return; }
+  const existing = IDE.openTabs.find(t => t.path === item.path);
+  if (existing) { openTab(item.path); return; }
+  try {
+    const fileContent = await readFileFromServer(item.serverPath);
+    IDE.openTabs.push({
+      path: item.path, serverPath: item.serverPath,
+      content: fileContent, modified: false, language: langFromExt(item.name)
+    });
+    openTab(item.path);
+    if (IDE.opts.includeActive) addToContext(item.path);
+  } catch(e) {
+    toast('Cannot read file: ' + e.message, 'error');
+  }
+}
+
+function showTreeContextMenu(e, item) {
+  // Simple inline approach
+  const existing = document.getElementById('tree-ctx-menu');
+  if (existing) existing.remove();
+  const menu = document.createElement('div');
+  menu.id = 'tree-ctx-menu';
+  menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;background:var(--bg2);border:1px solid var(--border-hi);border-radius:4px;z-index:300;min-width:160px;padding:4px 0;`;
+  const items = [
+    { label: IDE.contextFiles.has(item.path) ? '✓ Remove from context' : '⊕ Add to context',
+      action: () => { IDE.contextFiles.has(item.path) ? IDE.contextFiles.delete(item.path) : addToContext(item.path); renderFileTree(); updateContextInfo(); } },
+    { label: '📋 Copy path', action: () => navigator.clipboard.writeText(item.serverPath || item.path) },
+    { label: '🗑️ Delete', action: () => deleteFile(item) },
+  ];
+  if (item.kind === 'directory') items.unshift({ label: '📂 Set as root', action: () => loadProjectFromPath(item.serverPath) });
+  if (item.kind !== 'directory') items.unshift({ label: '📂 Open', action: () => openFileFromTree(item) });
+  items.forEach(i => {
+    const mi = document.createElement('div');
+    mi.style.cssText = 'padding:6px 14px;cursor:pointer;font-size:12px;color:var(--text1);font-family:var(--sans);transition:background .1s;';
+    mi.textContent = i.label;
+    mi.onmouseenter = ()=>mi.style.background='var(--bg3)';
+    mi.onmouseleave = ()=>mi.style.background='';
+    mi.onclick = ()=>{ i.action(); menu.remove(); };
+    menu.appendChild(mi);
+  });
+  document.body.appendChild(menu);
+  setTimeout(()=>document.addEventListener('click', ()=>menu.remove(), { once:true }), 10);
+}
+
+async function deleteFile(item) {
+  if (!confirm('Delete ' + item.path + '?')) return;
+  try {
+    await apiFetch('/fs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: item.serverPath }),
+    });
+    IDE.fileTree = IDE.fileTree.filter(f => f.path !== item.path && !f.path.startsWith(item.path+'/'));
+    IDE.openTabs = IDE.openTabs.filter(t => t.path !== item.path);
+    IDE.contextFiles.delete(item.path);
+    if (IDE.activeTab === item.path) {
+      IDE.activeTab = IDE.openTabs[0]?.path || null;
+      loadTab(IDE.activeTab);
+    }
+    renderFileTree(); renderTabs(); updateContextInfo();
+    toast('Deleted: ' + item.path);
+  } catch(e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABS & EDITOR
+// ═══════════════════════════════════════════════════════════════
+function openTab(path) {
+  IDE.activeTab = path;
+  renderTabs();
+  loadTab(path);
+  renderFileTree();
+  if (IDE.opts.includeActive) updateContextInfo();
+}
+
+function renderTabs() {
+  const bar = document.getElementById('tabs-bar');
+  bar.innerHTML = '';
+  for (const tab of IDE.openTabs) {
+    const t = document.createElement('div');
+    t.className = 'tab' + (IDE.activeTab === tab.path ? ' active' : '');
+    const name = tab.path.split('/').pop();
+    t.innerHTML = `${tab.modified?'<span class="tab-dot"></span>':''}${fileIcon(name)} <span>${name}</span><span class="tab-close" data-path="${tab.path}">×</span>`;
+    t.addEventListener('click', e => {
+      if (e.target.classList.contains('tab-close')) { closeTab(tab.path); return; }
+      openTab(tab.path);
+    });
+    bar.appendChild(t);
+  }
+}
+
+function closeTab(path) {
+  const tab = IDE.openTabs.find(t=>t.path===path);
+  if (tab?.modified && !confirm('Unsaved changes in '+path+'. Close anyway?')) return;
+  IDE.openTabs = IDE.openTabs.filter(t=>t.path!==path);
+  if (IDE.activeTab === path) {
+    IDE.activeTab = IDE.openTabs[IDE.openTabs.length-1]?.path || null;
+  }
+  renderTabs();
+  loadTab(IDE.activeTab);
+  renderFileTree();
+}
+
+function loadTab(path) {
+  const editor = document.getElementById('code-editor');
+  const diffOverlay = document.getElementById('diff-overlay');
+  diffOverlay.classList.remove('visible');
+  if (!path) {
+    editor.value = '';
+    updateLineNumbers('');
+    updateInfoBar('', '', 0);
+    return;
+  }
+  const tab = IDE.openTabs.find(t=>t.path===path);
+  if (!tab) return;
+  editor.value = tab.content;
+  updateLineNumbers(tab.content);
+  updateInfoBar(tab.content, tab.language, tab.content.length);
+  editor.focus();
+}
+
+function updateLineNumbers(content) {
+  const lines = content ? content.split('\n').length : 1;
+  const lnDiv = document.getElementById('line-numbers');
+  let html = '';
+  for (let i=1; i<=lines; i++) html += i + '\n';
+  lnDiv.textContent = html;
+}
+
+function updateInfoBar(content, lang, size) {
+  document.getElementById('info-lang').textContent = lang || 'Plain Text';
+  document.getElementById('info-size').textContent = formatBytes(size);
+  document.getElementById('info-tokens').textContent = estimateTokens(content) + ' tokens';
+  document.getElementById('sb-tokens').textContent = getContextTokens() + ' ctx tokens';
+}
+
+// Sync scroll line numbers
+document.getElementById('code-editor').addEventListener('scroll', e => {
+  document.getElementById('line-numbers').scrollTop = e.target.scrollTop;
+});
+document.getElementById('code-editor').addEventListener('input', e => {
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (tab) {
+    tab.content = e.target.value;
+    if (!tab.modified) { tab.modified = true; renderTabs(); renderFileTree(); }
+    updateLineNumbers(tab.content);
+    updateInfoBar(tab.content, tab.language, tab.content.length);
+  }
+});
+document.getElementById('code-editor').addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ta = e.target;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    ta.value = ta.value.substring(0,start) + '  ' + ta.value.substring(end);
+    ta.selectionStart = ta.selectionEnd = start + 2;
+    const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+    if (tab) tab.content = ta.value;
+  }
+  if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveActive(); }
+  if (e.key==='Escape') hideFindBar();
+  // cursor position
+  setTimeout(()=>{
+    const ta = e.target, v = ta.value;
+    const before = v.slice(0, ta.selectionStart);
+    const lines = before.split('\n');
+    document.getElementById('info-cursor').textContent = `Ln ${lines.length}, Col ${lines[lines.length-1].length+1}`;
+  }, 0);
+});
+
+function saveActive() {
+  if (!IDE.activeTab) return;
+  writeFile(IDE.activeTab);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONTEXT MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+function addToContext(path) {
+  IDE.contextFiles.add(path);
+  updateContextInfo();
+  addContextChip(path);
+}
+
+function removeFromContext(path) {
+  IDE.contextFiles.delete(path);
+  updateContextInfo();
+  renderContextChips();
+}
+
+function getContextTokens() {
+  let total = 0;
+  const allPaths = new Set(IDE.contextFiles);
+  if (IDE.opts.includeActive && IDE.activeTab) allPaths.add(IDE.activeTab);
+  for (const path of allPaths) {
+    const tab = IDE.openTabs.find(t=>t.path===path);
+    if (tab) total += estimateTokens(tab.content);
+  }
+  return total;
+}
+
+function updateContextInfo() {
+  const tokens = getContextTokens();
+  const max = 128000;
+  const pct = Math.min(100, (tokens/max)*100);
+  document.getElementById('ctx-info-text').textContent = `Context: ${tokens.toLocaleString()} / ~128k tokens`;
+  document.getElementById('ctx-bar-fill').style.width = pct+'%';
+  document.getElementById('sb-tokens').textContent = tokens.toLocaleString() + ' ctx tokens';
+  const chip = document.getElementById('ctx-token-chip');
+  if (chip) chip.textContent = tokens > 0 ? `${(tokens/1000).toFixed(1)}k ctx` : '0 tokens';
+  if (pct > 80) document.getElementById('ctx-bar-fill').style.background = 'var(--accent4)';
+  else if (pct > 95) document.getElementById('ctx-bar-fill').style.background = 'var(--accent5)';
+  else document.getElementById('ctx-bar-fill').style.background = '';
+}
+
+function buildContextString() {
+  const paths = new Set(IDE.contextFiles);
+  if (IDE.opts.includeActive && IDE.activeTab) paths.add(IDE.activeTab);
+  let ctx = '';
+  for (const path of paths) {
+    const tab = IDE.openTabs.find(t=>t.path===path);
+    if (tab) ctx += `\n\n--- FILE: ${path} ---\n\`\`\`${tab.language.toLowerCase()}\n${tab.content}\n\`\`\``;
+  }
+  return ctx;
+}
+
+function renderContextChips() {
+  const area = document.getElementById('chat-context-chips');
+  const popup = document.getElementById('ctx-popup');
+  // keep popup
+  area.innerHTML = '';
+  area.appendChild(popup);
+  for (const path of IDE.contextFiles) {
+    const chip = document.createElement('div');
+    chip.className = 'ctx-chip';
+    chip.innerHTML = `<span>${fileIcon(path.split('/').pop())} ${path.split('/').pop()}</span><span class="remove" data-path="${path}" title="Remove">×</span>`;
+    chip.querySelector('.remove').addEventListener('click', e => {
+      e.stopPropagation();
+      removeFromContext(e.target.dataset.path);
+    });
+    area.appendChild(chip);
+  }
+}
+
+function addContextChip(path) {
+  if (!document.querySelector(`.ctx-chip[data-for="${path}"]`)) renderContextChips();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OLLAMA API
+// Instances loaded from researcher_api /api/models on init.
+// Direct browser→Ollama calls (CORS already open on your instances).
+// ═══════════════════════════════════════════════════════════════
+
+// ── loadInstancesFromAPI ─────────────────────────────────────────
+// Hits /ide-api/models (ide_router.py) which probes each Ollama
+// instance and returns { instance, tier, host, current_model,
+// available[], enabled, reachable }.
+async function loadInstancesFromAPI() {
+  setStatus('Loading instances…', true);
+  try {
+    const r = await fetch('/ide-api/models');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const instances = await r.json();
+
+    IDE.endpoints = {};
+    for (const inst of instances) {
+      if (inst.enabled === false) continue;
+      const url = inst.host;  // full base_url e.g. http://192.168.0.250:11435
+      IDE.endpoints[url] = {
+        label:     `${inst.instance}`,
+        tier:      inst.tier,
+        model:     inst.current_model || '',
+        available: inst.available || [],
+        // Use reachable flag from probe instead of waiting for /api/tags again
+        status:    inst.reachable ? 'ok' : 'err',
+      };
+    }
+
+    // Populate both endpoint dropdowns
+    const epSel   = document.getElementById('endpoint-select');
+    const testSel = document.getElementById('test-ep-select');
+    for (const sel of [epSel, testSel]) {
+      sel.innerHTML = '';
+      for (const [url, info] of Object.entries(IDE.endpoints)) {
+        const opt = document.createElement('option');
+        opt.value = url;
+        // Show name + tier + reachability
+        const reach = info.status === 'ok' ? '' : ' ✗';
+        opt.textContent = `${info.label} · ${info.tier}${reach}`;
+        if (info.status !== 'ok') opt.style.color = 'var(--accent5)';
+        sel.appendChild(opt);
+      }
+      if (!sel.options.length) sel.innerHTML = '<option value="">No instances</option>';
+    }
+
+    // Prefer writer tier for chat, any reachable for test
+    const writerEntry   = Object.entries(IDE.endpoints).find(([,i]) => i.tier==='writer'  && i.status==='ok');
+    const thinkerEntry  = Object.entries(IDE.endpoints).find(([,i]) => i.tier==='thinker' && i.status==='ok');
+    const anyEntry      = Object.entries(IDE.endpoints).find(([,i]) => i.status==='ok');
+    IDE.activeEndpoint  = (writerEntry || thinkerEntry || anyEntry)?.[0] || Object.keys(IDE.endpoints)[0] || '';
+    IDE.testEndpoint    = IDE.activeEndpoint;
+
+    if (epSel.options.length)   epSel.value   = IDE.activeEndpoint;
+    if (testSel.options.length) testSel.value = IDE.activeEndpoint;
+
+    updateTestEpLabel();
+    renderEndpointStatus();
+    await refreshModelSelect();
+
+    const reachable = Object.values(IDE.endpoints).filter(i=>i.status==='ok').length;
+    setStatus(`${reachable}/${Object.keys(IDE.endpoints).length} instances online`);
+
+  } catch(e) {
+    console.warn('loadInstancesFromAPI failed:', e.message);
+    document.getElementById('endpoint-select').innerHTML = '<option value="">Failed to load</option>';
+    document.getElementById('test-ep-select').innerHTML  = '<option value="">Failed to load</option>';
+    setStatus('Could not reach /ide-api/models');
+    toast('Could not reach /ide-api/models — is the server running?', 'error');
+  }
+}
+
+function updateTestEpLabel() {
+  const ep   = document.getElementById('test-ep-select').value;
+  const info = IDE.endpoints[ep];
+  const lbl  = document.getElementById('test-ep-label');
+  if (lbl) lbl.textContent = info ? `${info.model || '—'} · ${info.tier}` : '—';
+}
+
+function updateTierBadge() {
+  const info  = IDE.endpoints[IDE.activeEndpoint];
+  const badge = document.getElementById('instance-tier-badge');
+  if (!badge) return;
+  if (!info) { badge.textContent = ''; badge.className = ''; return; }
+  badge.textContent = info.tier;
+  badge.className   = `tier-${info.tier}`;
+}
+
+async function refreshModelSelect() {
+  const ep = IDE.activeEndpoint;
+  if (!ep) return;
+  const info = IDE.endpoints[ep];
+  let models = info?.available || [];
+
+  // Fall back to direct /api/tags if the probe returned empty
+  if (!models.length) models = await fetchModels(ep);
+
+  IDE.models = models;
+  const sel = document.getElementById('model-select');
+  sel.innerHTML = models.length
+    ? models.map(m=>`<option value="${m}">${m}</option>`).join('')
+    : '<option value="">No models</option>';
+
+  // Prefer the instance's configured model
+  const preferred = info?.model;
+  if (preferred && models.includes(preferred)) {
+    sel.value = preferred; IDE.activeModel = preferred;
+  } else if (models.length) {
+    IDE.activeModel = models[0]; sel.value = IDE.activeModel;
+  }
+
+  // Update all model indicators
+  const short = (IDE.activeModel || '—').split(':')[0];
+  document.getElementById('model-badge').textContent  = short;
+  document.getElementById('sb-model').textContent     = short;
+  document.getElementById('sb-endpoint').textContent  = info?.label || ep;
+  updateTierBadge();
+}
+
+async function fetchModels(endpoint) {
+  if (!endpoint) return [];
+  try {
+    const proxyUrl = endpointToProxyUrl(endpoint) + '/tags';
+    const r = await fetch(proxyUrl);
+    if (!r.ok) return [];
+    const data = await r.json();
+    return (data.models||[]).map(m=>m.name);
+  } catch { return []; }
+}
+
+async function checkEndpoint(endpoint) {
+  if (!endpoint) return;
+  try {
+    const proxyUrl = endpointToProxyUrl(endpoint) + '/tags';
+    const r = await fetch(proxyUrl);
+    if (IDE.endpoints[endpoint]) IDE.endpoints[endpoint].status = r.ok ? 'ok' : 'err';
+  } catch { if (IDE.endpoints[endpoint]) IDE.endpoints[endpoint].status = 'err'; }
+  renderEndpointStatus();
+}
+
+// kept for compat — now delegates to loadInstancesFromAPI
+async function checkAllEndpoints() {
+  await loadInstancesFromAPI();
+}
+
+function renderEndpointStatus() {
+  const el = document.getElementById('endpoint-status');
+  el.innerHTML = '';
+  for (const [url, info] of Object.entries(IDE.endpoints)) {
+    const pill = document.createElement('div');
+    const status = info.status || 'unknown';
+    pill.className = `ep-pill ${status} tier-${info.tier}`;
+    pill.title = `${url}\n${info.model || 'no model'}\n${info.available.length} models available`;
+    const modelShort = (info.model||'—').split(':')[0].slice(0,12);
+    pill.innerHTML = `<span class="ep-dot"></span>${info.label}<span style="opacity:.5;margin-left:3px;font-size:8px">${modelShort}</span>`;
+    pill.style.cursor = 'pointer';
+    pill.onclick = () => {
+      document.getElementById('endpoint-select').value = url;
+      IDE.activeEndpoint = url;
+      refreshModelSelect();
+      updateTierBadge();
+      document.getElementById('sb-endpoint').textContent = info.label;
+    };
+    el.appendChild(pill);
+  }
+}
+
+async function* streamOllama(endpoint, model, messages, options={}) {
+  const body = JSON.stringify({
+    model, messages, stream: true,
+    options: { num_ctx: 32768, temperature: 0.2, ...options }
+  });
+  // Route through server-side proxy to avoid CORS issues
+  const proxyUrl = endpointToProxyUrl(endpoint) + '/chat';
+  const res = await fetch(proxyUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+  if (!res.ok) throw new Error('Ollama proxy error: ' + res.status);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.message?.content) yield obj.message.content;
+        if (obj.done) return;
+      } catch {}
+    }
+  }
+}
+
+// Map a full Ollama base URL back to the proxy key
+// e.g. http://192.168.0.250:11435 → writer (matched by host info in IDE.endpoints)
+function endpointToProxyUrl(endpointUrl) {
+  const info = IDE.endpoints[endpointUrl];
+  const key  = info?.label?.toLowerCase().replace(/\s.*/, '') || 'writer';
+  return `/ide-api/ollama/${encodeURIComponent(key)}`;
+}
+
+async function callOllama(endpoint, model, messages, options={}) {
+  const body = JSON.stringify({
+    model, messages, stream: false,
+    options: { num_ctx: 32768, temperature: 0.2, ...options }
+  });
+  const proxyUrl = endpointToProxyUrl(endpoint) + '/chat';
+  const res = await fetch(proxyUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body
+  });
+  if (!res.ok) throw new Error('Ollama proxy error: ' + res.status);
+  const data = await res.json();
+  return data.message?.content || '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHAT
+// ═══════════════════════════════════════════════════════════════
+let chatHistory = [];
+
+function addMessage(role, content, extra={}) {
+  const msgs = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role + (extra.thinking ? ' thinking' : '');
+  div.id = extra.id || '';
+  const avatar = role === 'user' ? 'U' : 'V';
+  div.innerHTML = `<div class="msg-header"><div class="msg-avatar">${avatar}</div><span>${role==='user'?'You':'Vera'}</span></div><div class="msg-body"></div>`;
+  const body = div.querySelector('.msg-body');
+  if (content) renderMessageBody(body, content);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return { div, body };
+}
+
+function renderMessageBody(body, content) {
+  // Parse code blocks, apply buttons
+  const parts = content.split(/(```[\s\S]*?```)/g);
+  body.innerHTML = '';
+  for (const part of parts) {
+    if (part.startsWith('```')) {
+      const match = part.match(/```(\w*)\n?([\s\S]*?)```/);
+      const lang = match?.[1] || '';
+      const code = match?.[2] || part.slice(3,-3);
+      const pre = document.createElement('pre');
+      const codeEl = document.createElement('code');
+      codeEl.textContent = code;
+      pre.appendChild(codeEl);
+
+      // Action buttons
+      const applyBtn = document.createElement('button');
+      applyBtn.className = 'apply-btn';
+      applyBtn.textContent = 'Replace';
+      applyBtn.title = 'Replace active file content';
+      applyBtn.onclick = () => applyCodeToFile(code);
+      pre.appendChild(applyBtn);
+
+      const patchBtn = document.createElement('button');
+      patchBtn.className = 'apply-btn patch-btn';
+      patchBtn.style.right = '62px';
+      patchBtn.textContent = 'Patch';
+      patchBtn.title = 'Apply as inline patch';
+      patchBtn.onclick = () => applyPatch(code);
+      pre.appendChild(patchBtn);
+
+      body.appendChild(pre);
+    } else if (part.trim()) {
+      const p = document.createElement('p');
+      // inline code
+      p.innerHTML = escapeHtml(part)
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+      body.appendChild(p);
+    }
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  if (!IDE.activeModel) { toast('No model selected', 'error'); return; }
+
+  const btn = document.getElementById('chat-send');
+  btn.disabled = true;
+  input.value = '';
+
+  addMessage('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+
+  // Build system + context
+  const contextStr = buildContextString();
+  const systemPrompt = buildSystemPrompt() + (contextStr ? '\n\nCurrent project files:' + contextStr : '');
+
+  const { div: thinkDiv, body: thinkBody } = addMessage('assistant', '', { id: 'streaming-msg', thinking: true });
+  thinkBody.innerHTML = '<span class="dots">Thinking</span>';
+
+  try {
+    setStatus('Generating...', true);
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.slice(-20)
+    ];
+
+    let fullResponse = '';
+    thinkDiv.classList.remove('thinking');
+    thinkBody.innerHTML = '';
+    const cursor = document.createElement('span');
+    cursor.className = 'stream-cursor';
+    thinkBody.appendChild(cursor);
+
+    if (IDE.opts.streaming) {
+      for await (const chunk of streamOllama(IDE.activeEndpoint, IDE.activeModel, messages)) {
+        fullResponse += chunk;
+        // Update incrementally
+        const bodyClone = document.createElement('div');
+        renderMessageBody(bodyClone, fullResponse);
+        thinkBody.innerHTML = bodyClone.innerHTML;
+        thinkBody.appendChild(cursor);
+        document.getElementById('chat-messages').scrollTop = 9999;
+      }
+      thinkBody.removeChild(cursor);
+      renderMessageBody(thinkBody, fullResponse);
+    } else {
+      fullResponse = await callOllama(IDE.activeEndpoint, IDE.activeModel, messages);
+      thinkBody.removeChild(cursor);
+      renderMessageBody(thinkBody, fullResponse);
+    }
+
+    chatHistory.push({ role: 'assistant', content: fullResponse });
+
+    // Auto-apply if inline edit mode and response has code block
+    if (IDE.opts.inlineEdit && IDE.activeTab) {
+      const codeMatch = fullResponse.match(/```(?:\w*)\n([\s\S]*?)```/);
+      if (codeMatch) {
+        const patch = codeMatch[1];
+        if (patch.includes('<<<') || patch.includes('@@')) {
+          applyPatch(patch);
+        } else {
+          applyCodeToFile(patch);
+        }
+      }
+    }
+
+    setStatus('Ready');
+  } catch(e) {
+    thinkBody.innerHTML = `<span style="color:var(--accent5)">Error: ${e.message}</span>`;
+    setStatus('Error: '+e.message);
+    toast('Error: '+e.message, 'error');
+  }
+  btn.disabled = false;
+  document.getElementById('chat-messages').scrollTop = 9999;
+}
+
+function buildSystemPrompt() {
+  return `You are Vera, an expert AI coding assistant embedded in a code editor.
+
+CAPABILITIES:
+- Read and write code in any language
+- Perform precise inline edits using unified diff format when asked
+- Explain code, debug issues, suggest refactors
+- Generate tests, documentation, and boilerplate
+- Look up and explain library/framework APIs
+
+RESPONSE FORMAT:
+- Always wrap code in triple-backtick fences with the language name
+- For inline patches, use unified diff format: lines starting with + are additions, - are removals, @@-headers show position
+- Be concise in explanations, verbose in code quality
+- When modifying existing code, prefer targeted changes over full rewrites unless the file is small
+
+INLINE EDIT FORMAT (when asked to patch/modify):
+\`\`\`diff
+@@ -10,7 +10,8 @@
+ context line
+-old line to remove
++new line to add
+ context line
+\`\`\`
+
+Active file: ${IDE.activeTab || 'none'}
+Project: ${IDE.projectName || 'none'}
+Open files: ${IDE.openTabs.map(t=>t.path).join(', ') || 'none'}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// APPLY CODE / PATCHES
+// ═══════════════════════════════════════════════════════════════
+function applyCodeToFile(code) {
+  if (!IDE.activeTab) { toast('No active file', 'error'); return; }
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) return;
+  // Snapshot before applying
+  autoCommit('Before apply: '+IDE.activeTab);
+  tab.content = code;
+  tab.modified = true;
+  document.getElementById('code-editor').value = code;
+  updateLineNumbers(code);
+  updateInfoBar(code, tab.language, code.length);
+  renderTabs(); renderFileTree();
+  toast('Code applied to '+IDE.activeTab.split('/').pop(), 'success');
+}
+
+function applyPatch(patchText) {
+  if (!IDE.activeTab) { toast('No active file', 'error'); return; }
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) return;
+
+  // Simple unified diff parser
+  const lines = patchText.split('\n');
+  let original = tab.content.split('\n');
+  let result = [...original];
+  let offset = 0;
+
+  try {
+    let hunkStart = -1, hunkOrig = 0, hunkNew = 0;
+    for (const line of lines) {
+      if (line.startsWith('@@')) {
+        const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)/);
+        if (m) { hunkStart = parseInt(m[1])-1; hunkOrig = hunkStart; }
+        continue;
+      }
+      if (hunkStart < 0) continue;
+      if (line.startsWith('-')) {
+        result.splice(hunkOrig + offset, 1);
+        offset--; hunkOrig++;
+      } else if (line.startsWith('+')) {
+        result.splice(hunkOrig + offset, 0, line.slice(1));
+        offset++;
+      } else if (line.startsWith(' ')) {
+        hunkOrig++;
+      }
+    }
+    autoCommit('Before patch: '+IDE.activeTab);
+    const newContent = result.join('\n');
+    tab.content = newContent;
+    tab.modified = true;
+    document.getElementById('code-editor').value = newContent;
+    updateLineNumbers(newContent);
+    updateInfoBar(newContent, tab.language, newContent.length);
+    renderTabs(); renderFileTree();
+    toast('Patch applied', 'success');
+  } catch(e) {
+    toast('Patch failed: '+e.message, 'error');
+    // Fall back to showing diff
+    showDiff(tab.content, patchText);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DIFF VIEW
+// ═══════════════════════════════════════════════════════════════
+function showDiff(original, modified) {
+  const overlay = document.getElementById('diff-overlay');
+  overlay.classList.add('visible');
+  const origLines = original.split('\n');
+  const modLines = modified.split('\n');
+  // Simple LCS-based diff (naive but functional for reasonable sizes)
+  const diff = computeDiff(origLines, modLines);
+  let html = '';
+  let lineNum = 1;
+  for (const [type, line] of diff) {
+    const cls = type==='+' ? 'diff-add' : type==='-' ? 'diff-remove' : 'diff-ctx';
+    const sym = type==='+' ? '+' : type==='-' ? '-' : ' ';
+    const num = type==='-' ? lineNum++ : type===' ' ? lineNum++ : '';
+    html += `<div class="diff-line ${cls}"><span class="diff-sym">${sym}</span><span class="diff-lnum">${num}</span><span>${escapeHtml(line)}</span></div>`;
+  }
+  overlay.innerHTML = html;
+}
+
+function computeDiff(a, b) {
+  // Myers diff (simplified)
+  const result = [];
+  let ia = 0, ib = 0;
+  while (ia < a.length || ib < b.length) {
+    if (ia < a.length && ib < b.length && a[ia] === b[ib]) {
+      result.push([' ', a[ia]]); ia++; ib++;
+    } else if (ib < b.length && (ia >= a.length || a[ia] !== b[ib])) {
+      result.push(['+', b[ib]]); ib++;
+    } else {
+      result.push(['-', a[ia]]); ia++;
+    }
+  }
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DOCS SEARCH
+// ═══════════════════════════════════════════════════════════════
+async function searchDocs() {
+  const query = document.getElementById('docs-query').value.trim();
+  if (!query) return;
+  if (!IDE.activeModel) { toast('No model loaded', 'error'); return; }
+
+  const result = document.getElementById('docs-result');
+  result.innerHTML = '<div class="empty-state"><span class="dots">Searching</span></div>';
+  setStatus('Searching docs...', true);
+
+  const prompt = `You are a documentation expert. The user wants to know about: "${query}"
+
+Provide:
+1. A clear explanation of what it is
+2. Key API/usage patterns with working code examples
+3. Common gotchas or best practices
+4. If it's a specific version-dependent feature, mention the version
+
+Format your response with clear headings and working code blocks. Be comprehensive but focused.`;
+
+  try {
+    const response = await callOllama(
+      IDE.activeEndpoint, IDE.activeModel,
+      [{ role: 'user', content: prompt }],
+      { temperature: 0.1 }
+    );
+    result.innerHTML = '';
+    const tag = document.createElement('span');
+    tag.className = 'docs-source-tag';
+    tag.textContent = '🤖 AI-generated docs • ' + IDE.activeModel;
+    result.appendChild(tag);
+    const body = document.createElement('div');
+    renderMessageBody(body, response);
+    result.appendChild(body);
+    setStatus('Ready');
+  } catch(e) {
+    result.innerHTML = `<div style="color:var(--accent5)">Error: ${e.message}</div>`;
+    setStatus('Error');
+    toast('Docs search failed: '+e.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VERSION CONTROL
+// ═══════════════════════════════════════════════════════════════
+function commitSnapshot(msg) {
+  if (!msg.trim()) { toast('Enter a commit message', 'error'); return; }
+  const snapshot = {};
+  for (const tab of IDE.openTabs) snapshot[tab.path] = tab.content;
+
+  const commit = {
+    id: genId(),
+    hash: Math.random().toString(16).slice(2,8),
+    message: msg,
+    timestamp: new Date().toISOString(),
+    snapshot,
+    files: Object.keys(snapshot),
+    isCurrent: true
+  };
+  IDE.commits.forEach(c => c.isCurrent = false);
+  IDE.commits.unshift(commit);
+  IDE.currentCommitIdx = 0;
+  renderVCList();
+  toast('Committed: '+msg, 'success');
+  document.getElementById('commit-msg').value = '';
+}
+
+function autoCommit(msg) {
+  // Silent background commit
+  const snapshot = {};
+  for (const tab of IDE.openTabs) snapshot[tab.path] = tab.content;
+  IDE.commits.unshift({
+    id: genId(), hash: Math.random().toString(16).slice(2,8),
+    message: '[auto] '+msg, timestamp: new Date().toISOString(),
+    snapshot, files: Object.keys(snapshot), isAuto: true
+  });
+  renderVCList();
+}
+
+function renderVCList() {
+  const list = document.getElementById('vc-list');
+  if (!IDE.commits.length) {
+    list.innerHTML = '<div class="empty-state"><span class="es-icon">🔀</span><p>No commits yet.</p></div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const [i, c] of IDE.commits.entries()) {
+    const el = document.createElement('div');
+    el.className = 'vc-entry' + (i===0 ? ' current' : '');
+    const time = new Date(c.timestamp).toLocaleTimeString();
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span class="vc-hash">${c.hash}${c.isAuto?'<span style="color:var(--text3);margin-left:4px">auto</span>':''}</span>
+        <button class="vc-restore-btn" data-idx="${i}">Restore</button>
+      </div>
+      <div class="vc-msg">${escapeHtml(c.message)}</div>
+      <div class="vc-meta"><span>${time}</span><span>${c.files.length} files</span></div>
+      <div class="vc-files">${c.files.slice(0,3).map(f=>f.split('/').pop()).join(', ')}${c.files.length>3?'...':''}</div>`;
+    el.querySelector('.vc-restore-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      restoreCommit(i);
+    });
+    el.addEventListener('click', () => showCommitDiff(c));
+    list.appendChild(el);
+  }
+}
+
+function restoreCommit(idx) {
+  const c = IDE.commits[idx];
+  if (!confirm('Restore to: '+c.message+'?')) return;
+  autoCommit('Before restore to: '+c.hash);
+  for (const [path, content] of Object.entries(c.snapshot)) {
+    const tab = IDE.openTabs.find(t=>t.path===path);
+    if (tab) {
+      tab.content = content;
+      tab.modified = true;
+    }
+  }
+  if (IDE.activeTab) loadTab(IDE.activeTab);
+  renderTabs(); renderFileTree();
+  toast('Restored to: '+c.hash, 'success');
+}
+
+function showCommitDiff(commit) {
+  // Show diff between this and previous commit
+  const prevIdx = IDE.commits.indexOf(commit)+1;
+  if (prevIdx >= IDE.commits.length) { toast('No previous commit to diff against'); return; }
+  const prev = IDE.commits[prevIdx];
+  // Show diff of first changed file
+  for (const path of commit.files) {
+    const prevContent = prev.snapshot[path] || '';
+    const newContent = commit.snapshot[path] || '';
+    if (prevContent !== newContent) {
+      const tab = IDE.openTabs.find(t=>t.path===path);
+      if (!tab) {
+        // Open in editor first
+        IDE.openTabs.push({ path, handle: null, content: newContent, modified: false, language: langFromExt(path.split('/').pop()) });
+        openTab(path);
+      }
+      showDiff(prevContent, newContent);
+      document.querySelector('[data-panel="vc"]').click();
+      return;
+    }
+  }
+  toast('No changes in diff');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TESTING
+// ═══════════════════════════════════════════════════════════════
+async function generateTests() {
+  if (!IDE.activeTab) { toast('Open a file first', 'error'); return; }
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) return;
+
+  const ep = document.getElementById('test-ep-select').value;
+  const output = document.getElementById('test-output');
+  output.innerHTML = '<div class="empty-state"><span class="dots">Generating tests</span></div>';
+  setStatus('Generating tests...', true);
+
+  const prompt = `You are a test engineer. Generate comprehensive tests for this ${tab.language} file.
+
+FILE: ${tab.path}
+\`\`\`${tab.language.toLowerCase()}
+${tab.content}
+\`\`\`
+
+Generate:
+1. Unit tests covering all functions/methods
+2. Edge cases and error conditions  
+3. If it's a class, test all public methods
+4. Return ONLY runnable test code in a single code block. Use the appropriate test framework for the language (pytest for Python, Jest for JS/TS, etc.)
+
+Return the tests in a single fenced code block.`;
+
+  try {
+    const epInfo = IDE.endpoints[ep];
+    const models = epInfo?.available?.length ? epInfo.available : await fetchModels(ep);
+    const model = (epInfo?.model && models.includes(epInfo.model)) ? epInfo.model : (models[0] || IDE.activeModel);
+    const response = await callOllama(ep, model,
+      [{ role: 'user', content: prompt }],
+      { temperature: 0.1 });
+
+    output.innerHTML = '';
+    const body = document.createElement('div');
+    renderMessageBody(body, response);
+    output.appendChild(body);
+
+    // Extract the code for test running
+    const codeMatch = response.match(/```(?:\w*)\n([\s\S]*?)```/);
+    if (codeMatch) IDE._generatedTests = codeMatch[1];
+
+    setStatus('Tests generated');
+    toast('Tests generated', 'success');
+  } catch(e) {
+    output.innerHTML = `<div style="color:var(--accent5)">Error: ${e.message}</div>`;
+    setStatus('Error');
+    toast('Test generation failed: '+e.message, 'error');
+  }
+}
+
+async function runTests() {
+  if (!IDE.activeTab) { toast('Open a file first', 'error'); return; }
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) return;
+
+  const desc = document.getElementById('test-desc').value || 'Evaluate code quality and correctness';
+  const ep = document.getElementById('test-ep-select').value;
+  const output = document.getElementById('test-output');
+  output.innerHTML = '<div class="empty-state"><span class="dots">Running tests</span></div>';
+  setStatus('Running AI tests...', true);
+
+  const prompt = `You are an expert code reviewer and tester. Analyze this code and provide a detailed evaluation.
+
+FILE: ${tab.path}
+TASK: ${desc}
+
+\`\`\`${tab.language.toLowerCase()}
+${tab.content}
+\`\`\`
+
+${IDE._generatedTests ? 'GENERATED TESTS:\n```\n' + IDE._generatedTests + '\n```\n' : ''}
+
+Evaluate the code and return a JSON object with this exact structure:
+{
+  "summary": "overall assessment",
+  "score": 85,
+  "tests": [
+    { "name": "test name", "status": "pass|fail|warn", "detail": "explanation" }
+  ],
+  "issues": ["issue 1", "issue 2"],
+  "suggestions": ["suggestion 1"]
+}
+
+Return ONLY valid JSON, no other text.`;
+
+  try {
+    const epInfo2 = IDE.endpoints[ep];
+    const models2 = epInfo2?.available?.length ? epInfo2.available : await fetchModels(ep);
+    const model = (epInfo2?.model && models2.includes(epInfo2.model)) ? epInfo2.model : (models2[0] || IDE.activeModel);
+    const response = await callOllama(ep || IDE.activeEndpoint, model,
+      [{ role: 'user', content: prompt }],
+      { temperature: 0 });
+
+    let parsed;
+    try {
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      parsed = JSON.parse(jsonMatch?.[0] || response);
+    } catch {
+      // Fallback: display raw response
+      output.innerHTML = '';
+      const body = document.createElement('div');
+      renderMessageBody(body, response);
+      output.appendChild(body);
+      setStatus('Ready');
+      return;
+    }
+
+    output.innerHTML = '';
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'test-score';
+    const scoreColor = parsed.score >= 80 ? 'var(--accent3)' : parsed.score >= 60 ? 'var(--accent4)' : 'var(--accent5)';
+    scoreDiv.innerHTML = `<span style="color:${scoreColor};font-size:20px;font-weight:600;">${parsed.score}/100</span> — ${escapeHtml(parsed.summary)}`;
+    output.appendChild(scoreDiv);
+
+    for (const test of (parsed.tests||[])) {
+      const el = document.createElement('div');
+      el.className = 'test-result';
+      el.innerHTML = `<div class="test-result-head ${test.status}">
+        <span>${test.status==='pass'?'✓':test.status==='fail'?'✗':'⚠'}</span>
+        <span>${escapeHtml(test.name)}</span>
+      </div>
+      <div class="test-result-body">${escapeHtml(test.detail)}</div>`;
+      output.appendChild(el);
+    }
+
+    if (parsed.issues?.length) {
+      const issDiv = document.createElement('div');
+      issDiv.style.cssText = 'padding:8px 10px;font-size:11.5px;';
+      issDiv.innerHTML = '<div style="color:var(--accent5);margin-bottom:4px;">⚠ Issues:</div>' +
+        parsed.issues.map(i=>`<div style="color:var(--text1);margin-left:8px;">• ${escapeHtml(i)}</div>`).join('');
+      output.appendChild(issDiv);
+    }
+
+    setStatus('Tests complete: '+parsed.score+'/100');
+    toast('Tests done: ' + parsed.score + '/100', parsed.score>=70?'success':'');
+  } catch(e) {
+    output.innerHTML = `<div style="color:var(--accent5)">Error: ${e.message}</div>`;
+    setStatus('Error');
+    toast('Test run failed: '+e.message, 'error');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FIND / REPLACE
+// ═══════════════════════════════════════════════════════════════
+function showFindBar() {
+  document.getElementById('find-bar').classList.add('visible');
+  document.getElementById('find-input').focus();
+}
+function hideFindBar() { document.getElementById('find-bar').classList.remove('visible'); }
+
+function doFind() {
+  const query = document.getElementById('find-input').value;
+  const editor = document.getElementById('code-editor');
+  if (!query) { IDE.findMatches = []; document.getElementById('find-count').textContent = ''; return; }
+  IDE.findMatches = [];
+  IDE.findIdx = 0;
+  const content = editor.value;
+  let idx = 0;
+  while ((idx = content.indexOf(query, idx)) !== -1) {
+    IDE.findMatches.push(idx);
+    idx += query.length;
+  }
+  document.getElementById('find-count').textContent = IDE.findMatches.length + ' matches';
+  if (IDE.findMatches.length) highlightFind(0);
+}
+
+function highlightFind(idx) {
+  const editor = document.getElementById('code-editor');
+  const pos = IDE.findMatches[idx];
+  const query = document.getElementById('find-input').value;
+  editor.focus();
+  editor.setSelectionRange(pos, pos + query.length);
+  // Scroll into view
+  const linesBefore = editor.value.slice(0, pos).split('\n').length - 1;
+  editor.scrollTop = linesBefore * 21.45;
+}
+
+function findNext() { if (!IDE.findMatches.length) { doFind(); return; } IDE.findIdx=(IDE.findIdx+1)%IDE.findMatches.length; highlightFind(IDE.findIdx); }
+function findPrev() { if (!IDE.findMatches.length) { doFind(); return; } IDE.findIdx=(IDE.findIdx-1+IDE.findMatches.length)%IDE.findMatches.length; highlightFind(IDE.findIdx); }
+
+function replaceOne() {
+  const editor = document.getElementById('code-editor');
+  const find = document.getElementById('find-input').value;
+  const repl = document.getElementById('replace-input').value;
+  if (!find || !IDE.findMatches.length) return;
+  const pos = IDE.findMatches[IDE.findIdx];
+  const content = editor.value;
+  const newContent = content.slice(0, pos) + repl + content.slice(pos + find.length);
+  editor.value = newContent;
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (tab) { tab.content = newContent; tab.modified = true; renderTabs(); }
+  doFind();
+}
+
+function replaceAll() {
+  const editor = document.getElementById('code-editor');
+  const find = document.getElementById('find-input').value;
+  const repl = document.getElementById('replace-input').value;
+  if (!find) return;
+  const content = editor.value;
+  const newContent = content.split(find).join(repl);
+  const count = (content.split(find).length - 1);
+  editor.value = newContent;
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (tab) { tab.content = newContent; tab.modified = true; renderTabs(); }
+  doFind();
+  toast('Replaced '+count+' occurrences');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PREVIEW
+// ═══════════════════════════════════════════════════════════════
+function togglePreview() {
+  const panel = document.getElementById('preview-panel');
+  panel.classList.toggle('visible');
+  if (panel.classList.contains('visible')) refreshPreview();
+}
+
+function refreshPreview() {
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) return;
+  const frame = document.getElementById('preview-frame');
+  const lang = tab.language;
+  if (lang === 'HTML') {
+    const blob = new Blob([tab.content], { type: 'text/html' });
+    frame.src = URL.createObjectURL(blob);
+  } else if (lang === 'JavaScript') {
+    const html = `<!DOCTYPE html><html><head><style>body{background:#1a1e25;color:#e8ecf2;font-family:monospace;padding:12px}</style></head>
+<body><div id="output"></div><script>
+const _log = console.log;
+const _err = console.error;
+console.log = (...a)=>{ const d=document.createElement('div'); d.style.color='#a8b4c4'; d.textContent=a.join(' '); document.getElementById('output').appendChild(d); _log(...a); };
+console.error = (...a)=>{ const d=document.createElement('div'); d.style.color='#ef4444'; d.textContent='Error: '+a.join(' '); document.getElementById('output').appendChild(d); _err(...a); };
+try{
+${tab.content}
+}catch(e){ const d=document.createElement('div'); d.style.color='#ef4444'; d.textContent='Runtime error: '+e.message; document.getElementById('output').appendChild(d); }
+<\/script></body></html>`;
+    const blob = new Blob([html], {type:'text/html'});
+    frame.src = URL.createObjectURL(blob);
+  } else if (lang === 'Markdown') {
+    const html = simpleMarkdown(tab.content);
+    const full = `<!DOCTYPE html><html><head><style>body{background:#fff;font-family:sans-serif;padding:20px;max-width:800px;margin:0 auto;line-height:1.6}code{background:#f4f4f4;padding:2px 4px;border-radius:3px}pre{background:#f4f4f4;padding:12px;border-radius:4px;overflow:auto}</style></head><body>${html}</body></html>`;
+    const blob = new Blob([full], {type:'text/html'});
+    frame.src = URL.createObjectURL(blob);
+  } else {
+    frame.srcdoc = `<pre style="padding:12px;font-family:monospace;background:#1a1e25;color:#e8ecf2;margin:0;white-space:pre-wrap">${escapeHtml(tab.content)}</pre>`;
+  }
+}
+
+function simpleMarkdown(md) {
+  return md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/```[\s\S]*?```/g, m=>`<pre><code>${escapeHtml(m.slice(3,-3))}</code></pre>`)
+    .replace(/\n/g, '<br>');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════════════
+let _modalResolve = null;
+function showModal(title, placeholder='') {
+  return new Promise(resolve => {
+    _modalResolve = resolve;
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-input').placeholder = placeholder;
+    document.getElementById('modal-input').value = '';
+    document.getElementById('modal-overlay').classList.add('visible');
+    document.getElementById('modal-input').focus();
+  });
+}
+function closeModal(val) {
+  document.getElementById('modal-overlay').classList.remove('visible');
+  if (_modalResolve) { _modalResolve(val); _modalResolve = null; }
+}
+document.getElementById('modal-cancel').onclick = () => closeModal(null);
+document.getElementById('modal-confirm').onclick = () => closeModal(document.getElementById('modal-input').value);
+document.getElementById('modal-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') closeModal(document.getElementById('modal-input').value);
+  if (e.key === 'Escape') closeModal(null);
+});
+
+// ═══════════════════════════════════════════════════════════════
+// EVENT WIRING
+// ═══════════════════════════════════════════════════════════════
+document.getElementById('btn-open-folder').onclick = openFolder;
+document.getElementById('btn-new-file').onclick = async () => {
+  const name = await showModal('New File', 'filename.js');
+  if (name) createNewFile(name);
+};
+document.getElementById('btn-save').onclick = saveActive;
+document.getElementById('btn-find').onclick = showFindBar;
+document.getElementById('btn-preview-toggle').onclick = togglePreview;
+document.getElementById('btn-preview-refresh').onclick = refreshPreview;
+document.getElementById('btn-preview-close').onclick = () => document.getElementById('preview-panel').classList.remove('visible');
+document.getElementById('btn-diff-toggle').onclick = () => {
+  const overlay = document.getElementById('diff-overlay');
+  overlay.classList.toggle('visible');
+};
+
+document.getElementById('btn-add-to-ctx').onclick = () => {
+  IDE.fileTree.filter(f=>f.kind==='file').forEach(f => addToContext(f.path));
+  renderFileTree(); toast('All files added to context');
+};
+document.getElementById('btn-clear-ctx').onclick = () => {
+  IDE.contextFiles.clear(); renderContextChips(); renderFileTree(); updateContextInfo();
+  toast('Context cleared');
+};
+document.getElementById('btn-refresh-tree').onclick = async () => {
+  if (IDE._treeRoot) await buildFileTree(IDE._treeRoot);
+};
+document.getElementById('btn-reload-instances').onclick = async () => {
+  toast('Reloading instances…');
+  await loadInstancesFromAPI();
+};
+
+// Right panel tabs
+document.querySelectorAll('.right-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.right-tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.right-content').forEach(c=>c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('panel-'+tab.dataset.panel).classList.add('active');
+  };
+});
+
+// Chat
+document.getElementById('chat-send').onclick = sendChatMessage;
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+  if (e.key === '@') { showCtxPopup(); }
+});
+document.getElementById('chat-input').oninput = e => {
+  e.target.style.height = 'auto';
+  e.target.style.height = Math.min(e.target.scrollHeight, 140) + 'px';
+};
+
+// Option toggles
+['opt-include-active','opt-inline-edit','opt-streaming'].forEach(id => {
+  const btn = document.getElementById(id);
+  const key = id.replace('opt-','').replace(/-([a-z])/g,(_,c)=>c.toUpperCase());
+  btn.onclick = () => {
+    IDE.opts[key] = !IDE.opts[key];
+    btn.classList.toggle('active', IDE.opts[key]);
+  };
+});
+document.getElementById('opt-streaming').classList.add('active');
+
+document.getElementById('endpoint-select').onchange = async e => {
+  IDE.activeEndpoint = e.target.value;
+  await refreshModelSelect();
+  await checkEndpoint(IDE.activeEndpoint);
+};
+
+document.getElementById('model-select').onchange = e => {
+  IDE.activeModel = e.target.value;
+  const short = (e.target.value||'—').split(':')[0];
+  document.getElementById('model-badge').textContent = short;
+  document.getElementById('sb-model').textContent    = short;
+};
+document.getElementById('test-ep-select').onchange = e => {
+  IDE.testEndpoint = e.target.value;
+  updateTestEpLabel();
+};
+
+// Docs
+document.getElementById('docs-go').onclick = searchDocs;
+document.getElementById('docs-query').addEventListener('keydown', e => { if (e.key==='Enter') searchDocs(); });
+
+// VCS
+document.getElementById('btn-commit').onclick = () => commitSnapshot(document.getElementById('commit-msg').value);
+document.getElementById('btn-diff-head').onclick = () => {
+  if (!IDE.commits.length) { toast('No commits yet'); return; }
+  const tab = IDE.openTabs.find(t=>t.path===IDE.activeTab);
+  if (!tab) { toast('No active file'); return; }
+  const lastContent = IDE.commits[0].snapshot[IDE.activeTab] || '';
+  showDiff(lastContent, tab.content);
+  document.getElementById('diff-overlay').classList.add('visible');
+};
+
+// Tests
+document.getElementById('btn-run-tests').onclick = runTests;
+document.getElementById('btn-gen-tests').onclick = generateTests;
+
+// Find bar
+document.getElementById('find-input').addEventListener('input', doFind);
+document.getElementById('find-input').addEventListener('keydown', e => {
+  if (e.key==='Enter') e.shiftKey ? findPrev() : findNext();
+});
+document.getElementById('btn-find-prev').onclick = findPrev;
+document.getElementById('btn-find-next').onclick = findNext;
+document.getElementById('btn-replace-one').onclick = replaceOne;
+document.getElementById('btn-replace-all').onclick = replaceAll;
+document.getElementById('btn-find-close').onclick = hideFindBar;
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveActive(); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='f') { e.preventDefault(); showFindBar(); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='Enter') { e.preventDefault(); sendChatMessage(); }
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') { e.preventDefault(); document.getElementById('chat-input').focus(); }
+});
+
+// @-mention popup in chat
+function showCtxPopup() {
+  const popup = document.getElementById('ctx-popup');
+  popup.innerHTML = '';
+  popup.classList.add('visible');
+  IDE.fileTree.filter(f=>f.kind==='file').slice(0,20).forEach(f => {
+    const item = document.createElement('div');
+    item.className = 'ctx-popup-item';
+    item.innerHTML = `${fileIcon(f.name)} ${f.path}`;
+    item.onclick = () => {
+      addToContext(f.path);
+      renderContextChips();
+      popup.classList.remove('visible');
+      const input = document.getElementById('chat-input');
+      input.value = input.value.replace(/@$/, '@'+f.path+' ');
+    };
+    popup.appendChild(item);
+  });
+  setTimeout(()=>document.addEventListener('click', ()=>popup.classList.remove('visible'), { once:true }), 10);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+(async function init() {
+  setStatus('Loading instances…', true);
+  await loadInstancesFromAPI();
+  updateTierBadge();
+  updateContextInfo();
+})();
+</script>
+</body>
+</html>

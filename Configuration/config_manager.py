@@ -308,30 +308,32 @@ class OllamaConfig:
                     name="remote-b",
                     api_url="http://192.168.0.246:11435",
                     priority=5,
+                    has_gpu=False,
                     max_concurrent=1
                 ),
                 OllamaInstanceConfig(
                     name="remote-c",
                     api_url="http://192.168.0.247:11435",
                     priority=4,
+                    has_gpu=False,
                     max_concurrent=1
                 ),
-                # OllamaInstanceConfig(
-                #     name="remote-d",
-                #     api_url="http://192.168.0.248:11435",
-                #     priority=3,
-                #     max_concurrent=1
-                    # has_gpu=True,
-                    # gpu_memory_gb=12
-                # ),
-                # OllamaInstanceConfig(
-                #     name="remote-e",
-                #     api_url="http://192.168.0.249:11435",
-                #     priority=2,
-                #     max_concurrent=1
-                    # has_gpu=True,
-                    # gpu_memory_gb=12
-                # ),
+                OllamaInstanceConfig(
+                    name="remote-d",
+                    api_url="http://192.168.0.248:11435",
+                    priority=3,
+                    max_concurrent=1,
+                    has_gpu=True,
+                    gpu_memory_gb=12
+                ),
+                OllamaInstanceConfig(
+                    name="remote-e",
+                    api_url="http://192.168.0.249:11435",
+                    priority=2,
+                    max_concurrent=1,
+                    has_gpu=True,
+                    gpu_memory_gb=12
+                ),
                 # OllamaInstanceConfig(
                 #     name="local",
                 #     api_url="http://localhost:11434",

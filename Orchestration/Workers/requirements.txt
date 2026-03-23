@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+redis
+celery
+torch
+diffusers
+transformers
+accelerate
+faster-whisper
+pillow
+python-multipart
+websockets

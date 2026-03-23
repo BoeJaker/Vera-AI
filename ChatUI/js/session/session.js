@@ -71,6 +71,9 @@
                 // { id: 'worldview', label: 'Worldview', columnId: 1 }
                 { id: 'config', label: 'Configuration', columnId: 1 },
                 { id: 'settings', label: 'Settings', columnId: 1 },
+                { id: 'world_view', label: 'World View', columnId: 1 },
+                { id: 'galaxy_graph', label: 'Galaxy Graph', columnId: 1 },
+                { id: 'research', label: 'Research', columnId: 1 },
             ];
             this.activeTabPerColumn = {};
             this.draggedTab = null;
@@ -370,9 +373,86 @@
             }
         }
 
+        async loadHTML(file, containerId) {
+            try {
+                let container = null;
+                for (let i = 0; i < 20; i++) {
+                    container = document.getElementById(containerId);
+                    if (container) break;
+                    await new Promise(r => setTimeout(r, 50));
+                }
+                if (!container) {
+                    console.error("Container never appeared:", containerId);
+                    return;
+                }
+
+                const res = await fetch(file);
+                const html = await res.text();
+
+                // Parse the fetched HTML
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+
+                // Inject non-script content first
+                const bodyContent = doc.body.innerHTML;
+                container.innerHTML = bodyContent;
+
+                // Copy <style> blocks from fetched <head> into container
+                doc.querySelectorAll('head style').forEach(s => {
+                    const clone = document.createElement('style');
+                    clone.textContent = s.textContent;
+                    container.appendChild(clone);
+                });
+
+                // Re-execute scripts in order (both head and body), preserving load order
+                const scripts = [...doc.querySelectorAll('head script'), ...doc.querySelectorAll('body script')];
+                for (const orig of scripts) {
+                    await new Promise((resolve, reject) => {
+                        const s = document.createElement('script');
+                        if (orig.src) {
+                            // External script — wait for it to load before continuing
+                            s.src = orig.src;
+                            s.onload = resolve;
+                            s.onerror = reject;
+                        } else {
+                            // Inline script
+                            s.textContent = orig.textContent;
+                            resolve();
+                        }
+                        document.head.appendChild(s);
+                    });
+                }
+
+            } catch (err) {
+                console.error("Failed to load HTML:", err);
+            }
+        }
         getTabContent(tabId) {
             switch(tabId) {
-                // 2. ADD THIS CASE TO getTabContent() function (around line 500+):
+                case 'world_view':
+                    return `<iframe 
+                    src="http://llm.int:8888/worldview" 
+                    id="world_view-container"
+                    style="width:100%; height:100vh; border:none; display:block;"
+                    allow="autoplay"
+                ></iframe>`;
+
+                case 'galaxy_graph':
+                    return `<iframe 
+                    src="http://llm.int:8888/memory" 
+                    id="world_view-container"
+                    style="width:100%; height:100vh; border:none; display:block;"
+                    allow="autoplay"
+                ></iframe>`;
+                
+                case 'research':
+                    return `<iframe 
+                    src="http://llm.int:8888/research" 
+                    id="research-container"
+                    style="width:100%; height:100vh; border:none; display:block;"
+                    allow="autoplay"
+                ></iframe>`;
+
                 case 'chatbots':
                     return `<div id="chatbot-manager-container" style="height: 100%; overflow-y: auto;"></div>`;
                 case 'ml':

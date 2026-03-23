@@ -10,8 +10,8 @@ models:
   intermediate_llm: "qwen3.5:9b"
   deep_llm: "qwen3.5:9b"
   reasoning_llm: "qwen3.5:9b"
-  tool_llm: "qwen3.5:9b:latest"
-  coding_llm: "qwen3.5:9b:latest" 
+  tool_llm: "jaahas/qwen3.5-uncensored:9b"
+  coding_llm: "jaahas/qwen3.5-uncensored:9b" 
   
   # Temperature settings
   fast_temperature: 0.6
@@ -43,6 +43,7 @@ ollama:
     - "mistral:7b"
     - "llama3.2:11b"
     - "qwen3.5:9b"
+    - "jaahas/qwen3.5-uncensored:9b"
 
   # Model size thresholds (in billions of parameters)
   small_model_threshold: 5.0   # ≤5B can run on CPU
@@ -73,6 +74,7 @@ ollama:
       timeout: 2400
       has_gpu: true
       gpu_memory_gb: 12
+
     - name: "remote-b"
       api_url: "http://192.168.0.246:11435"
       priority: 5
@@ -80,7 +82,8 @@ ollama:
       enabled: true
       timeout: 2400
       has_gpu: false
-      gpu_memory_gb: 12
+      cpu_only: true  # Mark as CPU-only
+
     - name: "remote-c"
       api_url: "http://192.168.0.247:11435"
       priority: 4
@@ -88,15 +91,17 @@ ollama:
       enabled: true
       timeout: 2400
       has_gpu: false
-      gpu_memory_gb: 12
+      cpu_only: true  # Mark as CPU-only
+
     - name: "remote-d"
       api_url: "http://192.168.0.248:11435"
       priority: 3
       max_concurrent: 1
       enabled: true
       timeout: 2400
-      has_gpu: false
-      cpu_only: true  # Mark as CPU-only
+      has_gpu: true
+      gpu_memory_gb: 12
+
     - name: "remote-e"
       api_url: "http://192.168.0.249:11435"
       priority: 2
@@ -104,14 +109,15 @@ ollama:
       enabled: true
       timeout: 2400
       has_gpu: true
-      cpu_only: true  # Mark as CPU-only
+      gpu_memory_gb: 12
+      
     - name: "local"
       api_url: "http://localhost:11434"
       priority: 1
       max_concurrent: 1
       enabled: false # Local instance is very slow, disable by default
       timeout: 2400
-      has_gpu: true
+      has_gpu: false
       cpu_only: true  # Mark as CPU-only
 
 # Memory System Configuration
@@ -206,7 +212,7 @@ ramp:
   proactive: []                 # Handled separately
 
 counsel:
-  mode: "race"
+  mode: "vote"
   instances:
     - "local:qwen3.5:9b"
     - "remote:qwen3.5:9b"
@@ -239,7 +245,7 @@ agents:
     tool_execution: "tool-agent"     # Precise tool execution
     reasoning: "reasoning-agent"     # Deep thinking
     conversation: "qwen3.5:9b"           # General chat
-    coding: "qwen3.5-uncensored:9b"           # General chat
+    coding: "jaahas/qwen3.5-uncensored:9b"           # General chat
   
   # Agent-specific overrides (optional)
   agent_configs:

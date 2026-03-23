@@ -6,6 +6,7 @@ Slack Bot for Vera
 Connects Vera to Slack workspace using Socket Mode.
 
 SETUP:
+0.  pip install slack_sdk
 1. Create Slack App at api.slack.com/apps
 2. Enable Socket Mode and get App Token (xapp-...)
 3. Add Bot Token Scopes: chat:write, channels:history, groups:history, im:history
@@ -26,6 +27,13 @@ from Vera.vera import Vera
 from Vera.Logging.logging import LogContext
 from Vera.ChatBots.vera_messaging import VeraMessaging, Message, Platform
 
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env file from same directory if it exists
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
 
 class SlackBot:
     """Slack bot runner for Vera"""
@@ -161,6 +169,11 @@ class SlackBot:
 
 async def main():
     """Main entry point"""
+    # Load .env fallback
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+
     # Load configuration
     config = {
         'bot_token': os.getenv('SLACK_BOT_TOKEN'),

@@ -19,7 +19,7 @@
         selectedEdges: [],
         visibleNodes: [],
         graphStats: {},
-        contextMode: 'selected', // 'selected', 'visible', 'all', 'custom', 'none'
+        contextMode: 'none', // 'selected', 'visible', 'all', 'custom', 'none'
         includeProperties: true,
         includeRelationships: true,
         maxNodesInContext: 50,

@@ -39,7 +39,8 @@ from Vera.ChatUI.api.Toolchain.toolchain_monitor_wrapper import set_main_loop
 # ============================================================
 # Vera API imports
 # ============================================================
-
+import Vera.ChatUI.api.ide_api as ide_api
+import Vera.ChatUI.api.Sessions.sessions_api as sessions_api
 import Vera.ChatUI.api.plugins_api as plugins_api
 import Vera.ChatUI.api.Canvas.execution_api as execution_api
 import Vera.ChatUI.api.Canvas.canvas_api as canvas_api # < to be replaced by execution_api
@@ -52,6 +53,7 @@ import Vera.ChatUI.api.Chat.chat_api as chat_api
 import Vera.ChatUI.api.Chat.chat_history_api as chat_history_api
 import Vera.ChatUI.api.Chat.voice as voice_api
 import Vera.ChatUI.api.Chat.context_api as context_api
+import Vera.ChatUI.api.Chat.models_api as models_api
 import Vera.ChatUI.api.Orchestrator.orchestrator_api as orchestrator_api
 import Vera.ChatUI.api.Orchestrator.api_api as api_api
 import Vera.ChatUI.api.Orchestrator.infra_api as infra_api
@@ -111,6 +113,8 @@ executive_agent = executive(vera_instance=None)  # Or your vera instance
 print("[Startup] Initializing calendar service...")
 scheduling_api.initialize_calendar_service(executive_agent)
 
+app.include_router(ide_api.router)
+app.include_router(sessions_api.router)
 app.include_router(plugins_api.router)
 app.include_router(execution_api.router)
 app.include_router(canvas_api.router)
@@ -119,6 +123,7 @@ app.include_router(chat_api.wsrouter)
 app.include_router(chat_history_api.router)
 app.include_router(voice_api.router)
 app.include_router(context_api.router)  
+app.include_router(models_api.router)
 app.include_router(graph_api.router)
 app.include_router(toolchain_api.router)
 app.include_router(toolchain_query_api.router)
@@ -175,7 +180,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
-        "active_sessions": len(sessions),
+        # "active_sessions": len(sessions),
         "tts_queue_length": len(tts_queue),
         "active_toolchains": len(active_toolchains)
     }
@@ -187,7 +192,7 @@ async def get_info():
     return {
         "name": "Vera AI Chat API",
         "version": "1.0.0",
-        "active_sessions": len(sessions),
+        # "active_sessions": len(sessions),
         "endpoints": {
             "session": ["/api/session/start", "/api/session/{id}/end"],
             "chat": ["/api/chat", "/ws/chat/{session_id}"],
@@ -352,7 +357,61 @@ async def debug_neo4j(session_id: str):
         logger.error(f"Debug error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+from fastapi import FastAPI, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
+templates = Jinja2Templates(directory="Vera/ChatUI")
+app.mount("/static", StaticFiles(directory="Vera/ChatUI"), name="static")
+
+@app.get("/", response_class=HTMLResponse)
+async def home(request: Request):
+    return templates.TemplateResponse(
+        "ui.html",
+        {"request": request}
+    )
+
+@app.get("/ide", response_class=HTMLResponse)
+async def ide(request: Request):
+    return FileResponse("Vera/ChatUI/ide.html")
+    
+
+@app.get("/research", response_class=HTMLResponse)
+async def research(request: Request):
+    return FileResponse("Vera/ChatUI/research.html")
+    
+
+@app.get("/notebook", response_class=HTMLResponse)
+async def research(request: Request):
+    return FileResponse("Vera/ChatUI/notebook.html")
+    
+
+@app.get("/worldview", response_class=HTMLResponse)
+async def worldview(request: Request):
+    return templates.TemplateResponse(
+        "worldview.html",
+        {"request": request}
+    )
+
+@app.get("/memory", response_class=HTMLResponse)
+async def memory(request: Request):
+    return templates.TemplateResponse(
+        "memory_map.html",
+        {"request": request}
+    )
+
+@app.post("/api/config/instances/reset")
+async def reset_instances_to_defaults():
+    """Wipe DB instance config and restore defaults."""
+    global instances
+    instances = list(DEFAULT_INSTANCES)
+    await DB.save_instances(instances)
+    return {"ok": True, "instances": [
+        {"name": i.name, "host": i.host, "port": i.port,
+         "model": i.model, "tier": i.tier}
+        for i in instances
+    ]}
 # ============================================================
 # Run Server
 # ============================================================
@@ -365,4 +424,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8888,
         log_level="info"
+        # reload=True
     )
